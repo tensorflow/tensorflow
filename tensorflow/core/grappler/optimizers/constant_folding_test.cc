@@ -469,7 +469,6 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_KnownOutputShape) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(10, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
@@ -991,8 +990,10 @@ TEST_F(ConstantFoldingTest, SwitchNodesEmptyFetch) {
   EXPECT_EQ(present_nodes.size(), output.node_size());
   int found = 0;
   for (const auto& node : output.node()) {
-    EXPECT_TRUE(present_nodes.find(node.name()) != present_nodes.end());
-    EXPECT_TRUE(not_present_nodes.find(node.name()) == not_present_nodes.end());
+    EXPECT_TRUE(present_nodes.find(node.name()) != present_nodes.end())
+        << node.name();
+    EXPECT_TRUE(not_present_nodes.find(node.name()) == not_present_nodes.end())
+        << node.name();
     present_nodes.erase(node.name());
     not_present_nodes.erase(node.name());
     if (node.name() == "rank") {
@@ -1212,7 +1213,8 @@ TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
 }
 
 TEST_F(ConstantFoldingTest, NoOpReduction) {
-  // Build a simple graph with a reduction that can be reduced to the identity.
+  // Build a simple graph with a reduction that can be reduced to the
+  // identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
   Output v = ops::Variable(scope.WithOpName("v"), {3, 5, 7}, DT_FLOAT);
@@ -1338,8 +1340,8 @@ TEST_F(ConstantFoldingTest, Packing) {
   TF_EXPECT_OK(status);
 
   // Make sure that the representation of the folded constant is space
-  // efficient: in particular, the whole message should be smaller than 8k (the
-  // size needed to naively encode 1000 floats folded twice).
+  // efficient: in particular, the whole message should be smaller than 8k
+  // (the size needed to naively encode 1000 floats folded twice).
   EXPECT_GT(8000, output.ByteSizeLong());
 }
 
@@ -1492,6 +1494,58 @@ TEST_F(ConstantFoldingTest, LargeConstant) {
   EXPECT_EQ(2, found);
 
   EXPECT_GT(1024 * 1024, output.ByteSizeLong());
+}
+
+TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_BOOL,
+                              ops::Placeholder::Shape(TensorShape({})));
+  ops::Switch sw = ops::Switch(s.WithOpName("switch"), x, x);
+  Output id_false = ops::LogicalNot(s.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::LogicalNot(s.WithOpName("id_true"), sw.output_true);
+
+  GrapplerItem item;
+  item.fetch.push_back("id_false");
+  item.fetch.push_back("id_true");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "switch" || node.name() == "x") {
+      ++found;
+    }
+    if (node.name() == "id_false") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_0", node.input(0));
+      ++found;
+    }
+    if (node.name() == "id_true") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
+      ++found;
+    }
+    if (node.name() == "ConstantFoldingCtrl/switch_0") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("switch", node.input(0));
+      ++found;
+    }
+    if (node.name() == "ConstantFoldingCtrl/switch_1") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("switch:1", node.input(0));
+      ++found;
+    }
+  }
+  EXPECT_EQ(6, found);
 }
 
 }  // namespace

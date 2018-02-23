@@ -198,9 +198,8 @@ class ComputationBuilder {
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
   // Enqueues an operation onto the computation that collapses the operand, from
-  // minor to major order, then reshapes it into the shape with the given
-  // dimension sizes, also from major to minor. Conceptually, this is a limited
-  // form of "shape casting".
+  // first to last dimension (C order), then reshapes it to the given dimension
+  // sizes. Conceptually, this is a limited form of "shape casting".
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 

@@ -63,25 +63,31 @@ INSTANTIATE(double, d)
 #undef INSTANTIATE
 
 template <>
-Status MKLTranspose2D<complex64>(const char trans, const Tensor& in, Tensor* out) {
-    const MKL_Complex8 alpha = { 1.0f, 0.0f };
-    mkl_comatcopy('R', trans, in.dim_size(0), in.dim_size(1), alpha,
-                  reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
-                  in.dim_size(1),
-                  reinterpret_cast<MKL_Complex8*>(const_cast<complex64*>(out->flat<complex64>().data())),
-                  in.dim_size(0));
-    return Status::OK();
+Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
+                                 Tensor* out) {
+  const MKL_Complex8 alpha = {1.0f, 0.0f};
+  mkl_comatcopy(
+      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
+      reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
+      in.dim_size(1),
+      reinterpret_cast<MKL_Complex8*>(
+          const_cast<complex64*>(out->flat<complex64>().data())),
+      in.dim_size(0));
+  return Status::OK();
 }
 
 template <>
-Status MKLTranspose2D<complex128>(const char trans, const Tensor& in, Tensor* out) {
-    const MKL_Complex16 alpha = { 1.0, 0.0 };
-    mkl_zomatcopy('R', trans, in.dim_size(0), in.dim_size(1), alpha,
-                  reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
-                  in.dim_size(1),
-                  reinterpret_cast<MKL_Complex16*>(const_cast<complex128*>(out->flat<complex128>().data())),
-                  in.dim_size(0));
-	return Status::OK();
+Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
+                                  Tensor* out) {
+  const MKL_Complex16 alpha = {1.0, 0.0};
+  mkl_zomatcopy(
+      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
+      reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
+      in.dim_size(1),
+      reinterpret_cast<MKL_Complex16*>(
+          const_cast<complex128*>(out->flat<complex128>().data())),
+      in.dim_size(0));
+  return Status::OK();
 }
 
 static const char kMKLTranspose = 'T';
