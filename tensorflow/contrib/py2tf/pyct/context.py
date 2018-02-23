@@ -30,14 +30,16 @@ class EntityContext(object):
         (excluding parameters).
     arg_values: Dict[str->*], containing parameter values, if known.
     arg_types: Dict[str->*], containing parameter types, if known.
+    owner_type: The surrounding class type of the function, if present.
   """
 
   def __init__(self, namer, source_code, source_file, namespace, arg_values,
-               arg_types, recursive):
+               arg_types, owner_type, recursive):
     self.namer = namer
     self.source_code = source_code
     self.source_file = source_file
     self.namespace = namespace
     self.arg_values = {} if arg_values is None else arg_values
     self.arg_types = {} if arg_types is None else arg_types
+    self.owner_type = owner_type
     self.recursive = recursive

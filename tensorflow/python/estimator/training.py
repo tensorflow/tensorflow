@@ -455,15 +455,21 @@ class _TrainingExecutor(object):
                train_hooks=None,
                continuous_eval_listener=None):
     if not isinstance(estimator, estimator_lib.Estimator):
-      raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
+      raise TypeError(
+          '`estimator` must have type `tf.estimator.Estimator`. '
+          'Got: {}'.format(type(estimator)))
     self._estimator = estimator
 
     if not isinstance(train_spec, TrainSpec):
-      raise TypeError('`train_spec` must have type `tf.estimator.TrainSpec`.')
+      raise TypeError(
+          '`train_spec` must have type `tf.estimator.TrainSpec`. '
+          'Got: {}'.format(type(train_spec)))
     self._train_spec = train_spec
 
     if not isinstance(eval_spec, EvalSpec):
-      raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`.')
+      raise TypeError(
+          '`eval_spec` must have type `tf.estimator.EvalSpec`. '
+          'Got: {}'.format(type(eval_spec)))
     self._eval_spec = eval_spec
 
     self._train_hooks = _validate_hooks(train_hooks)

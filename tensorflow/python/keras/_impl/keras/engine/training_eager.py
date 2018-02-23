@@ -29,6 +29,7 @@ from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _get_metrics_info(metric, internal_output_shapes=None, loss_func=None):
@@ -196,8 +197,7 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
       output of the model, total loss and the loss associated with each output.
 
   Raises:
-      ValueError: If the model loss is 0 or if the trainable weights list is
-                  empty when the trainable parameter is set to True.
+      ValueError: If the model has no loss to optimize.
   """
   K.set_learning_phase(training)
   with GradientTape() as tape:
@@ -209,12 +209,13 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
                        'because it has no loss to optimize.')
   if training:
     if not model._collected_trainable_weights:
-      raise ValueError('The list of trainable weights is empty. Make sure that '
-                       'you are not setting model.trainable to False before '
-                       'compiling the model.')
-    grads = tape.gradient(loss, model._collected_trainable_weights)
-    model.optimizer.apply_gradients(zip(grads,
-                                        model._collected_trainable_weights))
+      logging.warning('The list of trainable weights is empty. Make sure that '
+                      'you are not setting model.trainable to False before '
+                      'compiling the model.')
+    else:
+      grads = tape.gradient(loss, model._collected_trainable_weights)
+      model.optimizer.apply_gradients(zip(grads,
+                                          model._collected_trainable_weights))
   return outs, loss, loss_metrics
 
 

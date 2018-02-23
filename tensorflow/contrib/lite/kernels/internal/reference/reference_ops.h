@@ -157,11 +157,11 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
 inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  const float* filter_data, const Dims<4>& filter_dims,
                  const float* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, float output_activation_min,
-                 float output_activation_max, float* output_data,
-                 const Dims<4>& output_dims, float* im2col_data,
-                 const Dims<4>& im2col_dims) {
+                 int stride_width, int stride_height, int dilation_width_factor,
+                 int dilation_height_factor, int pad_width, int pad_height,
+                 float output_activation_min, float output_activation_max,
+                 float* output_data, const Dims<4>& output_dims,
+                 float* im2col_data, const Dims<4>& im2col_dims) {
   (void)im2col_data;  // only used in optimized code.
   (void)im2col_dims;  // only used in optimized code.
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
@@ -186,8 +186,9 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + filter_x;
-                const int in_y = in_y_origin + filter_y;
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
                 // If the location is outside the bounds of the input image,
                 // use zero as a default value.
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -216,6 +217,23 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+template <FusedActivationFunctionType Ac>
+void Conv(const float* input_data, const Dims<4>& input_dims,
+          const float* filter_data, const Dims<4>& filter_dims,
+          const float* bias_data, const Dims<4>& bias_dims, int stride_width,
+          int stride_height, int dilation_width_factor,
+          int dilation_height_factor, int pad_width, int pad_height,
+          float* output_data, const Dims<4>& output_dims, float* im2col_data,
+          const Dims<4>& im2col_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+  Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
+       stride_width, stride_height, dilation_width_factor,
+       dilation_height_factor, pad_width, pad_height, output_activation_min,
+       output_activation_max, output_data, output_dims, im2col_data,
+       im2col_dims);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void Conv(const float* input_data, const Dims<4>& input_dims,
@@ -227,7 +245,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
   float output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
   Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
-       stride_width, stride_height, pad_width, pad_height,
+       stride_width, stride_height, 1, 1, pad_width, pad_height,
        output_activation_min, output_activation_max, output_data, output_dims,
        im2col_data, im2col_dims);
 }
@@ -241,7 +259,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
           const Dims<4>& output_dims, float* im2col_data,
           const Dims<4>& im2col_dims) {
   Conv<Ac>(input_data, input_dims, filter_data, filter_dims, bias_data,
-           bias_dims, stride, stride, pad_width, pad_height, output_data,
+           bias_dims, stride, stride, 1, 1, pad_width, pad_height, output_data,
            output_dims, im2col_data, im2col_dims);
 }
 
@@ -2210,6 +2228,41 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
           } else {
             output_data[Offset(output_dims, c, x, y, b)] = 0;
           }
+        }
+      }
+    }
+  }
+}
+
+inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
+                       float* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        // Find max element value which we'll use to ensure numerical stability
+        // taking advantage of the following equality:
+        // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
+        float max = std::numeric_limits<float>::lowest();
+        for (int c = 0; c < depth; ++c) {
+          max = std::max(max, input_data[Offset(input_dims, c, x, y, b)]);
+        }
+
+        // Compute sum.
+        float sum = 0.f;
+        for (int c = 0; c < depth; ++c) {
+          sum += std::exp(input_data[Offset(input_dims, c, x, y, b)] - max);
+        }
+
+        // Compute result.
+        const float log_sum = std::log(sum);
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              input_data[Offset(input_dims, c, x, y, b)] - max - log_sum;
         }
       }
     }

@@ -427,8 +427,9 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 string SanitizeFileName(string file_name);
 
 template <typename Container, typename Predicate>
-bool c_all_of(Container container, Predicate predicate) {
-  return std::all_of(std::begin(container), std::end(container), predicate);
+bool c_all_of(Container container, Predicate&& predicate) {
+  return std::all_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
 }
 
 template <typename InputContainer, typename OutputIterator,
@@ -461,8 +462,9 @@ void c_sort(InputContainer& input_container) {
 }
 
 template <class InputContainer, class Comparator>
-void c_sort(InputContainer& input_container, Comparator comparator) {
-  std::sort(std::begin(input_container), std::end(input_container), comparator);
+void c_sort(InputContainer& input_container, Comparator&& comparator) {
+  std::sort(std::begin(input_container), std::end(input_container),
+            std::forward<Comparator>(comparator));
 }
 
 template <typename Sequence, typename T>
@@ -479,6 +481,11 @@ bool c_is_sorted(const C& c) {
 template <typename C>
 auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
+}
+
+template <typename C, typename Pred>
+auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 }  // namespace xla
 

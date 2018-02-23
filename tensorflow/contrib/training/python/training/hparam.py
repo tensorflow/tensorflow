@@ -358,6 +358,8 @@ class HParams(object):
   ```
   """
 
+  _HAS_DYNAMIC_ATTRIBUTES = True  # Required for pytype checks.
+
   def __init__(self, hparam_def=None, model_structure=None, **kwargs):
     """Create an instance of `HParams` from keyword arguments.
 

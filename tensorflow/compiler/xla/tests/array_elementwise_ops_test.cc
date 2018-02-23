@@ -101,6 +101,33 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantC64) {
       {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS64) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int64>({
+      -1,
+      1,
+      0,
+      0x12345678,
+      static_cast<int64>(0xffffffff12345678l),
+      static_cast<int64>(0x8000000000000000LL),
+      static_cast<int64>(0x8000000000000001LL),
+  });
+  auto result = builder.Neg(a);
+  LOG(INFO) << -static_cast<int64>(0x7FFFFFFFFFFFFFFFLL);
+
+  ComputeAndCompareR1<int64>(&builder,
+                             {
+                                 1,
+                                 -1,
+                                 0,
+                                 -0x12345678,
+                                 0xedcba988,
+                                 static_cast<int64>(0x8000000000000000LL),
+                                 -static_cast<int64>(0x8000000000000001LL),
+                             },
+                             {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({});
@@ -184,6 +211,86 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantZeroElementC64s) {
   auto add = builder.Add(a, b);
 
   ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<uint64> lhs{0xFFFFFFFF,
+                          static_cast<uint64>(-1),
+                          0,
+                          0,
+                          0x7FFFFFFFFFFFFFFFLL,
+                          0x7FFFFFFFFFFFFFFLL,
+                          0x8000000000000000LL,
+                          0x8000000000000000LL,
+                          1};
+  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<uint64>({lhs});
+  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
+  std::unique_ptr<GlobalData> lhs_data =
+      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
+
+  std::vector<uint64> rhs{1,
+                          0x7FFFFFFFFFFFFFFLL,
+                          0x7FFFFFFFFFFFFFFFLL,
+                          0x8000000000000000LL,
+                          0,
+                          static_cast<uint64>(-1),
+                          0,
+                          1,
+                          0x8000000000000000LL};
+  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<uint64>({rhs});
+  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
+  std::unique_ptr<GlobalData> rhs_data =
+      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
+
+  auto add = b.Add(lhs_param, rhs_param);
+
+  std::vector<uint64> expected(lhs.size());
+  for (int64 i = 0; i < lhs.size(); ++i) {
+    expected[i] = lhs[i] + rhs[i];
+  }
+
+  ComputeAndCompareR1<uint64>(&b, expected, {lhs_data.get(), rhs_data.get()});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<int64> lhs{static_cast<int64>(0x8000000000000000LL),
+                         static_cast<int64>(0x8000000000000000LL),
+                         -1,
+                         0x7FFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL,
+                         1,
+                         0,
+                         -1};
+  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<int64>({lhs});
+  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
+  std::unique_ptr<GlobalData> lhs_data =
+      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
+
+  std::vector<int64> rhs{-1,
+                         0,
+                         static_cast<int64>(0x8000000000000000LL),
+                         1,
+                         0,
+                         0x7FFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL};
+  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<int64>({rhs});
+  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
+  std::unique_ptr<GlobalData> rhs_data =
+      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
+
+  auto sub = b.Sub(lhs_param, rhs_param);
+
+  std::vector<int64> expected(lhs.size());
+  for (int64 i = 0; i < lhs.size(); ++i) {
+    expected[i] = lhs[i] - rhs[i];
+  }
+
+  ComputeAndCompareR1<int64>(&b, expected, {lhs_data.get(), rhs_data.get()});
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
@@ -847,68 +954,76 @@ XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementU32R1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x12345678),
-                                 static_cast<int32>(0xF0001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 15});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x12345678),
+                                      static_cast<int32>(0xF0001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 15, 32, 100, -1});
   auto out = builder.ShiftLeft(a, b);
 
-  ComputeAndCompareR1<int32>(
-      &builder,
-      {static_cast<int32>(0x23456780), 0x00100000, 0x4, 0x180, 2523136}, {});
+  ComputeAndCompareR1<int32>(&builder,
+                             {static_cast<int32>(0x23456780), 0x00100000, 0x4,
+                              0x180, 2523136, 0, 0, 0},
+                             {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
-                                 static_cast<int32>(0x10001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 2});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                      static_cast<int32>(0x10001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 2, 32, 100, -1});
   auto out = builder.ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<int32>(&builder,
-                             {static_cast<int32>(0xF9234567),
-                              static_cast<int32>(0x00100010), 0, 0, 19},
-                             {});
+  ComputeAndCompareR1<int32>(
+      &builder,
+      {static_cast<int32>(0xF9234567), static_cast<int32>(0x00100010), 0, 0, 19,
+       0, -1, 0},
+      {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
-                                 static_cast<int32>(0x10001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 5});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                      static_cast<int32>(0x10001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 5, 32, 100, -1});
   auto out = builder.ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
+  ComputeAndCompareR1<int32>(&builder,
+                             {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x12345678, 0xF0001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 15});
+  auto a = builder.ConstantR1<uint32>(
+      {0x12345678, 0xF0001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 15, 32, 100, ~0u});
   auto out = builder.ShiftLeft(a, b);
 
   ComputeAndCompareR1<uint32>(
-      &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136}, {});
+      &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 2});
+  auto a = builder.ConstantR1<uint32>(
+      {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 2, 32, 100, ~0u});
   auto out = builder.ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {0xF9234567, 0x00100010, 0, 0, 19}, {});
+  ComputeAndCompareR1<uint32>(
+      &builder, {0xF9234567, 0x00100010, 0, 0, 19, 0, ~0u, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 5});
+  auto a = builder.ConstantR1<uint32>(
+      {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 5, 32, 100, ~0u});
   auto out = builder.ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
+  ComputeAndCompareR1<uint32>(&builder,
+                              {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {

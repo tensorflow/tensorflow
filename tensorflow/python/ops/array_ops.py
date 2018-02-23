@@ -386,6 +386,13 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
+  if context.in_eager_mode() and not isinstance(
+      input, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
+    size_ = 1
+    for dim in ops.convert_to_tensor(input)._shape_tuple():  # pylint: disable=protected-access
+      size_ *= dim
+    return size_
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
@@ -1390,6 +1397,14 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   `a.dtype` is either `complex64` or `complex128` then the values of `a`
   are conjugated and transposed.
 
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, so `transpose` returns a new tensor with
+  the items permuted.
+  @end_compatibility
+
   For example:
 
   ```python
@@ -1489,6 +1504,14 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   # Inefficient!
   tf.matmul(matrix, tf.matrix_transpose(b))
   ```
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, `matrix_transposes` return a new tensor
+  with the items permuted.
+  @end_compatibility
 
   Args:
     a: A `Tensor` with `rank >= 2`.

@@ -529,7 +529,8 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     out[j] = node_map_->GetNode(const_name);
     if (out[j] == nullptr) {
       out[j] = graph_->add_node();
-      *out[j] = CreateNodeDef(const_name, TensorValue(&value));
+      TF_RETURN_IF_ERROR(
+          CreateNodeDef(const_name, TensorValue(&value), out[j]));
       out[j]->set_device(node.device());
       node_map_->AddNode(const_name, out[j]);
       string ctrl_dep =
@@ -637,7 +638,8 @@ Status ConstantFolding::MaterializeReductionIndices(
       value.vec<int64>()(i) = i;
     }
   }
-  *reduction_indices = CreateNodeDef(const_name, TensorValue(&value));
+  TF_RETURN_IF_ERROR(
+      CreateNodeDef(const_name, TensorValue(&value), reduction_indices));
   reduction_indices->set_device(node->device());
   string ctrl_dep =
       AddControlDependency(node->input(1), graph_, node_map_.get());
@@ -792,19 +794,20 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
 }  // namespace
 
 // static
-NodeDef ConstantFolding::CreateNodeDef(const string& name,
-                                       const TensorValue& tensor) {
-  NodeDef node;
-  node.set_name(name);
-  node.set_op("Const");
+Status ConstantFolding::CreateNodeDef(const string& name,
+                                      const TensorValue& tensor,
+                                      NodeDef* node) {
+  node->set_name(name);
+  node->set_op("Const");
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
-  node.mutable_attr()->insert({"dtype", attr_type});
+  node->mutable_attr()->insert({"dtype", attr_type});
 
   AttrValue attr_tensor;
   TensorProto* t = attr_tensor.mutable_tensor();
   bool optimized = false;
+  size_t encoded_size;
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
@@ -821,6 +824,7 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   }                                                                 \
   if (last_index < kint32max) {                                     \
     optimized = true;                                               \
+    encoded_size = (last_index + 1) * sizeof(NAME);                 \
     t->mutable_##NAME##_val()->Reserve(last_index + 1);             \
     t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
     val_ptr = tensor->flat<TYPE>().data();                          \
@@ -853,9 +857,15 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
     tensor->shape().AsProto(t->mutable_tensor_shape());
   } else {
     tensor->AsProtoTensorContent(t);
+    encoded_size = t->tensor_content().size();
   }
-  node.mutable_attr()->insert({"value", attr_tensor});
-  return node;
+  node->mutable_attr()->insert({"value", attr_tensor});
+
+  if (encoded_size < 10 * 1024 * 1024) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      strings::StrCat("Can't fold ", name, ", its size would be too large"));
 }
 
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
@@ -929,17 +939,19 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
 
+  outputs->resize(output_tensors.size());
   for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = OptimizedNodeName(node, "-folded");
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
+      TF_RETURN_IF_ERROR(
+          CreateNodeDef(node_name, output_tensors[i], &outputs->at(i)));
     } else {
       // Create an empty NodeDef to identify dead outputs (e.g. the output of a
       // switch that's not selected by the switch predicate).
-      outputs->push_back(NodeDef());
+      outputs->at(i) = NodeDef();
     }
   }
   return Status::OK();
@@ -1159,14 +1171,20 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
       continue;
     }
     // We need to record a copy of output nodes before FoldNode() modifies it.
-    std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
+    // We also need to ensure that the fanout is sorted deterministically.
+    const std::set<NodeDef*>& outputs = node_map_->GetOutputs(node->name());
+    std::vector<NodeDef*> fanout(outputs.begin(), outputs.end());
+    std::sort(fanout.begin(), fanout.end(),
+              [](const NodeDef* n1, const NodeDef* n2) {
+                return n1->name() < n2->name();
+              });
 
     Status s = FoldNode(node, output);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
     } else {
-      for (auto& output : outputs) {
+      for (auto& output : fanout) {
         if (IsFoldable(*output)) {
           queue.push_back(output);
         }
@@ -1440,6 +1458,20 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (int i = 0; i < output->node_size(); ++i) {
     NodeDef* node = output->mutable_node(i);
+    // Remove Shuffle or Reverse op over scalar values.
+    if (use_shape_info &&
+        (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
+      const auto& shape =
+          properties.GetInputProperties(node->name())[0].shape();
+      // The node is replaceable iff
+      // unknown_rank == false && (dim_size == 0 || all dims have size 1)
+      bool replaceable = !shape.unknown_rank();
+      for (int j = 0; j < shape.dim_size(); ++j) {
+        replaceable &= shape.dim(j).size() == 1;
+      }
+      if (replaceable) ReplaceOperationWithIdentity(0, node, output);
+    }
+
     if (IsSimplifiableReduction(*node)) {
       // Replace the reduction node with an identity node, that can be further
       // optimized by the model pruner.
@@ -1707,6 +1739,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));
+
   return Status::OK();
 }
 
