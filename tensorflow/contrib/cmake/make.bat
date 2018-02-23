@@ -42,11 +42,9 @@ if %errorlevel% neq 0 (
 )
 REM take msbuild version, tested on VS2015 and VS2017
 for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
-if %MSVC_VERSION%==15 (
-  set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
-) else if %MSVC_VERSION%==14 (
-  set CMAKE_GENERATOR="Visual Studio 14 2015 Win64"
-) else (
+if %MSVC_VERSION%==15 set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
+if %MSVC_VERSION%==14 set CMAKE_GENERATOR="Visual Studio 14 2015 Win64"
+if %MSVC_VERSION% LSS 14 (
   echo "Visual Studio version too low!"
   goto EXIT
 )
