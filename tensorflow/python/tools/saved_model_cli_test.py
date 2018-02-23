@@ -60,86 +60,91 @@ class SavedModelCLITestCase(test.TestCase):
     # pylint: disable=line-too-long
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
-  signature_def['classify_x2_to_y3']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['classify_x2_to_y3']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['inputs'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: x2:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['scores'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y3:0
-    Method name is: tensorflow/serving/classify
+  Method name is: tensorflow/serving/classify
 
-  signature_def['classify_x_to_y']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['classify_x_to_y']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['inputs'] tensor_info:
         dtype: DT_STRING
         shape: unknown_rank
         name: tf_example:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['scores'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y:0
-    Method name is: tensorflow/serving/classify
+  Method name is: tensorflow/serving/classify
 
-  signature_def['regress_x2_to_y3']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['regress_x2_to_y3']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['inputs'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: x2:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['outputs'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y3:0
-    Method name is: tensorflow/serving/regress
+  Method name is: tensorflow/serving/regress
 
-  signature_def['regress_x_to_y']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['regress_x_to_y']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['inputs'] tensor_info:
         dtype: DT_STRING
         shape: unknown_rank
         name: tf_example:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['outputs'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y:0
-    Method name is: tensorflow/serving/regress
+  Method name is: tensorflow/serving/regress
 
-  signature_def['regress_x_to_y2']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['regress_x_to_y2']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['inputs'] tensor_info:
         dtype: DT_STRING
         shape: unknown_rank
         name: tf_example:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['outputs'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y2:0
-    Method name is: tensorflow/serving/regress
+  Method name is: tensorflow/serving/regress
 
-  signature_def['serving_default']:
-    The given SavedModel SignatureDef contains the following input(s):
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
     inputs['x'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: x:0
-    The given SavedModel SignatureDef contains the following output(s):
+  The given SavedModel SignatureDef contains the following output(s):
     outputs['y'] tensor_info:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y:0
-    Method name is: tensorflow/serving/predict"""
+  Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
-    self.assertMultiLineEqual(output, exp_out)
-    self.assertEqual(err.getvalue().strip(), '')
+    prev_diff = self.maxDiff
+    self.maxDiff = None # Produce a useful error msg if the comparison fails
+    try:
+      self.assertMultiLineEqual(output, exp_out)
+      self.assertEqual(err.getvalue().strip(), '')
+    finally:
+      self.maxDiff = prev_diff
 
   def testShowCommandTags(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
