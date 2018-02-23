@@ -506,6 +506,30 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
+    if len(gc.garbage) > previous_garbage:
+      logging.error(
+          "The decorated test created work for Python's garbage collector, "
+          "likely due to a reference cycle. New objects in cycle(s):")
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        try:
+          logging.error(
+              "Object %d of %d" % (i, len(gc.garbage) - previous_garbage))
+          def _safe_object_str(obj):
+            return "<%s %d>" % (obj.__class__.__name__, id(obj))
+          logging.error("  Object type: %s" % (_safe_object_str(obj),))
+          logging.error("  Referrer types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referrers(obj)]),))
+          logging.error("  Referent types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referents(obj)]),))
+          logging.error("  Object attribute names: %s" % (dir(obj),))
+          logging.error("  Object __str__:")
+          logging.error(obj)
+          logging.error("  Object __repr__:")
+          logging.error(repr(obj))
+        except Exception:
+          logging.error("(Exception while printing object)")
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
     self.assertEqual(previous_garbage, len(gc.garbage))
