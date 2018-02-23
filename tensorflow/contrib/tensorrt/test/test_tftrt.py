@@ -37,7 +37,7 @@ from tensorflow.python.ops import nn_ops as nn_ops
 
 
 def get_simple_graph_def():
-  """Create a simple graph and return its graph_def"""
+  """Create a simple graph and return its graph_def."""
   g = ops.Graph()
   with g.as_default():
     a = aops.placeholder(

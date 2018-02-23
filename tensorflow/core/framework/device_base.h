@@ -128,6 +128,8 @@ class DeviceBase {
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
+  // GpuDeviceInfo name is an unfortunate legacy, it is used not only by GPUs
+  // but also by TPU devices (to provide default device context).
   struct GpuDeviceInfo {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
     perftools::gputools::Stream* stream = nullptr;
@@ -230,6 +232,7 @@ class DeviceBase {
  private:
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
+  // Set by GPUs as well as by TPU devices.
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   thread::ThreadPool* device_thread_pool_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;

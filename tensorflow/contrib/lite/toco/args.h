@@ -229,6 +229,7 @@ struct ParsedTocoFlags {
   // Deprecated flags
   Arg<string> input_type;
   Arg<string> input_types;
+  Arg<bool> debug_disable_recurrent_cell_fusion = Arg<bool>(false);
   Arg<bool> drop_control_dependency = Arg<bool>(false);
 };
 

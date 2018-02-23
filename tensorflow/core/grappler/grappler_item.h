@@ -58,6 +58,11 @@ struct GrapplerItem {
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
 
+  // List of op names to keep in the graph. This includes nodes that are
+  // referenced in various collections, and therefore must be preserved to
+  // ensure that the optimized metagraph can still be loaded.
+  std::vector<string> keep_ops;
+
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
   // Return the set of node run to populate the queues (if any).
@@ -66,7 +71,8 @@ struct GrapplerItem {
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.
   std::vector<const NodeDef*> MainVariables() const;
-  // Return a set of node names that must be preserved.
+  // Return a set of node names that must be preserved. This includes feed and
+  // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
 };
 

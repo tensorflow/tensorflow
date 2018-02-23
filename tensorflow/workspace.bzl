@@ -5,6 +5,7 @@ load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
+
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -126,6 +127,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "0cadb31a35b514bf2dfd6b5d38205da94ef326ec6908fc3fd7c269948467214f",
       strip_prefix = "eigen-eigen-2355b229ea4c",
       build_file = str(Label("//third_party:eigen.BUILD")),
+      patch_file = str(Label("//third_party:eigen_fix_cuda_compilation.patch"))
   )
 
   tf_http_archive(
@@ -473,11 +475,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/11b0e47b5b79bab22d27b6b2952b1f7582848063.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/11b0e47b5b79bab22d27b6b2952b1f7582848063.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14.tar.gz",
       ],
-      sha256 = "b870b6f5df94c4c0cf7c6957046fca354c37d7641e838e905279a7509b0705e9",
-      strip_prefix = "llvm-11b0e47b5b79bab22d27b6b2952b1f7582848063",
+      sha256 = "f5721d9cc18a9109c9e9f847f48e69b710b961cee83e6691227e310cb3b5da58",
+      strip_prefix = "llvm-fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -690,12 +692,22 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "bazel_toolchains",
       urls = [
-          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
+          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
       ],
-      sha256 = "ed829b5eea8af1f405f4cc3d6ecfc3b1365bb7843171036030a31b5127002311",
-      strip_prefix = "bazel-toolchains-f3b09700fae5d7b6e659d7cefe0dcc6e8498504c",
+      strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
+      sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
   )
+
+  tf_http_archive(
+      name = "rbe_integration_test",
+      urls = [
+          "http://mirror.bazel.build/github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
+          "https://github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
+      ],
+      sha256 = "66d93b3919a165d486c31f5290d312abe9fda2685242f812c110653c124e1db4",
+      strip_prefix = "rbe-integration-test-78a6194c7dda200b9522cf07707e3bc695804d1e",
+   )
 
   tf_http_archive(
       name = "arm_neon_2_x86_sse",

@@ -3,6 +3,9 @@
 This document explains how to save and restore
 @{$variables$variables} and models.
 
+Important: TensorFlow model files are code. Be careful with untrusted code.
+See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md)
+for details.
 
 ## Saving and restoring variables
 

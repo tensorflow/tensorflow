@@ -602,6 +602,28 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testParallelMapOutOfRangeError(self):
+    def raising_py_func(i):
+      if i == 100:
+        raise StopIteration()
+      else:
+        return i
+
+    iterator = (
+        dataset_ops.Dataset.range(105)
+        .map(lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
+             num_parallel_calls=2)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(100):
+        self.assertEqual(i, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 class MapDatasetBenchmark(test.Benchmark):
 

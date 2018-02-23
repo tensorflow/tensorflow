@@ -5,7 +5,11 @@ instructions might also work on other macOS variants, we have only
 tested (and we only support) these instructions on machines meeting the
 following requirements:
 
-  * macOS X 10.11 (El Capitan) or higher
+  * macOS 10.12.6 (Sierra) or higher
+
+Note: There are known, accuracy-affecting numerical issues before macOS 10.12.6
+(Sierra) that are described in
+[GitHub#15933](https://github.com/tensorflow/tensorflow/issues/15933#issuecomment-366331383).
 
 Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
@@ -238,11 +242,7 @@ take the following steps:
      issue the following command:
 
      <pre> $ <b>sudo pip3 install --upgrade \
-<<<<<<< HEAD
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl</b> </pre>
-=======
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc0-py3-none-any.whl</b> </pre>
->>>>>>> 943a21fcdc1c48c8e95d872911ad52b13f0c037d
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -351,11 +351,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-<<<<<<< HEAD
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl</b></pre>
-=======
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc0-py2-none-any.whl</b></pre>
->>>>>>> 943a21fcdc1c48c8e95d872911ad52b13f0c037d
 
 
 <a name="ValidateYourInstallation"></a>
@@ -528,11 +524,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-<<<<<<< HEAD
 https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl
-=======
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc0-py2-none-any.whl
->>>>>>> 943a21fcdc1c48c8e95d872911ad52b13f0c037d
 </pre>
 
 
@@ -540,9 +532,5 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc0-py2-none-a
 
 
 <pre>
-<<<<<<< HEAD
 https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl
-=======
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc0-py3-none-any.whl
->>>>>>> 943a21fcdc1c48c8e95d872911ad52b13f0c037d
 </pre>
