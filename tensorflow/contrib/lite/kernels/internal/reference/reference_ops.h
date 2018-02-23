@@ -2899,9 +2899,11 @@ inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
   }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
-                                      num_elements_in_axis);
+  if (num_elements_in_axis > 0) {
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                        num_elements_in_axis);
+    }
   }
 }
 
