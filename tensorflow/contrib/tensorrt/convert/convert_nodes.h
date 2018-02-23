@@ -35,16 +35,14 @@ namespace tensorrt {
 namespace convert {
 
 struct SubGraphParams {
-  SubGraphParams(tensorflow::Graph& graph_,
-                 const std::set<int>& subgraph_node_ids_,
-                 const std::vector<std::pair<int, int>>& input_inds_,
-                 const std::vector<std::pair<int, int>>& output_inds_,
-                 size_t max_batch_size_, size_t max_workspace_size_bytes_,
-                 const tensorflow::grappler::GraphProperties& graph_properties_,
-                 std::unordered_map<string, std::pair<int, string>>*
-                 output_edge_map_,
-                 tensorflow::NodeDef* trt_node_,
-                 int precision_mode_ = 0)
+  SubGraphParams(
+      tensorflow::Graph& graph_, const std::set<int>& subgraph_node_ids_,
+      const std::vector<std::pair<int, int>>& input_inds_,
+      const std::vector<std::pair<int, int>>& output_inds_,
+      size_t max_batch_size_, size_t max_workspace_size_bytes_,
+      const tensorflow::grappler::GraphProperties& graph_properties_,
+      std::unordered_map<string, std::pair<int, string>>* output_edge_map_,
+      tensorflow::NodeDef* trt_node_, int precision_mode_ = 0)
       : graph(graph_),
         subgraph_node_ids(subgraph_node_ids_),
         input_inds(input_inds_),
@@ -68,7 +66,7 @@ struct SubGraphParams {
   const int precision_mode;
 };
 
-tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams &params);
+tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
 tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
                                                       tensorflow::Node* c_node);

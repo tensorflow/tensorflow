@@ -26,8 +26,8 @@ limitations under the License.
 namespace tensorflow {
 static ::tensorflow::tensorrt::Logger gLogger;
 
-using IRuntime=nvinfer1::IRuntime;
-using Dims=nvinfer1::Dims;
+using IRuntime = nvinfer1::IRuntime;
+using Dims = nvinfer1::Dims;
 namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -50,8 +50,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   cudaSetDevice(gpu_id);
   int device;
   cudaGetDevice(&device);
-  if (gpu_id != device)
-    LOG(FATAL) << "set device failed!";
+  if (gpu_id != device) LOG(FATAL) << "set device failed!";
 
   IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
@@ -77,7 +76,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       num_batch = input_shape.dim_size(0);
       if (num_batch > trt_engine_ptr_->getMaxBatchSize())
         LOG(FATAL) << "input tensor batch larger than max_batch_size: "
-                   << trt_engine_ptr_->getMaxBatchSize(); 
+                   << trt_engine_ptr_->getMaxBatchSize();
     } else if (num_batch != input_shape.dim_size(0)) {
       valid = false;
       break;
@@ -141,7 +140,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->CudaStreamMemberHack()));
 
   // TODO(jie): trt enqueue does not return error
-  auto ret=trt_execution_context_ptr_->enqueue(num_batch, &buffers[0], *stream, nullptr);
+  auto ret = trt_execution_context_ptr_->enqueue(num_batch, &buffers[0],
+                                                 *stream, nullptr);
   VLOG(2) << "enqueue returns: " << ret;
   // sync should be done by TF.
   // cudaStreamSynchronize(*stream);
