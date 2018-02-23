@@ -25,9 +25,9 @@ pkg_tar(
     tags = ["manual"],
     deps = [
         ":cheaders",
-        ":eager_cheaders",
         ":clib",
         ":clicenses",
+        ":eager_cheaders",
     ],
 )
 
