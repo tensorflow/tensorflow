@@ -3477,7 +3477,12 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
   if context.in_eager_mode():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
-    gating_ops = [t.op for t in tensors if t is not None]
+    tensors = [t if (isinstance(t, ops.Operation)
+                     or tensor_util.is_tensor(t)
+                     or t is None)
+               else ops.convert_to_tensor(t) for t in tensors]
+    gating_ops = [t if isinstance(t, ops.Operation) else t.op for t in tensors
+                  if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -3493,8 +3498,11 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t is not None:
+      if tensor_util.is_tensor(t):
         tpl.append(with_dependencies([gate], t))
+      elif isinstance(t, ops.Operation):
+        with ops.control_dependencies([gate]):
+          tpl.append(group(t))
       else:
         tpl.append(None)
     return tpl

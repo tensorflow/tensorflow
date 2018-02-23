@@ -1891,9 +1891,9 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
-        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
+        ":mutex_ops",
         ":scatter_functor",
         ":state",
         ":training_op_helpers",
@@ -4094,9 +4094,9 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "critical_section",
-    prefix = "critical_section",
-    deps = STATE_DEPS + [":captured_function"],
+    name = "mutex_ops",
+    prefix = "mutex_ops",
+    deps = STATE_DEPS + [":ops_util"],
 )
 
 tf_cc_test(
@@ -5048,7 +5048,7 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
-            "critical_section.*",
+            "mutex_ops.*",
             "batch_kernels.*",
         ],
     ),
