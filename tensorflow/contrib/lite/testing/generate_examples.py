@@ -36,6 +36,7 @@ import traceback
 import zipfile
 import numpy as np
 from six import StringIO
+from six.moves import xrange
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
