@@ -35,8 +35,8 @@ set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
                      -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
-msbuild /version
-if errorlevel 9009 (
+where /Q msbuild
+if %errorlevel% neq 0 (
   echo msbuild is not in PATH, please use me in VS prompt
   goto EXIT
 )
