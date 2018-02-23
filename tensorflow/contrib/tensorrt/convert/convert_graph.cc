@@ -140,8 +140,7 @@ struct ConvertGraphParams {
       const std::set<int>& subgraph_node_ids_, size_t max_batch_size_,
       size_t max_workspace_size_bytes_,
       const tensorflow::grappler::GraphProperties& graph_properties_,
-      std::unordered_map<string, std::pair<int, string>>*
-          output_edge_map_,
+      std::unordered_map<string, std::pair<int, string>>* output_edge_map_,
       int precision_mode_)
       : graph(graph_),
         output_names(output_names_),
@@ -183,7 +182,7 @@ tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams& p) {
   }
   GetSubGraphOutgoingEdges(p.graph, p.subgraph_node_ids,
                            &p.subgraph_outgoing_edges);
-  for (const tensorflow::Edge *edge : p.subgraph_outgoing_edges) {
+  for (const tensorflow::Edge* edge : p.subgraph_outgoing_edges) {
     subgraph_outputs_set.insert({edge->src()->id(), edge->src_output()});
   }
   p.subgraph_outputs.reserve(subgraph_outputs_set.size());
@@ -229,7 +228,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
                    params->subgraph_inputs, params->subgraph_outputs,
                    params->max_batch_size, params->max_workspace_size_bytes,
                    params->graph_properties, params->output_edge_map,
-                   &trt_node_def,params->precision_mode);
+                   &trt_node_def, params->precision_mode);
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(s));
   tensorflow::Status status;
   tensorflow::Node* trt_node = params->graph.AddNode(trt_node_def, &status);
@@ -386,20 +385,21 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
   std::unordered_map<string, std::pair<int, string>> output_edge_map;
   int count = 0;
-  float total_num_nodes_in_segments=0.;
-  for(auto s:segments){
-    total_num_nodes_in_segments+=s.size();
+  float total_num_nodes_in_segments = 0.;
+  for (auto s : segments) {
+    total_num_nodes_in_segments += s.size();
   }
   for (const std::set<string>& subgraph_node_names : segments) {
     std::set<int> subgraph_node_ids;
-    size_t max_mem_per_engine=max_workspace_size_bytes*
-      ((float)subgraph_node_names.size()/total_num_nodes_in_segments);
+    size_t max_mem_per_engine =
+        max_workspace_size_bytes *
+        ((float)subgraph_node_names.size() / total_num_nodes_in_segments);
     std::stringstream oss;
     for (const string& node_name : subgraph_node_names) {
-      oss<<" "<<node_name;
+      oss << " " << node_name;
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
-    VLOG(2)<<"Subgraph nodes"<<oss.str();
+    VLOG(2) << "Subgraph nodes" << oss.str();
     ConvertGraphParams p(graph, output_names, subgraph_node_ids, max_batch_size,
                          max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);

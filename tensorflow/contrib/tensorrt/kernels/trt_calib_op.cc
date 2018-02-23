@@ -1,10 +1,19 @@
-//
-// Created by skama on 1/25/18.
-//
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/kernels/trt_calib_op.h"
-#include "tensorrt/include/NvInfer.h"
-#include <cuda_runtime_api.h>
 #include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
 #include "tensorflow/contrib/tensorrt/resources/TRTResourceManager.h"
 #include "tensorflow/contrib/tensorrt/resources/TRTResources.h"
@@ -13,6 +22,11 @@
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "cuda_runtime_api.h"
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace trt {
@@ -68,15 +82,17 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
             input_names_.at(i),
             std::pair<void*, size_t>(devAddr, dTensor->TotalBytes()));
       }
-      calibRes->calibrator = new TRTInt8Calibrator(device_buffers_, batchSize,repo_name);
+      calibRes->calibrator =
+          new TRTInt8Calibrator(device_buffers_, batchSize, repo_name);
       string label(repo_name);
-      calibRes->thr = new std::thread([calibRes,label]() {
-        VLOG(0)<<"Starting calibration thread, Calibration Resource @ "<<calibRes;
+      calibRes->thr = new std::thread([calibRes, label]() {
+        VLOG(0) << "Starting calibration thread, Calibration Resource @ "
+                << calibRes;
         calibRes->builder->setInt8Calibrator(calibRes->calibrator);
         calibRes->builder->setInt8Mode(true);
         calibRes->engine = calibRes->builder->buildCudaEngine(
             *calibRes->network);  // will loop until we terminate calibrator
-        VLOG(0) << "SAMI Calibration loop terminated "<<label;
+        VLOG(0) << "SAMI Calibration loop terminated " << label;
       });
       VLOG(0) << "SAMI initialized calibrator resource";
     }
@@ -90,11 +106,11 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       const auto dTensor = dev_tensors_.at(i).AccessTensor(ctx);
       CHECK_EQ(t.TotalBytes(),
                dTensor->TotalBytes());  // use the tensor so FW keeps it
-      if(VLOG_IS_ON(1)){
+      if (VLOG_IS_ON(1)) {
         void* devAddr = nullptr;
         GET_TENSOR_ADDRESS(dTensor, devAddr);
-        if(devAddr!=device_buffers_.at(input_names_.at(i)).first){
-          LOG(WARNING)<<"Device address is different!";
+        if (devAddr != device_buffers_.at(input_names_.at(i)).first) {
+          LOG(WARNING) << "Device address is different!";
         }
       }
       input_data.emplace(input_names_.at(i), data_address);
@@ -110,8 +126,11 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
 };
 
 #undef TYPECASE
+#undef GET_TENSOR_ADDRESS
 
 REGISTER_KERNEL_BUILDER(Name("TRTCalibOp").Device(DEVICE_GPU), TRTCalibOp);
 
 }  // namespace trt
 }  // namespace tensorflow
+#endif
+#endif
