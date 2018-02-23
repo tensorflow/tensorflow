@@ -886,6 +886,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Collapse;
 %unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;
 %unignore xla::swig::LocalComputationBuilder::Slice;
+%unignore xla::swig::LocalComputationBuilder::SliceInDim;
 %unignore xla::swig::LocalComputationBuilder::DynamicSlice;
 %unignore xla::swig::LocalComputationBuilder::DynamicUpdateSlice;
 %unignore xla::swig::LocalComputationBuilder::ConcatInDim;
