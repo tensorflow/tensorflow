@@ -154,16 +154,22 @@ TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
   return static_cast<TF_DataType>(h->t.dtype());
 }
 
-int TFE_TensorHandleNumDims(TFE_TensorHandle* h) { return h->t.dims(); }
+int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
+  status->status = tensorflow::Status::OK();
+  return h->t.dims();
+}
 
-int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index) {
+int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
+                            TF_Status* status) {
+  status->status = tensorflow::Status::OK();
   return h->t.dim_size(dim_index);
 }
 
-const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h) {
+const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
   // TODO(apassos) this will be potentially incorrect in the distributed case as
   // our local device will have a name which depends on the ClusterSpec and
   // hence will require the context to resolve.
+  status->status = tensorflow::Status::OK();
   return (h->d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                            : h->d->name().c_str();
 }
