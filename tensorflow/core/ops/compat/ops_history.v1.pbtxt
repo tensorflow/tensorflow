@@ -11461,6 +11461,14 @@ op {
   }
 }
 op {
+  name: "ConsumeMutexLock"
+  input_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "ControlTrigger"
 }
 op {
@@ -30074,6 +30082,40 @@ op {
   attr {
     name: "value_dtype"
     type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "MutexLock"
+  input_arg {
+    name: "mutex"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "MutexV2"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
