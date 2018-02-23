@@ -245,6 +245,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {"Add", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_sum_op<float>>::Cost},
       {"ApproximateEqual", 1},
+      {"BiasAdd", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_sum_op<float>>::Cost},
       {"Div", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"Equal", 1},
