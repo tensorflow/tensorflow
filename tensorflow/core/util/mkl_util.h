@@ -1112,8 +1112,10 @@ inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
 // Forward the MKL shape ONLY (used in elementwise and other ops where
 // we call the eigen implementation and MKL shape is not used)
 inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
-                                      uint32 idx_data_in, uint32_t idx_data_out) {
-  uint32 idx_meta_in = GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
+                                      uint32 idx_data_in,
+                                      uint32_t idx_data_out) {
+  uint32 idx_meta_in =
+      GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
   uint32 idx_meta_out =
       GetTensorMetaDataIndex(idx_data_out, context->num_outputs());
 

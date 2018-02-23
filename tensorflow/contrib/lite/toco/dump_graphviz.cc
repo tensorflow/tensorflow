@@ -193,12 +193,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
   }
 
   if (array.minmax) {
-    AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
+    AppendF(&node_properties.label, "\\nMinMax: [%.7g, %.7g]",
             array.minmax->min, array.minmax->max);
   }
 
   if (array.quantization_params) {
-    AppendF(&node_properties.label, "\\nQuantization: %.3g * (x - %d)",
+    AppendF(&node_properties.label, "\\nQuantization: %7g * (x - %d)",
             array.quantization_params->scale,
             array.quantization_params->zero_point);
   }

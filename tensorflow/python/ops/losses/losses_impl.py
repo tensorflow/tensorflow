@@ -156,8 +156,10 @@ def _num_present(losses, weights, per_batch=False):
     present = weights_broadcast_ops.broadcast_weights(present, losses)
     if per_batch:
       return math_ops.reduce_sum(
-          present, axis=math_ops.range(1, array_ops.rank(present)),
-          keepdims=True, name=scope)
+          present,
+          axis=math_ops.range(1, array_ops.rank(present)),
+          keepdims=True,
+          name=scope)
     return math_ops.reduce_sum(present, name=scope)
 
 
@@ -559,7 +561,8 @@ def mean_pairwise_squared_error(
       reduction_indices = math_ops.range(1, array_ops.rank(diffs))
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
-          math_ops.square(diffs), reduction_indices=reduction_indices,
+          math_ops.square(diffs),
+          reduction_indices=reduction_indices,
           keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 

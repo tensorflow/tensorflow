@@ -1801,6 +1801,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat;
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
+    case QUANTIZED_INT16:
+      return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
     case INT64:
@@ -1832,9 +1834,17 @@ void UseArraysExtraInfo(Model* model) {
     QCHECK(model->HasArray(entry.name()))
         << "ArraysExtraInfo refers to non-existent array name: "
         << entry.name();
-    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
-    minmax.min = entry.min();
-    minmax.max = entry.max();
+    auto& array = model->GetArray(entry.name());
+    auto& minmax = array.GetOrCreateMinMax();
+    if (entry.has_min() || entry.has_max()) {
+      CHECK_EQ(entry.has_min(), entry.has_max());
+      minmax.min = entry.min();
+      minmax.max = entry.max();
+    }
+    if (entry.has_data_type()) {
+      array.final_data_type =
+          ConvertIODataTypeToArrayDataType(entry.data_type());
+    }
   }
 }
 

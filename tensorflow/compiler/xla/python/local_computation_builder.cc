@@ -368,6 +368,12 @@ ComputationDataHandle LocalComputationBuilder::Slice(
   return builder_.Slice(operand, start_indices, limit_indices, strides);
 }
 
+ComputationDataHandle LocalComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  return builder_.SliceInDim(operand, start_index, limit_index, stride, dimno);
+}
+
 ComputationDataHandle LocalComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,

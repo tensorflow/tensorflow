@@ -170,6 +170,10 @@ class LocalComputationBuilder {
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
                               tensorflow::gtl::ArraySlice<int64> strides);
 
+  ComputationDataHandle SliceInDim(const ComputationDataHandle& operand,
+                                   int64 start_index, int64 limit_index,
+                                   int64 stride, int64 dimno);
+
   ComputationDataHandle DynamicSlice(
       const ComputationDataHandle& operand,
       const ComputationDataHandle& start_indices,

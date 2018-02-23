@@ -28,6 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto);
+
 class OpLevelCostEstimator {
  public:
   OpLevelCostEstimator();
