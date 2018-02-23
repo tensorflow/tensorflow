@@ -802,6 +802,10 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   }
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
+    if (ctx->log_device_placement) {
+      LOG(INFO) << "Executing op " << ndef.op() << " in device "
+                << device->name();
+    }
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
     // Knowledge of the implementation of Init (and in-turn
     // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
