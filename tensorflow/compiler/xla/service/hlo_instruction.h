@@ -824,6 +824,12 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
 
+  // Returns the channel name associated with the instruction. The name is
+  // used to identify host Send/Recv operations.
+  //
+  // Precondition: opcode() == HloOpcode::kHostCompute
+  string channel_name() const { return channel_name_; }
+
   // Returns feature_index field associated with the instruction. The index
   // represents the index of the feature dimension.
   //

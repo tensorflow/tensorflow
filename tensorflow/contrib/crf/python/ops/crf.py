@@ -511,7 +511,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     return decode_tags, best_score
 
   return utils.smart_cond(
-      pred=math_ops.equal(
-          potentials.shape[1].value or array_ops.shape(potentials)[1], 1),
+      pred=math_ops.equal(potentials.shape[1].value or
+                          array_ops.shape(potentials)[1], 1),
       true_fn=_single_seq_fn,
       false_fn=_multi_seq_fn)

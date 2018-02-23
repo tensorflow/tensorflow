@@ -984,7 +984,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "reshape_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/bijectors/reshape_test.py"],
     additional_deps = [
         ":bijectors_py",

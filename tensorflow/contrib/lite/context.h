@@ -283,7 +283,8 @@ typedef struct TfLiteContext {
                                          TfLiteNode** node,
                                          TfLiteRegistration** registration);
 
-  // Replace ops with delegate.
+  // Replace ops with one or more stub delegate operations. This function
+  // does not take ownership of `nodes_to_replace`.
   TfLiteStatus (*ReplaceSubgraphsWithDelegateKernels)(
       struct TfLiteContext*, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace);

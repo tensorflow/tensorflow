@@ -46,45 +46,6 @@ namespace grappler {
 namespace {
 
 template <typename T>
-bool SafeSetTensorValue(double value, Tensor* tensor) {
-  using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
-    return false;
-  }
-  tensor->flat<T>()(0) = static_cast<T>(value);
-  return true;
-}
-
-#define HANDLE_CASE(DTYPE)                                          \
-  case DTYPE:                                                       \
-    if (!SafeSetTensorValue<EnumToDataType<DTYPE>::Type>(           \
-            static_cast<double>(value), tensor)) {                  \
-      return errors::InvalidArgument("Cannot store value ", value,  \
-                                     " in tensor of type " #DTYPE); \
-    }                                                               \
-    break
-
-Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
-  switch (dtype) {
-    //    HANDLE_CASE(DT_HALF);
-    HANDLE_CASE(DT_FLOAT);
-    HANDLE_CASE(DT_DOUBLE);
-    HANDLE_CASE(DT_UINT8);
-    HANDLE_CASE(DT_INT8);
-    HANDLE_CASE(DT_UINT16);
-    HANDLE_CASE(DT_INT16);
-    HANDLE_CASE(DT_INT32);
-    HANDLE_CASE(DT_INT64);
-    HANDLE_CASE(DT_COMPLEX64);
-    HANDLE_CASE(DT_COMPLEX128);
-    default:
-      return errors::InvalidArgument("Unexpected type ", DataTypeString(dtype));
-  }
-  return Status::OK();
-}
-
-template <typename T>
 bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
   if (a.size() != b.size()) {
     return false;

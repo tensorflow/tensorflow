@@ -656,7 +656,7 @@ class ComputationBuilder(object):
         representing the configuration of the padding operation.
 
     Returns:
-      A ComputationDataHandle representing the added pad op.
+      A ComputationDataHandle representing the added Pad op.
     """
     if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
       padding_config = GetPaddingConfigFromTriples(padding_config)
@@ -666,7 +666,20 @@ class ComputationBuilder(object):
                          padding_config))
 
   def Reshape(self, operand, dimensions, new_sizes):
-    """Reshape op."""
+    """Enqueues a reshape op onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to be reshaped.
+      dimensions: sequence of integers encoding the order in which dimensions
+        are collapsed or None, in which case dimensions are flattened in order.
+      new_sizes: sequence of integers encoding the new dimension sizes (shape).
+
+    Returns:
+      A ComputationDataHandle representing the added Reshape op.
+    """
+    if dimensions is None:
+      ndim = len(self.GetShape(operand).dimensions())
+      dimensions = tuple(range(ndim))
     return _wrap_data_handle(
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
@@ -772,10 +785,26 @@ class ComputationBuilder(object):
       strides = [1] * len(start_indices)
     return _wrap_data_handle(
         self._client.Slice(
-            _unwrap_data_handle(operand),
-            start_indices,
-            limit_indices,
+            _unwrap_data_handle(operand), start_indices, limit_indices,
             strides))
+
+  def SliceInDim(self, operand, start_index, limit_index, stride, dimno):
+    """Enqueues a slice-in-dimension operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle for the N dimensional array to be sliced.
+      start_index: an integer containing the start index of the slice.
+      limit_index: an integer containing the end index of the slice.
+      stride: an integer containing the stride size for the slice.
+      dimno: an integer indicating the dimension along which to slice.
+
+    Returns:
+      A ComputationDataHandle representing the added Slice op.
+    """
+    return _wrap_data_handle(
+        self._client.SliceInDim(
+            _unwrap_data_handle(operand), start_index, limit_index, stride,
+            dimno))
 
   def DynamicSlice(self, operand, start_indices, slice_sizes):
     """Enqueues a slice op with dynamic start indices onto the computation.
