@@ -224,12 +224,13 @@ class HMCTest(test.TestCase):
 
     expected_exp_x = self._shape_param / self._rate_param
 
-    acceptance_probs_, samples_, expected_x_ = sess.run(
-        [kernel_results.acceptance_probs, samples, expected_x],
+    log_accept_ratio_, samples_, expected_x_ = sess.run(
+        [kernel_results.log_accept_ratio, samples, expected_x],
         feed_dict)
 
     actual_x = samples_.mean()
     actual_exp_x = np.exp(samples_).mean()
+    acceptance_probs = np.exp(np.minimum(log_accept_ratio_, 0.))
 
     logging_ops.vlog(1, "True      E[x, exp(x)]: {}\t{}".format(
         expected_x_, expected_exp_x))
@@ -237,10 +238,10 @@ class HMCTest(test.TestCase):
         actual_x, actual_exp_x))
     self.assertNear(actual_x, expected_x_, 2e-2)
     self.assertNear(actual_exp_x, expected_exp_x, 2e-2)
-    self.assertAllEqual(np.ones_like(acceptance_probs_, np.bool),
-                        acceptance_probs_ > 0.5)
-    self.assertAllEqual(np.ones_like(acceptance_probs_, np.bool),
-                        acceptance_probs_ <= 1.)
+    self.assertAllEqual(np.ones_like(acceptance_probs, np.bool),
+                        acceptance_probs > 0.5)
+    self.assertAllEqual(np.ones_like(acceptance_probs, np.bool),
+                        acceptance_probs <= 1.)
 
   def _chain_gets_correct_expectations_wrapper(self, independent_chain_ndims):
     with self.test_session(graph=ops.Graph()) as sess:
@@ -265,7 +266,7 @@ class HMCTest(test.TestCase):
           -x - x**2,  # Non-constant gradient.
           array_ops.fill(x.shape, math_ops.cast(-np.inf, x.dtype)))
     # This log_prob has the property that it is likely to attract
-    # the HMC flow toward, and below, zero...but for x <=0,
+    # the flow toward, and below, zero...but for x <=0,
     # log_prob(x) = -inf, which should result in rejection, as well
     # as a non-finite log_prob.  Thus, this distribution gives us an opportunity
     # to test out the kernel results ability to correctly capture rejections due
@@ -305,11 +306,10 @@ class HMCTest(test.TestCase):
       self.assertLess(0, neg_inf_mask.sum())
       # We better have some rejections due to something other than -inf.
       self.assertLess(neg_inf_mask.sum(), (~kernel_results_.is_accepted).sum())
-      # We better have been accepted a decent amount, even near the end of the
-      # chain, or else this HMC run just got stuck at some point.
+      # We better have accepted a decent amount, even near end of the chain.
       self.assertLess(
           0.1, kernel_results_.is_accepted[int(0.9 * num_results):].mean())
-      # We better not have any NaNs in proposed state or log_prob.
+      # We better not have any NaNs in states or log_prob.
       # We may have some NaN in grads, which involve multiplication/addition due
       # to gradient rules.  This is the known "NaN grad issue with tf.where."
       self.assertAllEqual(np.zeros_like(states_),
@@ -333,9 +333,11 @@ class HMCTest(test.TestCase):
       np.testing.assert_array_less(0., pstates_[~neg_inf_mask])
 
       # Acceptance probs are zero whenever proposed state is negative.
+      acceptance_probs = np.exp(np.minimum(
+          kernel_results_.log_accept_ratio, 0.))
       self.assertAllEqual(
           np.zeros_like(pstates_[neg_inf_mask]),
-          kernel_results_.acceptance_probs[neg_inf_mask])
+          acceptance_probs[neg_inf_mask])
 
       # The move is accepted ==> state = proposed state.
       self.assertAllEqual(
@@ -383,26 +385,28 @@ class HMCTest(test.TestCase):
         seed=44)
 
     [
-        acceptance_probs_,
-        bad_acceptance_probs_,
+        log_accept_ratio_,
+        bad_log_accept_ratio_,
         initial_draws_,
         updated_draws_,
         fake_draws_,
     ] = sess.run([
-        kernel_results.acceptance_probs,
-        bad_kernel_results.acceptance_probs,
+        kernel_results.log_accept_ratio,
+        bad_kernel_results.log_accept_ratio,
         initial_draws,
         sample,
         bad_sample,
     ], feed_dict)
 
     # Confirm step size is small enough that we usually accept.
-    self.assertGreater(acceptance_probs_.mean(), 0.5)
-    self.assertGreater(bad_acceptance_probs_.mean(), 0.5)
+    acceptance_probs = np.exp(np.minimum(log_accept_ratio_, 0.))
+    bad_acceptance_probs = np.exp(np.minimum(bad_log_accept_ratio_, 0.))
+    self.assertGreater(acceptance_probs.mean(), 0.5)
+    self.assertGreater(bad_acceptance_probs.mean(), 0.5)
 
     # Confirm step size is large enough that we sometimes reject.
-    self.assertLess(acceptance_probs_.mean(), 0.99)
-    self.assertLess(bad_acceptance_probs_.mean(), 0.99)
+    self.assertLess(acceptance_probs.mean(), 0.99)
+    self.assertLess(bad_acceptance_probs.mean(), 0.99)
 
     _, ks_p_value_true = stats.ks_2samp(initial_draws_.flatten(),
                                         updated_draws_.flatten())
@@ -410,9 +414,9 @@ class HMCTest(test.TestCase):
                                         fake_draws_.flatten())
 
     logging_ops.vlog(1, "acceptance rate for true target: {}".format(
-        acceptance_probs_.mean()))
+        acceptance_probs.mean()))
     logging_ops.vlog(1, "acceptance rate for fake target: {}".format(
-        bad_acceptance_probs_.mean()))
+        bad_acceptance_probs.mean()))
     logging_ops.vlog(1, "K-S p-value for true target: {}".format(
         ks_p_value_true))
     logging_ops.vlog(1, "K-S p-value for fake target: {}".format(
@@ -615,15 +619,16 @@ class HMCTest(test.TestCase):
           step_size=2.,
           num_leapfrog_steps=5,
           seed=46)
-      initial_x_, updated_x_, acceptance_probs_ = sess.run(
-          [initial_x, updated_x, kernel_results.acceptance_probs])
+      initial_x_, updated_x_, log_accept_ratio_ = sess.run(
+          [initial_x, updated_x, kernel_results.log_accept_ratio])
+      acceptance_probs = np.exp(np.minimum(log_accept_ratio_, 0.))
 
       logging_ops.vlog(1, "initial_x = {}".format(initial_x_))
       logging_ops.vlog(1, "updated_x = {}".format(updated_x_))
-      logging_ops.vlog(1, "acceptance_probs = {}".format(acceptance_probs_))
+      logging_ops.vlog(1, "log_accept_ratio = {}".format(log_accept_ratio_))
 
       self.assertAllEqual(initial_x_, updated_x_)
-      self.assertEqual(acceptance_probs_, 0.)
+      self.assertEqual(acceptance_probs, 0.)
 
   def testNanFromGradsDontPropagate(self):
     """Test that update with NaN gradients does not cause NaN in results."""
@@ -638,15 +643,16 @@ class HMCTest(test.TestCase):
           step_size=2.,
           num_leapfrog_steps=5,
           seed=47)
-      initial_x_, updated_x_, acceptance_probs_ = sess.run(
-          [initial_x, updated_x, kernel_results.acceptance_probs])
+      initial_x_, updated_x_, log_accept_ratio_ = sess.run(
+          [initial_x, updated_x, kernel_results.log_accept_ratio])
+      acceptance_probs = np.exp(np.minimum(log_accept_ratio_, 0.))
 
       logging_ops.vlog(1, "initial_x = {}".format(initial_x_))
       logging_ops.vlog(1, "updated_x = {}".format(updated_x_))
-      logging_ops.vlog(1, "acceptance_probs = {}".format(acceptance_probs_))
+      logging_ops.vlog(1, "log_accept_ratio = {}".format(log_accept_ratio_))
 
       self.assertAllEqual(initial_x_, updated_x_)
-      self.assertEqual(acceptance_probs_, 0.)
+      self.assertEqual(acceptance_probs, 0.)
 
       self.assertAllFinite(
           gradients_ops.gradients(updated_x, initial_x)[0].eval())
@@ -671,10 +677,10 @@ class HMCTest(test.TestCase):
           step_size=0.01,
           num_leapfrog_steps=10,
           seed=48)
-      states_, acceptance_probs_ = sess.run(
-          [states, kernel_results.acceptance_probs])
+      states_, log_accept_ratio_ = sess.run(
+          [states, kernel_results.log_accept_ratio])
       self.assertEqual(dtype, states_.dtype)
-      self.assertEqual(dtype, acceptance_probs_.dtype)
+      self.assertEqual(dtype, log_accept_ratio_.dtype)
 
   def testChainWorksIn64Bit(self):
     self._testChainWorksDtype(np.float64)

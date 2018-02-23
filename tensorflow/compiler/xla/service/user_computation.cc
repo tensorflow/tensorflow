@@ -226,7 +226,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddParameterInstruction(
   return handle;
 }
 
-Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
+StatusOr<ComputationDataHandle> UserComputation::AddSendInstruction(
+    const SendRequest& send_request) {
   tensorflow::mutex_lock lock(mutex_);
 
   // Check if the operand of the instruction is valid.
@@ -244,7 +245,7 @@ Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
   VLOG(1) << "AddSendInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << send_request.ShortDebugString();
-  return Status::OK();
+  return handle;
 }
 
 StatusOr<ComputationDataHandle> UserComputation::AddRecvInstruction(

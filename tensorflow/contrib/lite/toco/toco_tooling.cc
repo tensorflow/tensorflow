@@ -87,6 +87,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -198,7 +199,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   const IODataType inference_type = toco_flags.inference_type();
 
   const bool quantize_output =
-      SupportsQuantization(output_format) && inference_type == QUANTIZED_UINT8;
+      SupportsQuantization(output_format) &&
+      (inference_type == QUANTIZED_UINT8 || inference_type == QUANTIZED_INT16);
 
   if (quantize_output) {
     QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
