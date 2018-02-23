@@ -258,7 +258,7 @@ typedef struct TfLiteContext {
   TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
                                    TfLiteIntArray** execution_plan);
 
-  // An tensor of tensors in the interpreter context (of length `tensors_size`)
+  // An array of tensors in the interpreter context (of length `tensors_size`)
   TfLiteTensor* tensors;
 
   // opaque full context ptr (an opaque c++ data structure)

@@ -38,7 +38,7 @@ class BuiltinFunctionTransformer(transformer.Base):
 
   def _convert_len(self, node):
     template = """
-      tf.shape(args)[0]
+      py2tf_utils.dynamic_len(args)
     """
     return templates.replace(template, args=node.args)[0].value
 

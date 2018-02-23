@@ -226,7 +226,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (primitive_util::IsIntegralType(to_type)) {
         return ir_builder_->CreateIntCast(
             operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_),
-            primitive_util::IsSignedIntegralType(to_type));
+            primitive_util::IsSignedIntegralType(from_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == BF16) {
@@ -1003,6 +1003,30 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
                                   ir_builder_);
 }
 
+static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* ir_builder,
+                                             llvm::Value* lhs, llvm::Value* rhs,
+                                             llvm::Value* shift_result,
+                                             bool saturate_to_sign_bit) {
+  llvm::IntegerType* integer_type =
+      llvm::cast<llvm::IntegerType>(lhs->getType());
+  unsigned integer_bitsize = integer_type->getBitWidth();
+  llvm::ConstantInt* integer_bitsize_constant =
+      llvm::ConstantInt::get(integer_type, integer_bitsize);
+  llvm::ConstantInt* zero = llvm::ConstantInt::get(integer_type, 0);
+  llvm::ConstantInt* minus_one = llvm::ConstantInt::get(integer_type, -1);
+  llvm::Value* saturated_value;
+  if (saturate_to_sign_bit) {
+    saturated_value = ir_builder->CreateSelect(
+        ir_builder->CreateICmpSLT(lhs, zero), minus_one, zero);
+  } else {
+    saturated_value = zero;
+  }
+  llvm::Value* shift_amt_in_range =
+      ir_builder->CreateICmpULT(rhs, integer_bitsize_constant, "shft.chk");
+  return ir_builder->CreateSelect(shift_amt_in_range, shift_result,
+                                  saturated_value);
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -1050,12 +1074,27 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
-    case HloOpcode::kShiftLeft:
-      return ir_builder_->CreateShl(lhs_value, rhs_value);
+
+    // Shifting out bits >= the number of bits in the type being shifted
+    // produces a poison value in LLVM which is basically "deferred undefined
+    // behavior" -- doing something observable with such a value precipitates
+    // UB.  We replace the poison value with a constant to avoid this deferred
+    // UB.
     case HloOpcode::kShiftRightArithmetic:
-      return ir_builder_->CreateAShr(lhs_value, rhs_value);
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateAShr(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/true);
+    case HloOpcode::kShiftLeft:
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateShl(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/false);
     case HloOpcode::kShiftRightLogical:
-      return ir_builder_->CreateLShr(lhs_value, rhs_value);
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateLShr(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/false);
     default:
       return Unimplemented("binary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());

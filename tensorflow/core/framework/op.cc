@@ -110,6 +110,15 @@ void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   }
 }
 
+void OpRegistry::GetOpRegistrationData(
+    std::vector<OpRegistrationData>* op_data) {
+  mutex_lock lock(mu_);
+  MustCallDeferred();
+  for (const auto& p : registry_) {
+    op_data->push_back(*p.second);
+  }
+}
+
 Status OpRegistry::SetWatcher(const Watcher& watcher) {
   mutex_lock lock(mu_);
   if (watcher_ && watcher) {

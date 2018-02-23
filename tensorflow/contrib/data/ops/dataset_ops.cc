@@ -27,6 +27,16 @@ REGISTER_OP("IgnoreErrorsDataset")
 Creates a dataset that contains the elements of `input_dataset` ignoring errors.
 )doc");
 
+REGISTER_OP("UniqueDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that contains the unique elements of `input_dataset`.
+)doc");
+
 REGISTER_OP("FunctionBufferingResource")
     .Input("string_arg: string")
     .Input("target_device: string")
@@ -63,6 +73,35 @@ Gets the next element from a FunctionBufferingResource.
 function_buffer_resource: The FunctionBufferingResource handle.
 output: A list of return values.
 output_types: The type list for the return values.
+)doc");
+
+REGISTER_OP("ThreadPoolDataset")
+    .Input("input_dataset: variant")
+    .Input("thread_pool: resource")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+
+handle: A resource produced by the ThreadPoolHandle op.
+)doc");
+
+REGISTER_OP("ThreadPoolHandle")
+    .Output("handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Attr("num_threads: int")
+    .Attr("display_name: string")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Doc(R"doc(
+Creates a custom thread pool with the given number of threads.
+
+handle: A resource that can be consumed by one or more ThreadPoolDataset ops.
+num_threads: The number of threads in the thread pool.
+display_name: A human-readable name for the threads that may be visible in
+  some visualizations.
 )doc");
 
 }  // namespace tensorflow

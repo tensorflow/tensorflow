@@ -9657,6 +9657,65 @@ op {
   }
 }
 op {
+  name: "GeneratorDataset"
+  input_arg {
+    name: "init_func_other_args"
+    type_list_attr: "Tinit_func_args"
+  }
+  input_arg {
+    name: "next_func_other_args"
+    type_list_attr: "Tnext_func_args"
+  }
+  input_arg {
+    name: "finalize_func_other_args"
+    type_list_attr: "Tfinalize_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "init_func"
+    type: "func"
+  }
+  attr {
+    name: "next_func"
+    type: "func"
+  }
+  attr {
+    name: "finalize_func"
+    type: "func"
+  }
+  attr {
+    name: "Tinit_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tnext_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tfinalize_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "GetSessionHandle"
   input_arg {
     name: "value"
@@ -30369,6 +30428,14 @@ op {
   }
 }
 op {
+  name: "Timestamp"
+  output_arg {
+    name: "ts"
+    type: DT_DOUBLE
+  }
+  is_stateful: true
+}
+op {
   name: "TopK"
   input_arg {
     name: "input"
@@ -30776,29 +30843,6 @@ op {
         type: DT_INT64
       }
     }
-  }
-}
-op {
-  name: "UniqueDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
   }
 }
 op {

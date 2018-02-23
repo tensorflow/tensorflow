@@ -704,8 +704,10 @@ class TFOptimizer(Optimizer):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    grads = self.optimizer.compute_gradients(loss, params)
     self.updates = [K.update_add(self.iterations, 1)]
+    if not params:
+      return self.updates
+    grads = self.optimizer.compute_gradients(loss, params)
     opt_update = self.optimizer.apply_gradients(
         grads, global_step=self.iterations)
     self.updates.append(opt_update)
