@@ -164,7 +164,7 @@ def _print_tensor_info(tensor_info, indent=0):
   def in_print(s):
     print(indent_str + s)
 
-  in_print('    dtype: ' 
+  in_print('    dtype: ' +
         {value: key
          for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
   # Display shape as tuple.
