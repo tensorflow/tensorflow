@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 import weakref
 
@@ -278,6 +279,37 @@ def _serialize_object_graph(root_checkpointable):
       slot_variables=slot_variables)
 
 
+def gather_initializers(root_checkpointable):
+  """Traverse the object graph and find initialization ops.
+
+  Looks for `Checkpointable` objects which are dependencies of
+  `root_checkpointable` and which have an `initializer` property. Includes
+  initializers for slot variables only if the variable they are slotting for and
+  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
+  saved with a checkpoint).
+
+  Args:
+    root_checkpointable: A `Checkpointable` object to gather initializers for.
+  Returns:
+    A list of initialization ops.
+  """
+  # TODO(allenl): Extract out gathering logic so the naming logic doesn't have
+  # to run.
+  checkpointable_objects, path_to_root = (
+      _breadth_first_checkpointable_traversal(root_checkpointable))
+  object_names = {
+      obj: _object_prefix_from_path(path)
+      for obj, path in path_to_root.items()}
+  node_ids = {node: node_id for node_id, node
+              in enumerate(checkpointable_objects)}
+  _serialize_slot_variables(
+      checkpointable_objects=checkpointable_objects,
+      node_ids=node_ids,
+      object_names=object_names)
+  return [c.initializer for c in checkpointable_objects
+          if hasattr(c, "initializer") and c.initializer is not None]
+
+
 class _NoRestoreSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 
   def __init__(self, tensor, name):
@@ -288,7 +320,26 @@ class _NoRestoreSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
     return control_flow_ops.no_op()
 
 
-class CheckpointLoadStatus(object):
+class _LoadStatus(object):
+  """Abstract base for load status callbacks."""
+
+  @abc.abstractmethod
+  def assert_consumed(self):
+    """Raises an exception unless a non-trivial restoration has completed."""
+    pass
+
+  @abc.abstractmethod
+  def run_restore_ops(self, session=None):
+    """Runs restore ops from the checkpoint. Requires a valid checkpoint."""
+    pass
+
+  @abc.abstractmethod
+  def initialize_or_restore(self, session=None):
+    """Runs restore ops from the checkpoint, or initializes variables."""
+    pass
+
+
+class CheckpointLoadStatus(_LoadStatus):
   """Checks the status of checkpoint loading and manages restore ops.
 
   Returned from `Saver.restore`. Since `restore` may defer the loading of values
@@ -347,6 +398,70 @@ class CheckpointLoadStatus(object):
     if session is None:
       session = ops.get_default_session()
     session.run(self._checkpoint.restore_ops, feed_dict=self._feed_dict)
+
+  def initialize_or_restore(self, session=None):
+    """Alias for `run_restore_ops`.
+
+    This method has a sibling in `InitializationOnlyStatus` which instead
+    initializes variables. That type is returned if no checkpoint is specified
+    in `Saver.restore`.
+
+    Args:
+      session: The session to run restore ops in. If `None`, uses the default
+        session.
+    """
+    self.run_restore_ops(session=session)
+
+
+class InitializationOnlyStatus(_LoadStatus):
+  """Returned from `Saver.restore` when no checkpoint has been specified.
+
+  Objects of this type have the same `assert_consumed` method as
+  `CheckpointLoadStatus`, but it always fails. However,
+  `initialize_or_restore` works on objects of both types, and will
+  initialize variables in `InitializationOnlyStatus` objects or restore them
+  otherwise.
+  """
+
+  def __init__(self, root_checkpointable):
+    self._root_checkpointable = root_checkpointable
+
+  def assert_consumed(self):
+    """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
+    raise AssertionError(
+        "No checkpoint specified (save_path=None); nothing is being restored.")
+
+  def run_restore_ops(self, session=None):
+    """For consistency with `CheckpointLoadStatus`.
+
+    Use `initialize_or_restore` for initializing if no checkpoint was passed
+    to `Saver.restore` and restoring otherwise.
+
+    Args:
+      session: Not used.
+    """
+    raise AssertionError(
+        "No checkpoint specified, so no restore ops are available "
+        "(save_path=None to Saver.restore).")
+
+  def initialize_or_restore(self, session=None):
+    """Runs initialization ops for variables.
+
+    Only objects which would be saved by `Saver.save` will be initialized. See
+    `gather_initializers` for details.
+
+    This method does nothing when executing eagerly (initializers get run
+    eagerly).
+
+    Args:
+      session: The session to run initialization ops in. If `None`, uses the
+        default session.
+    """
+    if context.in_eager_mode():
+      return  # run eagerly
+    if session is None:
+      session = ops.get_default_session()
+    session.run(gather_initializers(self._root_checkpointable))
 
 
 class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
@@ -521,17 +636,20 @@ class Saver(object):
     Args:
       save_path: The path to the checkpoint, as returned by `save` or
         `tf.train.latest_checkpoint`. If None (as when there is no latest
-        checkpoint for `tf.train.latest_checkpoint` to return), does nothing.
+        checkpoint for `tf.train.latest_checkpoint` to return), returns an
+        object which may run initializers for objects in the dependency graph.
       session: The session to retrieve metadata with. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
 
     Returns:
-      A `CheckpointLoadStatus` object, which can be used to make assertions
-      about the status of checkpoint restoration and run restore ops.
+      A load status object, which can be used to make assertions about the
+      status of checkpoint restoration and run initialization/restore ops
+      (of type `CheckpointLoadStatus`, or `InitializationOnlyStatus` if
+      `save_path` is `None`).
     """
     if save_path is None:
-      return
+      return InitializationOnlyStatus(self._root_checkpointable)
     in_graph_mode = context.in_graph_mode()
     if in_graph_mode:
       if session is None:

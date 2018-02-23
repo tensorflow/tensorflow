@@ -588,6 +588,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
         # This decorator runs the wrapped test twice.
         # Reset the test environment between runs.
         self.tearDown()
+        self._tempdir = None
         self.setUp()
 
       def run_eager_mode(self, **kwargs):
