@@ -138,13 +138,9 @@ signature_def['serving_default']:
         name: y:0
   Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
-    prev_diff = self.maxDiff
     self.maxDiff = None # Produce a useful error msg if the comparison fails
-    try:
-      self.assertMultiLineEqual(output, exp_out)
-      self.assertEqual(err.getvalue().strip(), '')
-    finally:
-      self.maxDiff = prev_diff
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
 
   def testShowCommandTags(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)

@@ -144,13 +144,14 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
     in_print('  inputs[\'%s\'] tensor_info:' % input_key)
     _print_tensor_info(input_tensor, indent+1)
 
-  in_print('The given SavedModel SignatureDef contains the following output(s):')
+  in_print('The given SavedModel SignatureDef contains the following '
+           'output(s):')
   for output_key, output_tensor in sorted(outputs_tensor_info.items()):
     in_print('  outputs[\'%s\'] tensor_info:' % output_key)
     _print_tensor_info(output_tensor, indent+1)
 
   in_print('Method name is: %s' %
-        meta_graph_def.signature_def[signature_def_key].method_name)
+           meta_graph_def.signature_def[signature_def_key].method_name)
 
 
 def _print_tensor_info(tensor_info, indent=0):
@@ -165,8 +166,8 @@ def _print_tensor_info(tensor_info, indent=0):
     print(indent_str + s)
 
   in_print('    dtype: ' +
-        {value: key
-         for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
+           {value: key
+            for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
   # Display shape as tuple.
   if tensor_info.tensor_shape.unknown_rank:
     shape = 'unknown_rank'
@@ -671,7 +672,8 @@ def create_parser():
              ' the output tensors to files:\n'
              '$saved_model_cli show --dir /tmp/saved_model --tag_set serve \\\n'
              '   --signature_def serving_default \\\n'
-             '   --inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy \\\n'
+             '   --inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy '
+             '\\\n'
              '   --input_exprs \'input3_key=np.ones(2)\' \\\n'
              '   --input_examples '
              '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
