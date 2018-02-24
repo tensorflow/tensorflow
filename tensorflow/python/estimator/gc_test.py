@@ -140,6 +140,17 @@ class GcTest(test_util.TensorFlowTestCase):
       gfile.MakeDirs(os.path.join(compat.as_str_any(base_dir), "42"))
       gc._get_paths(base_dir, _create_parser(base_dir))
 
+  def testGcsDirWithSeparator(self):
+    base_dir = "gs://bucket/foo"
+    with test.mock.patch.object(gfile, "ListDirectory") as mockListDirectory:
+      # gfile.ListDirectory returns directory names with separator '/'
+      mockListDirectory.return_value = ["0/", "1/"]
+      self.assertEqual(
+          gc._get_paths(base_dir, _create_parser(base_dir)),
+          [
+              gc.Path(os.path.join(base_dir, "0"), 0),
+              gc.Path(os.path.join(base_dir, "1"), 1)
+          ])
 
 if __name__ == "__main__":
   test.main()
