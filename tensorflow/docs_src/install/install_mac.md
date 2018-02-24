@@ -279,7 +279,7 @@ The remainder of this section explains how to launch a Docker container.
 To launch a Docker container that holds the TensorFlow binary image,
 enter a command of the following format:
 
-<pre> $ <b>docker run -it <i>-p hostPort:containerPort</i> TensorFlowImage</b> </pre>
+<pre> $ <b>docker run -it <i>-p hostPort:containerPort</i> gcr.io/tensorflow/tensorflow</b> </pre>
 
 where:
 
