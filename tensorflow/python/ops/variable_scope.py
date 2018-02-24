@@ -1689,6 +1689,13 @@ def _get_unique_variable_scope(prefix):
   """Get a name with the given prefix unique in the current variable scope."""
   var_store = _get_default_variable_store()
   current_scope = get_variable_scope()
+
+  # Convert 'prefix' to string in order to avoid the error generated 
+  # during the execution of the statement - 
+  # 'name = current_scope.name + "/" + prefix if current_scope.name else prefix'
+  if isinstance(prefix, dtypes.string) is not True:
+    prefix = str(prefix)
+    
   name = current_scope.name + "/" + prefix if current_scope.name else prefix
   if var_store.variable_scope_count(name) == 0:
     return prefix
