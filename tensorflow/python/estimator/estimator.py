@@ -259,15 +259,16 @@ class Estimator(object):
       ValueError: If the Estimator has not produced a checkpoint yet.
     """
     def _check_string_or_not(name):
-        if isinstance(name, six.string_types):
-            return name
-        raise TypeError("Received type {} and was expecting an input of type string or a list of strings.".format(type(name)))
+      if isinstance(name, six.string_types):
+        return name
+      e = "This function takes an input of type string or a list of strings"
+      raise TypeError(e)
 
     _check_checkpoint_available(self.model_dir)
     if isinstance(name, six.string_types):
-        return training.load_variable(self.model_dir, name)
-    else:
-        return {v:traning.load_variable(self.model_dir, _check_string_or_not(v)) for v in name}
+      return training.load_variable(self.model_dir, name)
+    return {v: traning.load_variable(self.model_dir, _check_string_or_not(v))\
+            for v in name}
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
