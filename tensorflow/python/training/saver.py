@@ -50,6 +50,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
@@ -577,6 +578,11 @@ class BaseSaverBuilder(object):
           names_to_saveables[name].append(var)
         else:
           names_to_saveables[name] = [var]
+      elif (isinstance(var, checkpointable.CheckpointableBase)
+            and not isinstance(var, variables.Variable)):
+        names_to_saveables.update(
+            BaseSaverBuilder.OpListToDict(
+                list(var._gather_saveables_for_checkpoint().values())))
       else:
         if context.in_graph_mode():
           if convert_variable_to_tensor:
