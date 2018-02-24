@@ -49,7 +49,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.applications.inception_v3 import preprocess_input
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import add
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
