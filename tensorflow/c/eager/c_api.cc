@@ -303,11 +303,9 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   // Questionable heuristic ...
-  //
-  // Motivation: After an 'op' is placed on GPU because some of its earlier
-  // inputs are on GPU, we want to keep the 'op' there, even if some later
-  // inputs of it are not on GPU.
-  if (IsCPU(op->device) && !IsCPU(h->d)) {
+  // - If a device was explicitly set on the op, always use that.
+  // - If not, place on the first non-host device seen.
+  if (op->device == nullptr && !IsCPU(h->d)) {
     op->device = h->d;
   }
   if (!status->status.ok()) return;
