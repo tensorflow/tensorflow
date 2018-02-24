@@ -36,12 +36,16 @@ from tensorflow.python.keras._impl.keras.losses import poisson
 from tensorflow.python.keras._impl.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras._impl.keras.losses import squared_hinge
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.metrics.binary_accuracy')
 def binary_accuracy(y_true, y_pred):
   return K.mean(K.equal(y_true, K.round(y_pred)), axis=-1)
 
 
+@tf_export('keras.metrics.categorical_accuracy')
 def categorical_accuracy(y_true, y_pred):
   return K.cast(
       K.equal(K.argmax(y_true, axis=-1), K.argmax(y_pred, axis=-1)), K.floatx())
@@ -54,10 +58,12 @@ def sparse_categorical_accuracy(y_true, y_pred):
                                          K.floatx())), K.floatx())
 
 
+@tf_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   return K.mean(K.in_top_k(y_pred, K.argmax(y_true, axis=-1), k), axis=-1)
 
 
+@tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   return K.mean(
       K.in_top_k(y_pred, K.cast(K.max(y_true, axis=-1), 'int32'), k), axis=-1)
@@ -72,24 +78,29 @@ msle = MSLE = mean_squared_logarithmic_error
 cosine = cosine_proximity
 
 
+@tf_export('keras.metrics.serialize')
 def serialize(metric):
-  return metric.__name__
+  return serialize_keras_object(metric)
 
 
-def deserialize(name, custom_objects=None):
+@tf_export('keras.metrics.deserialize')
+def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
-      name,
+      config,
       module_objects=globals(),
       custom_objects=custom_objects,
       printable_module_name='metric function')
 
 
+@tf_export('keras.metrics.get')
 def get(identifier):
-  if isinstance(identifier, six.string_types):
-    identifier = str(identifier)
-    return deserialize(identifier)
+  if isinstance(identifier, dict):
+    config = {'class_name': str(identifier), 'config': {}}
+    return deserialize(config)
+  elif isinstance(identifier, six.string_types):
+    return deserialize(str(identifier))
   elif callable(identifier):
     return identifier
   else:
     raise ValueError('Could not interpret '
-                     'metric function identifier:', identifier)
+                     'metric function identifier: %s' % identifier)

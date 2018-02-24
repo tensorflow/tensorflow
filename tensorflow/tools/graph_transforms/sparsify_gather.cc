@@ -212,6 +212,14 @@ Status RemoveInputAtIndex(NodeDef* n, int index) {
   return Status::OK();
 }
 
+Status RemoveNodeAtIndex(GraphDef* g, int index) {
+  for (int i = index; i < g->node_size() - 1; i++) {
+    g->mutable_node()->SwapElements(i, i + 1);
+  }
+  g->mutable_node()->RemoveLast();
+  return Status::OK();
+}
+
 Status SparsifyGatherInternal(
     const GraphDef& input_graph_def,
     const std::unique_ptr<std::unordered_map<string, string> >&
@@ -493,9 +501,7 @@ Status SparsifyGatherInternal(
               removed_node_names.push_back(parsed_input);
             }
           }
-          replaced_graph_def.mutable_node()->SwapElements(
-              i, replaced_graph_def.node_size() - 1);
-          replaced_graph_def.mutable_node()->RemoveLast();
+          TF_RETURN_IF_ERROR(RemoveNodeAtIndex(&replaced_graph_def, i));
           continue;
         }
         int j = 0;

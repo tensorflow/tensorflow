@@ -29,6 +29,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
+template <typename T>
+bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > std::numeric_limits<RealType>::max() ||
+      value < std::numeric_limits<RealType>::min()) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+}  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
   CHECK(graph != nullptr);
@@ -132,7 +144,7 @@ string ParseNodeName(const string& name, int* position) {
   strings::Scanner scan(name);
   scan.ZeroOrOneLiteral("^")
       .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT)
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
       .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
   StringPiece capture;
   StringPiece remaining;
@@ -401,6 +413,44 @@ string SimpleGraphView::PrintToString() const {
   }
   return str;
 }
+
+#define HANDLE_CASE(DTYPE)                                          \
+  case DTYPE:                                                       \
+    if (!SafeSetScalarTensorValue<EnumToDataType<DTYPE>::Type>(     \
+            static_cast<double>(value), tensor)) {                  \
+      return errors::InvalidArgument("Cannot store value ", value,  \
+                                     " in tensor of type " #DTYPE); \
+    }                                                               \
+    break
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
+  // TODO(rmlarsen): Support more general shapes.
+  if (tensor->NumElements() != 1) {
+    return errors::InvalidArgument(
+        "Expected scalar tensor, got num_elements = ", tensor->NumElements());
+  }
+  switch (dtype) {
+    // TODO(rmlarsen): Handle DT_HALF.
+    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BOOL);
+    HANDLE_CASE(DT_FLOAT);
+    HANDLE_CASE(DT_DOUBLE);
+    HANDLE_CASE(DT_UINT8);
+    HANDLE_CASE(DT_INT8);
+    HANDLE_CASE(DT_UINT16);
+    HANDLE_CASE(DT_INT16);
+    HANDLE_CASE(DT_INT32);
+    HANDLE_CASE(DT_INT64);
+    HANDLE_CASE(DT_COMPLEX64);
+    HANDLE_CASE(DT_COMPLEX128);
+    default:
+      return errors::InvalidArgument("Unsupported type ",
+                                     DataTypeString(dtype));
+  }
+  return Status::OK();
+}
+
+#undef HANDLE_CASE
 
 }  // end namespace grappler
 }  // end namespace tensorflow

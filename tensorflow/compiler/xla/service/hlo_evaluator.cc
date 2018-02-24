@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -742,7 +740,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shl],
         ElementWiseBinaryOp(shl, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return lhs_elem << rhs_elem;
+          return IsShiftOutOfBounds<NativeT>(rhs_elem) ? 0
+                                                       : (lhs_elem << rhs_elem);
         }));
     return Status::OK();
   }
@@ -767,8 +766,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return static_cast<NativeT>(static_cast<SignedT>(lhs_elem) >>
-                                      rhs_elem);
+          SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
+            return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
+          } else {
+            return lhs_signed >> rhs_elem;
+          }
         }));
     return Status::OK();
   }
@@ -794,6 +797,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          // If shift amount is greater than the number of bits, then return 0.
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
+            return static_cast<NativeT>(0);
+          }
           return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
                                       rhs_elem);
         }));
@@ -1028,55 +1035,119 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::IsArray(lhs->shape()));
     CHECK(ShapeUtil::IsArray(rhs->shape()));
 
-    // Dot only supports operands of rank 1 and 2.
-    const auto dot_rank = ShapeUtil::Rank(dot->shape());
+    const auto& dnums = dot->dot_dimension_numbers();
+
     const auto lhs_rank = ShapeUtil::Rank(lhs->shape());
     const auto rhs_rank = ShapeUtil::Rank(rhs->shape());
-    CHECK(lhs_rank > 0 && lhs_rank <= 2);
-    CHECK(rhs_rank > 0 && rhs_rank <= 2);
-    CHECK_EQ(dot_rank, lhs_rank + rhs_rank - 2);
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
-    // Check contracted dimensions are the same.
-    //
-    // Determine the index of the contracted dimensions for input tensors.
-    // dimensions -1 of lhs and dimension 0 of rhs are contracted.
-    const int64 lhs_contracted_dimension =
-        ShapeUtil::GetDimensionNumber(lhs->shape(), -1);
-    const int64 rhs_contracted_dimension = 0;
-    CHECK_EQ(lhs->shape().dimensions(lhs_contracted_dimension),
-             rhs->shape().dimensions(rhs_contracted_dimension))
+    // There must be 1 and only 1 Contracting dimension for lhs and rhs.
+    CHECK_EQ(dnums.lhs_contracting_dimensions_size(), 1);
+    CHECK_EQ(dnums.rhs_contracting_dimensions_size(), 1);
+    const int64 lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
+    const int64 rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
+    // Contracted dimension sizes must be the same.
+    CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
+             rhs->shape().dimensions(rhs_contracting_dimension))
         << "lhs contracted dimension: "
-        << lhs->shape().dimensions(lhs_contracted_dimension)
+        << lhs->shape().dimensions(lhs_contracting_dimension)
         << " rhs contracted dimension: "
-        << rhs->shape().dimensions(rhs_contracted_dimension);
+        << rhs->shape().dimensions(rhs_contracting_dimension);
     const int64 contracted_dimension_size =
-        lhs->shape().dimensions(lhs_contracted_dimension);
+        lhs->shape().dimensions(lhs_contracting_dimension);
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
     auto result = Literal::CreateFromShape(dot->shape());
+
+    CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+             dnums.rhs_batch_dimensions_size());
+
+    std::vector<int64> lhs_non_contracting_dims;
+    for (int64 i = 0; i < lhs_rank; i++) {
+      if (i != lhs_contracting_dimension) {
+        lhs_non_contracting_dims.push_back(i);
+      }
+    }
+
+    std::vector<int64> rhs_non_batch_non_contracting_dims;
+    tensorflow::gtl::FlatSet<int64> batch_dims_set(
+        dnums.rhs_batch_dimensions().begin(),
+        dnums.rhs_batch_dimensions().end());
+    for (int64 i = 0; i < rhs_rank; i++) {
+      if (i != rhs_contracting_dimension && batch_dims_set.count(i) == 0) {
+        rhs_non_batch_non_contracting_dims.push_back(i);
+      }
+    }
+
+    const int64 batch_dim_size = dnums.lhs_batch_dimensions_size();
+    const int64 lhs_non_contracting_size = lhs_non_contracting_dims.size();
+
+    DimensionVector lhs_index(lhs_rank);
+    DimensionVector rhs_index(rhs_rank);
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+        [&](tensorflow::gtl::ArraySlice<int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
-          std::vector<int64> lhs_index(lhs_rank, 0);
-          std::vector<int64> rhs_index(rhs_rank, 0);
-          // Set index for non-contracted dimension for lhs and rhs.
-          if (lhs_rank > 1) {
-            lhs_index[0] = multi_index[0];
+          // Find the corresponding non-contracting indices for lhs and rhs.
+          //
+          // For `result_index`, its batch dimension, if exists, will be at the
+          // same dimension as the batch dimension of lhs and rhs. More
+          // specifically:
+          // - For lhs, the non-contracting dimensions, including the batch
+          // dimension have the same index as the `result_index`.
+          // - For rhs, the batch dimension is set seperately from other
+          // non-contracting dimensions, since these other non-contracting
+          // dimensions in rhs follow the non-contracting dimensions of lhs in
+          // the resulting index.
+          //
+          // As an example, for a resulting index:
+          //  result_index [result_batch, result_x, result_y]
+          // the effecting lhs and rhs indices are:
+          //  lhs [result_batch, lhs_non_contracting_dim, contracting_dim
+          //  rhs [result_batch, contracting_dim, rhs_non_contracting_dim]
+          // `result_x` is only affected by the lhs_non_contracting_dim and
+          // likewise `result_y` only depends on rhs_non_contracting_dim.
+          //
+          // so we can look up the lhs and rhs indices by:
+          //
+          // lhs:
+          //  batch index is the same as `result_batch`.
+          //    non-contracting dimension is the same as
+          //    result_index[lhs_non_contracting_dim]
+          // rhs:
+          //  batch index: the same as `result_batch`.
+          //  non-contracting dimension index: *not* the same as
+          //    result_index[rhs_non_contractng_dim], since the
+          //    non-contracting dimensions of lhs are included in the
+          //    result_index first. Instead, the non_contracting_dim of rhs must
+          //    be calculated as following:
+          //      lhs_non_contracting_dimensions_size +
+          //      (rhs_non_batch_non_contracting_dim - batch_dim_size) - 1
+          //
+          //    Note that (rhs_non_batch_contracting_dim - batch_dim_size) is
+          //    the index offset to the result_index that only depends on
+          //    the non_batch and non-contracting dimensions of rhs. -1 at the
+          //    end translates size to index.
+          for (auto i : lhs_non_contracting_dims) {
+            lhs_index[i] = result_index[i];
           }
-          if (rhs_rank > 1) {
-            rhs_index[1] = multi_index[multi_index.size() - 1];
+          for (auto i : dnums.rhs_batch_dimensions()) {
+            rhs_index[i] = result_index[i];
+          }
+          for (auto i : rhs_non_batch_non_contracting_dims) {
+            const int64 rhs_non_batch_non_contracting_dim =
+                lhs_non_contracting_size + (i - batch_dim_size) - 1;
+            rhs_index[i] = result_index[rhs_non_batch_non_contracting_dim];
           }
 
           // Accumulates resulting product along the contracted dimension.
           for (int64 i = 0; i < contracted_dimension_size; ++i) {
-            lhs_index[lhs_contracted_dimension] = i;
-            rhs_index[rhs_contracted_dimension] = i;
+            lhs_index[lhs_contracting_dimension] = i;
+            rhs_index[rhs_contracting_dimension] = i;
 
             result_val +=
                 static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
@@ -1337,6 +1408,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S64: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64>(map));
+        break;
+      }
+      case F16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<Eigen::half>(map));
         break;
       }
       case F32: {
@@ -1960,6 +2036,14 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return std::move(result);
   }
 
+  template <typename NativeT>
+  static bool IsShiftOutOfBounds(NativeT rhs) {
+    typedef typename std::make_unsigned<NativeT>::type UnsignedT;
+    UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
+    UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
+    return rhs_unsigned >= lhs_size_unsigned;
+  }
+
   HloEvaluator* parent_;
 };  // class HloEvaluator::TypedVisitor
 
@@ -1977,9 +2061,7 @@ HloEvaluator::HloEvaluator() {
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
-  typed_visitors_[F16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: F16.");
-  });
+  typed_visitors_[F16] = MakeUnique<TypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
   typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);

@@ -66,6 +66,23 @@ REGISTER_OP("SparseTensorSliceDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GeneratorDataset")
+    .Input("init_func_other_args: Tinit_func_args")
+    .Input("next_func_other_args: Tnext_func_args")
+    .Input("finalize_func_other_args: Tfinalize_func_args")
+    .Output("handle: variant")
+    .Attr("init_func: func")
+    .Attr("next_func: func")
+    .Attr("finalize_func: func")
+    .Attr("Tinit_func_args: list(type) >= 0")
+    .Attr("Tnext_func_args: list(type) >= 0")
+    .Attr("Tfinalize_func_args: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ZipDataset")
     .Input("input_datasets: N * variant")
     .Output("handle: variant")
@@ -102,13 +119,6 @@ REGISTER_OP("TakeDataset")
 REGISTER_OP("SkipDataset")
     .Input("input_dataset: variant")
     .Input("count: int64")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("IgnoreErrorsDataset")
-    .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -331,13 +341,6 @@ REGISTER_OP("ShuffleAndRepeatDataset")
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")
     .Input("filename: string")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("UniqueDataset")
-    .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")

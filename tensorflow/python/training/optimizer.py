@@ -34,6 +34,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -175,21 +176,44 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
     return g
 
 
+class _TensorProcessor(_OptimizableVariable):
+  """Processor for ordinary Tensors.
+
+  Even though a Tensor can't really be updated, sometimes it is useful to
+  compute the gradients with respect to a Tensor using the optimizer. Updating
+  the Tensor is, of course, unsupported.
+  """
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    raise NotImplementedError("Trying to update a Tensor ", self._v)
+
+
 def _get_processor(v):
   """The processor of v."""
   if context.in_eager_mode():
-    return _DenseResourceVariableProcessor(v)
+    if isinstance(v, ops.Tensor):
+      return _TensorProcessor(v)
+    else:
+      return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
   if v.op.type == "SubmodelPort":
     return _StreamingModelPortProcessor(v)
+  if isinstance(v, ops.Tensor):
+    return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
 @tf_export("train.Optimizer")
-class Optimizer(object):
+class Optimizer(checkpointable.Checkpointable):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -300,9 +324,18 @@ class Optimizer(object):
     self._use_locking = use_locking
     self._name = name
     # Dictionary of slots.
-    #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
+    #  {slot_name :
+    #      {_var_key(variable_to_train): slot_for_the_variable, ... },
+    #   ... }
     self._slots = {}
     self._non_slot_dict = {}
+    # For implementing Checkpointable. Stores information about how to restore
+    # slot variables which have not yet been created
+    # (checkpointable._CheckpointPosition objects).
+    #  {slot_name :
+    #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
+    #   ... }
+    self._deferred_slot_restorations = {}
 
   def get_name(self):
     return self._name
@@ -382,7 +415,9 @@ class Optimizer(object):
     given variable.
 
     Args:
-      loss: A Tensor containing the value to minimize.
+      loss: A Tensor containing the value to minimize or a callable taking
+        no arguments which returns the value to minimize. When eager execution
+        is enabled it must be a callable.
       var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKeys.TRAINABLE_VARIABLES`.
@@ -401,37 +436,27 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
-      RuntimeError: If called with eager execution enabled and if `grad_loss`
-        is not `None` or `loss` is not callable.
+      RuntimeError: If called with eager execution enabled and `loss` is
+        not callable.
 
     @compatibility(eager)
-    When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Gradient computation is done with respect to the elements of `var_list` if
-    not None, else with respect to any trainable variables created during the
-    execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    When eager execution is enabled, `gate_gradients`, `aggregation_method`,
+    and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
-    if context.in_eager_mode():
-      if grad_loss is not None:
-        raise RuntimeError(
-            "`grad_loss` argument to Optimizer.compute_gradients "
-            "not supported when eager execution is enabled.")
-      if not callable(loss):
-        raise RuntimeError(
-            "`loss` passed to Optimizer.compute_gradients should "
-            "be a function when eager execution is enabled.")
-      # TODO(agarwal): consider passing parameters to the `loss` function.
+    if callable(loss):
+      with backprop.GradientTape() as tape:
+        if var_list is not None:
+          tape.watch(var_list)
+        loss_value = loss()
       if var_list is None:
-        return backprop.implicit_grad(loss)()
-      else:
-        var_list = nest.flatten(var_list)
-        grads = backprop.gradients_function(loss)(*var_list)
-        grads_and_vars = list(zip(grads, var_list))
-        return grads_and_vars
+        var_list = tape.watched_variables()
+      grads = tape.gradient(loss_value, var_list, grad_loss)
+      return list(zip(grads, var_list))
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "`loss` passed to Optimizer.compute_gradients should "
+          "be a function when eager execution is enabled.")
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
@@ -868,7 +893,11 @@ class Optimizer(object):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
+      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
 
   def _get_or_make_slot_with_initializer(self, var, initializer, shape, dtype,
@@ -889,8 +918,12 @@ class Optimizer(object):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_slot_with_initializer(
+      new_slot_variable = slot_creator.create_slot_with_initializer(
           var, initializer, shape, dtype, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
 
   def _zeros_slot(self, var, slot_name, op_name):
@@ -907,5 +940,79 @@ class Optimizer(object):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_zeros_slot(var, op_name)
+      new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
+
+  # --------------
+  # For implementing the Checkpointable interface.
+  # --------------
+
+  def _restore_slot_variable(self, slot_name, variable, slot_variable):
+    """Restore a newly created slot variable's value."""
+    variable_key = _var_key(variable)
+    deferred_restorations = self._deferred_slot_restorations.get(
+        slot_name, {}).pop(variable_key, [])
+    # Iterate over restores, highest restore UID first to minimize the number
+    # of assignments.
+    deferred_restorations.sort(key=lambda position: position.restore_uid,
+                               reverse=True)
+    for checkpoint_position in deferred_restorations:
+      checkpoint_position.restore(slot_variable)
+
+  def _create_or_restore_slot_variable(
+      self, slot_variable_position, slot_name, variable):
+    """Restore a slot variable's value, possibly creating it.
+
+    Called when a variable which has an associated slot variable is created or
+    restored. When executing eagerly, we create the slot variable with a
+    restoring initializer.
+
+    No new variables are created when graph building. Instead,
+    _restore_slot_variable catches these after normal creation and adds restore
+    ops to the graph. This method is nonetheless important when graph building
+    for the case when a slot variable has already been created but `variable`
+    has just been added to a dependency graph (causing us to realize that the
+    slot variable needs to be restored).
+
+    Args:
+      slot_variable_position: A `checkpointable._CheckpointPosition` object
+        indicating the slot variable `Checkpointable` object to be restored.
+      slot_name: The name of this `Optimizer`'s slot to restore into.
+      variable: The variable object this slot is being created for.
+    """
+    named_slots = self._slot_dict(slot_name)
+    variable_key = _var_key(variable)
+    slot_variable = named_slots.get(variable_key, None)
+    if (slot_variable is None
+        and context.in_eager_mode()
+        and slot_variable_position.is_simple_variable()):
+      initializer = checkpointable.CheckpointInitialValue(
+          checkpoint_position=slot_variable_position)
+      slot_variable = self._get_or_make_slot(
+          var=variable,
+          val=initializer,
+          slot_name=slot_name,
+          op_name=self._name)
+      # Slot variables are not owned by any one object (because we don't want to
+      # save the slot variable if the optimizer is saved without the non-slot
+      # variable, or if the non-slot variable is saved without the optimizer;
+      # it's a dependency hypergraph with edges of the form (optimizer, non-slot
+      # variable, variable)). So we don't _track_ slot variables anywhere, and
+      # instead special-case this dependency and otherwise pretend it's a normal
+      # graph.
+    if slot_variable is not None:
+      # If we've either made this slot variable, or if we've pulled out an
+      # existing slot variable, we should restore it.
+      slot_variable_position.restore(slot_variable)
+    else:
+      # We didn't make the slot variable. Defer restoring until it gets created
+      # normally. We keep a list rather than the one with the highest restore
+      # UID in case slot variables have their own dependencies, in which case
+      # those could differ between restores.
+      self._deferred_slot_restorations.setdefault(
+          slot_name, {}).setdefault(variable_key, []).append(
+              slot_variable_position)

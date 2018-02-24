@@ -580,8 +580,13 @@ void GenPythonOp::AddExport() {
   strings::StrAppend(&result_, ")\n");
 }
 
+void GenPythonOp::AddDefLine(const string& function_name,
+                             const string& parameters) {
+  strings::StrAppend(&result_, "def ", function_name, "(", parameters, "):\n");
+}
+
 void GenPythonOp::AddDefLine(const string& parameters) {
-  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
+  AddDefLine(function_name_, parameters);
 }
 
 void GenPythonOp::AddDocStringDescription() {

@@ -45,17 +45,28 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
-// Registers e as the Exception to be raised when the conditions of
-// TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
-// is a signal to the calling code that it should fall back to the safer (and
-// more complete) code path.
-PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
-
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //
 // This function is not thread-safe.
+PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
+
+// Registers e as the Exception to be raised when the conditions of
+// TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
+// is a signal to the calling code that it should fall back to the safer (and
+// more complete) code path.
+//
+// This function is not thread-safe.
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
+
+// Registers e as the backward_function_getter.
+// The registered function creates a backward function (a function that can
+// return the gradient of the inputs an op given the gradient of it's outputs).
+// The registered function will be passed the following arguments:
+//    op_name, attrs, num_inputs, op_inputs, op_outputs
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -162,6 +173,11 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
 PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+
+// Record the gradient for a given op.
+PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
+                                PyObject* attrs, PyObject* results,
+                                PyObject* name);
 
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);

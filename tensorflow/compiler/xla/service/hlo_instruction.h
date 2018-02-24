@@ -451,6 +451,12 @@ class HloInstruction {
       HloInstruction* true_computation_arg, HloComputation* true_computation,
       HloInstruction* false_computation_arg, HloComputation* false_computation);
 
+  static std::unique_ptr<HloInstruction> CreateGather(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* gather_indices,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
   // "fused_root". Additional instructions can be added to the fusion
@@ -475,6 +481,12 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       tensorflow::StringPiece custom_call_target);
 
+  // Creates a HostCompute instruction, which records host-side control and
+  // data dependencies for use in instruction scheduling.
+  static std::unique_ptr<HloInstruction> CreateHostCompute(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
+
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
   static std::unique_ptr<HloInstruction> CreateTuple(
@@ -485,6 +497,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReverse(
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  // Creates an instance of GatherDimensionNumbers.
+  static GatherDimensionNumbers MakeGatherDimNumbers(
+      tensorflow::gtl::ArraySlice<int64> output_window_dims,
+      tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -571,12 +589,9 @@ class HloInstruction {
     if (opcode() != other.opcode()) {
       return false;
     }
-    auto eq_shapes = layout_sensitive
-                         ? [](const Shape& a,
-                              const Shape& b) { return ShapeUtil::Equal(a, b); }
-                         : [](const Shape& a, const Shape& b) {
-                             return ShapeUtil::Compatible(a, b);
-                           };
+    using EqShapeFuncType = bool (*)(const Shape&, const Shape&);
+    EqShapeFuncType eq_shapes =
+        layout_sensitive ? ShapeUtil::Equal : ShapeUtil::Compatible;
     if (!eq_shapes(shape(), other.shape())) {
       return false;
     }
@@ -770,6 +785,10 @@ class HloInstruction {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
+  //
+  // TODO(b/73348663): Make ToString() adaptive to the size of the string by
+  // default, backing off on providing full information for very large strings,
+  // or provide a different name for a ToString-like function that does that.
   string ToString() const { return ToString(HloPrintOptions()); }
   string ToString(const HloPrintOptions& options) const;
 
@@ -804,6 +823,12 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
+
+  // Returns the channel name associated with the instruction. The name is
+  // used to identify host Send/Recv operations.
+  //
+  // Precondition: opcode() == HloOpcode::kHostCompute
+  string channel_name() const { return channel_name_; }
 
   // Returns feature_index field associated with the instruction. The index
   // represents the index of the feature dimension.
@@ -916,6 +941,9 @@ class HloInstruction {
   void clear_sharding() { sharding_ = nullptr; }
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
+
+  // Adds a new operand the fusion instruction.
+  HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
@@ -1088,6 +1116,19 @@ class HloInstruction {
 
   // Returns the dump string of the dot dimension numbers.
   string DotDimensionNumbersToString() const;
+
+  const GatherDimensionNumbers& gather_dimension_numbers() const {
+    CHECK(gather_dimension_numbers_ != nullptr);
+    return *gather_dimension_numbers_;
+  }
+
+  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const {
+    CHECK_EQ(opcode(), HloOpcode::kGather);
+    return gather_window_bounds_;
+  }
+
+  // Returns the dump string of the gather dimension numbers.
+  string GatherDimensionNumbersToString() const;
 
   // Returns the random distribution for this rng node.
   //
@@ -1353,6 +1394,9 @@ class HloInstruction {
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
 
+  std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
+  std::vector<int64> gather_window_bounds_;
+
   // Describes FFT type for an FFT instruction.
   FftType fft_type_ = FftType::FFT;
 
@@ -1390,6 +1434,12 @@ class HloInstruction {
 
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;
+
+  // Name to use for host send/recv channels, only present for kHostCompute.
+  string channel_name_;
+
+  // Estimate of the duration of a host computation in nanoseconds.
+  int64 cost_estimate_ns_;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;

@@ -83,7 +83,7 @@ struct LaunchDepthwiseConvBackpropFilterOp {
 #if GOOGLE_CUDA
 template <typename T>
 struct LaunchDepthwiseConvOp<Eigen::GpuDevice, T> {
-  void operator()(OpKernelContext* ctx, const DepthwiseArgs args,
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
                   const T* input, const T* filter, T* output,
                   TensorFormat data_format);
 };

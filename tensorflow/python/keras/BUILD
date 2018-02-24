@@ -3,6 +3,8 @@
 
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE"])
+
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
@@ -254,6 +256,11 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -393,7 +400,7 @@ py_test(
 
 py_test(
     name = "convolutional_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -735,6 +742,19 @@ py_test(
 )
 
 py_test(
+    name = "model_subclassing_test",
+    size = "medium",
+    srcs = ["_impl/keras/model_subclassing_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "topology_test",
     size = "small",
     srcs = ["_impl/keras/engine/topology_test.py"],
@@ -764,7 +784,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/estimator_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

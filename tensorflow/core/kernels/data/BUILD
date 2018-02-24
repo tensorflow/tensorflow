@@ -210,6 +210,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "generator_dataset_op",
+    srcs = ["generator_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "scan_dataset_op",
     srcs = ["scan_dataset_op.cc"],
     deps = [
@@ -309,18 +322,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "skip_dataset_op",
     srcs = ["skip_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "ignore_errors_dataset_op",
-    srcs = ["ignore_errors_dataset_op.cc"],
     deps = [
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -511,18 +512,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "unique_dataset_op",
-    srcs = ["unique_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "dataset_ops",
     deps = [
         ":batch_dataset_op",
@@ -531,8 +520,8 @@ tf_kernel_library(
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
+        ":generator_dataset_op",
         ":group_by_window_dataset_op",
-        ":ignore_errors_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",
@@ -556,7 +545,6 @@ tf_kernel_library(
         ":tensor_dataset_op",
         ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
-        ":unique_dataset_op",
         ":zip_dataset_op",
     ],
 )

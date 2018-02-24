@@ -368,8 +368,8 @@ class Tensor(_TensorLike):
       A `TensorShape` representing the shape of this tensor.
 
     """
-    if _USE_C_API:
-      graph = self._op._graph._c_graph  # pylint: disable=protected-access
+    graph = self._op._graph._c_graph # pylint: disable=protected-access
+    if graph:
       with errors.raise_exception_on_not_ok_status() as status:
         num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
                                                   status)
@@ -466,7 +466,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if not _USE_C_API:
+    if not self._op._graph._c_graph:  # pylint: disable=protected-access # ASIM
       self._shape_val = self._shape_val.merge_with(shape)
       return
     if not isinstance(shape, tensor_shape.TensorShape):
@@ -2707,15 +2707,21 @@ class Graph(object):
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
+    self._stack_state_is_thread_local = False
+    self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    self._device_function_stack = []
+    # After switch_to_thread_local(), self._thread_local._device_function_stack
+    # is used instead.
+    self._graph_device_function_stack = []
     # Default original_op applied to new ops.
     self._default_original_op = None
     # Current control flow context. It could be either CondContext or
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    self._control_dependencies_stack = []
+    # After switch_to_thread_local(),
+    # self._thread_local._control_dependencies_stack is used instead.
+    self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
     self._collections = {}
     # The graph-level random seed
@@ -2737,8 +2743,9 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops
-    self._colocation_stack = []
+    # Stack of colocate_with ops. After switch_to_thread_local(),
+    # self._thread_local._colocation_stack is used instead.
+    self._graph_colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -2761,8 +2768,12 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if _USE_C_API or self._use_c_api_hack():
+    if self._use_c_api_hack():
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
+      # The C API requires all ops to have shape functions. Disable this
+      # requirement (many custom ops do not have shape functions, and we don't
+      # want to break these existing cases).
+      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
     else:
       self._scoped_c_graph = None
     self._variable_creator_stack = []
@@ -2770,7 +2781,7 @@ class Graph(object):
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
     """Temporary hack; can be overridden to force C API usage."""
-    return False
+    return _USE_C_API
 
   def _convert_stack(self, stack, include_func_start_lineno=False):
     """Converts a stack extracted using _extract_stack() to a traceback stack.
@@ -3030,7 +3041,7 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    if _USE_C_API:
+    if self._c_graph:
       with self._lock:
         with c_api_util.tf_buffer() as buf:
           with errors.raise_exception_on_not_ok_status() as status:
@@ -3350,9 +3361,9 @@ class Graph(object):
           if (op.device and pydev.canonical_name(op.device) !=
               pydev.canonical_name(colocation_op.device)):
             logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. "
-                            "Ignoring colocation property.", op.name,
-                            colocation_op.name, op.device,
+                            "a different device: %s vs %s. Postponing "
+                            "error-checking until all devices are assigned.",
+                            op.name, colocation_op.name, op.device,
                             colocation_op.device)
           else:
             op._set_device(colocation_op.device)  # pylint: disable=protected-access
@@ -3649,7 +3660,7 @@ class Graph(object):
   def _last_id(self):
     return self._next_id_counter
 
-  def _get_op_def(self, type):
+  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     if self._c_graph:
       with c_api_util.tf_buffer() as buf:
@@ -4669,6 +4680,79 @@ class Graph(object):
     else:
       return tensor_or_op not in self._unfetchable_ops
 
+  def switch_to_thread_local(self):
+    """Make device, colocation and dependencies stacks thread-local.
+
+    Device, colocation and dependencies stacks are not thread-local be default.
+    If multiple threads access them, then the state is shared.  This means that
+    one thread may affect the behavior of another thread.
+
+    After this method is called, the stacks become thread-local.  If multiple
+    threads access them, then the state is not shared.  Each thread uses its own
+    value; a thread doesn't affect other threads by mutating such a stack.
+
+    The initial value for every thread's stack is set to the current value
+    of the stack when `switch_to_thread_local()` was first called.
+    """
+    if not self._stack_state_is_thread_local:
+      self._stack_state_is_thread_local = True
+
+  @property
+  def _device_function_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where device_function_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_device_function_stack"):
+        self._thread_local._device_function_stack = (
+            self._graph_device_function_stack[:])
+      return self._thread_local._device_function_stack
+    else:
+      return self._graph_device_function_stack
+
+  @_device_function_stack.setter
+  def _device_function_stack(self, device_function_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._device_function_stack = device_function_stack
+    else:
+      self._graph_device_function_stack = device_function_stack
+
+  @property
+  def _colocation_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where colocation_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_colocation_stack"):
+        self._thread_local._colocation_stack = self._graph_colocation_stack[:]
+      return self._thread_local._colocation_stack
+    else:
+      return self._graph_colocation_stack
+
+  @_colocation_stack.setter
+  def _colocation_stack(self, colocation_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._colocation_stack = colocation_stack
+    else:
+      self._graph_colocation_stack = colocation_stack
+
+  @property
+  def _control_dependencies_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where control_dependencies_stack
+      # doesn't yet exist.
+      if not hasattr(self._thread_local, "_control_dependencies_stack"):
+        self._thread_local._control_dependencies_stack = (
+            self._graph_control_dependencies_stack[:])
+      return self._thread_local._control_dependencies_stack
+    else:
+      return self._graph_control_dependencies_stack
+
+  @_control_dependencies_stack.setter
+  def _control_dependencies_stack(self, control_dependencies):
+    if self._stack_state_is_thread_local:
+      self._thread_local._control_dependencies_stack = control_dependencies
+    else:
+      self._graph_control_dependencies_stack = control_dependencies
+
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
 # apply to inner graph mode code. Fix that.
@@ -5537,6 +5621,9 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
+name_scope_cache = {}
+
+
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
@@ -5596,7 +5683,11 @@ class name_scope(object):  # pylint: disable=invalid-name
       if not self._name:
         scope_name = ""
       else:
-        if self._name[-1] == "/":
+        cache_key = self._name, self._old_name, self._default_name
+        if cache_key in name_scope_cache:
+          self._ctx.scope_name = name_scope_cache[cache_key]
+          return self._ctx.scope_name
+        elif self._name[-1] == "/":
           # A trailing slash breaks out of nested name scopes, indicating a
           # fully specified scope name, for compatibility with Graph.name_scope.
           scope_name = self._name
@@ -5605,6 +5696,7 @@ class name_scope(object):  # pylint: disable=invalid-name
           scope_name = (
               self._old_name + name_with_trailing_slash
               if self._old_name else name_with_trailing_slash)
+        name_scope_cache[cache_key] = scope_name
       self._ctx.scope_name = scope_name
       return scope_name
     else:

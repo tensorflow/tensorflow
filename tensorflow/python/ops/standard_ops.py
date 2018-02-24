@@ -48,8 +48,7 @@ from tensorflow.python.ops.control_flow_ops import case
 from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
-# pylint: disable=redefined-builtin
-from tensorflow.python.ops.control_flow_ops import tuple
+from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
 # pylint: enable=redefined-builtin
 from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
@@ -61,6 +60,7 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.logging_ops import timestamp
 from tensorflow.python.ops.lookup_ops import initialize_all_tables
 from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.manip_ops import *
@@ -233,7 +233,7 @@ _allowed_symbols_clip_ops = [
     "global_norm",
 ]
 
-_allowed_symbols_image_ops = [
+_allowed_symbols_logging_ops = [
     # Documented in training.py.
     # We are not importing training.py to avoid complex dependencies.
     "audio_summary",
@@ -263,8 +263,8 @@ _allowed_symbols = (_allowed_symbols_array_ops +
                     _allowed_symbols_clip_ops +
                     _allowed_symbols_control_flow_ops +
                     _allowed_symbols_functional_ops +
-                    _allowed_symbols_image_ops +
                     _allowed_symbols_gradients +
+                    _allowed_symbols_logging_ops +
                     _allowed_symbols_math_ops +
                     _allowed_symbols_variable_scope_ops +
                     _allowed_symbols_misc +

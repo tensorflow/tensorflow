@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import errno
 import os
 import platform
@@ -32,10 +33,6 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           '.tf_configure.bazelrc')
-_TF_WORKSPACE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             'WORKSPACE')
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
@@ -50,6 +47,11 @@ _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
 _SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
+
+_TF_WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
+_TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
+_TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
+_TF_WORKSPACE = os.path.join(_TF_WORKSPACE_ROOT, 'WORKSPACE')
 
 
 class UserInputError(Exception):
@@ -117,22 +119,6 @@ def sed_in_place(filename, old, new):
   newdata = filedata.replace(old, new)
   with open(filename, 'w') as f:
     f.write(newdata)
-
-
-def remove_line_with(filename, token):
-  """Remove lines that contain token from file.
-
-  Args:
-    filename: string for filename.
-    token: string token to check if to remove a line from file or not.
-  """
-  with open(filename, 'r') as f:
-    filedata = f.read()
-
-  with open(filename, 'w') as f:
-    for line in filedata.strip().split('\n'):
-      if token not in line:
-        f.write(line + '\n')
 
 
 def write_to_bazelrc(line):
@@ -245,25 +231,26 @@ def setup_python(environ_cp):
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
   # Write tools/python_bin_path.sh
-  with open('tools/python_bin_path.sh', 'w') as f:
+  with open(os.path.join(
+      _TF_WORKSPACE_ROOT, 'tools', 'python_bin_path.sh'), 'w') as f:
     f.write('export PYTHON_BIN_PATH="%s"' % python_bin_path)
 
 
-def reset_tf_configure_bazelrc():
+def reset_tf_configure_bazelrc(workspace_path):
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
+  bazelrc_path = os.path.join(workspace_path, '.bazelrc')
 
-  home = os.path.expanduser('~')
-  if not os.path.exists('.bazelrc'):
-    if os.path.exists(os.path.join(home, '.bazelrc')):
-      with open('.bazelrc', 'a') as f:
-        f.write('import %s/.bazelrc\n' % home.replace('\\', '/'))
-    else:
-      open('.bazelrc', 'w').close()
-
-  remove_line_with('.bazelrc', 'tf_configure')
-  with open('.bazelrc', 'a') as f:
-    f.write('import %workspace%/.tf_configure.bazelrc\n')
+  data = []
+  if os.path.exists(bazelrc_path):
+    with open(bazelrc_path, 'r') as f:
+      data = f.read().splitlines()
+  with open(bazelrc_path, 'w') as f:
+    for l in data:
+      if _TF_BAZELRC_FILENAME in l:
+        continue
+      f.write('%s\n' % l)
+    f.write('import %s\n' % _TF_BAZELRC)
 
 
 def cleanup_makefile():
@@ -271,7 +258,8 @@ def cleanup_makefile():
 
   These files could interfere with Bazel parsing.
   """
-  makefile_download_dir = 'tensorflow/contrib/makefile/downloads'
+  makefile_download_dir = os.path.join(
+      _TF_WORKSPACE_ROOT, 'tensorflow', 'contrib', 'makefile', 'downloads')
   if os.path.isdir(makefile_download_dir):
     for root, _, filenames in os.walk(makefile_download_dir):
       for f in filenames:
@@ -445,7 +433,7 @@ def convert_version_to_int(version):
 
 
 def check_bazel_version(min_version):
-  """Check installed bezel version is at least min_version.
+  """Check installed bazel version is at least min_version.
 
   Args:
     min_version: string for minimum bazel version.
@@ -502,7 +490,8 @@ def set_cc_opt_flags(environ_cp):
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
   # It should be safe on the same build host.
-  write_to_bazelrc('build:opt --host_copt=-march=native')
+  if not is_ppc64le():
+    write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
   # TODO(mikecase): Remove these default defines once we are able to get
   # TF Lite targets building without them.
@@ -916,7 +905,7 @@ def set_tf_cudnn_version(environ_cp):
     tf_cudnn_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDNN_VERSION', ask_cudnn_version,
         _DEFAULT_CUDNN_VERSION)
-    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version) ,1)
+    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version), 1)
 
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
     ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
@@ -1078,12 +1067,22 @@ def set_tf_tensorrt_install_path(environ_cp):
           break
 
     # Reset and Retry
-    print('Invalid path to TensorRT. None of the following files can be found:')
-    print(trt_install_path)
-    print(os.path.join(trt_install_path, 'lib'))
-    print(os.path.join(trt_install_path, 'lib64'))
-    if search_result:
-      print(libnvinfer_path_from_ldconfig)
+    if possible_files:
+      print('TensorRT libraries found in one the following directories',
+            'are not compatible with selected cuda and cudnn installations')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
+    else:
+      print(
+          'Invalid path to TensorRT. None of the following files can be found:')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
 
   else:
     raise UserInputError('Invalid TF_TENSORRT setting was provided %d '
@@ -1219,7 +1218,7 @@ def set_host_c_compiler(environ_cp):
       environ_cp,
       var_name='HOST_C_COMPILER',
       var_default=default_c_host_compiler,
-      ask_for_var=('Please specify which C compiler should be used as the host'
+      ask_for_var=('Please specify which C compiler should be used as the host '
                    'C compiler.'),
       check_success=os.path.exists,
       error_msg='Invalid C compiler path. %s cannot be found.',
@@ -1363,13 +1362,20 @@ def config_info_line(name, help_text):
 
 
 def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--workspace",
+                      type=str,
+                      default=_TF_WORKSPACE_ROOT,
+                      help="The absolute path to your active Bazel workspace.")
+  args = parser.parse_args()
+
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
   environ_cp = dict(os.environ)
 
   check_bazel_version('0.5.4')
 
-  reset_tf_configure_bazelrc()
+  reset_tf_configure_bazelrc(args.workspace)
   cleanup_makefile()
   setup_python(environ_cp)
 
@@ -1424,8 +1430,10 @@ def main():
     if is_linux():
       set_tf_tensorrt_install_path(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
-    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get('LD_LIBRARY_PATH') != '1':
-      write_action_env_to_bazelrc('LD_LIBRARY_PATH', environ_cp.get('LD_LIBRARY_PATH'))
+    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
+        'LD_LIBRARY_PATH') != '1':
+      write_action_env_to_bazelrc('LD_LIBRARY_PATH',
+                                  environ_cp.get('LD_LIBRARY_PATH'))
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
@@ -1479,7 +1487,6 @@ def main():
         'more details.')
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
-  config_info_line('tensorrt', 'Build with TensorRT support.')
 
 if __name__ == '__main__':
   main()

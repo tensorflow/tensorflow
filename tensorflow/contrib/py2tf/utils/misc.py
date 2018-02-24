@@ -18,14 +18,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 
-def alias_tensors(tf, *args):
+
+def dynamic_len(list_or_tensor):
+  """Implementation of len using dynamic dispatch."""
+  if tensor_util.is_tensor(list_or_tensor):
+    shape = list_or_tensor.shape
+    if not shape:
+      raise ValueError(
+          'len requires non-zero rank for tensor "%s"' % list_or_tensor)
+    return array_ops.shape(list_or_tensor)[0]
+
+  return len(list_or_tensor)
+
+
+def alias_tensors(*args):
   """Wrap any Tensor arguments with an identity op.
 
   Any other argument, including Variables, is returned unchanged.
 
   Args:
-    tf: The TensorFlow module.
     *args: Any arguments. Must contain at least one element.
 
   Returns:
@@ -36,7 +51,7 @@ def alias_tensors(tf, *args):
   """
 
   def alias_if_tensor(a):
-    return tf.identity(a) if isinstance(a, tf.Tensor) else a
+    return array_ops.identity(a) if isinstance(a, ops.Tensor) else a
 
   # TODO(mdan): Recurse into containers?
   # TODO(mdan): Anything we can do about variables? Fake a scope reuse?

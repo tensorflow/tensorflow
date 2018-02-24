@@ -240,7 +240,7 @@ def argmin(input,
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("abs")
-def abs(x, name=None):
+def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
@@ -545,7 +545,7 @@ def scalar_mul(scalar, x):
 
 
 @tf_export("pow")
-def pow(x, y, name=None):
+def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
 
   Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
@@ -715,7 +715,7 @@ def angle(input, name=None):
 
 
 @tf_export("round")
-def round(x, name=None):
+def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
   Rounds half to even.  Also known as bankers rounding. If you want to round
@@ -899,6 +899,40 @@ def to_bfloat16(x, name="ToBFloat16"):
     TypeError: If `x` cannot be cast to the `bfloat16`.
   """
   return cast(x, dtypes.bfloat16, name=name)
+
+
+@tf_export("to_complex64")
+def to_complex64(x, name="ToComplex64"):
+  """Casts a tensor to type `complex64`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex64`.
+
+  Raises:
+    TypeError: If `x` cannot be cast to the `complex64`.
+  """
+  return cast(x, dtypes.complex64, name=name)
+
+
+@tf_export("to_complex128")
+def to_complex128(x, name="ToComplex128"):
+  """Casts a tensor to type `complex128`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex128`.
+
+  Raises:
+    TypeError: If `x` cannot be cast to the `complex128`.
+  """
+  return cast(x, dtypes.complex128, name=name)
 
 
 ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
@@ -1210,7 +1244,7 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
 @tf_export("range")
-def range(start, limit=None, delta=1, dtype=None, name="range"):
+def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
 
   Creates a sequence of numbers that begins at `start` and extends by
@@ -1295,9 +1329,9 @@ def _ReductionDims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
       return constant_op.constant(
-          np.arange(x.get_shape().ndims), dtype=dtypes.int32)
+          np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
@@ -2641,7 +2675,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -2716,7 +2750,7 @@ def sparse_segment_mean(data, indices, segment_ids, name=None,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first

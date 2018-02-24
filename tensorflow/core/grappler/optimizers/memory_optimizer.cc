@@ -490,12 +490,12 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 }
 
 bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
-  // Look for AddN nodes and record input names.
+  // Look for AddN nodes (and equivalent) and record input names.
   GraphView view(&item->graph);
 
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
-    if (!IsAddN(node)) {
+    if (!IsAddN(node) && node.op() != "AccumulateNV2") {
       continue;
     }
     // There is nothing to gain by optimizing nodes with 2 or fewer inputs.
@@ -509,6 +509,10 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
         addn_list[tensor_name].insert(&node);
       }
     }
+  }
+
+  if (addn_list.empty()) {
+    return false;
   }
 
   GraphMemory memory(*item);
@@ -560,6 +564,13 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       VLOG(1) << "Missing properties for " << node->name();
       continue;
     }
+    const TensorShapeProto& shape =
+        properties.GetOutputProperties(node->name())[0].shape();
+    PartialTensorShape shp(shape);
+    if (!shp.IsFullyDefined()) {
+      VLOG(1) << "Shape not fully known for " << node->name();
+      continue;
+    }
 
     // Compute a topological ordering for the node fanin.
     std::unordered_map<NodeDef*, int> topo_order;
@@ -608,8 +619,6 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       }
     }
 
-    const TensorShapeProto& shape =
-        properties.GetOutputProperties(node->name())[0].shape();
     DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
 
@@ -721,6 +730,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   *swap_in_node->add_input() = swap_out_node->name();
 
   // Colocate the swap_in_ node with the node itself.
+  swap_in_node->set_device(node->device());
   string coloc_group = strings::StrCat("loc@", tensor_to_swap);
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
@@ -1094,7 +1104,8 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
                   Cluster* cluster, GrapplerItem* item,
                   std::unordered_set<string>* skip_list) {
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
-  if (optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
+  if (optimization_level == RewriterConfig::DEFAULT_MEM_OPT ||
+      optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
     // Use heuristics to figure out what needs to be swapped;
     IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap);
@@ -1223,13 +1234,15 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
     updated_graph = false;
-    if ((optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
+    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+         optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS) &&
         cluster != nullptr) {
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
-    if ((optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
+    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+         optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||
          optimization_level_ == RewriterConfig::MANUAL) &&
         cluster != nullptr) {

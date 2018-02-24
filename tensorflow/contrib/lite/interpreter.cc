@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace {
 
@@ -77,6 +78,12 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.tensors = nullptr;
   context_.tensors_size = 0;
   context_.gemm_context = nullptr;
+
+  // Invalid to call these these except from TfLiteDelegate
+  context_.GetNodeAndRegistration = nullptr;
+  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
+  context_.GetExecutionPlan = nullptr;
+
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kSlotsToReserve);
   nodes_and_registration_.reserve(kSlotsToReserve);
@@ -98,6 +105,81 @@ Interpreter::~Interpreter() {
   for (int i = 0; i < context_.tensors_size; i++) {
     TfLiteTensorFree(&context_.tensors[i]);
   }
+}
+
+TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
+    TfLiteContext* context, TfLiteRegistration registration,
+    const TfLiteIntArray* nodes_to_replace) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->ReplaceSubgraphsWithDelegateKernels(registration, nodes_to_replace);
+}
+
+TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
+    TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace) {
+  // Annotate the registration as DELEGATE op.
+  registration.builtin_code = BuiltinOperator_DELEGATE;
+
+  // Analyze the graph to find all independent subgraphs that are either
+  // fully not-this-delegate or this-delegate computation.
+  InterpreterInfo info(this);
+  std::vector<Subgraph> subgraphs;
+  PartitionGraphIntoIndependentSubgraphs(&info, nodes_to_replace, &subgraphs);
+
+  execution_plan_.clear();
+  for (auto& subgraph : subgraphs) {
+    // Turn subgraph.nodes into a TfLiteIntArray compatible data structure.
+    // TODO(aselle): Avoid this copy by constructing subgraph.nodes that way
+    // in the first place
+    subgraph.nodes.insert(subgraph.nodes.begin(),
+                          static_cast<int>(subgraph.nodes.size()));
+    // Subgraphs calimed by the delegate should have a "macro" op created, the
+    // other subgraphs (kTfNonPartition) just have their nodes added back to
+    // the execution plan.
+    switch (subgraph.type) {
+      case Subgraph::kTfNonPartition:
+        for (auto it = subgraph.nodes.begin() + 1; it != subgraph.nodes.end();
+             ++it) {
+          execution_plan_.push_back(*it);
+        }
+        break;
+      case Subgraph::kTfPartition: {
+        void* builtin_data = nullptr;
+        int node_index;
+        // Create a node that represents computation of this subgraph.
+        AddNodeWithParameters(
+            subgraph.input_tensors, subgraph.output_tensors,
+            reinterpret_cast<const char*>(subgraph.nodes.data()),
+            subgraph.nodes.size() * sizeof(subgraph.nodes[0]), builtin_data,
+            &registration, &node_index);
+      } break;
+      case Subgraph::kTfUnexplored:
+        return kTfLiteError;
+        break;
+    }
+  }
+  return kTfLiteOk;
+}
+
+// Gets an TfLiteIntArray* representing the execution plan. The interpreter owns
+// this memory and it is only guaranteed to exist during the invocation of the
+// delegate prepare.
+TfLiteStatus Interpreter::GetExecutionPlan(TfLiteIntArray** execution_plan) {
+  // TODO(aselle): Do not make a copy here
+  plan_cache_.reset(TfLiteIntArrayCreate(execution_plan_.size()));
+  *execution_plan = plan_cache_.get();
+  static_assert(sizeof(plan_cache_->data[0]) == sizeof(execution_plan_[0]),
+                "TfLiteIntArray and execution_plan do not contain same type.");
+  memcpy(plan_cache_->data, execution_plan_.data(),
+         sizeof(plan_cache_->data[0]) * execution_plan_.size());
+  return kTfLiteOk;
+}
+
+// WARNING: This is an experimental interface that is subject to change.
+// Entry point for C node plugin API to get the execution plan
+TfLiteStatus Interpreter::GetExecutionPlan(struct TfLiteContext* context,
+                                           TfLiteIntArray** execution_plan) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->GetExecutionPlan(execution_plan);
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
@@ -200,6 +282,7 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
   nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
+
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
   if (node.inputs) TfLiteIntArrayFree(node.inputs);
@@ -219,7 +302,20 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
         OpInit(*registration,
                reinterpret_cast<const char*>(builtin_data_deleter.get()), 0);
   }
+
   node.builtin_data = builtin_data_deleter.release();
+  // TODO(ycling): Filling `custom_initial_data` and `custom_initial_data_size`
+  // properly for nodes generated by ReplaceSubgraphsWithDelegateKernels.
+  if (registration->builtin_code == BuiltinOperator_CUSTOM) {
+    // When it's a CUSTOM op, the `custom_options` field in the Flatbuffer
+    // `Operator` table is passed in.
+    node.custom_initial_data = init_data;
+    node.custom_initial_data_size = init_data_size;
+  } else {
+    node.custom_initial_data = nullptr;
+    node.custom_initial_data_size = 0;
+  }
+
   node_and_reg.second = *registration;
   execution_plan_.push_back(new_node_index);
   return kTfLiteOk;
@@ -388,6 +484,22 @@ TfLiteStatus Interpreter::AddTensors(TfLiteContext* context, int tensors_to_add,
       ->AddTensors(tensors_to_add, first_new_tensor_index);
 }
 
+TfLiteStatus Interpreter::GetNodeAndRegistration(
+    int node_index, TfLiteNode** node, TfLiteRegistration** registration) {
+  TF_LITE_ENSURE(&context_, node_index < nodes_size() && node_index >= 0);
+  TF_LITE_ENSURE(&context_, node != nullptr && registration != nullptr);
+  *node = &nodes_and_registration_[node_index].first;
+  *registration = &nodes_and_registration_[node_index].second;
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::GetNodeAndRegistration(
+    struct TfLiteContext* context, int node_index, TfLiteNode** node,
+    TfLiteRegistration** registration) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->GetNodeAndRegistration(node_index, node, registration);
+}
+
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name,
     const std::vector<int>& dims, TfLiteQuantizationParams quantization,
@@ -496,6 +608,22 @@ void Interpreter::SetNumThreads(int num_threads) {
   // don't use it. We should implement some dynamic mechanism for this sort of
   // library-specific initialization.
   tflite::gemm_support::SetMaxNumThreads(&context_, num_threads);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  // TODO(aselle): Consider if it is worth storing pointers to delegates.
+  // Setup additional context interface
+  context_.GetNodeAndRegistration = GetNodeAndRegistration;
+  context_.ReplaceSubgraphsWithDelegateKernels =
+      ReplaceSubgraphsWithDelegateKernels;
+  context_.GetExecutionPlan = GetExecutionPlan;
+
+  TfLiteStatus status = delegate->Prepare(&context_, delegate->data_);
+  // Remove additional context info.
+  context_.GetNodeAndRegistration = nullptr;
+  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
+  context_.GetExecutionPlan = nullptr;
+  return status;
 }
 
 }  // namespace tflite

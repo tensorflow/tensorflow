@@ -35,6 +35,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import compat
 
 
@@ -107,13 +108,16 @@ class EagerResourceDeleter(object):
   """
 
   def __init__(self, handle, handle_device):
+    if not isinstance(handle, ops.Tensor):
+      raise ValueError(
+          ("Passed handle=%s to EagerResourceDeleter. Was expecting a handle "
+           "Tensor." % (handle,)))
     self._handle = handle
     self._handle_device = handle_device
 
   def __del__(self):
     # Resources follow object-identity when executing eagerly, so it is safe to
-    # delete the resource we have a handle to. Each Graph has a unique container
-    # name, which prevents resource sharing.
+    # delete the resource we have a handle to.
     try:
       # This resource was created in eager mode. However, this destructor may be
       # running in graph mode (especially during unit tests). To clean up
@@ -343,6 +347,11 @@ class ResourceVariable(variables.Variable):
           "or set. Got %s of type %s" % (collections, type(collections)))
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
+
+    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
+      self._maybe_initialize_checkpointable()
+      self._update_uid = initial_value.checkpoint_position.restore_uid
+      initial_value = initial_value.wrapped_value
 
     self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
@@ -783,38 +792,38 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    with ops.control_dependencies([
-        gen_resource_variable_ops.assign_sub_variable_op(
-            self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype),
-            name=name)
-    ]):
-      return self.read_value()
+    return self._lazy_read(gen_resource_variable_ops.assign_sub_variable_op(
+        self.handle,
+        ops.convert_to_tensor(delta, dtype=self.dtype),
+        name=name))
 
   def assign_add(self, delta, use_locking=None, name=None):
-    with ops.control_dependencies([
-        gen_resource_variable_ops.assign_add_variable_op(
-            self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype),
-            name=name)
-    ]):
-      return self.read_value()
+    return self._lazy_read(gen_resource_variable_ops.assign_add_variable_op(
+        self.handle,
+        ops.convert_to_tensor(delta, dtype=self.dtype),
+        name=name))
+
+  def _lazy_read(self, op):
+    if hasattr(self, "_trainable") and self._trainable:
+      tape.watch_variable(self)
+    return _UnreadVariable(
+        self._handle, self.dtype, self._handle_device, self._shape,
+        self._in_graph_mode,
+        self._handle_deleter if not self._in_graph_mode else None, op)
 
   def assign(self, value, use_locking=None, name=None):
     value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
     self._shape.assert_is_compatible_with(value_tensor.shape)
-    with ops.control_dependencies([
+    return self._lazy_read(
         gen_resource_variable_ops.assign_variable_op(
             self.handle,
             value_tensor,
-            name=name)
-    ]):
-      return self.read_value()
+            name=name))
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    with ops.control_dependencies([
+    return self._lazy_read(
         gen_array_ops.resource_strided_slice_assign(
             ref=self.handle,
             begin=begin,
@@ -826,9 +835,12 @@ class ResourceVariable(variables.Variable):
             end_mask=end_mask,
             ellipsis_mask=ellipsis_mask,
             new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
-    ]):
-      return self.value()
+            shrink_axis_mask=shrink_axis_mask))
+
+  def __int__(self):
+    if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:
+      raise TypeError("Non-integer variable can't be converted to integer.")
+    return int(self.value().numpy())
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
@@ -885,6 +897,61 @@ class ResourceVariable(variables.Variable):
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
+
+class _UnreadVariable(ResourceVariable):
+  """Represents a future for a read of a variable.
+
+  Pretends to be the tensor if anyone looks.
+  """
+
+  def __init__(self, handle, dtype, handle_device,  # pylint: disable=super-init-not-called
+               shape, in_graph_mode, deleter, parent_op):
+    # We do not call super init on purpose.
+    self._trainable = False
+    self._save_slice_info = None
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    self._in_graph_mode = in_graph_mode
+    self._handle = handle
+    self._handle_device = handle_device
+    self._shape = shape
+    self._initial_value = None
+    if isinstance(self._handle, ops.EagerTensor):
+      self._handle_name = ""
+    else:
+      self._handle_name = self._handle.name
+    self._dtype = dtype
+    self._constraint = None
+    self._cached_value = None
+    self._is_initialized_op = None
+    self._initializer_op = None
+    self._parent_op = parent_op
+    if context.in_graph_mode():
+      self._graph_element = self.read_value()
+    else:
+      self._graph_element = None
+    self._handle_deleter = deleter
+
+  def value(self):
+    return self._read_variable_op()
+
+  def read_value(self):
+    return self._read_variable_op()
+
+  def _read_variable_op(self):
+    with ops.control_dependencies([self._parent_op]):
+      return gen_resource_variable_ops.read_variable_op(self._handle,
+                                                        self._dtype)
+
+  def set_shape(self, shape):
+    self._shape = shape
+
+  @property
+  def op(self):
+    """The op for this variable."""
+    return self._parent_op
+
+ops.register_tensor_conversion_function(_UnreadVariable, _dense_var_to_tensor)
+ops.register_dense_tensor_like_type(_UnreadVariable)
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -957,3 +1024,9 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+
+
+def is_resource_variable(var):
+  """"Returns True if `var` is to be considered a ResourceVariable."""
+  return isinstance(var, ResourceVariable) or hasattr(
+      var, "_should_act_as_resource_variable")

@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -195,33 +196,66 @@ ops.register_tensor_conversion_function(
     ops.EagerTensor, _convert_to_graph_tensor, priority=-1)
 
 
-class _CapturingContext(object):
-  """Tracks references to Tensors outside this context while it is active."""
+# pylint: disable=invalid-name
+class HelperContext(object):
+  """ControlFlowContext with a customizable AddOp method."""
 
-  def __init__(self):
-    # known_ops are ops which are created while this context is active
-    self.known_ops = set()
+  def __init__(self, add_op_internal):
+    self._add_op_internal = add_op_internal
+    self._values = set()  # control flow code sometimes updates this.
 
-    # captured_tensors are all tensors referenced to by ops in this context but
-    # not produced in it
-    self.captured_tensors = set()
+  def _AddOpInternal(self, op):
+    self._add_op_internal(op)
+
+  @property
+  def outer_context(self):
+    return self._outer_context
+
+  def GetWhileContext(self):
+    if self._outer_context:
+      return self._outer_context.GetWhileContext()
+
+  def IsWhileContext(self):
+    return False
+
+  def IsCondContext(self):
+    return False
+
+  def IsXLAContext(self):
+    return False
 
   def AddOp(self, op):  # pylint: disable=invalid-name
-    if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-      raise ValueError("tfe.defun cannot capture variables created without "
-                       "using tf.get_variable. Op: %s" % op)
-    self.known_ops.add(op)
-    for i in op.inputs:
-      if i.op not in self.known_ops:
-        self.captured_tensors.add(i)
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+
+  def AddName(self, _):
+    pass
+
+  def AddInnerOp(self, op):
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+
+  def AddValue(self, val):
+    if self._outer_context:
+      return self._outer_context.AddValue(val)
+    else:
+      return val
 
   def __enter__(self):
+    # pylint: disable=protected-access
     self._g = ops.get_default_graph()
-    self._old = self._g._get_control_flow_context()  # pylint: disable=protected-access
-    self._g._set_control_flow_context(self)  # pylint: disable=protected-access
+    self._outer_context = self._g._get_control_flow_context()
+    self._g._set_control_flow_context(self)
+    self._nested_contexts = (
+        self._outer_context._nested_contexts
+        if self._outer_context is not None else None)
+    # pylint: enable=protected-access
 
-  def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
-    self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
+  def __exit__(self, *_):
+    self._g._set_control_flow_context(self._outer_context)  # pylint: disable=protected-access
+# pylint: enable=invalid-name
 
 
 def _forward_name(n):
@@ -367,7 +401,20 @@ class GraphModeFunction(object):
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     with self._graph.as_default(), context.graph_mode():
-      c = _CapturingContext()
+      c_known_ops = set()
+      c_captured_tensors = set()
+
+      def add_op_internal(op):
+        if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
+          raise ValueError("tfe.defun cannot capture variables created without "
+                           "using tf.get_variable. Op: %s" % op)
+        c_known_ops.add(op)
+        for i in op.inputs:
+          if i.op not in c_known_ops:
+            c_captured_tensors.add(i)
+
+      c = HelperContext(add_op_internal)
+
       with c:
         filtered_outputs = [x for x in self._returns if x is not None]
         self._out_grad_placeholders = [
@@ -381,7 +428,7 @@ class GraphModeFunction(object):
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
-    captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
+    captures = list(sorted(c_captured_tensors, key=lambda x: x.name))
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
         forward_name, self._graph, self._ops, self._input_placeholders,
@@ -394,7 +441,7 @@ class GraphModeFunction(object):
     # means rerunning the function-defining code will always define the same
     # function, which is useful if we serialize this etc.
     function_def_ops = tuple(x
-                             for x in sorted(c.known_ops, key=lambda x: x.name)
+                             for x in sorted(c_known_ops, key=lambda x: x.name)
                              if x not in all_ignored_ops)
     bname = _backward_name(self._func_name)
     self._backward_function = GraphModeFunction(
@@ -592,10 +639,16 @@ def _defun_internal(name, func, args, kwds):
     with tmp_graph.as_default():
       func_inputs = _get_defun_inputs(args)
 
+      def convert(x):
+        if x is None:
+          return None
+        return ops.convert_to_tensor_or_indexed_slices(x)
+
       with capture_tensors(captures):
         this_tape = tape.push_new_tape()
         try:
           func_outputs = func(*func_inputs, **kwds)
+          func_outputs = nest.map_structure(convert, func_outputs)
         finally:
           tape.pop_tape(this_tape)
         variables = this_tape.watched_variables()
@@ -756,7 +809,11 @@ def defun(func):
      or more Tensor objects).
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
-  return tf_decorator.make_decorator(func, named_defun(func, func.__name__))
+  try:
+    name = func.__name__
+  except AttributeError:
+    name = "function"
+  return tf_decorator.make_decorator(func, named_defun(func, name))
 
 
 def make_defun_op(func, *args, **kwds):
@@ -809,3 +866,208 @@ def make_defun_op(func, *args, **kwds):
   if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
     raise ValueError("Tensor keyword arguments are not supported.")
   return _defun_internal(name, func, args, kwds)
+
+
+class AutomaticControlDependencies(object):
+  """Context manager to automatically add control dependencies.
+
+  Code under this context manager will act as if a sensible set of control
+  dependencies were present. More specifically:
+    1. All stateful ops in the scope will execute
+    2. Stateful ops which modify the same resource will execute in program order
+
+  Note: creating variables in an automatic control dependencies context is not
+  supported (the value of the variables will never change as they will keep
+  getting reinitialized).
+
+  NOT THREAD SAFE
+  """
+
+  def __init__(self):
+    self._returned_tensors = set()
+
+  def mark_as_return(self, tensor):
+    self._returned_tensors.add(tensor)
+
+  def __enter__(self):
+    if context.in_eager_mode():
+      return self
+    # This code assumes no other thread is adding ops to the graph while
+    # we're adding ops to the graph.
+    # TODO(apassos): Fix this by locking the graph or using a temporary
+    # graph (but that would mess up devices and collections at least,
+    # probably other things as well).
+    self._graph = ops.get_default_graph()
+    self._n_operations = len(self._graph.get_operations())
+    return self
+
+  def _process_switch(self, switch_op, ops_which_must_run,
+                      last_op_using_resource_tensor, merge_for_resource):
+    """Processes a switch node for a resource input.
+
+    When tensorflow creates a cond, it creates a control flow context for each
+    branch of the cond. Each external tensor accessed by that branch is routed
+    through a switch op, which gets created in the graph _after_ the op which
+    uses that tensor get created.
+
+    If the resource comes from another switch op we process that one first.
+
+    _process_switch creates a corresponding merge node for the switch node. This
+    merge node is added to the outer control flow context of the switch
+    node. We also ensure that:
+
+      1. The switch node executes after the previous op which used the resource
+         tensor
+
+      2. Any op which uses a resource output of the switch node executes before
+         the merge for the switch node.
+
+      3. The next op which uses the input resource to the switch node (which
+         might be another switch node for the other branch of the conditional)
+         will execute after the merge node is done.
+
+      4. The merge node is marked as must_run so it will run even if no
+         subsequent operation uses the resource.
+
+    Args:
+      switch_op: the switch op to be processed
+      ops_which_must_run: the set of ops which must run
+      last_op_using_resource_tensor: map from resource tensor to last op using
+        it
+      merge_for_resource: map from resource tensor to merge which must follow
+        all usages of it.
+    """
+    inp = switch_op.inputs[0]
+    if inp.dtype == dtypes_module.resource and inp.op.type == "Switch":
+      self._process_switch(inp.op, ops_which_must_run,
+                           last_op_using_resource_tensor, merge_for_resource)
+    if switch_op.outputs[0] in merge_for_resource:
+      return
+    new_merge = control_flow_ops.merge(switch_op.outputs,
+                                       name="artificial_merge")
+    new_merge[0].op._control_flow_context = (  # pylint: disable=protected-access
+        switch_op._control_flow_context.outer_context)  # pylint: disable=protected-access
+    # Ensures the merge always runs
+    ops_which_must_run.add(new_merge[0].op)
+    if inp in last_op_using_resource_tensor:
+      # Ensures the switch exectutes after the previous op using the resource.
+      switch_op._add_control_input(last_op_using_resource_tensor[inp])  # pylint: disable=protected-access
+    # Ensure the next op outside the cond happens after the merge.
+    last_op_using_resource_tensor[inp] = new_merge[0].op
+    if inp in merge_for_resource:
+      merge_for_resource[inp]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
+    for o in switch_op.outputs:
+      # Ensures the merge will execute after all ops inside the cond
+      merge_for_resource[o] = new_merge[0].op
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    if context.in_eager_mode():
+      return
+
+    if self._graph is not ops.get_default_graph():
+      raise RuntimeError(
+          "Graph changed while trying to add control dependencies.")
+
+    # map from resource tensor to the last op which used it
+    last_op_using_resource_tensor = {}
+    # set of conditional and loop exits
+    ops_which_must_run = set()
+    # merge which must depend on ops which use this resource
+    merge_for_resource = {}
+
+    new_operations = self._graph.get_operations()[self._n_operations:]
+
+    # Ensures that uses of resource tensors get serialized properly and all
+    # execute. This is done by keeping a map from resource tensor to the last op
+    # in graph-construction order which used it (last_op_using_resource_tensor).
+    #
+    # Conditionals are written in TensorFlow such that every external tensor
+    # accessed in the conditional goes through a switch op and every return
+    # tensor (it's guaranteed that there will be at least one) goes through a
+    # merge op.
+    #
+    # To handle conditionals, switches are handled in a special way (see
+    # comments for _process_switch). Merge nodes created by TF's conditional
+    # logic (as opposed to by _process_switch) are forced to run and also get a
+    # control dependency added to them to ensure all stateful ops inside their
+    # control flow context run.
+    #
+    # We also ensure that if an op is using a resource output by a switch node
+    # (that is, a resource tensor for which there's a value in
+    # merge_for_resource) this op will run before the merge for that resource.
+    #
+    # We try to add control inputs to nodes respecting their control flow
+    # contexts to avoid dead nodes propagating everywhere and leading to
+    # "retval[0] doesn't have value" errors. If a node gets a control dependency
+    # on a dead node (i.e. a note from an untaken control flow branch) that node
+    # will be marked as dead unless it's a merge node.
+    #
+    # TODO(apassos): serialize non-resource-taking stateful ops as well, and
+    # test that it works. Support while loops. Support init_scope escaping from
+    # this.
+    for op in new_operations:
+      control_inputs = set()
+      # Ensure stateful ops run
+      if self._graph._registered_ops[op.type].is_stateful:  # pylint: disable=protected-access
+        ops_which_must_run.add(op)
+      # Ignore switches (they're handled separately)
+      if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
+        continue
+      # Make merges trigger all other computation which must run
+      if op.type == "Merge":
+        for o in ops_which_must_run:
+          op._add_control_input(o)  # pylint: disable=protected-access
+          for inp in o.inputs:
+            if inp in last_op_using_resource_tensor:
+              last_op_using_resource_tensor[inp] = op
+        ops_which_must_run = set([op])
+        continue
+      for inp in op.inputs:
+        if inp.dtype == dtypes_module.resource:
+          # Deal with switches, finally.
+          if inp.op.type == "Switch":
+            self._process_switch(inp.op, ops_which_must_run,
+                                 last_op_using_resource_tensor,
+                                 merge_for_resource)
+          # Ensure uses of resources are serialized
+          if inp in last_op_using_resource_tensor:
+            if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
+                is op._control_flow_context):  # pylint: disable=protected-access
+              control_inputs.add(last_op_using_resource_tensor[inp])
+          # Ensure merges happen after the closing of a cond block
+          if inp in merge_for_resource:
+            merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
+          last_op_using_resource_tensor[inp] = op
+      control_inputs = [c for c in control_inputs
+                        if c._control_flow_context is op._control_flow_context]  # pylint: disable=protected-access
+      op._add_control_inputs(control_inputs)  # pylint: disable=protected-access
+
+    # Ensure all ops which must run do run
+    for r in self._returned_tensors:
+      r.op._add_control_inputs(  # pylint: disable=protected-access
+          [o for o in ops_which_must_run
+           if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+
+
+def automatic_control_dependencies(f):
+  """Wraps f to automatically insert control dependencies.
+
+  The inserted dependencies ensure that:
+    1. All stateful ops in f run when the result of f runs
+    2. Updates to the same resources happen in order.
+
+  Args:
+    f: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwds):
+    with AutomaticControlDependencies() as a:
+      result = f(*args, **kwds)
+      for t in nest.flatten(result):
+        a.mark_as_return(t)
+      return result
+
+  return tf_decorator.make_decorator(f, wrapper)

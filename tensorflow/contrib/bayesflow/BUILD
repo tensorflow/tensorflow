@@ -100,6 +100,16 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "docstring_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/docstring_util_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "layers_conv_variational_test",
     size = "small",
     srcs = ["python/kernel_tests/layers_conv_variational_test.py"],
@@ -144,6 +154,7 @@ cuda_py_test(
     additional_deps = [
         ":bayesflow_py",
         "//third_party/py/numpy",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python:client_testlib",
@@ -194,6 +205,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_mac"],  # b/73192243
 )
 
 cuda_py_test(

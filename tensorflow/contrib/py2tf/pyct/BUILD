@@ -24,6 +24,7 @@ py_library(
         "ast_util.py",
         "compiler.py",
         "context.py",
+        "inspect_utils.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",
@@ -73,6 +74,17 @@ py_test(
 )
 
 py_test(
+    name = "inspect_utils_test",
+    srcs = ["inspect_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
     srcs_version = "PY2AND3",
@@ -85,6 +97,16 @@ py_test(
 py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "qual_names_test",
+    srcs = ["qual_names_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",

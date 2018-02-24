@@ -185,11 +185,14 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_array_ops",
     ],
 )
 

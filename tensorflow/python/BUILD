@@ -1,5 +1,8 @@
 # Description:
 # Python support for TensorFlow.
+#
+# Public targets:
+#  ":platform" - Low-level and platform-specific Python code.
 
 package(
     default_visibility = [
@@ -132,6 +135,7 @@ py_library(
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":lib",
         ":pywrap_tensorflow",
@@ -2514,6 +2518,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":checkpointable",
         ":control_flow_ops",
         ":dtypes",
         ":framework_ops",
@@ -2844,6 +2849,29 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "checkpointable",
+    srcs = ["training/checkpointable.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":io_ops_gen",
+        ":ops",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_test(
+    name = "checkpointable_test",
+    srcs = ["training/checkpointable_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":checkpointable",
+        ":client_testlib",
     ],
 )
 
@@ -4079,8 +4107,6 @@ py_library(
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
-        "layers/maxout.py",
-        "layers/network.py",
         "layers/normalization.py",
         "layers/pooling.py",
     ],
@@ -4134,25 +4160,6 @@ py_test(
 )
 
 py_test(
-    name = "layers_network_test",
-    size = "small",
-    srcs = ["layers/network_test.py"],
-    main = "layers/network_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":framework_test_lib",
-        ":layers",
-        ":layers_base",
-        ":sparse_ops",
-        "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "layers_core_test",
     size = "small",
     srcs = ["layers/core_test.py"],
@@ -4183,22 +4190,6 @@ py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
-        ":layers",
-        ":math_ops",
-        ":nn_ops",
-        ":random_ops",
-    ],
-)
-
-py_test(
-    name = "layers_maxout_test",
-    size = "small",
-    srcs = ["layers/maxout_test.py"],
-    main = "layers/maxout_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -4598,6 +4589,34 @@ py_test(
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "graph_placer",
+    srcs = [
+        "grappler/controller.py",
+        "grappler/graph_placer.py",
+        "grappler/hierarchical_controller.py",
+    ],
+    deps = [
+        ":python",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "graph_placer_test",
+    size = "large",
+    srcs = ["grappler/graph_placer_test.py"],
+    tags = [
+        "grappler",
+        "no_pip",  # graph_placer is not available in pip.
+    ],
+    deps = [
+        ":client_testlib",
+        ":graph_placer",
+        "//tensorflow/python:math_ops",
     ],
 )
 

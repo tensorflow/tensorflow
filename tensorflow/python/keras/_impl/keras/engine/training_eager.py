@@ -26,69 +26,10 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
+from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
-
-
-def _make_batches(size, batch_size):
-  """Returns a list of batch indices (tuples of indices).
-
-  Arguments:
-      size: Integer, total size of the data to slice into batches.
-      batch_size: Integer, batch size.
-
-  Returns:
-      A list of tuples of array indices.
-  """
-  num_batches = int(np.ceil(size / float(batch_size)))
-  return [(i * batch_size, min(size, (i + 1) * batch_size))
-          for i in range(0, num_batches)]
-
-
-def _slice_arrays(arrays, start=None, stop=None):
-  """Slice an array or list of arrays.
-
-  This takes an array-like, or a list of
-  array-likes, and outputs:
-      - arrays[start:stop] if `arrays` is an array-like
-      - [x[start:stop] for x in arrays] if `arrays` is a list
-
-  Can also work on list/array of indices: `_slice_arrays(x, indices)`
-
-  Arguments:
-      arrays: Single array or list of arrays.
-      start: can be an integer index (start index)
-          or a list/array of indices
-      stop: integer (stop index); should be None if
-          `start` was a list.
-
-  Returns:
-      A slice of the array(s).
-
-  Raises:
-      ValueError: If the value of start is a list and stop is not None.
-  """
-  if arrays is None:
-    return [None]
-  if isinstance(start, list) and stop is not None:
-    raise ValueError('The stop argument has to be None if the value of start is'
-                     'a list.')
-  elif isinstance(arrays, list):
-    if hasattr(start, '__len__'):
-      # hdf5 datasets only support list objects as indices
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
-  else:
-    if hasattr(start, '__len__'):
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return arrays[start]
-    elif hasattr(start, '__getitem__'):
-      return arrays[start:stop]
-    else:
-      return [None]
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _get_metrics_info(metric, internal_output_shapes=None, loss_func=None):
@@ -142,7 +83,7 @@ def _eager_metrics_fn(model, outputs, targets):
     output_metrics = model.nested_metrics[i]
     for nested_output_metric in output_metrics:
       metric_name, metric_fn = _get_metrics_info(
-          nested_output_metric, model._internal_output_shapes[i],
+          nested_output_metric, K.int_shape(model.outputs[i]),
           model.loss_functions[i])
 
       if len(model.output_names) > 1:
@@ -158,7 +99,7 @@ def _eager_metrics_fn(model, outputs, targets):
   return metric_names, metric_results
 
 
-def _model_loss(model, inputs, targets):
+def _model_loss(model, inputs, targets, training=False):
   """Calculates the loss for a given model.
 
   Arguments:
@@ -166,6 +107,7 @@ def _model_loss(model, inputs, targets):
      inputs: The inputs of the given model. This is typically the mini batch of
               data that is fed to the model.
      targets: The predictions or targets of the given model.
+     training: Whether the model should be run in inference or training mode.
 
   Returns:
      Returns the model output, total loss and loss value calculated using the
@@ -173,7 +115,16 @@ def _model_loss(model, inputs, targets):
      applies masking and sample weighting to the loss value.
   """
   total_loss = 0
-  outs = model(inputs)
+  if len(inputs) == 1:
+    if model._expects_training_arg:
+      outs = model.call(inputs[0], training=training)
+    else:
+      outs = model.call(inputs[0])
+  else:
+    if model._expects_training_arg:
+      outs = model.call(inputs, training=training)
+    else:
+      outs = model.call(inputs)
   if not isinstance(outs, list):
     outs = [outs]
 
@@ -229,7 +180,7 @@ def _model_loss(model, inputs, targets):
 
 
 def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
-                          training=True):
+                          training=False):
   """Calculate the loss and gradient for one input batch.
 
      The model weights are updated if training is set to True.
@@ -246,24 +197,25 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
       output of the model, total loss and the loss associated with each output.
 
   Raises:
-      ValueError: If the model loss is 0 or if the trainable weights list is
-                  empty when the trainable parameter is set to True.
+      ValueError: If the model has no loss to optimize.
   """
   K.set_learning_phase(training)
   with GradientTape() as tape:
     outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                           eager_model_outputs)
+                                           eager_model_outputs,
+                                           training=training)
     if loss is None:
       raise ValueError('The model cannot be run '
                        'because it has no loss to optimize.')
   if training:
     if not model._collected_trainable_weights:
-      raise ValueError('The list of trainable weights is empty. Make sure that '
-                       'you are not setting model.trainable to False before '
-                       'compiling the model.')
-    grads = tape.gradient(loss, model._collected_trainable_weights)
-    model.optimizer.apply_gradients(zip(grads,
-                                        model._collected_trainable_weights))
+      logging.warning('The list of trainable weights is empty. Make sure that '
+                      'you are not setting model.trainable to False before '
+                      'compiling the model.')
+    else:
+      grads = tape.gradient(loss, model._collected_trainable_weights)
+      model.optimizer.apply_gradients(zip(grads,
+                                          model._collected_trainable_weights))
   return outs, loss, loss_metrics
 
 
@@ -287,7 +239,7 @@ def train_on_batch(model, ins):
   for i in range(len(model.inputs), len(ins_batch_converted)):
     eager_model_outputs.append(ins_batch_converted[i])
   outs, loss, _ = _process_single_batch(
-      eager_model_inputs, eager_model_outputs, model)
+      eager_model_inputs, eager_model_outputs, model, training=True)
   if not isinstance(outs, list):
     outs = [outs]
   _, metrics_results = _eager_metrics_fn(
@@ -439,16 +391,16 @@ def fit_loop(
     elif shuffle:
       np.random.shuffle(index_array)
 
-    batches = _make_batches(num_train_samples, batch_size)
+    batches = make_batches(num_train_samples, batch_size)
 
     for batch_index, (batch_start, batch_end) in enumerate(batches):
       batch_ids = index_array[batch_start:batch_end]
       try:
         if isinstance(ins[-1], float):
           # Do not slice the training phase flag.
-          ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+          ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
         else:
-          ins_batch = _slice_arrays(ins, batch_ids)
+          ins_batch = slice_arrays(ins, batch_ids)
       except TypeError:
         raise TypeError('TypeError while preparing batch. '
                         'If using HDF5 input data, '
@@ -472,7 +424,8 @@ def fit_loop(
 
       outs, loss, loss_metrics = _process_single_batch(eager_model_inputs,
                                                        eager_model_outputs,
-                                                       model)
+                                                       model,
+                                                       training=True)
 
       if not isinstance(outs, list):
         outs = [outs]
@@ -551,15 +504,15 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
   outs = []
   if verbose == 1:
     progbar = Progbar(target=num_samples)
-  batches = _make_batches(num_samples, batch_size)
+  batches = make_batches(num_samples, batch_size)
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
     if isinstance(ins[-1], float):
       # Do not slice the training phase flag.
-      ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
     else:
-      ins_batch = _slice_arrays(ins, batch_ids)
+      ins_batch = slice_arrays(ins, batch_ids)
 
     ins_batch_converted = []
     for ib in ins_batch:
@@ -574,7 +527,8 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
       eager_model_outputs.append(ins_batch_converted[i])
 
     loss_outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                                eager_model_outputs)
+                                                eager_model_outputs,
+                                                training=False)
     _, metrics_results = _eager_metrics_fn(model, loss_outs,
                                            eager_model_outputs)
     batch_outs = []
@@ -628,15 +582,15 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
       progbar = Progbar(target=num_samples)
 
   outs = []
-  batches = _make_batches(num_samples, batch_size)
+  batches = make_batches(num_samples, batch_size)
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
     if ins and isinstance(ins[-1], float):
       # Do not slice the training phase flag.
-      ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
     else:
-      ins_batch = _slice_arrays(ins, batch_ids)
+      ins_batch = slice_arrays(ins, batch_ids)
 
     ins_batch_converted = []
     for ib in ins_batch:
@@ -646,7 +600,16 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
     for i in range(len(model.inputs)):
       eager_model_inputs.append(ins_batch_converted[i])
 
-    batch_outs = model(eager_model_inputs)
+    if len(eager_model_inputs) == 1:
+      if model._expects_training_arg:
+        batch_outs = model.call(eager_model_inputs[0], training=False)
+      else:
+        batch_outs = model.call(eager_model_inputs[0])
+    else:
+      if model._expects_training_arg:
+        batch_outs = model.call(eager_model_inputs, training=False)
+      else:
+        batch_outs = model.call(eager_model_inputs)
 
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]

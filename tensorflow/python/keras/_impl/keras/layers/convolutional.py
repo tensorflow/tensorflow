@@ -38,8 +38,10 @@ from tensorflow.python.keras._impl.keras.layers.pooling import MaxPooling3D
 # pylint: enable=unused-import
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.layers import convolutional as tf_convolutional_layers
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
 class Conv1D(tf_convolutional_layers.Conv1D, Layer):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -58,7 +60,7 @@ class Conv1D(tf_convolutional_layers.Conv1D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of a single integer,
           specifying the length of the 1D convolution window.
       strides: An integer or tuple/list of a single integer,
@@ -153,6 +155,7 @@ class Conv1D(tf_convolutional_layers.Conv1D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
 class Conv2D(tf_convolutional_layers.Conv2D, Layer):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -170,7 +173,7 @@ class Conv2D(tf_convolutional_layers.Conv2D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for
@@ -286,6 +289,7 @@ class Conv2D(tf_convolutional_layers.Conv2D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
 class Conv3D(tf_convolutional_layers.Conv3D, Layer):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -304,7 +308,7 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 3 integers, specifying the
           depth, height and width of the 3D convolution window.
           Can be a single integer to specify the same value for
@@ -426,6 +430,8 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Conv2DTranspose',
+           'keras.layers.Convolution2DTranspose')
 class Conv2DTranspose(tf_convolutional_layers.Conv2DTranspose, Layer):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -563,6 +569,8 @@ class Conv2DTranspose(tf_convolutional_layers.Conv2DTranspose, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Conv3DTranspose',
+           'keras.layers.Convolution3DTranspose')
 class Conv3DTranspose(tf_convolutional_layers.Conv3DTranspose, Layer):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -711,6 +719,8 @@ class Conv3DTranspose(tf_convolutional_layers.Conv3DTranspose, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SeparableConv1D',
+           'keras.layers.SeparableConvolution1D')
 class SeparableConv1D(tf_convolutional_layers.SeparableConv1D, Layer):
   """Depthwise separable 1D convolution.
 
@@ -849,6 +859,8 @@ class SeparableConv1D(tf_convolutional_layers.SeparableConv1D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SeparableConv2D',
+           'keras.layers.SeparableConvolution2D')
 class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
   """Depthwise separable 2D convolution.
 
@@ -865,7 +877,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for
@@ -1012,6 +1024,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.UpSampling1D')
 class UpSampling1D(Layer):
   """Upsampling layer for 1D inputs.
 
@@ -1047,6 +1060,7 @@ class UpSampling1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.UpSampling2D')
 class UpSampling2D(Layer):
   """Upsampling layer for 2D inputs.
 
@@ -1114,6 +1128,7 @@ class UpSampling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.UpSampling3D')
 class UpSampling3D(Layer):
   """Upsampling layer for 3D inputs.
 
@@ -1186,6 +1201,7 @@ class UpSampling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ZeroPadding1D')
 class ZeroPadding1D(Layer):
   """Zero-padding layer for 1D input (e.g. temporal sequence).
 
@@ -1226,6 +1242,7 @@ class ZeroPadding1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ZeroPadding2D')
 class ZeroPadding2D(Layer):
   """Zero-padding layer for 2D input (e.g. picture).
 
@@ -1327,6 +1344,7 @@ class ZeroPadding2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ZeroPadding3D')
 class ZeroPadding3D(Layer):
   """Zero-padding layer for 3D data (spatial or spatio-temporal).
 
@@ -1444,6 +1462,7 @@ class ZeroPadding3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Cropping1D')
 class Cropping1D(Layer):
   """Cropping layer for 1D input (e.g. temporal sequence).
 
@@ -1488,6 +1507,7 @@ class Cropping1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Cropping2D')
 class Cropping2D(Layer):
   """Cropping layer for 2D input (e.g. picture).
 
@@ -1619,6 +1639,7 @@ class Cropping2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Cropping3D')
 class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g.
 

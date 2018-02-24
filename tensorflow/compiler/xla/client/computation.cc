@@ -64,4 +64,14 @@ void Computation::ResetWithoutFreeing() {
   parent_ = nullptr;
 }
 
+StatusOr<ProgramShape> Computation::GetProgramShape() const {
+  GetComputationShapeRequest request;
+  *request.mutable_computation() = handle_;
+  GetComputationShapeResponse response;
+
+  TF_RETURN_IF_ERROR(parent_->GetComputationShape(&request, &response));
+
+  return std::move(*response.mutable_program_shape());
+}
+
 }  // namespace xla

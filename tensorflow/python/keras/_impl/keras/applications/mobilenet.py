@@ -93,6 +93,7 @@ from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 BASE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'
@@ -102,6 +103,7 @@ def relu6(x):
   return K.relu(x, max_value=6)
 
 
+@tf_export('keras.applications.mobilenet.preprocess_input')
 def preprocess_input(x):
   """Preprocesses a numpy array encoding a batch of images.
 
@@ -303,6 +305,8 @@ class DepthwiseConv2D(Conv2D):
     return config
 
 
+@tf_export('keras.applications.MobileNet',
+           'keras.applications.mobilenet.MobileNet')
 def MobileNet(input_shape=None,
               alpha=1.0,
               depth_multiplier=1,
@@ -557,7 +561,7 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
           and width and height should be no smaller than 32.
           E.g. `(224, 224, 3)` would be one valid value.
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       alpha: controls the width of the network.
           - If `alpha` < 1.0, proportionally decreases the number
               of filters in each layer.
@@ -623,7 +627,7 @@ def _depthwise_conv_block(inputs,
           (with `channels_last` data format) or
           (channels, rows, cols) (with `channels_first` data format).
       pointwise_conv_filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the pointwise convolution).
+          (i.e. the number of output filters in the pointwise convolution).
       alpha: controls the width of the network.
           - If `alpha` < 1.0, proportionally decreases the number
               of filters in each layer.

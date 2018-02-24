@@ -801,6 +801,22 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   return instruction;
 }
 
+HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
+  CHECK_EQ(opcode(), HloOpcode::kFusion);
+  CHECK_EQ(operand_count(),
+           fused_instructions_computation()->parameter_instructions().size());
+  const int64 param_no = operand_count();
+  // Name the parameter after the instruction it represents in the outer
+  // (non-fusion) computation.
+  string param_name = StrCat(new_operand->name(), ".param_", param_no);
+  HloInstruction* fused_parameter =
+      fused_instructions_computation()->AddParameter(
+          HloInstruction::CreateParameter(param_no, new_operand->shape(),
+                                          param_name));
+  AppendOperand(new_operand);
+  return fused_parameter;
+}
+
 void HloInstruction::MergeFusionInstruction(
     HloInstruction* instruction_to_merge) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
@@ -993,13 +1009,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // Clone's operand was not already an operand of the fusion
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
-      int64 param_no = fused_parameters.size();
-      // Name the parameter after the instruction it represents in the outer
-      // (non-fusion) computation.
-      string param_name = StrCat(operand->name(), ".param_", param_no);
-      fused_param = fused_instructions_computation()->AddParameter(
-          CreateParameter(param_no, operand->shape(), param_name));
-      AppendOperand(operand);
+      fused_param = AddFusionOperand(operand);
     }
     TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
   }
@@ -1084,6 +1094,7 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kHostCompute:
       return true;
     default: {
       // Check if any of the called computations has a side effect.
@@ -1121,6 +1132,19 @@ bool HloInstruction::HasSideEffect() const {
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateHostCompute(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kHostCompute, shape));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  instruction->channel_name_ = channel_name.ToString();
+  instruction->cost_estimate_ns_ = cost_estimate_ns;
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     tensorflow::gtl::ArraySlice<HloInstruction*> elements) {
   std::vector<Shape> element_shapes;
@@ -1129,6 +1153,38 @@ bool HloInstruction::HasSideEffect() const {
   }
   Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
+    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const GatherDimensionNumbers& gather_dim_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kGather, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(gather_indices);
+  instruction->gather_dimension_numbers_ =
+      MakeUnique<GatherDimensionNumbers>(gather_dim_numbers);
+  c_copy(window_bounds, std::back_inserter(instruction->gather_window_bounds_));
+  return instruction;
+}
+
+/* static */ GatherDimensionNumbers HloInstruction::MakeGatherDimNumbers(
+    tensorflow::gtl::ArraySlice<int64> output_window_dims,
+    tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims) {
+  GatherDimensionNumbers gather_dim_numbers;
+  for (int64 output_window_dim : output_window_dims) {
+    gather_dim_numbers.add_output_window_dims(output_window_dim);
+  }
+  for (int64 elided_window_dim : elided_window_dims) {
+    gather_dim_numbers.add_elided_window_dims(elided_window_dim);
+  }
+  for (int64 gather_dim_to_input_dim : gather_dims_to_operand_dims) {
+    gather_dim_numbers.add_gather_dims_to_operand_dims(gather_dim_to_input_dim);
+  }
+
+  return gather_dim_numbers;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
@@ -1211,6 +1267,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kCustomCall:
       clone = CreateCustomCall(shape, new_operands, custom_call_target_);
+      break;
+    case HloOpcode::kHostCompute:
+      clone = CreateHostCompute(shape, new_operands, channel_name_,
+                                cost_estimate_ns_);
       break;
     case HloOpcode::kConcatenate:
       clone = CreateConcatenate(shape, new_operands, dimensions(0));
@@ -1361,11 +1421,18 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kRecv:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreateRecv(shape, channel_id());
+      // The shape is a tuple, but CreateRecv() wants the raw data shape.
+      clone =
+          CreateRecv(ShapeUtil::GetTupleElementShape(shape, 0), channel_id());
       break;
     case HloOpcode::kRecvDone:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateRecvDone(new_operands[0]);
+      break;
+    case HloOpcode::kGather:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateGather(shape, new_operands[0], new_operands[1],
+                           *gather_dimension_numbers_, gather_window_bounds_);
       break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
@@ -1661,8 +1728,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTuple:
       return true;
 
-    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kFusion:
+      return fusion_kind() == other.fusion_kind() &&
+             eq_computations(fused_instructions_computation(),
+                             other.fused_instructions_computation());
+
+    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
@@ -1705,6 +1776,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
       return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
                                            other.dot_dimension_numbers());
+
+    case HloOpcode::kGather:
+      return protobuf_util::ProtobufEquals(gather_dimension_numbers(),
+                                           other.gather_dimension_numbers()) &&
+             gather_window_bounds() == other.gather_window_bounds();
 
     // FFT has various types & lengths.
     case HloOpcode::kFft:
@@ -1776,6 +1852,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kHostCompute:
       return false;
   }
 }
@@ -1801,7 +1878,8 @@ void HloInstruction::RemoveUser(HloInstruction* user) {
 
 Status HloInstruction::ReplaceUseWith(HloInstruction* user,
                                       HloInstruction* new_producer) {
-  TF_RET_CHECK(ShapeUtil::Compatible(shape(), new_producer->shape()))
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
       << "this shape: " << ShapeUtil::HumanString(shape())
       << ", replacement shape: "
       << ShapeUtil::HumanString(new_producer->shape());
@@ -1824,8 +1902,8 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
   TF_RET_CHECK(operand_num >= 0);
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
-  TF_RET_CHECK(
-      ShapeUtil::Compatible(old_operand->shape(), new_operand->shape()))
+  TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
+                                                        new_operand->shape()))
       << old_operand->shape().ShortDebugString() << " is not compatible with "
       << new_operand->shape().ShortDebugString();
   operands_[operand_num] = new_operand;
@@ -2135,6 +2213,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
   }
+  if (gather_dimension_numbers_ != nullptr) {
+    extra.push_back(GatherDimensionNumbersToString());
+    extra.push_back(
+        StrCat("window_bounds={", Join(gather_window_bounds(), ","), "}"));
+  }
   if (opcode() == HloOpcode::kFft) {
     extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
     extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
@@ -2265,6 +2348,14 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
   if (dot_dimension_numbers_ != nullptr) {
     *proto.mutable_dot_dimension_numbers() = *dot_dimension_numbers_;
+  }
+  if (gather_dimension_numbers_ != nullptr) {
+    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
+  }
+  if (opcode() == HloOpcode::kGather) {
+    for (int64 bound : gather_window_bounds()) {
+      proto.add_gather_window_bounds(bound);
+    }
   }
   for (int i = 0; i < slice_starts_.size(); ++i) {
     auto* slice_dimension = proto.add_slice_dimensions();
@@ -2560,6 +2651,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
+    case HloOpcode::kHostCompute:
+      return visitor->HandleHostCompute(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
     case HloOpcode::kWhile:
@@ -2580,6 +2673,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSend(this);
     case HloOpcode::kSendDone:
       return visitor->HandleSendDone(this);
+    case HloOpcode::kGather:
+      return visitor->HandleGather(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3261,6 +3356,23 @@ string HloInstruction::DotDimensionNumbersToString() const {
                           Join(dnums.rhs_contracting_dimensions(), ","), "}"));
 
   return Join(result, ", ");
+}
+
+string HloInstruction::GatherDimensionNumbersToString() const {
+  CHECK_NE(gather_dimension_numbers_.get(), nullptr);
+  string output_window_dims =
+      StrCat("output_window_dims={",
+             Join(gather_dimension_numbers_->output_window_dims(), ","), "}");
+  string elided_window_dims =
+      StrCat("elided_window_dims={",
+             Join(gather_dimension_numbers_->elided_window_dims(), ","), "}");
+  string gather_dims_to_operand_dims = StrCat(
+      "gather_dims_to_operand_dims={",
+      Join(gather_dimension_numbers_->gather_dims_to_operand_dims(), ","), "}");
+
+  return Join<std::initializer_list<string>>(
+      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims},
+      ", ");
 }
 
 bool HloInstruction::CouldBeBitcast() const {

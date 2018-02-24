@@ -30,6 +30,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 
 GRAPH_MODE = 0
@@ -59,7 +60,8 @@ class _EagerContext(threading.local):
 
   def __init__(self):
     super(_EagerContext, self).__init__()
-    self.device_spec = pydev.DeviceSpec.from_string("")
+    self.device_spec = pydev.DeviceSpec.from_string(
+        "/job:localhost/replica:0/task:0/device:CPU:0")
     self.device_name = self.device_spec.to_string()
     self.mode = _default_mode
     self.scope_name = ""
@@ -599,3 +601,10 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+# Not every user creates a Context via context.context()
+# (for example, enable_eager_execution in python/framework/ops.py),
+# but they do all import this file.  Note that IS_IN_GRAPH_MODE and
+# in_graph_mode are both parameterless functions.
+is_in_graph_mode.IS_IN_GRAPH_MODE = in_graph_mode

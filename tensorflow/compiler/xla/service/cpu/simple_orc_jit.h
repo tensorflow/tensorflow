@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
@@ -44,11 +46,9 @@ namespace cpu {
 class SimpleOrcJIT {
  public:
   using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer;
-  using CompileFtor =
-      std::function<llvm::object::OwningBinary<llvm::object::ObjectFile>(
-          llvm::Module&)>;
+  using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
-  using ModuleHandleT = CompileLayerT::ModuleHandleT;
+  using VModuleKeyT = llvm::orc::VModuleKey;
 
   // Create a new JIT, targeting the host architecture.
   // The |target_options| parameter allows customization of certain code
@@ -78,16 +78,16 @@ class SimpleOrcJIT {
     return target_machine_->getTargetTriple();
   }
 
-  // Add a module to the JIT. Returns an opaque handle that can be used to later
+  // Add a module to the JIT. Returns an opaque key that can be used to later
   // remove this module.
-  ModuleHandleT AddModule(std::unique_ptr<llvm::Module> module);
+  VModuleKeyT AddModule(std::unique_ptr<llvm::Module> module);
 
   // Remove a module from the JIT and free the memory associated with it.
-  void RemoveModule(ModuleHandleT handle);
+  void RemoveModule(VModuleKeyT key);
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::JITSymbol FindSymbol(const std::string& name);
+  llvm::JITSymbol FindCompiledSymbol(const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
@@ -96,10 +96,15 @@ class SimpleOrcJIT {
   }
 
  private:
-  std::vector<ModuleHandleT> module_handles_;
+  llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
+
+  std::vector<VModuleKeyT> module_keys_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;
   const Disassembler disassembler_;
   const llvm::DataLayout data_layout_;
+  llvm::orc::SymbolStringPool string_pool_;
+  llvm::orc::ExecutionSession execution_session_;
+  std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
   ExternalConstantPool external_constant_pool_;

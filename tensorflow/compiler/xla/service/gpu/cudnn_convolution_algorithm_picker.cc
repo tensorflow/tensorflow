@@ -135,15 +135,6 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
       break;
   }
 
-  // Remove any algorithms with tensor math enabled.  These have lower precision
-  // than regular algorithms, and we don't yet have a way to turn this on/off in
-  // XLA.
-  algorithms.erase(std::remove_if(algorithms.begin(), algorithms.end(),
-                                  [&](const AlgorithmDesc& a) {
-                                    return a.tensor_ops_enabled();
-                                  }),
-                   algorithms.end());
-
   return algorithms;
 }
 
@@ -172,7 +163,7 @@ string NumBytesToString(int64 bytes) {
 // cache misses and doing extra work.  Overall, caching doesn't seem worth the
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
-optional<std::pair<int64, int64>>
+optional<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
     const Shape& output_shape, const Window& window,
@@ -222,6 +213,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       ShouldIncludeWinogradNonfusedAlgo(input_shape, output_shape, dnums);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
+
   for (const AlgorithmDesc& alg :
        GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -229,14 +221,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    bool launch_ok =
-        RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                            se::DeviceMemory<float>(input_buf.ValueOrDie()),
-                            se::DeviceMemory<float>(filter_buf.ValueOrDie()),
-                            se::DeviceMemory<float>(output_buf.ValueOrDie()),
-                            &scratch_allocator, window, dnums,
-                            AlgorithmConfig(alg), &stream, &profile_result)
-            .ok();
+    bool launch_ok = RunCudnnConvolution(
+                         kind, input_shape, filter_shape, output_shape,
+                         input_buf.ValueOrDie(), filter_buf.ValueOrDie(),
+                         output_buf.ValueOrDie(), &scratch_allocator, window,
+                         dnums, AlgorithmConfig(alg), &stream, &profile_result)
+                         .ok();
 
     if (launch_ok && profile_result.is_valid()) {
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
@@ -260,8 +250,9 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             << AlgorithmToString(best_result.algorithm()) << ", takes "
             << best_result.elapsed_time_in_ms() << "ms, and uses "
             << best_result_bytes_used << "B of scratch memory.";
-    return std::make_pair(best_result.algorithm().algo_id(),
-                          best_result_bytes_used);
+    return std::make_tuple(best_result.algorithm().algo_id(),
+                           best_result.algorithm().tensor_ops_enabled(),
+                           best_result_bytes_used);
   }
 
   LOG(WARNING) << "All algorithms tried for convolution " << instr->ToString()
@@ -277,19 +268,19 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   const auto& lhs_shape = instr->operand(0)->shape();
   const auto& rhs_shape = instr->operand(1)->shape();
   const auto& conv_result_shape = instr->shape().tuple_shapes(0);
-  optional<std::pair<int64, int64>> alg_and_scratch_bytes;
+  optional<std::tuple<int64, bool, int64>> alg_scratch_and_tc;
   if (call_target == kCudnnConvForwardCallTarget) {
-    alg_and_scratch_bytes = PickBestAlgorithm(
+    alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kForward, /*input_shape=*/lhs_shape,
         /*filter_shape=*/rhs_shape, /*output_shape=*/conv_result_shape,
         instr->window(), instr->convolution_dimension_numbers(), instr);
   } else if (call_target == kCudnnConvBackwardInputCallTarget) {
-    alg_and_scratch_bytes = PickBestAlgorithm(
+    alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kBackwardInput, /*input_shape=*/conv_result_shape,
         /*filter_shape=*/rhs_shape, /*output_shape=*/lhs_shape, instr->window(),
         instr->convolution_dimension_numbers(), instr);
   } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
-    alg_and_scratch_bytes = PickBestAlgorithm(
+    alg_scratch_and_tc = PickBestAlgorithm(
         CudnnConvKind::kBackwardFilter, /*input_shape=*/lhs_shape,
         /*filter_shape=*/conv_result_shape, /*output_shape=*/rhs_shape,
         instr->window(), instr->convolution_dimension_numbers(), instr);
@@ -298,17 +289,20 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
                << instr->ToString();
   }
 
-  if (!alg_and_scratch_bytes.has_value()) {
+  if (!alg_scratch_and_tc.has_value()) {
     return false;
   }
 
   int64 algorithm;
+  bool tensor_ops_enabled;
   int64 scratch_bytes;
-  std::tie(algorithm, scratch_bytes) = *alg_and_scratch_bytes;
+
+  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) = *alg_scratch_and_tc;
 
   VLOG(1) << "Setting cudnn conv to use algorithm " << algorithm << " and "
           << NumBytesToString(scratch_bytes)
-          << " of scratch memory: " << instr->ToString();
+          << " of scratch memory: " << instr->ToString()
+          << " tensor_ops_enabled: " << tensor_ops_enabled;
 
   // Replace instr with a new CustomCall which has the correct algorithm, and
   // whose output shape has the appropriate amount of scratch memory.
@@ -318,10 +312,15 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
                                  ShapeUtil::MakeShape(U8, {scratch_bytes})});
   HloInstruction* algorithm_hlo = computation->AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<int64>(algorithm)));
+  HloInstruction* tensor_ops_enabled_hlo =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR0<bool>(tensor_ops_enabled)));
+
   HloInstruction* new_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           new_call_shape,
-          {instr->mutable_operand(0), instr->mutable_operand(1), algorithm_hlo},
+          {instr->mutable_operand(0), instr->mutable_operand(1), algorithm_hlo,
+           tensor_ops_enabled_hlo},
           instr->custom_call_target()));
   new_call->set_window(instr->window());
   new_call->set_convolution_dimension_numbers(

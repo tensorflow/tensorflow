@@ -44,6 +44,113 @@ filegroup(
 )
 
 cc_library(
+    name = "bfloat16_support",
+    srcs = ["bfloat16_support.cc"],
+    hdrs = ["bfloat16_support.h"],
+    deps = [
+        ":hlo",
+    ],
+)
+
+cc_library(
+    name = "bfloat16_conversion_folding",
+    srcs = ["bfloat16_conversion_folding.cc"],
+    hdrs = ["bfloat16_conversion_folding.h"],
+    deps = [
+        ":bfloat16_support",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "bfloat16_conversion_folding_test",
+    srcs = ["bfloat16_conversion_folding_test.cc"],
+    deps = [
+        ":bfloat16_conversion_folding",
+        ":bfloat16_support",
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "bfloat16_normalization",
+    srcs = ["bfloat16_normalization.cc"],
+    hdrs = ["bfloat16_normalization.h"],
+    deps = [
+        ":bfloat16_support",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "bfloat16_normalization_test",
+    srcs = ["bfloat16_normalization_test.cc"],
+    deps = [
+        ":bfloat16_normalization",
+        ":bfloat16_support",
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "bfloat16_propagation",
+    srcs = ["bfloat16_propagation.cc"],
+    hdrs = ["bfloat16_propagation.h"],
+    deps = [
+        ":bfloat16_support",
+        ":hlo",
+        ":hlo_dataflow_analysis",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "bfloat16_propagation_test",
+    srcs = ["bfloat16_propagation_test.cc"],
+    deps = [
+        ":bfloat16_propagation",
+        ":bfloat16_support",
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
     name = "shape_inference",
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
@@ -70,7 +177,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -643,6 +751,7 @@ cc_library(
     hdrs = ["llvm_compiler.h"],
     deps = [
         ":compiler",
+        "//tensorflow/core:lib_internal",
         "@llvm//:core",
     ],
 )

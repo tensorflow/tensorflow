@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import re
 from tensorflow.contrib import graph_editor
+from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
 from tensorflow.contrib.quantize.python import quant_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training_util
 
 # Quantizable operation types that are supported by the quantization rewrite.
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
@@ -40,16 +40,17 @@ _WEIGHT_TYPES = {'Variable', 'VariableV2'}
 
 
 def Quantize(graph,
+             is_training,
              weight_bits=8,
              activation_bits=8,
              ema_decay=0.999,
              quant_delay=None,
-             vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-             is_training=True):
+             vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES):
   """Updates graph with quantization operations.
 
   Args:
     graph: Graph to modify.
+    is_training: Whether quantizing training graph or eval graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
     ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
@@ -60,7 +61,6 @@ def Quantize(graph,
       training.
     vars_collection: (Optional) Collection where to store the variables for
       quantization interval ends.
-    is_training: (Optional) Whether quantizing training graph or eval graph.
   Raises:
     ValueError: When quantization fails.
   """
@@ -70,15 +70,15 @@ def Quantize(graph,
     context = _GetContextFromOp(layer_match.layer_op)
     _InsertQuantOp(
         context,
+        'weights_quant',
         layer_match.weight_tensor.op, [layer_match.layer_op],
-        name='weights_quant',
+        is_training,
         moving_avg=False,
-        bits=weight_bits,
         ema_decay=ema_decay,
         quant_delay=quant_delay,
-        is_training=is_training,
         narrow_range=True,
-        vars_collection=vars_collection)
+        vars_collection=vars_collection,
+        bits=weight_bits)
 
     # Quantize the activations.
     consumer_ops = input_to_ops_map.ConsumerOperations(
@@ -88,23 +88,25 @@ def Quantize(graph,
       add_context = re.search(r'^(.*)/([^/]+)', context).group(1)
     _InsertQuantOp(
         add_context,
+        'act_quant',
         layer_match.activation_op,
         consumer_ops,
-        name='act_quant',
+        is_training,
         moving_avg=True,
-        init_min=0.0,
         ema_decay=ema_decay,
         quant_delay=quant_delay,
+        vars_collection=vars_collection,
         bits=activation_bits,
-        vars_collection=vars_collection)
+        init_min=0.0)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
     # the bypass is the bias add, and the output is the activation.
     if layer_match.bypass_op is not None:
       _InsertQuantOp(
           context,
+          'conv_quant',
           layer_match.bias_add_op, [layer_match.bypass_op],
-          name='conv_quant',
+          is_training,
           moving_avg=True,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
@@ -112,10 +114,14 @@ def Quantize(graph,
           bits=activation_bits)
       _InsertQuantOp(
           add_context,
+          'add_quant',
           layer_match.bypass_op,
           input_to_ops_map.ConsumerOperations(layer_match.bypass_op),
-          name='add_quant',
+          is_training,
           moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
           bits=activation_bits)
 
 
@@ -201,6 +207,18 @@ def _FindLayersToQuantize(graph):
     yield _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op,
                       bias_add_op)
 
+  # Match the final layer, where there will not be an activation and instead
+  # the output of the final BiasAdd must be quantized, so we treat it as the
+  # 'activation_op' in the _LayerMatch.
+  # TODO(suharshs): Figure out how to quantize this final layer across many
+  # models.
+  final_layer_matcher = graph_matcher.GraphMatcher(bias_add_pattern)
+  for match_result in final_layer_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_pattern)
+    activation_op = match_result.get_op(bias_add_pattern)
+    yield _LayerMatch(layer_op, weight_tensor, activation_op, None, None)
+
 
 class _LayerMatch(object):
   """Contains all information related to a matched Layer."""
@@ -235,9 +253,10 @@ class _LayerMatch(object):
 
 
 def _InsertQuantOp(context,
+                   name,
                    producer,
                    consumers,
-                   name,
+                   is_training,
                    moving_avg=True,
                    init_min=-6.0,
                    init_max=6.0,
@@ -245,16 +264,16 @@ def _InsertQuantOp(context,
                    ema_decay=0.999,
                    quant_delay=None,
                    vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-                   is_training=True,
                    narrow_range=False):
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 
   Args:
     context: Context w,here producer and consumer operations are nested.
+    name: Name for the new quantization op within the context.
     producer: Producer operation of the pairs where quantization will be
       inserted.
     consumers: Consumer operations of the pairs.
-    name: Name for the new quantization op within the context.
+    is_training: Whether quantizing training graph or eval graph.
     moving_avg: Specifies whether to use exponential moving average or just
       the last value seen.
     init_min: Starting minimum value for the new quantization op.
@@ -268,9 +287,8 @@ def _InsertQuantOp(context,
       training.
     vars_collection: (Optional) Collection where to store the variables for
       quantization interval ends.
-    is_training: (Optional) Whether quantizing training graph or eval graph.
     narrow_range: Whether to use the narrow quantization range
-        [1; 2^bits - 1] or wide range [0; 2^bits - 1].
+      [1; 2^bits - 1] or wide range [0; 2^bits - 1].
   Raises:
     ValueError: When producer operation is not directly connected to the
       consumer operation.
@@ -303,7 +321,7 @@ def _InsertQuantOp(context,
 
   if quant_delay and quant_delay > 0:
     activate_quant = math_ops.greater_equal(
-        training_util.get_or_create_global_step(),
+        common.CreateOrGetQuantizationStep(),
         quant_delay,
         name=name_prefix + '/activate_quant')
     quant = control_flow_ops.cond(

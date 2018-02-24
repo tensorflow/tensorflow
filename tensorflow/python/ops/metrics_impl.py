@@ -672,7 +672,7 @@ def auc(labels,
         x = fp_rate
         y = rec
       else:  # curve == 'PR'.
-        prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
+        prec = math_ops.div(tp, tp + fp + epsilon)
         x = rec
         y = prec
       if summation_method == 'trapezoidal':
@@ -923,8 +923,8 @@ def mean_per_class_accuracy(labels,
         weights = array_ops.reshape(weights, [-1])
       weights = math_ops.to_float(weights)
 
-      is_correct = is_correct * weights
-      ones = ones * weights
+      is_correct *= weights
+      ones *= weights
 
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
@@ -1247,13 +1247,8 @@ def mean_tensor(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    def compute_mean(total, count, name):
-      non_zero_count = math_ops.maximum(
-          count, array_ops.ones_like(count), name=name)
-      return math_ops.truediv(total, non_zero_count, name=name)
-
-    mean_t = compute_mean(total, count, 'value')
-    update_op = compute_mean(update_total_op, update_count_op, 'update_op')
+    mean_t = _safe_div(total, count, 'value')
+    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)

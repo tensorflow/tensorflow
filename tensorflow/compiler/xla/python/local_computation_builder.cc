@@ -278,6 +278,12 @@ const Computation& LocalComputation::computation() const {
   return computation_;
 }
 
+StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation_.GetProgramShape());
+  return std::move(*program_shape.mutable_result());
+}
+
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
@@ -301,6 +307,11 @@ ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
 std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
     const ComputationDataHandle& operand) {
   return builder_.GetShape(operand).ConsumeValueOrDie();
+}
+
+StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
+  return program_shape.result();
 }
 
 ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
@@ -355,6 +366,12 @@ ComputationDataHandle LocalComputationBuilder::Slice(
     tensorflow::gtl::ArraySlice<int64> limit_indices,
     tensorflow::gtl::ArraySlice<int64> strides) {
   return builder_.Slice(operand, start_indices, limit_indices, strides);
+}
+
+ComputationDataHandle LocalComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  return builder_.SliceInDim(operand, start_index, limit_index, stride, dimno);
 }
 
 ComputationDataHandle LocalComputationBuilder::DynamicSlice(

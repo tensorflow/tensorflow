@@ -159,13 +159,11 @@ cc_library(
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
-        ":cpu_runtime_avx",
-        ":cpu_runtime_neon",
-        ":cpu_runtime_sse4_1",
         ":custom_call_target_registry",
         ":disassembler",
         ":external_constant_pool",
         ":orc_jit_memory_mapper",
+        ":runtime_fp16",
         ":runtime_conv2d",
         ":runtime_fft",
         ":runtime_fork_join",
@@ -183,6 +181,20 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
+)
+
+cc_library(
+    name = "runtime_fp16",
+    srcs = [
+        "runtime_fp16.cc",
+    ],
+    hdrs = [
+        "runtime_fp16.h",
+    ],
+    copts = runtime_copts(),
+    deps = [
+        "//tensorflow/core:framework_lite",
+    ],
 )
 
 cc_library(
@@ -408,9 +420,6 @@ cc_library(
     hdrs = ["compiler_functor.h"],
     deps = [
         ":cpu_runtime",
-        ":cpu_runtime_avx",
-        ":cpu_runtime_neon",
-        ":cpu_runtime_sse4_1",
         ":disassembler",
         ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
@@ -427,43 +436,6 @@ cc_library(
         "@llvm//:object",
         "@llvm//:support",
         "@llvm//:target",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_sse4_1",
-    srcs = ["cpu_runtime_sse4_1.cc"],
-    hdrs = ["cpu_runtime_sse4_1.h"],
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_avx",
-    srcs = ["cpu_runtime_avx.cc"],
-    hdrs = ["cpu_runtime_avx.h"],
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_neon",
-    srcs = ["cpu_runtime_neon.cc"],
-    hdrs = ["cpu_runtime_neon.h"],
-    # runtime_copts() enables -mfpu=neon
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"] + runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
     ],
 )
 

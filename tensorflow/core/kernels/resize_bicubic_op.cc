@@ -480,9 +480,8 @@ class ResizeBicubicOp : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<float, 4>::Tensor output_data =
-        st.output->tensor<float, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     interpolate_with_caching<T>(input_data, st, output_data);
   }
@@ -510,9 +509,8 @@ class ResizeBicubicOpGrad : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<float, 4>::ConstTensor input_grad =
-        input.tensor<float, 4>();
-    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
+    TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
     ResizeBicubicGrad<T>(input_grad, st, output_grad);
   }

@@ -24,7 +24,9 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
@@ -396,17 +398,13 @@ class LossWeightingTest(test.TestCase):
                   optimizer=RMSPropOptimizer(learning_rate=0.001))
 
     np.random.seed(43)
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+    (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=train_samples,
         test_samples=test_samples,
         input_shape=(input_dim,),
         num_classes=num_classes)
-    int_y_test = y_test.copy()
     int_y_train = y_train.copy()
-    # convert class vectors to binary class matrices
     y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
-    test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
     class_weight[weighted_class] = 2.
@@ -548,8 +546,10 @@ class TestDynamicTrainability(test.TestCase):
     model.trainable = False
     model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
     model.trainable = True
-    with self.assertRaises(ValueError):
+    with test.mock.patch.object(logging, 'warning') as mock_log:
       model.train_on_batch(x, y)
+      self.assertRegexpMatches(str(mock_log.call_args),
+                               'trainable weights is empty')
 
   def test_trainable_argument(self):
     x = np.random.random((5, 3))
@@ -559,8 +559,10 @@ class TestDynamicTrainability(test.TestCase):
     model.add(keras.layers.Dense(2, input_dim=3, trainable=False))
     model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
     out = model.predict(x)
-    with self.assertRaises(ValueError):
+    with test.mock.patch.object(logging, 'warning') as mock_log:
       model.train_on_batch(x, y)
+      self.assertRegexpMatches(str(mock_log.call_args),
+                               'trainable weights is empty')
     out_2 = model.predict(x)
     self.assertAllClose(out, out_2)
 
@@ -570,8 +572,10 @@ class TestDynamicTrainability(test.TestCase):
     model = keras.models.Model(inputs, output)
     model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
     out = model.predict(x)
-    with self.assertRaises(ValueError):
+    with test.mock.patch.object(logging, 'warning') as mock_log:
       model.train_on_batch(x, y)
+      self.assertRegexpMatches(str(mock_log.call_args),
+                               'trainable weights is empty')
     out_2 = model.predict(x)
     self.assertAllClose(out, out_2)
 
@@ -702,22 +706,22 @@ class TestTrainingUtils(test.TestCase):
 
   def test_slice_arrays(self):
     input_a = np.random.random((10, 3))
-    keras.engine.training._slice_arrays(None)
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(None)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None, [1, 1], None, [1, 1]]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = None
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
 
   def test_fit_with_BatchNorm(self):
     model = keras.models.Sequential()

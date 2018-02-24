@@ -725,9 +725,16 @@ class FunctionTest(test.TestCase):
 
       y = Foo(constant_op.constant([[10.]]))
 
+      @function.Defun()
+      def Bar():
+        return w
+
+      z = Bar()
+
     with self.test_session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(y.eval(), [[12.0]])
+      self.assertAllEqual(z.eval(), [[1.0]])
 
   def testCaptureControls(self):
     g = ops.Graph()
@@ -1458,7 +1465,7 @@ class FunctionInlineControlTest(test.TestCase):
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-        return math_ops.reduce_sum(x, 1, keep_dims=True)
+        return math_ops.reduce_sum(x, 1, keepdims=True)
 
       @function.Defun(dtype)
       def Forward(x):

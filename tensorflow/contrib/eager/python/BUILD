@@ -52,7 +52,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
@@ -69,6 +69,7 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -220,15 +221,20 @@ py_test(
 )
 
 py_library(
-    name = "checkpointable",
-    srcs = ["checkpointable.py"],
+    name = "checkpointable_utils",
+    srcs = ["checkpointable_utils.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/contrib/eager/proto:checkpointable_object_graph_proto_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:state_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
@@ -236,17 +242,19 @@ py_library(
 )
 
 py_test(
-    name = "checkpointable_test",
-    srcs = ["checkpointable_test.py"],
+    name = "checkpointable_utils_test",
+    srcs = ["checkpointable_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpointable",
+        ":checkpointable_utils",
         ":network",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",

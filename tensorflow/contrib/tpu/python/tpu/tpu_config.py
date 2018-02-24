@@ -55,17 +55,18 @@ class TPUConfig(
       system before returning to CPU host for each `Session.run`. This means
       global step is increased `iterations_per_loop` times in one `Session.run`.
       It is recommended to be set as number of global steps for next checkpoint.
-    num_shards: The number of model replicas in the system. For
-      non-model-parallelism case, this number equals the total number of TPU
-      cores. For model-parallelism, the total number of TPU cores equals
+    num_shards: (Deprecated, ignored by TPUEstimator).
+      The number of model replicas in the system. For non-model-parallelism
+      case, this number equals the total number of TPU cores. For
+      model-parallelism, the total number of TPU cores equals
       product(computation_shape) * num_shards.
-    computation_shape: A list of size 3 which describes the shape of a model
-      replica's block of cores. This is required by model-parallelism which
-      enables partitioning the model to multiple cores. For example, [2, 2, 1]
-        means the model
-      is partitioned across 4 cores which span two cores in both x and y
-      coordinates. Set it to `None` for non-model-parallelism. Please refer to
-      ${tf.contrib.tpu.TopologyProto} for the geometry of a TPU mesh.
+    computation_shape: Defaults to `None`, which disables model parallelism. A
+      list of size 3 which describes the shape of a model replica's block of
+      cores. This is required by model-parallelism which enables partitioning
+      the model to multiple cores. For example, [2, 2, 1] means the model is
+      partitioned across 4 cores which span two cores in both x and y
+      coordinates.  Please refer to ${tf.contrib.tpu.TopologyProto} for the
+      geometry of a TPU mesh.
     per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
       rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`
       is invoked once on each host. With Per-Core input pipeline deployment, it
@@ -80,13 +81,14 @@ class TPUConfig(
     initial_infeed_sleep_secs: The number of seconds the infeed thread should
       wait before enqueueing the first batch. This helps avoid timeouts for
       models that require a long compilation time.
+
     Raises:
       ValueError: If `computation_shape` or `computation_shape` are invalid.
   """
 
   def __new__(cls,
               iterations_per_loop=2,
-              num_shards=2,
+              num_shards=None,
               computation_shape=None,
               per_host_input_for_training=True,
               tpu_job_name=None,
@@ -97,7 +99,8 @@ class TPUConfig(
                                     'TPUConfig iterations_per_loop')
 
     # Check num_shards.
-    util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
+    if num_shards is not None:
+      util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
 
     # Check computation_shape
     if computation_shape is not None and len(computation_shape) != 3:
@@ -112,18 +115,6 @@ class TPUConfig(
       if any(computation_shape_array < 1) or any(computation_shape_array > 2):
         raise ValueError('computation_shape elements can only be 1 or 2; got '
                          'computation_shape={}'.format(computation_shape))
-      max_replicas_per_host = (
-          _NUM_CORES_PER_HOST // np.prod(computation_shape_array))
-      if num_shards > max_replicas_per_host and (
-          num_shards % max_replicas_per_host != 0):
-        raise ValueError(
-            '{0} shards can not be evenly distributed across'
-            ' multiple hosts. Each shard needs {1} cores and each'
-            ' host has {2} cores. Thus {0} shards needs {3} hosts.'
-            ' Please adjust num shards so that num_shards is'
-            ' divisible by {4} or <= {4}.'.format(
-                num_shards, np.prod(computation_shape), _NUM_CORES_PER_HOST,
-                num_shards / max_replicas_per_host, max_replicas_per_host))
 
     # Check initial_infeed_sleep_secs.
     if initial_infeed_sleep_secs:

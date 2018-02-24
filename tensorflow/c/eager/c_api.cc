@@ -161,10 +161,11 @@ int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index) {
 }
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h) {
-  // This might be a bit confusing as a tensor on CPU can sometimes return
-  // "CPU:0" and sometimes "/job:localhost/replica:0/task:0/cpu:0".
-  // TODO(ashankar): Figure out which one would be nicer.
-  return (h->d == nullptr) ? "CPU:0" : h->d->name().c_str();
+  // TODO(apassos) this will be potentially incorrect in the distributed case as
+  // our local device will have a name which depends on the ClusterSpec and
+  // hence will require the context to resolve.
+  return (h->d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                           : h->d->name().c_str();
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
@@ -453,6 +454,19 @@ void TFE_OpSetAttrShapeList(TFE_Op* op, const char* attr_name,
   op->attrs.Set(attr_name,
                 tensorflow::gtl::ArraySlice<tensorflow::TensorShapeProto>(
                     proto.get(), num_values));
+}
+
+void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
+                               const TFE_Op** value, int num_values) {
+  std::unique_ptr<tensorflow::NameAttrList[]> funcs(
+      new tensorflow::NameAttrList[num_values]);
+  for (int i = 0; i < num_values; i++) {
+    funcs[i].set_name(value[i]->name);
+    value[i]->attrs.FillAttrValueMap(funcs[i].mutable_attr());
+  }
+  op->attrs.Set(attr_name,
+                tensorflow::gtl::ArraySlice<const tensorflow::NameAttrList>(
+                    funcs.get(), num_values));
 }
 
 namespace {

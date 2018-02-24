@@ -145,8 +145,8 @@ class MklInputConversionOp : public OpKernel {
     const MklShape* mkl_shape;
     const Tensor* tf_tensor;
     MklShape* tf_mkl_shape;
-    uint mkl_tensor_index;
-    uint tf_tensor_index;
+    uint32 mkl_tensor_index;
+    uint32 tf_tensor_index;
     if (input_shape_0.IsMklTensor() && !input_shape_1.IsMklTensor()) {
       mkl_tensor = &input_tensor_0;
       mkl_shape = &input_shape_0;
