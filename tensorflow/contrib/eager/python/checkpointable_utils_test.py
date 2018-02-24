@@ -899,5 +899,115 @@ class CheckpointingTests(test.TestCase):
         saver.restore(save_path)
         self.assertEqual(before_ops, graph.get_operations())
 
+
+class CheckpointCompatibilityTests(test.TestCase):
+
+  def _initialized_model(self):
+    input_value = constant_op.constant([[3.]])
+    network = MyNetwork()
+    optimizer = CheckpointableAdam(0.001)
+    optimizer_step = training_util.get_or_create_global_step()
+    root_checkpointable = Checkpoint(
+        optimizer=optimizer, network=network, optimizer_step=optimizer_step)
+    train_op = optimizer.minimize(
+        functools.partial(network, input_value),
+        global_step=optimizer_step)
+    self.evaluate(checkpointable_utils.gather_initializers(
+        root_checkpointable))
+    self.evaluate(train_op)
+    # A regular variable, a slot variable, and a non-slot Optimizer variable
+    # with known values to check when loading.
+    self.evaluate(network._named_dense.bias.assign([1.]))
+    self.evaluate(optimizer.get_slot(
+        var=network._named_dense.bias, name="m").assign([2.]))
+    beta1_power, _ = optimizer._get_beta_accumulators()
+    self.evaluate(beta1_power.assign(3.))
+    return root_checkpointable
+
+  def _set_sentinels(self, root_checkpointable):
+    self.evaluate(root_checkpointable.network._named_dense.bias.assign([101.]))
+    self.evaluate(
+        root_checkpointable.optimizer.get_slot(
+            var=root_checkpointable.network._named_dense.bias, name="m")
+        .assign([102.]))
+    beta1_power, _ = root_checkpointable.optimizer._get_beta_accumulators()
+    self.evaluate(beta1_power.assign(103.))
+
+  def _check_sentinels(self, root_checkpointable):
+    self.assertAllEqual(
+        [1.], self.evaluate(root_checkpointable.network._named_dense.bias))
+    self.assertAllEqual([2.], self.evaluate(
+        root_checkpointable.optimizer.get_slot(
+            var=root_checkpointable.network._named_dense.bias, name="m")))
+    beta1_power, _ = root_checkpointable.optimizer._get_beta_accumulators()
+    self.assertAllEqual(3., self.evaluate(beta1_power))
+
+  def _write_name_based_checkpoint(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with context.graph_mode():
+      save_graph = ops.Graph()
+      with save_graph.as_default(), self.test_session(
+          graph=save_graph) as session:
+        root = self._initialized_model()
+        name_saver = core_saver.Saver()
+        return name_saver.save(
+            sess=session, save_path=checkpoint_prefix,
+            global_step=root.optimizer_step)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testLoadFromNameBasedSaver(self):
+    """Save a name-based checkpoint, load it using the object-based API."""
+    save_path = self._write_name_based_checkpoint()
+    root = self._initialized_model()
+    self._set_sentinels(root)
+    with self.assertRaises(AssertionError):
+      self._check_sentinels(root)
+    object_saver = checkpointable_utils.Saver(root)
+    status = object_saver.restore(save_path)
+    with self.assertRaises(AssertionError):
+      status.assert_consumed()
+    status.run_restore_ops()
+    self._check_sentinels(root)
+    self._set_sentinels(root)
+    status.initialize_or_restore()
+    self._check_sentinels(root)
+
+  # TODO(allenl): Test for the core name-based saver loading object-based
+  # checkpoints once object-based checkpointing is in core.
+
+  def testSaveGraphLoadEager(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with context.graph_mode():
+      save_graph = ops.Graph()
+      with save_graph.as_default(), self.test_session(
+          graph=save_graph) as session:
+        root = self._initialized_model()
+        object_saver = checkpointable_utils.Saver(root)
+        save_path = object_saver.save(
+            session=session, file_prefix=checkpoint_prefix)
+    with context.eager_mode():
+      root = self._initialized_model()
+      self._set_sentinels(root)
+      root.restore(save_path).assert_consumed()
+      self._check_sentinels(root)
+
+  def testSaveEagerLoadGraph(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with context.eager_mode():
+      root = self._initialized_model()
+      object_saver = checkpointable_utils.Saver(root)
+      save_path = object_saver.save(file_prefix=checkpoint_prefix)
+    with context.graph_mode():
+      save_graph = ops.Graph()
+      with save_graph.as_default(), self.test_session(
+          graph=save_graph):
+        root = self._initialized_model()
+        self._set_sentinels(root)
+        root.restore(save_path).assert_consumed().run_restore_ops()
+        self._check_sentinels(root)
+
 if __name__ == "__main__":
   test.main()
