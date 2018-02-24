@@ -66,9 +66,9 @@ class UniqueTest(test.TestCase):
     for dtype in [np.int32, np.int64]:
       x = np.array([[1, 0, 0], [1, 0, 0], [2, 0, 0]])
       with self.test_session() as sess:
-        y0, idx0 = gen_array_ops.unique_v2(x, axis=np.array([0], dtype))
+        y0, idx0 = array_ops.unique(x, axis=dtype(0))
         tf_y0, tf_idx0 = sess.run([y0, idx0])
-        y1, idx1 = gen_array_ops.unique_v2(x, axis=np.array([1], dtype))
+        y1, idx1 = array_ops.unique(x, axis=dtype(1))
         tf_y1, tf_idx1 = sess.run([y1, idx1])
       self.assertAllEqual(tf_y0, np.array([[1, 0, 0], [2, 0, 0]]))
       self.assertAllEqual(tf_idx0, np.array([0, 0, 1]))
@@ -76,8 +76,7 @@ class UniqueTest(test.TestCase):
       self.assertAllEqual(tf_idx1, np.array([0, 1, 1]))
 
   def testInt32V2(self):
-    # This test is only temporary, once V2 is used
-    # by default, the axis will be wrapped to allow `axis=None`.
+    # This test invokes unique_v2 with axis=None
     x = np.random.randint(2, high=10, size=7000)
     with self.test_session() as sess:
       y, idx = gen_array_ops.unique_v2(x, axis=np.array([], np.int32))
