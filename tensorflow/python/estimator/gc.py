@@ -203,7 +203,7 @@ def _get_paths(base_dir, parser):
   for r in raw_paths:
     # ListDirectory() return paths with "/" at the last if base_dir was GCS URL
     if r[-1] == "/":
-        r = r[0:len(r)-1]
+      r = r[0:len(r)-1]
     p = parser(Path(os.path.join(compat.as_str_any(base_dir),
                                  compat.as_str_any(r)),
                     None))
