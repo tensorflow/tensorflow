@@ -27,6 +27,7 @@ pkg_tar(
         ":cheaders",
         ":clib",
         ":clicenses",
+        ":eager_cheaders",
     ],
 )
 
@@ -57,9 +58,22 @@ pkg_tar(
     name = "cheaders",
     files = [
         "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
     ],
     package_dir = "include/tensorflow/c",
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "eager_cheaders",
+    files = [
+        "//tensorflow/c/eager:headers",
+    ],
+    package_dir = "include/tensorflow/c/eager",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
