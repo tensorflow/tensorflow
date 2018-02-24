@@ -455,9 +455,9 @@ class Estimator(object):
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
       yield_single_examples: If False, yield the whole batch as returned by the
-        `model_fn` instead of decomposing the batch into individual elements. This
-        is useful if `model_fn` returns some tensors whose first dimension is not
-        equal to the batch size.
+        `model_fn` instead of decomposing the batch into individual elements.
+        This is useful if `model_fn` returns some tensors whose first dimension
+        is not equal to the batch size.
 
     Yields:
       Evaluated values of `predictions` tensors.
