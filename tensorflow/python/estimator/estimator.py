@@ -261,7 +261,7 @@ class Estimator(object):
     def _check_string_or_not(name):
         if isinstance(name, six.string_types):
             return name
-        raise TypeError("Received type {} and was expecting an input of type string or a list of strings".format(type(name)))
+        raise TypeError("Received type {} and was expecting an input of type string or a list of strings.".format(type(name)))
 
     _check_checkpoint_available(self.model_dir)
     if isinstance(name, six.string_types):
