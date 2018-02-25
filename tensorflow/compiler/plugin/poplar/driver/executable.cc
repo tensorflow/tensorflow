@@ -36,7 +36,8 @@ PoplarExecutable::PoplarExecutable(
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
-      parameter_shapes_(std::move(parameter_shapes)) {}
+      parameter_shapes_(std::move(parameter_shapes)),
+      first_execution_(true) {}
 
 PoplarExecutable::~PoplarExecutable() {}
 
@@ -69,12 +70,16 @@ PoplarExecutable::ExecuteOnStream(
 
   se::DeviceMemoryBase result;
   TF_ASSIGN_OR_RETURN(result,
-                      poplarExecutor->ExecuteEngine(poplar_engine_,
+                      poplarExecutor->ExecuteEngine(executor,
+                                                    poplar_engine_,
                                                     memory_allocator,
                                                     result_shape(),
                                                     argument_buffers,
                                                     output_map_,
-                                                    parameter_shapes_));
+                                                    parameter_shapes_,
+                                                    first_execution_));
+
+  first_execution_ = false;
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 

@@ -149,6 +149,9 @@ message IPUOptions {
       int32 tiles_per_ipu = 2;
     };
     IpuModelConfig ipu_model_config = 2;
+
+    // Set to enable compilation profiling to be generated
+    bool enable_profile = 3;
   };
 
   // Options controlling the configuration of each IPU device

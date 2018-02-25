@@ -68,6 +68,7 @@ class PoplarExecutable : public Executable {
   std::shared_ptr<poplar::Engine> poplar_engine_;
   sep::OutputMap output_map_;
   std::vector<Shape> parameter_shapes_;
+  bool first_execution_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

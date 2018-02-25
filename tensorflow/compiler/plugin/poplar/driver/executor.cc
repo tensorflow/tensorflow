@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -105,9 +106,8 @@ host::HostStream *AsPoplarStream(Stream *stream) {
   return dynamic_cast<host::HostStream *>(stream->implementation());
 }
 
-PoplarExecutor::PoplarExecutor(const PluginConfig &plugin_config)
-    : report_counter(0) {
-}
+PoplarExecutor::PoplarExecutor() :
+    profile_enabled_(false) {}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -240,6 +240,8 @@ port::Status PoplarExecutor::InitializePoplarDevice(
     int ordinal,
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
+  // TODO - if there is a previously configured device then close it
+
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
   if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
@@ -258,6 +260,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
       model.IPUExchangeType =
           poplar::IPUModel::ExchangeType::AGGRESSIVE_MULTICAST;
       poplar_device_ = model.createDevice();
+      profile_enabled_ = cfg.enable_profile();
       break;
     }
     case tensorflow::IPUOptions::DeviceConfig::CPU:
@@ -269,6 +272,15 @@ port::Status PoplarExecutor::InitializePoplarDevice(
           tensorflow::strings::Printf(
               "unrecognized poplar device type for ordinal %d: %d", ordinal,
               type)};
+  }
+  return port::Status::OK();
+}
+
+port::Status PoplarExecutor::GetCompilerReports(std::string& out) {
+  std::lock_guard <std::recursive_mutex> g(mutex_);
+  while (reports_.size() > 0) {
+    out += reports_.front();
+    reports_.pop_front();
   }
   return port::Status::OK();
 }
@@ -417,12 +429,14 @@ PoplarExecutor::GetTupleBufferByIndex(const se::DeviceMemoryBase& base,
 }
 
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
+PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
+                              const std::shared_ptr<poplar::Engine>& engine,
                               xla::DeviceMemoryAllocator* allocator,
                               const xla::Shape& output_shape,
                               const Args& args,
                               const OutputMap& output_map,
-                              const std::vector<xla::Shape>& parameter_shapes) {
+                              const std::vector<xla::Shape>& parameter_shapes,
+                              bool dump_report_) {
 
   perftools::gputools::DeviceMemoryBase retbuf;
   int64 tensor_count;
@@ -497,26 +511,18 @@ PoplarExecutor::ExecuteEngine(const std::shared_ptr<poplar::Engine>& engine,
       engine->run(0);
 
       try {
-        const char *report_prefix = getenv("TF_POPLAR_REPORT_FILENAME");
-        if (report_prefix != NULL) {
-          std::string report_filename(report_prefix);
-          report_filename.append(
-                  tensorflow::strings::Printf("_%d", report_counter));
-
-          std::ofstream stream;
-          stream.open(report_filename);
+        if (profile_enabled_ && dump_report_) {
 
           poplar::Engine::ReportOptions opts;
           opts.doLayerWiseProfile = true;
-          if (getenv("TF_POPLAR_REPORT_TENSOR_STORAGE") != NULL) {
-            opts.showVariableStorage = true;
-          }
-          engine->report(stream, opts);
+          // TODO enable this using flags? opts.showVariableStorage = true;
 
-          report_counter++;
+          std::stringstream stream;
+          engine->report(stream, opts);
+          reports_.push_back(stream.str());
         }
       } catch (std::logic_error e) {
-        LOG(WARNING) << "Error producing execution report: " << e.what();
+        VLOG(2) << "Error producing execution report: " << e.what();
       }
     }
   }

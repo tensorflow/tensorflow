@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/no_op.h"
 
-
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
 
@@ -57,7 +56,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   }
 
   auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
-  p->SetPoplarDeviceOptions(options.config.ipu_options());
+  TF_RETURN_IF_ERROR(p->ConfigurePoplarDevices(options.config.ipu_options()));
 
   int visible_devices = p->VisibleDeviceCount();
   for (int ordinal=0; ordinal<visible_devices; ordinal++) {

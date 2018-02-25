@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -60,6 +61,10 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
+  tensorflow::IPUOptions opts;
+  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
@@ -100,6 +105,10 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  tensorflow::IPUOptions opts;
+  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -142,6 +151,10 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  tensorflow::IPUOptions opts;
+  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -198,6 +211,10 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
+  tensorflow::IPUOptions opts;
+  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
@@ -246,6 +263,10 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  tensorflow::IPUOptions opts;
+  auto *p = static_cast<sep::PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 

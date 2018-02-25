@@ -51,30 +51,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ops",
-    srcs = [
-        "kernels/ipu_kernels.cc",
-        "ops/ipu_ops.cc",
-    ],
-    hdrs = [
-        "kernels/ipu_kernels.h",
-    ],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-        "@protobuf_archive//:protobuf_headers",
-    ],
-    alwayslink = True,
-)
-
-tf_gen_op_wrapper_py(
-    name = "ipu_ops",
-    deps = [
-        ":ops",
-    ],
-)
-
-cc_library(
     name = "driver",
     srcs = [
         "driver/compiler.cc",
@@ -145,6 +121,43 @@ cc_library(
 )
 
 cc_library(
+    name = "kernels",
+    srcs = [
+        "kernels/ipu_kernels.cc",
+    ],
+    hdrs = [
+        "kernels/ipu_kernels.h",
+    ],
+    deps = [
+        ":driver",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "ops",
+    srcs = [
+        "ops/ipu_ops.cc",
+    ],
+    hdrs = [],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "ipu_ops",
+    deps = [
+        ":ops",
+    ],
+)
+
+cc_library(
     name = "poplar_lib",
     srcs = [
         "driver/xla_ipu_device.cc",
@@ -153,6 +166,7 @@ cc_library(
     deps = [
         ":driver",
         ":ops",
+        ":kernels",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",

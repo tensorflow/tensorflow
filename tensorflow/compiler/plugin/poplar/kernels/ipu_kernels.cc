@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = perftools::gputools;
+namespace se = perftools::gputools;
+namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace tensorflow {
 
@@ -30,11 +34,22 @@ IpuSummaryOp::IpuSummaryOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {}
 
 void IpuSummaryOp::Compute(OpKernelContext* ctx) {
+
+  auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+  OP_REQUIRES(ctx, platform.ok(),
+              StreamExecutorUtil::ConvertStatus(platform.status()));
+
+  auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+
   Tensor* output_tensor = nullptr;
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output("out", TensorShape({}), &output_tensor));
   auto output_flat = output_tensor->flat<string>();
-  output_flat(0) = "POPLAR COMPILATION OUTPUT";
+
+  std::string out;
+  OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
+
+  output_flat(0) = out;
 }
 
 IpuSummaryOp::~IpuSummaryOp() {}

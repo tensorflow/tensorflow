@@ -60,7 +60,7 @@ using ConversionList = std::vector<ConversionFn>;
 
 class PoplarExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit PoplarExecutor(const PluginConfig &plugin_config);
+  explicit PoplarExecutor();
   ~PoplarExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
@@ -206,13 +206,17 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
+  port::Status GetCompilerReports(std::string&);
+
   port::StatusOr<DeviceMemoryBase>
-  ExecuteEngine(const std::shared_ptr<poplar::Engine>&,
+  ExecuteEngine(perftools::gputools::StreamExecutor* executor,
+                const std::shared_ptr<poplar::Engine>&,
                 xla::DeviceMemoryAllocator* allocator,
                 const xla::Shape&,
                 const Args&,
                 const OutputMap&,
-                const std::vector<xla::Shape>&);
+                const std::vector<xla::Shape>&,
+                bool);
 
   port::StatusOr<DeviceMemoryBase>
   GetTupleBufferByIndex(const DeviceMemoryBase& base, int64 value);
@@ -267,7 +271,9 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   std::list<TensorControl*> allocations_;
 
-  unsigned int report_counter;
+  bool profile_enabled_;
+
+  std::list<std::string> reports_;
 };
 
 }  // namespace poplarplugin

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace perftools {
@@ -68,7 +69,11 @@ class PoplarPlatform : public Platform {
 
   void UnregisterTraceListener(TraceListener* listener) override;
 
-  void SetPoplarDeviceOptions(const tensorflow::IPUOptions& opts);
+  // Poplar specific interface
+
+  port::Status ConfigurePoplarDevices(const tensorflow::IPUOptions& opts);
+
+  port::Status GetCompilerReports(std::string&);
 
  private:
   // This platform's name.
@@ -79,9 +84,6 @@ class PoplarPlatform : public Platform {
 
   // The number of poplar devices to be created
   int num_devices_;
-
-  // The user specified device options
-  tensorflow::IPUOptions device_options_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(PoplarPlatform);
 };

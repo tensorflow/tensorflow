@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
+#include "tensorflow/compiler/xla/status_macros.h"
+
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
@@ -84,26 +86,9 @@ port::StatusOr<StreamExecutor*> PoplarPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 PoplarPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<PoplarExecutor>(config.plugin_config));
-  auto init_status = executor->Init(config.ordinal, config.device_options);
-  if (!init_status.ok()) {
-    return port::Status{
-        port::error::INTERNAL,
-        port::Printf(
-            "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
-  }
+      this, port::MakeUnique<PoplarExecutor>());
+  TF_RETURN_IF_ERROR(executor->Init(config.ordinal, config.device_options));
 
-  auto* p = static_cast<PoplarExecutor*>(executor->implementation());
-  if (device_options_.device_config().size() > config.ordinal) {
-    TF_RETURN_IF_ERROR(
-        p->InitializePoplarDevice(config.ordinal,
-            device_options_.device_config(config.ordinal)));
-  } else {
-    tensorflow::IPUOptions::DeviceConfig default_config;
-    TF_RETURN_IF_ERROR(p->InitializePoplarDevice(config.ordinal,
-                                                 default_config));
-  }
   return std::move(executor);
 }
 
@@ -116,9 +101,41 @@ void PoplarPlatform::UnregisterTraceListener(TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
 }
 
-void
-PoplarPlatform::SetPoplarDeviceOptions(const tensorflow::IPUOptions& opts) {
-  device_options_ = opts;
+port::Status
+PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
+
+  for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
+    StreamExecutor *executor;
+    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+
+    auto *e = static_cast<PoplarExecutor *>(executor->implementation());
+
+    if (opts.device_config().size() > ordinal) {
+      TF_RETURN_IF_ERROR(
+          e->InitializePoplarDevice(ordinal, opts.device_config(ordinal)));
+    } else {
+      tensorflow::IPUOptions::DeviceConfig default_config;
+      TF_RETURN_IF_ERROR(e->InitializePoplarDevice(ordinal, default_config));
+    }
+  }
+
+  return port::Status::OK();
+}
+
+port::Status PoplarPlatform::GetCompilerReports(std::string& out) {
+  for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
+    StreamExecutor* executor;
+    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+
+    auto* e = static_cast<PoplarExecutor*>(executor->implementation());
+
+    std::string reports;
+    TF_RETURN_IF_ERROR(e->GetCompilerReports(reports));
+
+    out += reports;
+  }
+
+  return port::Status::OK();
 }
 
 static void InitializePoplarPlatform() {
