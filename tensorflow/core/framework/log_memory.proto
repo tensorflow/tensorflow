@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "LogMemoryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/tensor_description.proto";
 
 message MemoryLogStep {
