@@ -561,7 +561,7 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
           and width and height should be no smaller than 32.
           E.g. `(224, 224, 3)` would be one valid value.
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       alpha: controls the width of the network.
           - If `alpha` < 1.0, proportionally decreases the number
               of filters in each layer.
@@ -627,7 +627,7 @@ def _depthwise_conv_block(inputs,
           (with `channels_last` data format) or
           (channels, rows, cols) (with `channels_first` data format).
       pointwise_conv_filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the pointwise convolution).
+          (i.e. the number of output filters in the pointwise convolution).
       alpha: controls the width of the network.
           - If `alpha` < 1.0, proportionally decreases the number
               of filters in each layer.

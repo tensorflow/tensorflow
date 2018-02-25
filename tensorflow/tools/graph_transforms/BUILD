@@ -103,6 +103,7 @@ cc_library(
         "quantize_nodes.cc",
         "quantize_weights.cc",
         "remove_attribute.cc",
+        "remove_control_dependencies.cc",
         "remove_device.cc",
         "remove_ema.cc",
         "remove_nodes.cc",

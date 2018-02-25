@@ -256,6 +256,10 @@ bool IsRestore(const NodeDef& node) {
           node.op() == "RestoreSlice");
 }
 
+bool IsReverse(const NodeDef& node) {
+  return node.op() == "Reverse" || node.op() == "ReverseV2";
+}
+
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
@@ -271,6 +275,10 @@ bool IsSend(const NodeDef& node) {
 bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
+
+bool IsShuffle(const NodeDef& node) {
+  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
+}
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 

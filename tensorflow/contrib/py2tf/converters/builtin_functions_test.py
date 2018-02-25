@@ -26,6 +26,8 @@ from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
@@ -45,7 +47,9 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
                          sess.run(
                              result.test_fn(constant_op.constant([0, 0, 0]))))
 
-  def test_print(self):
+        self.assertEqual(3, result.test_fn([0, 0, 0]))
+
+  def test_print_with_op(self):
 
     def test_fn(a):
       print(a)
@@ -53,16 +57,41 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {'print': print})
     node = builtin_functions.transform(node, self.ctx)
 
-    with self.compiled(node) as result:
-      try:
-        out_capturer = six.StringIO()
-        sys.stdout = out_capturer
-        result.test_fn('a')
-        self.assertEqual(out_capturer.getvalue(), 'a\n')
-      finally:
-        sys.stdout = sys.__stdout__
+    # Note: it's relevant not to include script_ops.py_func here, to verify
+    # that tf.Print is used.
+    with self.compiled(node, logging_ops.Print) as result:
+      with self.test_session() as sess:
+        try:
+          out_capturer = six.StringIO()
+          sys.stdout = out_capturer
+          result.test_fn('a')
+          sess.run(sess.graph.get_operations())
+          self.assertEqual(out_capturer.getvalue(), 'a\n')
+        finally:
+          sys.stdout = sys.__stdout__
 
-  def test_print_tuple(self):
+  def test_print_with_op_multiple_values(self):
+
+    def test_fn(a, b):
+      print(a, b)
+
+    node = self.parse_and_analyze(test_fn, {'print': print})
+    node = builtin_functions.transform(node, self.ctx)
+
+    # Note: it's relevant not to include script_ops.py_func here, to verify
+    # that tf.Print is used.
+    with self.compiled(node, logging_ops.Print) as result:
+      with self.test_session() as sess:
+        try:
+          out_capturer = six.StringIO()
+          sys.stdout = out_capturer
+          result.test_fn('a', 1)
+          sess.run(sess.graph.get_operations())
+          self.assertEqual(out_capturer.getvalue(), 'a 1\n')
+        finally:
+          sys.stdout = sys.__stdout__
+
+  def test_print_with_py_func(self):
 
     def test_fn(a, b, c):
       print(a, b, c)
@@ -70,18 +99,18 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {'print': print})
     node = builtin_functions.transform(node, self.ctx)
 
-    with self.compiled(node) as result:
-      try:
-        out_capturer = six.StringIO()
-        sys.stdout = out_capturer
-        result.test_fn('a', 1, [2, 3])
-        # It appears that the print output looks odd only under Python 2.
-        if six.PY2:
-          self.assertEqual(out_capturer.getvalue(), "('a', 1, [2, 3])\n")
-        else:
+    # Note: it's relevant not to include logging_ops.Print here, to verify
+    # that py_func is used.
+    with self.compiled(node, script_ops.py_func) as result:
+      with self.test_session() as sess:
+        try:
+          out_capturer = six.StringIO()
+          sys.stdout = out_capturer
+          result.test_fn('a', 1, [2, 3])
+          sess.run(sess.graph.get_operations())
           self.assertEqual(out_capturer.getvalue(), 'a 1 [2, 3]\n')
-      finally:
-        sys.stdout = sys.__stdout__
+        finally:
+          sys.stdout = sys.__stdout__
 
 
 if __name__ == '__main__':

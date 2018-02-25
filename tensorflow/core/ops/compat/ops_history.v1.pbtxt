@@ -11461,6 +11461,14 @@ op {
   }
 }
 op {
+  name: "ConsumeMutexLock"
+  input_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "ControlTrigger"
 }
 op {
@@ -12813,28 +12821,6 @@ op {
       }
     }
   }
-}
-op {
-  name: "CriticalSectionOp"
-  output_arg {
-    name: "resource"
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  is_stateful: true
 }
 op {
   name: "CropAndResize"
@@ -17434,78 +17420,6 @@ op {
   }
 }
 op {
-  name: "ExecuteInCriticalSection"
-  input_arg {
-    name: "critical_section"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "arguments"
-    type_list_attr: "Targuments"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "output_types"
-  }
-  attr {
-    name: "f"
-    type: "func"
-  }
-  attr {
-    name: "Targuments"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "ExecuteInCriticalSection"
-  input_arg {
-    name: "critical_section"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "arguments"
-    type_list_attr: "Targuments"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "output_types"
-  }
-  attr {
-    name: "f"
-    type: "func"
-  }
-  attr {
-    name: "Targuments"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-  }
-  is_stateful: true
-}
-op {
   name: "Exit"
   input_arg {
     name: "data"
@@ -20555,6 +20469,65 @@ op {
     has_minimum: true
     minimum: -1
   }
+}
+op {
+  name: "GeneratorDataset"
+  input_arg {
+    name: "init_func_other_args"
+    type_list_attr: "Tinit_func_args"
+  }
+  input_arg {
+    name: "next_func_other_args"
+    type_list_attr: "Tnext_func_args"
+  }
+  input_arg {
+    name: "finalize_func_other_args"
+    type_list_attr: "Tfinalize_func_args"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "init_func"
+    type: "func"
+  }
+  attr {
+    name: "next_func"
+    type: "func"
+  }
+  attr {
+    name: "finalize_func"
+    type: "func"
+  }
+  attr {
+    name: "Tinit_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tnext_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tfinalize_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "GetSessionHandle"
@@ -30109,6 +30082,40 @@ op {
   attr {
     name: "value_dtype"
     type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "MutexLock"
+  input_arg {
+    name: "mutex"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "MutexV2"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -64367,6 +64374,14 @@ op {
   }
 }
 op {
+  name: "Timestamp"
+  output_arg {
+    name: "ts"
+    type: DT_DOUBLE
+  }
+  is_stateful: true
+}
+op {
   name: "TopK"
   input_arg {
     name: "input"
@@ -65216,29 +65231,6 @@ op {
         type: DT_INT64
       }
     }
-  }
-}
-op {
-  name: "UniqueDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
   }
 }
 op {

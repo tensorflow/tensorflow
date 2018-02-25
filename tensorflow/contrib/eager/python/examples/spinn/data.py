@@ -227,6 +227,29 @@ def calculate_bins(length2count, min_bin_size):
   return bounds
 
 
+def encode_sentence(sentence, word2index):
+  """Encode a single sentence as word indices and shift-reduce code.
+
+  Args:
+    sentence: The sentence with added binary parse information, represented as
+      a string, with all the word items and parentheses separated by spaces.
+      E.g., '( ( The dog ) ( ( is ( playing toys ) ) . ) )'.
+    word2index: A `dict` mapping words to their word indices.
+
+  Returns:
+     1. Word indices as a numpy array, with shape `(sequence_len, 1)`.
+     2. Shift-reduce sequence as a numpy array, with shape
+       `(sequence_len * 2 - 3, 1)`.
+  """
+  items = [w for w in sentence.split(" ") if w]
+  words = get_non_parenthesis_words(items)
+  shift_reduce = get_shift_reduce(items)
+  word_indices = pad_and_reverse_word_ids(
+      [[word2index.get(word, UNK_CODE) for word in words]]).T
+  return (word_indices,
+          np.expand_dims(np.array(shift_reduce, dtype=np.int64), -1))
+
+
 class SnliData(object):
   """A split of SNLI data."""
 

@@ -145,6 +145,21 @@ void HloModule::ReplaceComputations(
           }
           break;
         }
+        case HloOpcode::kConditional: {
+          HloComputation* new_true_computation =
+              tensorflow::gtl::FindWithDefault(
+                  replacements, instruction->true_computation(), nullptr);
+          if (new_true_computation != nullptr) {
+            instruction->set_true_computation(new_true_computation);
+          }
+          HloComputation* new_false_computation =
+              tensorflow::gtl::FindWithDefault(
+                  replacements, instruction->false_computation(), nullptr);
+          if (new_false_computation != nullptr) {
+            instruction->set_false_computation(new_false_computation);
+          }
+          break;
+        }
         case HloOpcode::kSelectAndScatter: {
           HloComputation* new_select = tensorflow::gtl::FindWithDefault(
               replacements, instruction->select(), nullptr);
@@ -561,6 +576,18 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
     }
   }
   return module;
+}
+
+HloComputation* HloModule::DeepCloneComputation(HloComputation* computation) {
+  HloComputation* clone = AddEmbeddedComputation(computation->Clone("", this));
+  TF_CHECK_OK(
+      clone->root_instruction()->Accept([this](HloInstruction* instruction) {
+        instruction->ReplaceCalledComputations([this](HloComputation* callee) {
+          return DeepCloneComputation(callee);
+        });
+        return Status::OK();
+      }));
+  return clone;
 }
 
 uint64 HloModule::RandomNew64() const {

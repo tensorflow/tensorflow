@@ -479,8 +479,9 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_sequence_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_sequence_op_test.py"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

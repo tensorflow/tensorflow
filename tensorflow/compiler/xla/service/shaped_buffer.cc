@@ -41,7 +41,32 @@ ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
       on_device_shape_(on_device_shape),
       platform_(platform),
       device_ordinal_(device_ordinal),
-      buffers_(on_device_shape) {}
+      buffers_(&on_device_shape_) {}
+
+ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
+    : on_host_shape_(std::move(s.on_host_shape_)),
+      on_device_shape_(std::move(s.on_device_shape_)),
+      platform_(s.platform_),
+      device_ordinal_(s.device_ordinal_),
+      buffers_(std::move(s.buffers_)) {
+  // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
+}
+
+ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
+  on_host_shape_ = std::move(s.on_host_shape_);
+  on_device_shape_ = std::move(s.on_device_shape_);
+  platform_ = s.platform_;
+  device_ordinal_ = s.device_ordinal_;
+  buffers_ = std::move(s.buffers_);
+  // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
+  return *this;
+}
 
 void ShapedBuffer::clear() {
   for (auto& pair : buffers_) {
@@ -99,6 +124,10 @@ ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
                    device_ordinal),
       allocator_(allocator) {}
 
+ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                                       DeviceMemoryAllocator* allocator)
+    : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
+
 ScopedShapedBuffer::~ScopedShapedBuffer() {
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
@@ -116,12 +145,8 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
 }
 
 std::unique_ptr<ShapedBuffer> ScopedShapedBuffer::release() {
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      on_host_shape(), on_device_shape(), platform(), device_ordinal());
-
-  shaped_buffer->buffers() = buffers();
-  clear();
-
+  auto shaped_buffer = MakeUnique<ShapedBuffer>(std::move(*this));
+  buffers_ = ShapeTree<perftools::gputools::DeviceMemoryBase>();
   return shaped_buffer;
 }
 

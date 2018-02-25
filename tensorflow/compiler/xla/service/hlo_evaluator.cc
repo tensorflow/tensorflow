@@ -34,8 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -742,7 +740,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shl],
         ElementWiseBinaryOp(shl, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return lhs_elem << rhs_elem;
+          return IsShiftOutOfBounds<NativeT>(rhs_elem) ? 0
+                                                       : (lhs_elem << rhs_elem);
         }));
     return Status::OK();
   }
@@ -767,8 +766,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return static_cast<NativeT>(static_cast<SignedT>(lhs_elem) >>
-                                      rhs_elem);
+          SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
+            return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
+          } else {
+            return lhs_signed >> rhs_elem;
+          }
         }));
     return Status::OK();
   }
@@ -794,6 +797,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          // If shift amount is greater than the number of bits, then return 0.
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
+            return static_cast<NativeT>(0);
+          }
           return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
                                       rhs_elem);
         }));
@@ -1401,6 +1408,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S64: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64>(map));
+        break;
+      }
+      case F16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<Eigen::half>(map));
         break;
       }
       case F32: {
@@ -2024,6 +2036,14 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return std::move(result);
   }
 
+  template <typename NativeT>
+  static bool IsShiftOutOfBounds(NativeT rhs) {
+    typedef typename std::make_unsigned<NativeT>::type UnsignedT;
+    UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
+    UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
+    return rhs_unsigned >= lhs_size_unsigned;
+  }
+
   HloEvaluator* parent_;
 };  // class HloEvaluator::TypedVisitor
 
@@ -2041,9 +2061,7 @@ HloEvaluator::HloEvaluator() {
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
-  typed_visitors_[F16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: F16.");
-  });
+  typed_visitors_[F16] = MakeUnique<TypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
   typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);

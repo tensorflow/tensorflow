@@ -64,6 +64,21 @@ class CapturedFunction {
                              const std::vector<Tensor>& args,
                              std::vector<Tensor>* rets);
 
+  // Explicitly instantiate this function for use in the given
+  // context. This method, and the context-less overload
+  // `RunInstantiated()` below can be useful for calling a captured
+  // function in cases where an `IteratorContext*` is not available
+  // (such as a destructor).
+  Status Instantiate(IteratorContext* ctx);
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible.
+  //
+  // REQUIRES: `this->Instantiate()` must have been called before this method.
+  Status RunInstantiated(const std::vector<Tensor>& args,
+                         std::vector<Tensor>* rets);
+
   // Asynchronously runs the captured function on the given `args`, stores
   // the results in `*rets`, and calls the given `done` callback when the
   // function returns. This method takes ownership of the tensors in `args`,
@@ -99,6 +114,7 @@ class CapturedFunction {
   FunctionLibraryRuntime::Handle f_handle_ GUARDED_BY(mu_);
   const std::vector<Tensor> captured_inputs_;
   DataTypeSlice ret_types_;
+  std::function<void(std::function<void()>)> captured_runner_ = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

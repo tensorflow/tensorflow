@@ -238,7 +238,7 @@ class Multinomial(distribution.Distribution):
     n_draws = math_ops.cast(self.total_count, dtype=dtypes.int32)
     k = self.event_shape_tensor()[0]
 
-    # boardcast the total_count and logits to same shape
+    # broadcast the total_count and logits to same shape
     n_draws = array_ops.ones_like(
         self.logits[..., 0], dtype=n_draws.dtype) * n_draws
     logits = array_ops.ones_like(

@@ -386,6 +386,13 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
+  if context.in_eager_mode() and not isinstance(
+      input, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
+    size_ = 1
+    for dim in ops.convert_to_tensor(input)._shape_tuple():  # pylint: disable=protected-access
+      size_ *= dim
+    return size_
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
@@ -605,7 +612,7 @@ def slice(input_, begin, size, name=None):
 
   Note that @{tf.Tensor.__getitem__} is typically a more pythonic way to
   perform slices, as it allows you to write `foo[3:7, :-2]` instead of
-  `tf.slice([3, 0], [4, foo.get_shape()[1]-2])`.
+  `tf.slice(foo, [3, 0], [4, foo.get_shape()[1]-2])`.
 
   `begin` is zero-based; `size` is one-based. If `size[i]` is -1,
   all remaining elements in dimension i are included in the
@@ -1312,6 +1319,18 @@ def unique(x, out_idx=dtypes.int32, name=None):
 unique.__doc__ = gen_array_ops._unique.__doc__
 
 
+@tf_export("unique_with_counts")
+def unique_with_counts(x, out_idx=dtypes.int32, name=None):
+  # TODO(yongtang): switch to v2 once API deprecation
+  # period (3 weeks) pass.
+  # TODO(yongtang): The documentation should also
+  # be updated when switch  to v2.
+  return gen_array_ops._unique_with_counts(x, out_idx, name)
+
+
+unique_with_counts.__doc__ = gen_array_ops._unique_with_counts.__doc__
+
+
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
@@ -1389,6 +1408,14 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   regular matrix transpose on 2-D input Tensors. If conjugate is True and
   `a.dtype` is either `complex64` or `complex128` then the values of `a`
   are conjugated and transposed.
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, so `transpose` returns a new tensor with
+  the items permuted.
+  @end_compatibility
 
   For example:
 
@@ -1489,6 +1516,14 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   # Inefficient!
   tf.matmul(matrix, tf.matrix_transpose(b))
   ```
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, `matrix_transposes` return a new tensor
+  with the items permuted.
+  @end_compatibility
 
   Args:
     a: A `Tensor` with `rank >= 2`.

@@ -32,6 +32,7 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
   feed = other.feed;
   fetch = other.fetch;
   init_ops = other.init_ops;
+  keep_ops = other.keep_ops;
   expected_init_time = other.expected_init_time;
   save_op = other.save_op;
   restore_op = other.restore_op;
@@ -80,6 +81,9 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     result.insert(NodeName(f.first));
   }
   for (const auto& node : init_ops) {
+    result.insert(NodeName(node));
+  }
+  for (const auto& node : keep_ops) {
     result.insert(NodeName(node));
   }
   if (!save_op.empty()) {

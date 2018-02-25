@@ -145,6 +145,36 @@ class CheckpointsTest(test.TestCase):
         # Check that tensors are not explicitly in the graph.
         self.assertLess(len(str(session.graph.as_graph_def())), 29000)
 
+  def testInitialValueComesFromCheckpoint(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.test_session() as session:
+      v1, _, _, _ = _create_checkpoints(session, checkpoint_dir)
+
+    # New graph and session.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as session:
+        with variable_scope.variable_scope(
+            "some_scope", initializer=init_ops.zeros_initializer()):
+          my1 = variable_scope.get_variable("my1", [1, 10])
+
+        # At this point, my1.initialized_value() will add ops that reference
+        # the zeros initializer of my1.
+        before = variables.Variable(my1.initialized_value(), name="before")
+
+        checkpoint_utils.init_from_checkpoint(checkpoint_dir, {"var1": my1})
+
+        # At this point, my1.initialized_value() will add ops that reference
+        # the newly set initializer of my1.
+        after = variables.Variable(my1.initialized_value(), name="after")
+
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(session.run(my1), v1)
+        self.assertAllEqual(session.run(my1.initialized_value()), v1)
+        self.assertAllClose(session.run(before), [[0.0] * 10])
+        self.assertAllClose(session.run(after), v1)
+        with self.assertRaises(AssertionError):
+          self.assertAllClose(session.run(before), session.run(after))
+
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
     with self.test_session() as session:
