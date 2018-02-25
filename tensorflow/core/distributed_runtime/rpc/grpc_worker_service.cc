@@ -52,7 +52,7 @@ namespace {
 
 class GrpcWorkerService : public AsyncServiceInterface {
   // TODO(ncteisen): consider adding a config var or flag for this
-  static constexpr const size_t kGrpcWorkerServiceThreadCount = 8;
+  static constexpr const size_t kGrpcWorkerServiceThreadCount = 2;
 
  public:
   GrpcWorkerService(GrpcWorker* worker, ::grpc::ServerBuilder* builder)

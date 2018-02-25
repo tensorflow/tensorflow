@@ -63,6 +63,9 @@ class ShapeIndex {
   void push_back(int64 value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
 
+  // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
+  void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
+
   std::vector<int64>::const_iterator begin() const { return indices_.begin(); }
   std::vector<int64>::const_iterator end() const { return indices_.end(); }
   std::vector<int64>::iterator begin() { return indices_.begin(); }

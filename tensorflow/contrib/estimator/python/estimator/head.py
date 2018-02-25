@@ -177,6 +177,7 @@ def regression_head(weight_column=None,
                     label_dimension=1,
                     loss_reduction=losses.Reduction.SUM,
                     loss_fn=None,
+                    inverse_link_fn=None,
                     name=None):
   """Creates a `_Head` for regression using the `mean_squared_error` loss.
 
@@ -195,9 +196,15 @@ def regression_head(weight_column=None,
   `[D0, D1, ... DN]`, `[D0, D1, ... DN, 1]` or
   `[D0, D1, ... DN, label_dimension]`.
 
-  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  Supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
   `(labels, logits, features)` as arguments and returns unreduced loss with
   shape `[D0, D1, ... DN, label_dimension]`.
+
+  Also supports custom `inverse_link_fn`, also known as 'mean function'.
+  `inverse_link_fn` takes `logits` as argument and returns predicted values.
+  This function is the inverse of the link function defined in
+  https://en.wikipedia.org/wiki/Generalized_linear_model#Link_function
+  Namely, for poisson regression, set `inverse_link_fn=tf.exp`.
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -209,7 +216,9 @@ def regression_head(weight_column=None,
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
       reduce training loss over batch. Defaults to `SUM`.
-    loss_fn: Optional loss function.
+    loss_fn: Optional loss function. Defaults to `mean_squared_error`.
+    inverse_link_fn: Optional inverse link function, also known as 'mean
+      function'. Defaults to identity.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -224,6 +233,7 @@ def regression_head(weight_column=None,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
       loss_fn=loss_fn,
+      inverse_link_fn=inverse_link_fn,
       name=name)
 
 

@@ -46,9 +46,7 @@ namespace cpu {
 class SimpleOrcJIT {
  public:
   using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer;
-  using CompileFtor =
-      std::function<llvm::object::OwningBinary<llvm::object::ObjectFile>(
-          llvm::Module&)>;
+  using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
   using VModuleKeyT = llvm::orc::VModuleKey;
 
@@ -89,7 +87,7 @@ class SimpleOrcJIT {
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::JITSymbol FindSymbol(const std::string& name);
+  llvm::JITSymbol FindCompiledSymbol(const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
@@ -98,6 +96,8 @@ class SimpleOrcJIT {
   }
 
  private:
+  llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
+
   std::vector<VModuleKeyT> module_keys_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;
   const Disassembler disassembler_;

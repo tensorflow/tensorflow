@@ -21,10 +21,12 @@ from __future__ import print_function
 
 import functools
 
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
 def _is_bounded_method(fn):
+  _, fn = tf_decorator.unwrap(fn)
   return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
 
 

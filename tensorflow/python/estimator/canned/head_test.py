@@ -1558,7 +1558,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 1.,
+        keys.AUC_PR: 0.74999905,
     }
 
     # Assert spec contains expected tensors.
@@ -1636,7 +1636,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 1.,
+        keys.AUC_PR: 0.75,
     }
 
     # Assert predictions, loss, and metrics.
@@ -1741,7 +1741,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 1.,
+        keys.AUC_PR: 0.74999905,
         keys.ACCURACY_AT_THRESHOLD % thresholds[0]: 1.,
         keys.PRECISION_AT_THRESHOLD % thresholds[0]: 1.,
         keys.RECALL_AT_THRESHOLD % thresholds[0]: 1.,
@@ -2188,7 +2188,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: expected_label_mean,
         keys.ACCURACY_BASELINE: 1 - expected_label_mean,
         keys.AUC: .45454565,
-        keys.AUC_PR: .6737757325172424,
+        keys.AUC_PR: .21923049,
     }
 
     # Assert spec contains expected tensors.
@@ -2487,7 +2487,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         # We cannot reliably calculate AUC with only 4 data points, but the
         # values should not change because of backwards-compatibility.
         keys.AUC: 0.5222,
-        keys.AUC_PR: 0.7341,
+        keys.AUC_PR: 0.5119,
     }
 
     tol = 1e-2
@@ -2703,10 +2703,9 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
+    default_serving_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     self.assertItemsEqual(
-        (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-         'predict',
-         'regression'),
+        (default_serving_key, 'predict', 'regression'),
         spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
@@ -2714,6 +2713,54 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     with self.test_session():
       _initialize_variables(self, spec.scaffold)
       self.assertAllClose(logits, spec.predictions[prediction_key].eval())
+      self.assertAllClose(
+          logits, spec.export_outputs[default_serving_key].value.eval())
+      self.assertAllClose(
+          logits, spec.export_outputs['regression'].value.eval())
+      self.assertAllClose(
+          logits, spec.export_outputs['predict'].outputs['predictions'].eval())
+
+  def test_predict_with_inverse_link_fn(self):
+    def _inverse_link_fn(logits):
+      return logits - 10.
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        inverse_link_fn=_inverse_link_fn)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,),), dtype=np.int32)
+    expected_predictions = np.array(((35,), (31,),), dtype=np.int32)
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    # Assert spec contains expected tensors.
+    keys = prediction_keys.PredictionKeys
+    self.assertItemsEqual(
+        (keys.PREDICTIONS, keys.LOGITS), spec.predictions.keys())
+    self.assertEqual(dtypes.float32, spec.predictions[keys.PREDICTIONS].dtype)
+    self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
+    default_serving_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    self.assertItemsEqual(
+        (default_serving_key, 'predict', 'regression'),
+        spec.export_outputs.keys())
+
+    # Assert predictions.
+    with self.test_session():
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllClose(
+          expected_predictions, spec.predictions[keys.PREDICTIONS].eval())
+      self.assertAllClose(logits, spec.predictions[keys.LOGITS].eval())
+      self.assertAllClose(
+          expected_predictions,
+          spec.export_outputs[default_serving_key].value.eval())
+      self.assertAllClose(
+          expected_predictions, spec.export_outputs['regression'].value.eval())
+      self.assertAllClose(
+          expected_predictions,
+          spec.export_outputs['predict'].outputs['predictions'].eval())
+      self.assertAllClose(
+          logits, spec.export_outputs['predict'].outputs['logits'].eval())
 
   def test_eval_create_loss(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()

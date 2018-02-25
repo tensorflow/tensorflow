@@ -205,10 +205,21 @@ class BackpropTest(test.TestCase):
     def f(x):
       return x * x
 
-    wrapped_fn = backprop.make_vjp(f)
+    wrapped_fn = backprop.make_vjp(f, persistent=False)
     result, vjp = wrapped_fn(constant_op.constant(3.0))
     self.assertAllEqual(result, 9.0)
     self.assertAllEqual(vjp(2.0)[0], 12.0)
+
+  def testPersistentMakeVJP(self):
+
+    def f(x):
+      return x * x
+
+    wrapped_fn = backprop.make_vjp(f, persistent=True)
+    _, vjp = wrapped_fn(constant_op.constant(3.0))
+    vjp_result1 = vjp(2.0)[0]
+    vjp_result2 = vjp(2.0)[0]
+    self.assertAllEqual(vjp_result1, vjp_result2, 12.0)
 
   @test_util.assert_no_new_tensors
   def testGradGrad(self):

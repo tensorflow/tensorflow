@@ -66,13 +66,14 @@ class HloToIrBindings {
   }
 
   llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
+  void SetTempBufferBase(llvm::Value* v) { temp_buffer_base_ = v; }
 
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
   llvm::Value* GetBasePointer(const HloInstruction& hlo,
                               const ShapeIndex& shape_index = {}) const {
     auto it = base_ptrs_.find(&hlo);
-    CHECK(it != base_ptrs_.end());
+    CHECK(it != base_ptrs_.end()) << hlo.ToString();
     return it->second.element(shape_index);
   }
 
@@ -113,7 +114,7 @@ class HloToIrBindings {
   std::unordered_map<const HloInstruction*, ShapeTree<llvm::Value*>> base_ptrs_;
 
   // The address of the memory block that contains all temporary buffers.
-  llvm::Value* temp_buffer_base_;
+  llvm::Value* temp_buffer_base_ = nullptr;
 
   llvm_ir::AliasAnalysis alias_analysis_;
 };

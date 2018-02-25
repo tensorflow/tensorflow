@@ -34,4 +34,7 @@ enum IODataType {
 
   // String, not quantized
   STRING = 5;
+
+  // Int16, quantized
+  QUANTIZED_INT16 = 6;
 }
