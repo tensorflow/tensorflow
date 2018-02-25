@@ -654,7 +654,7 @@ def sigmoid_cross_entropy(
 
   Args:
     multi_class_labels: `[batch_size, num_classes]` target integer labels in
-      `(0, 1)`.
+      `{0, 1}`.
     logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
