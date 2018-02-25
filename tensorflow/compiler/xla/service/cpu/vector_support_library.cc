@@ -103,11 +103,12 @@ llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
   }
 }
 
-llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a, float low,
-                                         float high) {
+llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a,
+                                         const llvm::APFloat& low,
+                                         const llvm::APFloat& high) {
   AssertCorrectTypes({a});
   llvm::Type* type = a->getType();
-  CHECK_LT(low, high);
+  CHECK(low.compare(high) == llvm::APFloat::cmpLessThan);
   CHECK(scalar_type_->isFloatingPointTy());
   return llvm_ir::EmitFloatMin(
       llvm_ir::EmitFloatMax(a, GetConstantFloat(type, low), ir_builder_),
@@ -369,6 +370,9 @@ std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
 std::vector<llvm::Value*>
 VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
+  // vectors are N llvm vector values, each with N elements.
+  int64 lane_width = vectors.size();
+
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
     for (int i = 0; i < vectors.size(); i += 2) {
@@ -389,10 +393,14 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
     high = AddInternal(ExtractHighHalf(init_values), high);
   }
 
+  // `low` has the first `lane_width / 2` horizontal reductions, and `high` has
+  // the next `lane_width / 2` horizontal reductions.
+
   std::vector<llvm::Value*> results;
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < lane_width; i++) {
     llvm::Value* scalar_result = ir_builder()->CreateExtractElement(
-        i < 4 ? low : high, ir_builder()->getInt32(i % 4), name());
+        i < (lane_width / 2) ? low : high,
+        ir_builder()->getInt32(i % (lane_width / 2)), name());
     results.push_back(scalar_result);
   }
 

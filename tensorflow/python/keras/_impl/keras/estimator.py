@@ -222,18 +222,18 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
   Returns:
     The model_fn for a keras Estimator.
   """
-  with ops.Graph().as_default() as g, g.device(estimator._device_fn):
-    random_seed.set_random_seed(estimator.config.tf_random_seed)
-    training_util.create_global_step()
-    model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
-                                   custom_objects)
-
-    if isinstance(model, models.Sequential):
-      model = model.model
-    # Load weights and save to checkpoint if there is no checkpoint
-    latest_path = saver_lib.latest_checkpoint(estimator.model_dir)
-    if not latest_path:
-      with session.Session() as sess:
+  # Load weights and save to checkpoint if there is no checkpoint
+  latest_path = saver_lib.latest_checkpoint(estimator.model_dir)
+  if not latest_path:
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(estimator.config.tf_random_seed)
+      training_util.create_global_step()
+      model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
+                                     custom_objects)
+      if isinstance(model, models.Sequential):
+        model = model.model
+      # save to checkpoint
+      with session.Session(config=estimator._session_config) as sess:
         model.set_weights(keras_weights)
         # Make update ops and initialize all variables.
         if not model.train_function:

@@ -420,6 +420,20 @@ py_test(
 )
 
 py_test(
+    name = "threadpool_dataset_ops_test",
+    size = "small",
+    srcs = ["threadpool_dataset_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+    ],
+)
+
+py_test(
     name = "unique_dataset_op_test",
     size = "small",
     srcs = ["unique_dataset_op_test.py"],

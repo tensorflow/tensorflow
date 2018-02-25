@@ -60,7 +60,8 @@ patch versions.  The public APIs consist of
     * [`tensor_shape`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor_shape.proto)
     * [`types`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/types.proto)
 
-## What is *not* covered {not_covered}
+<a name="not_covered"></a>
+## What is *not* covered
 
 Some API functions are explicitly marked as "experimental" and can change in
 backward incompatible ways between minor releases. These include:

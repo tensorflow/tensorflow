@@ -35,12 +35,17 @@ class SnapshotOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
-    const Device& device = context->eigen_device<Device>();
-    device.memcpy(output->template flat<Scalar>().data(),
-                  input.template flat<Scalar>().data(),
-                  input.NumElements() * sizeof(Scalar));
+    // Try to use buffer forwarding to avoid an explicit copy.
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
+    if (!output->SharesBufferWith(input)) {
+      // We had to allocate a new buffer since the refcount on the input was
+      // greater than 1. Copy the input to the new buffer.
+      const Device& device = context->eigen_device<Device>();
+      device.memcpy(output->template flat<Scalar>().data(),
+                    input.template flat<Scalar>().data(),
+                    input.NumElements() * sizeof(Scalar));
+    }
   }
 };
 

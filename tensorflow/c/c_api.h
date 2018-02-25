@@ -1287,11 +1287,12 @@ TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function* func);
 
 typedef struct TF_Session TF_Session;
 
-// Return a new execution session with the associated graph, or NULL on error.
+// Return a new execution session with the associated graph, or NULL on
+// error. Does not take ownership of any input parameters.
 //
-// *graph must be a valid graph (not deleted or nullptr).  This function will
-// prevent the graph from being deleted until TF_DeleteSession() is called.
-// Does not take ownership of opts.
+// *`graph` must be a valid graph (not deleted or nullptr). `graph` will be be
+// kept alive for the lifetime of the returned TF_Session. New nodes can still
+// be added to `graph` after this call.
 TF_CAPI_EXPORT extern TF_Session* TF_NewSession(TF_Graph* graph,
                                                 const TF_SessionOptions* opts,
                                                 TF_Status* status);

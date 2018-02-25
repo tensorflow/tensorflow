@@ -901,6 +901,40 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
+@tf_export("to_complex64")
+def to_complex64(x, name="ToComplex64"):
+  """Casts a tensor to type `complex64`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex64`.
+
+  Raises:
+    TypeError: If `x` cannot be cast to the `complex64`.
+  """
+  return cast(x, dtypes.complex64, name=name)
+
+
+@tf_export("to_complex128")
+def to_complex128(x, name="ToComplex128"):
+  """Casts a tensor to type `complex128`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor` with same shape as `x` with type `complex128`.
+
+  Raises:
+    TypeError: If `x` cannot be cast to the `complex128`.
+  """
+  return cast(x, dtypes.complex128, name=name)
+
+
 ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
@@ -1295,9 +1329,9 @@ def _ReductionDims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
       return constant_op.constant(
-          np.arange(x.get_shape().ndims), dtype=dtypes.int32)
+          np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.

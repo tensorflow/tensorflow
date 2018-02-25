@@ -25,9 +25,10 @@ from tensorflow.contrib.bayesflow.python.ops.metropolis_hastings_impl import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    'kernel',
     'evolve',
-    'uniform_random_proposal',
-    'normal_random_proposal',
+    'proposal_uniform',
+    'proposal_normal',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

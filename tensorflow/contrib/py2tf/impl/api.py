@@ -175,7 +175,8 @@ def to_graph(e,
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
-      partial_types=partial_types)
+      partial_types=partial_types,
+      api_module=tf_inspect.getmodule(to_graph))
   _, name = conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   module = gast.Module([])
@@ -221,7 +222,8 @@ def to_code(e,
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
-      partial_types=partial_types)
+      partial_types=partial_types,
+      api_module=tf_inspect.getmodule(to_graph))
   conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   imports = '\n'.join(config.COMPILED_IMPORT_STATEMENTS)

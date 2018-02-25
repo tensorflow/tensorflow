@@ -323,6 +323,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
+      case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
@@ -335,12 +336,17 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_GATHER:
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
+      case tflite::BuiltinOperator_TOPK_V2:
       case tflite::BuiltinOperator_TRANSPOSE:
       case tflite::BuiltinOperator_MEAN:
       case tflite::BuiltinOperator_DIV:
       case tflite::BuiltinOperator_SUB:
+      case tflite::BuiltinOperator_SPLIT:
       case tflite::BuiltinOperator_SQUEEZE:
       case tflite::BuiltinOperator_STRIDED_SLICE:
+      case tflite::BuiltinOperator_EXP:
+      case tflite::BuiltinOperator_LOG_SOFTMAX:
+      case tflite::BuiltinOperator_DELEGATE:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

@@ -195,6 +195,12 @@ class Shape(object):
     self._minor_to_major = minor_to_major
     self._check_minor_to_major()
 
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (self.np_dtype == other.np_dtype and
+            self._dimensions == other._dimensions and
+            self._minor_to_major == other._minor_to_major)
+
   def __repr__(self):
     return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
             'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
@@ -354,17 +360,44 @@ class LocalComputation(object):
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
+      assert isinstance(c_local_computation, c_api.CompiledLocalComputation)
       self._delete = c_api.DeleteCompiledLocalComputation
     else:
+      assert isinstance(c_local_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
+    """Compiles an un-compiled local computation.
+
+    Local computations are the result of a "LocalComputationBuild'ing" process
+    -- they start in uncompiled form, and via a call to Compile() turn into a
+    compiled local computation.
+
+    Raises:
+      ValueError: if this is already a compiled local computation.
+
+    Arguments:
+      argument_shapes: parameter shapes -- they are first laid out by layout_fn
+        if layout_fn is provided. Otherwise, the default layout for those shapes
+        will be used.
+      compile_options: options to use for compilation, includes an optional
+        laid out result shape for the computation.
+      layout_fn: lambda that is used to lay out the argument/result shapes.
+
+    Returns:
+      A newly *compiled* local computation instance.
+    """
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
+      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+      result_shape = result_shape.map_leaves(layout_fn)
+      compile_options = compile_options or CompileOptions()
+      compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
@@ -606,6 +639,9 @@ class ComputationBuilder(object):
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(_unwrap_data_handle(operand)))
 
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._client.GetReturnValueShape())
+
   def GetComputationStats(self):
     raise NotImplementedError()
 
@@ -620,7 +656,7 @@ class ComputationBuilder(object):
         representing the configuration of the padding operation.
 
     Returns:
-      A ComputationDataHandle representing the added pad op.
+      A ComputationDataHandle representing the added Pad op.
     """
     if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
       padding_config = GetPaddingConfigFromTriples(padding_config)
@@ -630,7 +666,20 @@ class ComputationBuilder(object):
                          padding_config))
 
   def Reshape(self, operand, dimensions, new_sizes):
-    """Reshape op."""
+    """Enqueues a reshape op onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to be reshaped.
+      dimensions: sequence of integers encoding the order in which dimensions
+        are collapsed or None, in which case dimensions are flattened in order.
+      new_sizes: sequence of integers encoding the new dimension sizes (shape).
+
+    Returns:
+      A ComputationDataHandle representing the added Reshape op.
+    """
+    if dimensions is None:
+      ndim = len(self.GetShape(operand).dimensions())
+      dimensions = tuple(range(ndim))
     return _wrap_data_handle(
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
@@ -736,10 +785,26 @@ class ComputationBuilder(object):
       strides = [1] * len(start_indices)
     return _wrap_data_handle(
         self._client.Slice(
-            _unwrap_data_handle(operand),
-            start_indices,
-            limit_indices,
+            _unwrap_data_handle(operand), start_indices, limit_indices,
             strides))
+
+  def SliceInDim(self, operand, start_index, limit_index, stride, dimno):
+    """Enqueues a slice-in-dimension operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle for the N dimensional array to be sliced.
+      start_index: an integer containing the start index of the slice.
+      limit_index: an integer containing the end index of the slice.
+      stride: an integer containing the stride size for the slice.
+      dimno: an integer indicating the dimension along which to slice.
+
+    Returns:
+      A ComputationDataHandle representing the added Slice op.
+    """
+    return _wrap_data_handle(
+        self._client.SliceInDim(
+            _unwrap_data_handle(operand), start_index, limit_index, stride,
+            dimno))
 
   def DynamicSlice(self, operand, start_indices, slice_sizes):
     """Enqueues a slice op with dynamic start indices onto the computation.

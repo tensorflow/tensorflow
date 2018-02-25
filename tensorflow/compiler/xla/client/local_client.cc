@@ -172,7 +172,9 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
       std::unique_ptr<ShapedBuffer> result,
       executable_->ExecuteOnStreamWrapper(
           &service_options, run_options.execution_profile(), arguments));
-  return ScopedShapedBuffer::MakeScoped(result.get(), run_options.allocator());
+
+  return MakeUnique<ScopedShapedBuffer>(std::move(*result),
+                                        run_options.allocator());
 }
 
 StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::ExecuteAndDump(

@@ -60,6 +60,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleFusion(HloInstruction*) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction*) override;
+  Status HandleHostCompute(HloInstruction*) override;
   Status HandleSlice(HloInstruction* slice) override;
   Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   Status HandleDynamicUpdateSlice(
@@ -79,6 +80,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  Status HandleGather(HloInstruction* gather) override;
 
   Status FinishVisit(HloInstruction*) override {
     return tensorflow::Status::OK();

@@ -263,6 +263,8 @@ class Layer(object):
       return  # Updates already applied when in eager mode.
 
     updates = _to_list(updates)
+    updates = [x if isinstance(x, ops.Operation)
+               else ops.convert_to_tensor(x) for x in updates]
     self._updates += updates
     if inputs is None:
       for u in updates:

@@ -35,5 +35,43 @@ std::vector<Tensor> GrapplerTest::EvaluateNodes(
   return output_tensors;
 }
 
+void GrapplerTest::AddNode(const string& name, const string& op,
+                           const std::vector<string>& inputs, GraphDef* graph) {
+  auto* node = graph->add_node();
+  node->set_name(name);
+  node->set_op(op);
+  for (const auto& input : inputs) {
+    node->add_input(input);
+  }
+}
+
+void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
+  auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
+    return n1.name() < n2.name();
+  };
+  std::sort(want.mutable_node()->begin(), want.mutable_node()->end(),
+            comparator);
+  std::sort(got.mutable_node()->begin(), got.mutable_node()->end(), comparator);
+
+  for (int i = 0; i < want.node_size(); ++i) {
+    std::sort(want.mutable_node(i)->mutable_input()->begin(),
+              want.mutable_node(i)->mutable_input()->end());
+  }
+  for (int i = 0; i < got.node_size(); ++i) {
+    std::sort(got.mutable_node(i)->mutable_input()->begin(),
+              got.mutable_node(i)->mutable_input()->end());
+  }
+
+  ASSERT_EQ(want.node_size(), got.node_size());
+  for (int i = 0; i < want.node_size(); ++i) {
+    EXPECT_EQ(want.node(i).op(), got.node(i).op());
+    EXPECT_EQ(want.node(i).name(), got.node(i).name());
+    ASSERT_EQ(want.node(i).input_size(), got.node(i).input_size());
+    for (int j = 0; j < want.node(i).input_size(); ++j) {
+      EXPECT_TRUE(IsSameInput(want.node(i).input(j), got.node(i).input(j)));
+    }
+  }
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

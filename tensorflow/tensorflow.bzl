@@ -618,7 +618,7 @@ def tf_cc_test(name,
       srcs=srcs + tf_binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-pie",
           ],
         clean_dep("//tensorflow:windows"): [],
