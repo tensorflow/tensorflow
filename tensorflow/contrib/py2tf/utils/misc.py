@@ -19,7 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+
+
+def dynamic_len(list_or_tensor):
+  """Implementation of len using dynamic dispatch."""
+  if tensor_util.is_tensor(list_or_tensor):
+    shape = list_or_tensor.shape
+    if not shape:
+      raise ValueError(
+          'len requires non-zero rank for tensor "%s"' % list_or_tensor)
+    return array_ops.shape(list_or_tensor)[0]
+
+  return len(list_or_tensor)
 
 
 def alias_tensors(*args):

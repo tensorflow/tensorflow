@@ -256,6 +256,11 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -779,7 +784,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/estimator_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

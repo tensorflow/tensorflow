@@ -258,7 +258,7 @@ typedef struct TfLiteContext {
   TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
                                    TfLiteIntArray** execution_plan);
 
-  // An tensor of tensors in the interpreter context (of length `tensors_size`)
+  // An array of tensors in the interpreter context (of length `tensors_size`)
   TfLiteTensor* tensors;
 
   // opaque full context ptr (an opaque c++ data structure)
@@ -283,7 +283,8 @@ typedef struct TfLiteContext {
                                          TfLiteNode** node,
                                          TfLiteRegistration** registration);
 
-  // Replace ops with delegate.
+  // Replace ops with one or more stub delegate operations. This function
+  // does not take ownership of `nodes_to_replace`.
   TfLiteStatus (*ReplaceSubgraphsWithDelegateKernels)(
       struct TfLiteContext*, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace);

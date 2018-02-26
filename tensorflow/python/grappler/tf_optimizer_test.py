@@ -24,6 +24,7 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -47,6 +48,31 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     self.assertEqual(len(graph.node), 1)
     self.assertItemsEqual([node.name for node in graph.node], ['d'])
+
+  def testKeepNodes(self):
+    g = ops.Graph()
+    with g.as_default():
+      a1 = variables.Variable(
+          1.0)  # Must be preserved since it's in the collection 'variables'.
+      a2 = constant_op.constant(0, shape=[50, 50], name='keep')
+      ops.add_to_collection('a2', a2)  # Explicitly add to collection.
+      b = constant_op.constant(1, shape=[100, 10])
+      c = constant_op.constant(0, shape=[10, 30])
+      d = math_ops.matmul(b, c)
+      ops.add_to_collection('train_op', d)  # d is the fetch node.
+
+    # Optimize the graph.
+    mg = meta_graph.create_meta_graph_def(graph=g)
+    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+
+    # Check that the nodes referenced in various collections have been preserved
+    self.assertEqual(len(optimized_graph.node), 5)
+    self.assertEqual(d.op.name, optimized_graph.node[0].name)
+    self.assertEqual(a1.op.name, optimized_graph.node[1].name)
+    self.assertEqual('Variable/initial_value', optimized_graph.node[2].name)
+    self.assertEqual(a2.op.name, optimized_graph.node[3].name)
+    self.assertEqual('Variable/Assign', optimized_graph.node[4].name)
 
 
 if __name__ == '__main__':

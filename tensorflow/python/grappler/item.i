@@ -96,10 +96,10 @@ static GItem TF_NewItem(
   return GItem(item.release());
 }
 
-static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+static PyObject* TF_IdentifyImportantOps(GItem item, bool sort_topologically,
                                                    TF_Status* status) {
   if (item.is_none()) {
-    return {};
+    Py_RETURN_NONE;
   }
 
   std::vector<const tensorflow::NodeDef*> main_ops = item->MainOpsFanin();
@@ -132,7 +132,13 @@ static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topolog
     }
   }
 
-  return ops;
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* result = PyList_New(ops.size());
+  for (int i = 0; i < ops.size(); ++i) {
+    PyList_SetItem(result, i, PyString_FromString(ops[i].c_str()));
+  }
+  PyGILState_Release(gstate);
+  return result;
 }
 
 static PyObject* TF_GetOpProperties(GItem item) {
@@ -305,7 +311,7 @@ static PyObject* TF_GetColocationGroups(GItem item) {
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status);
-static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
-                                                   TF_Status* status);
+static PyObject* TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                         TF_Status* status);
 static PyObject* TF_GetOpProperties(GItem item);
 static PyObject* TF_GetColocationGroups(GItem item);

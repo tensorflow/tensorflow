@@ -501,6 +501,24 @@ TEST_F(LiteralUtilTest, IsAllComplex) {
                    ->IsAllComplex({8.0f, 9.0f}));
 }
 
+TEST_F(LiteralUtilTest, IsAllFirst) {
+  // IsAllComplex always returns false when the literal is not complex.
+  EXPECT_FALSE(Literal::CreateR1<bool>({false, true})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<bool>({false, false})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int8>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int32>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<uint32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint32>({1, 1, 2})->IsAllFirst());
+
+  complex64 c8_9 = {8, 9};
+  complex64 c7_9 = {7, 9};
+  EXPECT_TRUE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c7_9}, {c8_9}})->IsAllFirst());
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = Literal::CreateR0<float>(0.0f);
   auto scalar_one = Literal::CreateR0<float>(1.0f);

@@ -18,7 +18,7 @@ instructions might also work on other variants, we have only tested
 following requirements:
 
   * Ubuntu 16.04 or higher; 64-bit, x86
-  * macOS X 10.11 (El Capitan) or higher
+  * macOS 10.12.6 (Sierra) or higher
   * Windows 7 or higher; 64-bit, x86
 
 The installation instructions for Android are in a separate
@@ -243,7 +243,7 @@ and macOS X:
 
 And the following command line executes the `HelloTF` program on Windows:
 
-<pre><b>java -cp libtensorflow-1.6.0-rc1.jar;. -Djava.library.path=jni HelloTF</b></pre>
+<pre><b>java -cp libtensorflow-1.6.0-rc1.jar;. -Djava.library.path=jni HelloTF</b></pre>d
 
 If the program prints <tt>Hello from <i>version</i></tt>, you've successfully
 installed TensorFlow for Java and are ready to use the API.  If the program

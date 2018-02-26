@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.layers import core as tf_core_layers
-from tensorflow.python.layers import network as tf_network_layers
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
@@ -275,10 +274,10 @@ class KerasIntegrationTest(test.TestCase):
       y_train = keras.utils.to_categorical(y_train)
       y_test = keras.utils.to_categorical(y_test)
 
-      inputs = tf_network_layers.Input(shape=(10,))
+      inputs = keras.Input(shape=(10,))
       x = tf_core_layers.Dense(32, activation=nn.relu)(inputs)
       outputs = tf_core_layers.Dense(2, activation=nn.softmax)(x)
-      model = keras.models.Model(inputs, outputs)
+      model = keras.Model(inputs, outputs)
       model.summary()
 
       model.compile(loss='categorical_crossentropy',

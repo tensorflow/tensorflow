@@ -131,6 +131,10 @@ tf_class {
     argspec: "args=[\'self\', \'op\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "switch_to_thread_local"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "unique_name"
     argspec: "args=[\'self\', \'name\', \'mark_as_used\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -43,36 +44,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
-
-// A simple SymbolResolver that delegates to the host dynamic linker.
-class SimpleResolver : public llvm::LegacyJITSymbolResolver {
- public:
-  explicit SimpleResolver(ExternalConstantPool* external_constant_pool)
-      : external_constant_pool_(external_constant_pool) {}
-
-  llvm::JITSymbol findSymbol(const std::string& name) override {
-    if (const uint8* from_constant_pool =
-            external_constant_pool_->Find(string(name))) {
-      return llvm::JITEvaluatedSymbol(
-          reinterpret_cast<uint64_t>(from_constant_pool),
-          llvm::JITSymbolFlags::None);
-    }
-
-    void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
-    if (func_addr == nullptr) {
-      return nullptr;
-    }
-    llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
-                                         llvm::JITSymbolFlags::None);
-    return symbol_info;
-  }
-  llvm::JITSymbol findSymbolInLogicalDylib(const std::string& name) override {
-    return nullptr;
-  }
-
- private:
-  ExternalConstantPool* external_constant_pool_;
-};
 
 llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -119,21 +90,7 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       execution_session_(string_pool_),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           [this](const std::string& name) -> llvm::JITSymbol {
-            if (const uint8* from_constant_pool =
-                    external_constant_pool_.Find(string(name))) {
-              return llvm::JITEvaluatedSymbol(
-                  reinterpret_cast<uint64_t>(from_constant_pool),
-                  llvm::JITSymbolFlags::None);
-            }
-
-            void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
-            if (func_addr == nullptr) {
-              return nullptr;
-            }
-            llvm::JITEvaluatedSymbol symbol_info(
-                reinterpret_cast<uint64_t>(func_addr),
-                llvm::JITSymbolFlags::None);
-            return symbol_info;
+            return this->ResolveRuntimeSymbol(name);
           },
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
@@ -157,6 +114,23 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
+llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
+  if (const uint8* from_constant_pool =
+          external_constant_pool_.Find(string(name))) {
+    return llvm::JITEvaluatedSymbol(
+        reinterpret_cast<uint64_t>(from_constant_pool),
+        llvm::JITSymbolFlags::None);
+  }
+
+  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  if (func_addr == nullptr) {
+    return nullptr;
+  }
+  llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
+                                       llvm::JITSymbolFlags::None);
+  return symbol_info;
+}
+
 SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
   auto key = execution_session_.allocateVModule();
@@ -171,19 +145,13 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
   cantFail(compile_layer_.removeModule(key));
 }
 
-llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
-  std::string mangled_name;
-  {
-    llvm::raw_string_ostream mangled_name_stream(mangled_name);
-    llvm::Mangler::getNameWithPrefix(mangled_name_stream, name, data_layout_);
-  }
-
+llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
   for (auto& key :
        llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(key, mangled_name,
+            compile_layer_.findSymbolIn(key, name,
                                         /*ExportedSymbolsOnly=*/true)) {
       return symbol;
     }
@@ -222,6 +190,9 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+
+  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
+  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 

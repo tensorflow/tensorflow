@@ -53,8 +53,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #endif
 };
 
-// TODO(b/72509305): Enable half data type tests for CPU
-#if (XLA_TEST_BACKEND_GPU)
+#if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 using TestTypes = ::testing::Types<float, Eigen::half>;
 #else
 using TestTypes = ::testing::Types<float>;
@@ -699,9 +698,7 @@ INSTANTIATE_TEST_CASE_P(
 #if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 class Convolve1D1WindowTestHalf : public Convolve1D1WindowTestBase {};
 
-// TODO(b/72509305): Enable half data type tests for CPU.
-XLA_TEST_P(Convolve1D1WindowTestHalf,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(Convolve1D1Window))) {
+XLA_TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
   TestImpl<Eigen::half>();
 }
 
@@ -719,14 +716,16 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{130, 1, 1, 1, 3},
                       Convolve1DTestParam{64, 1, 1, 1, 1},
                       Convolve1DTestParam{128, 1, 1, 1, 1},
-                      // TODO(b/72566306): the following three tests fail on CPU
-                      // backend due to result miscompare.
+// TODO(b/72566306): The following five tests failed on CPU with unreasonable
+// relative errors.  Last ran on 2018-02-22.
+#if XLA_TEST_BACKEND_GPU
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
                       Convolve1DTestParam{900, 1, 1, 10, 1},
                       Convolve1DTestParam{1, 10, 10, 1, 10},
-                      Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
+#endif
+                      Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 64, 64, 1, 10},
                       Convolve1DTestParam{1, 65, 65, 1, 1},
                       Convolve1DTestParam{1, 128, 128, 1, 1},
