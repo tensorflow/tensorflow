@@ -59,10 +59,10 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
       num_units: The number of units in the model's LSTMCell.
       num_features: The dimensionality of the time series (features per
         timestep).
-      exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
-          objects representing features which are inputs to the model but are
-          not predicted by it. These must then be present for training,
-          evaluation, and prediction.
+      exogenous_feature_columns: A list of `tf.feature_column`s representing
+          features which are inputs to the model but are not predicted by
+          it. These must then be present for training, evaluation, and
+          prediction.
       dtype: The floating point data type to use.
     """
     super(_LSTMModel, self).__init__(
@@ -189,12 +189,16 @@ def train_and_predict(
     export_directory=None):
   """Train and predict using a custom time series model."""
   # Construct an Estimator from our LSTM model.
+  categorical_column = tf.feature_column.categorical_column_with_hash_bucket(
+      key="categorical_exogenous_feature", hash_bucket_size=16)
   exogenous_feature_columns = [
       # Exogenous features are not part of the loss, but can inform
       # predictions. In this example the features have no extra information, but
       # are included as an API example.
-      tf.contrib.layers.real_valued_column(
-          "2d_exogenous_feature", dimension=2)]
+      tf.feature_column.numeric_column(
+          "2d_exogenous_feature", shape=(2,)),
+      tf.feature_column.embedding_column(
+          categorical_column=categorical_column, dimension=10)]
   estimator = ts_estimators.TimeSeriesRegressor(
       model=_LSTMModel(num_features=5, num_units=128,
                        exogenous_feature_columns=exogenous_feature_columns),
@@ -205,7 +209,11 @@ def train_and_predict(
       csv_file_name,
       column_names=((tf.contrib.timeseries.TrainEvalFeatures.TIMES,)
                     + (tf.contrib.timeseries.TrainEvalFeatures.VALUES,) * 5
-                    + ("2d_exogenous_feature",) * 2))
+                    + ("2d_exogenous_feature",) * 2
+                    + ("categorical_exogenous_feature",)),
+      # Data types other than for `times` need to be specified if they aren't
+      # float32. In this case one of our exogenous features has string dtype.
+      column_dtypes=((tf.int64,) + (tf.float32,) * 7 + (tf.string,)))
   train_input_fn = tf.contrib.timeseries.RandomWindowInputFn(
       reader, batch_size=4, window_size=32)
   estimator.train(input_fn=train_input_fn, steps=training_steps)
@@ -215,7 +223,9 @@ def train_and_predict(
   predict_exogenous_features = {
       "2d_exogenous_feature": numpy.concatenate(
           [numpy.ones([1, 100, 1]), numpy.zeros([1, 100, 1])],
-          axis=-1)}
+          axis=-1),
+      "categorical_exogenous_feature": numpy.array(
+          ["strkey"] * 100)[None, :, None]}
   (predictions,) = tuple(estimator.predict(
       input_fn=tf.contrib.timeseries.predict_continuation_input_fn(
           evaluation, steps=100,

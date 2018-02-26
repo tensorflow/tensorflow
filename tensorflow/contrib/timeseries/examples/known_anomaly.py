@@ -46,12 +46,12 @@ def train_and_evaluate_exogenous(csv_file_name=_DATA_FILE, train_steps=300):
 
   # Indicate the format of our exogenous feature, in this case a string
   # representing a boolean value.
-  string_feature = tf.contrib.layers.sparse_column_with_keys(
-      column_name="is_changepoint", keys=["no", "yes"])
+  string_feature = tf.feature_column.categorical_column_with_vocabulary_list(
+      key="is_changepoint", vocabulary_list=["no", "yes"])
   # Specify the way this feature is presented to the model, here using a one-hot
   # encoding.
-  one_hot_feature = tf.contrib.layers.one_hot_column(
-      sparse_id_column=string_feature)
+  one_hot_feature = tf.feature_column.indicator_column(
+      categorical_column=string_feature)
 
   estimator = tf.contrib.timeseries.StructuralEnsembleRegressor(
       periodicities=12,
