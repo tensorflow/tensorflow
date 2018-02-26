@@ -127,42 +127,6 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(ns['closed_over_primitive'], closed_over_primitive)
     self.assertTrue('local_var' not in ns)
 
-  def test_getcallargs_constructor(self):
-
-    class TestSuperclass(object):
-
-      def __init__(self, x):
-        pass
-
-    class TestCallable(TestSuperclass):
-      pass
-
-    self.assertDictEqual({
-        'x': 1
-    }, inspect_utils.getcallargs(TestCallable, 1))
-
-  def test_getcallargs_object(self):
-
-    class TestCallable(object):
-
-      def __call__(self, x):
-        pass
-
-    obj = TestCallable()
-    self.assertDictEqual({
-        'self': obj,
-        'x': 1
-    }, inspect_utils.getcallargs(obj, 1))
-
-  def test_getcallargs_function(self):
-
-    def test_fn(x):
-      return x + 1
-
-    self.assertDictEqual({
-        'x': 1
-    }, inspect_utils.getcallargs(test_fn, 1))
-
   def test_getmethodclass(self):
 
     self.assertEqual(

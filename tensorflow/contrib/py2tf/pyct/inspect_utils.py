@@ -50,33 +50,6 @@ def getnamespace(f):
   return namespace
 
 
-def getcallargs(c, *args, **kwargs):
-  """Extension of getcallargs to non-function callables."""
-  if tf_inspect.isfunction(c) or tf_inspect.ismethod(c):
-    # The traditional getcallargs
-    return tf_inspect.getcallargs(c, *args, **kwargs)
-
-  if tf_inspect.isclass(c):
-    # Constructors: use a sentinel to remove the self argument.
-    self_sentinel = object()
-    arg_map = tf_inspect.getcallargs(
-        c.__init__, self_sentinel, *args, **kwargs)
-    # Find and remove the self arg. We cannot assume it's called 'self'.
-    self_arg_name = None
-    for name, value in arg_map.items():
-      if value is self_sentinel:
-        self_arg_name = name
-        break
-    del arg_map[self_arg_name]
-    return arg_map
-
-  if hasattr(c, '__call__'):
-    # Callable objects: map self to the object itself
-    return tf_inspect.getcallargs(c.__call__, *args, **kwargs)
-
-  raise NotImplementedError('unknown callable "%s"' % type(c))
-
-
 def getmethodclass(m):
   """Resolves a function's owner, e.g. a method's class.
 
