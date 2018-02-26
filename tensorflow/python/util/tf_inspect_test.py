@@ -144,6 +144,19 @@ def test_decorated_function_with_defaults(a, b=2, c='Hello'):
     self.assertEqual(
         expected, tf_inspect.getsource(test_decorated_function_with_defaults))
 
+  def testIsBuiltin(self):
+    self.assertEqual(
+        tf_inspect.isbuiltin(TestDecoratedClass),
+        inspect.isbuiltin(TestDecoratedClass))
+    self.assertEqual(
+        tf_inspect.isbuiltin(test_decorated_function),
+        inspect.isbuiltin(test_decorated_function))
+    self.assertEqual(
+        tf_inspect.isbuiltin(test_undecorated_function),
+        inspect.isbuiltin(test_undecorated_function))
+    self.assertEqual(tf_inspect.isbuiltin(range), inspect.isbuiltin(range))
+    self.assertEqual(tf_inspect.isbuiltin(max), inspect.isbuiltin(max))
+
   def testIsClass(self):
     self.assertTrue(tf_inspect.isclass(TestDecoratedClass))
     self.assertFalse(tf_inspect.isclass(test_decorated_function))
