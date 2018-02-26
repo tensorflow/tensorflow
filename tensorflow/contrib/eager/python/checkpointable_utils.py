@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 import weakref
 
@@ -26,6 +27,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
@@ -37,6 +39,7 @@ from tensorflow.python.training import checkpointable as core_checkpointable
 from tensorflow.python.training import checkpointable_utils as core_checkpointable_utils
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.util import deprecation
 
 
 _ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
@@ -278,6 +281,37 @@ def _serialize_object_graph(root_checkpointable):
       slot_variables=slot_variables)
 
 
+def gather_initializers(root_checkpointable):
+  """Traverse the object graph and find initialization ops.
+
+  Looks for `Checkpointable` objects which are dependencies of
+  `root_checkpointable` and which have an `initializer` property. Includes
+  initializers for slot variables only if the variable they are slotting for and
+  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
+  saved with a checkpoint).
+
+  Args:
+    root_checkpointable: A `Checkpointable` object to gather initializers for.
+  Returns:
+    A list of initialization ops.
+  """
+  # TODO(allenl): Extract out gathering logic so the naming logic doesn't have
+  # to run.
+  checkpointable_objects, path_to_root = (
+      _breadth_first_checkpointable_traversal(root_checkpointable))
+  object_names = {
+      obj: _object_prefix_from_path(path)
+      for obj, path in path_to_root.items()}
+  node_ids = {node: node_id for node_id, node
+              in enumerate(checkpointable_objects)}
+  _serialize_slot_variables(
+      checkpointable_objects=checkpointable_objects,
+      node_ids=node_ids,
+      object_names=object_names)
+  return [c.initializer for c in checkpointable_objects
+          if hasattr(c, "initializer") and c.initializer is not None]
+
+
 class _NoRestoreSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
 
   def __init__(self, tensor, name):
@@ -288,7 +322,26 @@ class _NoRestoreSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
     return control_flow_ops.no_op()
 
 
-class CheckpointLoadStatus(object):
+class _LoadStatus(object):
+  """Abstract base for load status callbacks."""
+
+  @abc.abstractmethod
+  def assert_consumed(self):
+    """Raises an exception unless a non-trivial restoration has completed."""
+    pass
+
+  @abc.abstractmethod
+  def run_restore_ops(self, session=None):
+    """Runs restore ops from the checkpoint. Requires a valid checkpoint."""
+    pass
+
+  @abc.abstractmethod
+  def initialize_or_restore(self, session=None):
+    """Runs restore ops from the checkpoint, or initializes variables."""
+    pass
+
+
+class CheckpointLoadStatus(_LoadStatus):
   """Checks the status of checkpoint loading and manages restore ops.
 
   Returned from `Saver.restore`. Since `restore` may defer the loading of values
@@ -347,6 +400,105 @@ class CheckpointLoadStatus(object):
     if session is None:
       session = ops.get_default_session()
     session.run(self._checkpoint.restore_ops, feed_dict=self._feed_dict)
+
+  def initialize_or_restore(self, session=None):
+    """Alias for `run_restore_ops`.
+
+    This method has a sibling in `InitializationOnlyStatus` which instead
+    initializes variables. That type is returned if no checkpoint is specified
+    in `Saver.restore`.
+
+    Args:
+      session: The session to run restore ops in. If `None`, uses the default
+        session.
+    """
+    self.run_restore_ops(session=session)
+
+
+class InitializationOnlyStatus(_LoadStatus):
+  """Returned from `Saver.restore` when no checkpoint has been specified.
+
+  Objects of this type have the same `assert_consumed` method as
+  `CheckpointLoadStatus`, but it always fails. However,
+  `initialize_or_restore` works on objects of both types, and will
+  initialize variables in `InitializationOnlyStatus` objects or restore them
+  otherwise.
+  """
+
+  def __init__(self, root_checkpointable):
+    self._root_checkpointable = root_checkpointable
+
+  def assert_consumed(self):
+    """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
+    raise AssertionError(
+        "No checkpoint specified (save_path=None); nothing is being restored.")
+
+  def run_restore_ops(self, session=None):
+    """For consistency with `CheckpointLoadStatus`.
+
+    Use `initialize_or_restore` for initializing if no checkpoint was passed
+    to `Saver.restore` and restoring otherwise.
+
+    Args:
+      session: Not used.
+    """
+    raise AssertionError(
+        "No checkpoint specified, so no restore ops are available "
+        "(save_path=None to Saver.restore).")
+
+  def initialize_or_restore(self, session=None):
+    """Runs initialization ops for variables.
+
+    Only objects which would be saved by `Saver.save` will be initialized. See
+    `gather_initializers` for details.
+
+    This method does nothing when executing eagerly (initializers get run
+    eagerly).
+
+    Args:
+      session: The session to run initialization ops in. If `None`, uses the
+        default session.
+    """
+    if context.in_eager_mode():
+      return  # run eagerly
+    if session is None:
+      session = ops.get_default_session()
+    session.run(gather_initializers(self._root_checkpointable))
+
+
+_DEPRECATED_RESTORE_INSTRUCTIONS = (
+    "Restoring a name-based tf.train.Saver checkpoint using the object-based "
+    "restore API. This mode uses global names to match variables, and so is "
+    "somewhat fragile. It also adds new restore ops to the graph each time it "
+    "is called. Prefer re-encoding training checkpoints in the object-based "
+    "format: run save() on the object-based saver (the same one this message "
+    "is coming from) and use that checkpoint in the future.")
+
+
+class NameBasedSaverStatus(_LoadStatus):
+  """Status for loading a name-based training checkpoint."""
+
+  def __init__(self, object_saver, save_path):
+    self._object_saver = object_saver
+    self._save_path = save_path
+
+  def assert_consumed(self):
+    """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
+    raise AssertionError(
+        "Restoring a name-based checkpoint. No load status is available.")
+
+  @deprecation.deprecated(
+      date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
+  def run_restore_ops(self, session=None):
+    """Load the name-based training checkpoint using a new `tf.train.Saver`."""
+    if session is None and context.in_graph_mode():
+      session = ops.get_default_session()
+    saver_lib.Saver(self._object_saver._global_variable_names()).restore(  # pylint: disable=protected-access
+        sess=session, save_path=self._save_path)
+
+  def initialize_or_restore(self, session=None):
+    """Alias for `run_restore_ops`."""
+    self.run_restore_ops(session=session)
 
 
 class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
@@ -429,7 +581,7 @@ class Saver(object):
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix). Names are generated based on this
-        prefix and the global step, if provided.
+        prefix and `checkpoint_number`, if provided.
       checkpoint_number: An integer variable or Tensor, used to number
         checkpoints. Typically this value is saved along with other variables in
         training checkpoints, which will happen automatically if it was created
@@ -483,6 +635,17 @@ class Saver(object):
         global_step=checkpoint_number)
     return save_path
 
+  def _global_variable_names(self):
+    """Generate a `tf.train.Saver`-style `var_list` using `variable.name`s."""
+    named_saveables, graph_proto = _serialize_object_graph(
+        self._root_checkpointable)
+    saver_names = {}
+    for object_proto in graph_proto.nodes:
+      for attribute_proto in object_proto.attributes:
+        saver_names[attribute_proto.full_name] = named_saveables[
+            attribute_proto.checkpoint_key]
+    return saver_names
+
   def restore(self, save_path, session=None):
     """Restore a training checkpoint.
 
@@ -518,20 +681,35 @@ class Saver(object):
     If the checkpoint has not been consumed completely, then the list of restore
     ops will grow as more objects are added to the dependency graph.
 
+    Name-based `tf.train.Saver` checkpoints can be loaded using this
+    method. There is no deferred loading, and names are used to match
+    variables. No restore ops are created/run until `run_restore_ops()` or
+    `initialize_or_restore()` are called on the returned status object, even
+    when executing eagerly. Re-encode name-based checkpoints using this
+    object-based `Saver.save` as soon as possible.
+
     Args:
       save_path: The path to the checkpoint, as returned by `save` or
         `tf.train.latest_checkpoint`. If None (as when there is no latest
-        checkpoint for `tf.train.latest_checkpoint` to return), does nothing.
+        checkpoint for `tf.train.latest_checkpoint` to return), returns an
+        object which may run initializers for objects in the dependency
+        graph. If the checkpoint was written by the name-based `tf.train.Saver`,
+        names are used to match variables.
       session: The session to retrieve metadata with. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
 
     Returns:
-      A `CheckpointLoadStatus` object, which can be used to make assertions
-      about the status of checkpoint restoration and run restore ops.
+      A load status object, which can be used to make assertions about the
+      status of checkpoint restoration and run initialization/restore ops
+      (of type `CheckpointLoadStatus`, or `InitializationOnlyStatus` if
+      `save_path` is `None`).
+
+      If `save_path` points to a name-based checkpoint, a `NameBasedSaverStatus`
+      object is returned which runs restore ops from a name-based saver.
     """
     if save_path is None:
-      return
+      return InitializationOnlyStatus(self._root_checkpointable)
     in_graph_mode = context.in_graph_mode()
     if in_graph_mode:
       if session is None:
@@ -542,21 +720,27 @@ class Saver(object):
       session = None
       file_prefix_tensor = constant_op.constant(save_path)
       file_prefix_feed_dict = None
-    if not in_graph_mode or self._object_graph_restore_tensor is None:
-      object_graph_string, = io_ops.restore_v2(
-          prefix=file_prefix_tensor,
-          tensor_names=[_OBJECT_GRAPH_PROTO_KEY],
-          shape_and_slices=[""],
-          dtypes=[dtypes.string],
-          name="object_graph_proto_read")
+    try:
+      if not in_graph_mode or self._object_graph_restore_tensor is None:
+        object_graph_string, = io_ops.restore_v2(
+            prefix=file_prefix_tensor,
+            tensor_names=[_OBJECT_GRAPH_PROTO_KEY],
+            shape_and_slices=[""],
+            dtypes=[dtypes.string],
+            name="object_graph_proto_read")
+        if in_graph_mode:
+          self._object_graph_restore_tensor = object_graph_string
       if in_graph_mode:
-        self._object_graph_restore_tensor = object_graph_string
-    if in_graph_mode:
-      object_graph_string = session.run(
-          self._object_graph_restore_tensor,
-          feed_dict=file_prefix_feed_dict)
-    else:
-      object_graph_string = object_graph_string.numpy()
+        object_graph_string = session.run(
+            self._object_graph_restore_tensor,
+            feed_dict=file_prefix_feed_dict)
+      else:
+        object_graph_string = object_graph_string.numpy()
+    except errors_impl.NotFoundError:
+      # The object graph proto does not exist in this checkpoint. Try again with
+      # name-based saving.
+      return NameBasedSaverStatus(self, save_path)
+
     object_graph_proto = (
         checkpointable_object_graph_pb2.CheckpointableObjectGraph())
     object_graph_proto.ParseFromString(object_graph_string)

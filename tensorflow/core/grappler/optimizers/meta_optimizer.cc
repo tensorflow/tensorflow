@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
@@ -126,13 +127,25 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           new AutoParallel(cfg_.auto_parallel().num_replicas())));
     }
   } else {
-    std::set<string> available_optimizers = {
+    const std::set<string> available_optimizers = {
         "pruning",      "constfold",  "layout",     "memory",
         "autoparallel", "arithmetic", "dependency", "loop"};
-    for (const auto& optimizer : cfg_.optimizers()) {
-      if (available_optimizers.find(optimizer) != available_optimizers.end()) {
-        optimizers.push_back(NewOptimizer(optimizer));
+    std::vector<string> custom_optimizer_names;
+    for (const auto& optimizer_name : cfg_.optimizers()) {
+      if (available_optimizers.find(optimizer_name) !=
+          available_optimizers.end()) {
+        optimizers.push_back(NewOptimizer(optimizer_name));
+      } else {
+        custom_optimizer_names.push_back(optimizer_name);
       }
+    }
+    // Now run the custom optimizers.
+    for (const auto& optimizer_name : custom_optimizer_names) {
+      std::unique_ptr<CustomGraphOptimizer> opt =
+          CustomGraphOptimizerRegistry::CreateByNameOrNull(optimizer_name);
+      if (opt == nullptr) continue;
+      TF_RETURN_IF_ERROR(opt->Init());
+      optimizers.push_back(std::move(opt));
     }
   }
 

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -229,55 +231,10 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
   return true;
 }
 
-// The algorithm first does a forward pass (parameters to root) to determine a
-// set of instructions to consider using bfloat16, then does a backward pass to
-// determine the precisions of those instructions according to the need of
-// their users.
-StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
-
+Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
+    HloModule* module) {
   std::list<HloComputation*> computations_topological_order =
       module->MakeComputationPostOrder();
-  // The first step is a forward pass (parameters to root), where we determine
-  // the potential candidate instructions to use bfloat16 in the outputs that
-  // are not likely to cause overhead from extra explicit conversions. This is
-  // done forwardly because we determine whether an HLO is a candidate partially
-  // based on whether its operands are candidates.
-  for (auto computation : computations_topological_order) {
-    for (auto inst : computation->MakeInstructionPostOrder()) {
-      if (InstructionIsCandidateForBF16Output(inst)) {
-        consider_using_bfloat16_.insert(inst);
-      }
-    }
-  }
-
-  // The second step is a backward pass (root to parameters), where we modify
-  // the precisions of the instructions identified in the first step when
-  // feasible. This is done backwardly because we determine the precision of an
-  // HLO's output based on how it is later used.
-  //
-  // The precision of an instruction is determined by its users, so we do the
-  // propagation in reverse topological order.
-  for (auto comp_it = computations_topological_order.rbegin();
-       comp_it != computations_topological_order.rend(); ++comp_it) {
-    if ((*comp_it)->IsFusionComputation()) {
-      // Fusion computations are handled when visiting the fusion instruction.
-      continue;
-    }
-    auto insts = (*comp_it)->MakeInstructionPostOrder();
-    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
-      DetermineAndMutateInstructionPrecision(*inst_it,
-                                             /*skip_parameters=*/true);
-    }
-  }
-
-  if (!changed_) {
-    return false;
-  }
-
-  // It's possible that an instruction does not define a buffer, but the
-  // defining instruction's shape has changed. So we need to adjust the output
-  // shapes of instructions according to the HLO values they refer to.
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
     auto insts = (*comp_it)->MakeInstructionPostOrder();
@@ -328,6 +285,162 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
       }
     }
   }
+
+  // We could have changed a fusion computation's root shape to have a different
+  // precision than the fusion node's output, if the fusion root does not
+  // define a buffer (e.g., a tuple). Now we add conversions after such fusion
+  // roots to make them match the fusion output. If the fusion output is a
+  // (possibly nested) tuple, we first create get-tuple-elements, then convert
+  // the unmatching leaf nodes, and finally create a new tuple as the fusion
+  // computation's root. If tuples and get-tuple-elements are created, we will
+  // run tuple simplifier and dead code elimination at the end (dead code is not
+  // allowed in fusion computation). E.g.,
+  //
+  // (1)             (2)             (3)
+  // a  b            a  b            a  b
+  // |\ |            |\ |            |\ |
+  // \ add   ->      |add    ->      | add
+  //  \ |            \ |        convert |
+  //  tuple         tuple             \ |
+  //                 / \              tuple
+  //               gte gte
+  //                |   |
+  //           convert  |
+  //                 \  /
+  //                 tuple
+  // (1) a is F32 but tuple is BF16
+  // (2) after adding conversion
+  // (3) after tuple simplifier and DCE.
+  bool needs_tuple_simplifier = false;
+  for (auto computation : computations_topological_order) {
+    auto insts = computation->MakeInstructionPostOrder();
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      auto hlo = *inst_it;
+      if (hlo->opcode() != HloOpcode::kFusion) {
+        continue;
+      }
+      auto fusion_computation = hlo->fused_instructions_computation();
+      auto fusion_root = fusion_computation->root_instruction();
+      if (ShapeUtil::Compatible(fusion_root->shape(), hlo->shape())) {
+        continue;
+      }
+      ShapeTree<HloInstruction*> converted_outputs(hlo->shape());
+      // Iterate through nodes in the shape tree in pre-order and initialize
+      // each non-root node with a corresponding get-tuple-element. For a leaf
+      // node, if its shape does not match the fusion output, create a
+      // conversion node to overwrite the node value.
+      for (auto it = converted_outputs.begin(); it != converted_outputs.end();
+           ++it) {
+        ShapeIndex output_index = it->first;
+        HloInstruction*& output = it->second;
+        const Shape subshape =
+            ShapeUtil::GetSubshape(hlo->shape(), output_index);
+        if (output_index.empty()) {
+          output = fusion_root;
+        } else {
+          ShapeIndex parent_index = output_index;
+          parent_index.pop_back();
+          output = fusion_computation->AddInstruction(
+              HloInstruction::CreateGetTupleElement(
+                  subshape, converted_outputs.element(parent_index),
+                  output_index.back()));
+        }
+        if (ShapeUtil::IsTuple(subshape)) {
+          continue;
+        }
+        if (!ShapeUtil::Compatible(
+                subshape,
+                ShapeUtil::GetSubshape(fusion_root->shape(), output_index))) {
+          output = fusion_computation->AddInstruction(
+              HloInstruction::CreateConvert(subshape, output));
+        }
+      }
+      // Iterate through nodes in the shape tree in reverse pre-order and create
+      // a tuple instruction for each non-leaf node where the elements are the
+      // values of its child nodes.
+      for (auto it = converted_outputs.rbegin(); it != converted_outputs.rend();
+           ++it) {
+        ShapeIndex output_index = it->first;
+        HloInstruction*& output = it->second;
+        const Shape& subshape =
+            ShapeUtil::GetSubshape(hlo->shape(), output_index);
+        if (!ShapeUtil::IsTuple(subshape)) {
+          continue;
+        }
+        std::vector<HloInstruction*> elements(
+            ShapeUtil::TupleElementCount(subshape));
+        ShapeIndex child_index = output_index;
+        for (int64 i = 0; i < elements.size(); ++i) {
+          child_index.push_back(i);
+          elements[i] = converted_outputs.element(child_index);
+          child_index.pop_back();
+        }
+        output = fusion_computation->AddInstruction(
+            HloInstruction::CreateTuple(elements));
+      }
+      fusion_computation->set_root_instruction(converted_outputs.element({}));
+      needs_tuple_simplifier |= ShapeUtil::IsTuple(hlo->shape());
+    }
+  }
+  if (needs_tuple_simplifier) {
+    TupleSimplifier tuple_simplifier;
+    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
+  return Status::OK();
+}
+
+// The algorithm first does a forward pass (parameters to root) to determine a
+// set of instructions to consider using bfloat16, then does a backward pass to
+// determine the precisions of those instructions according to the need of
+// their users.
+StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+
+  std::list<HloComputation*> computations_topological_order =
+      module->MakeComputationPostOrder();
+  // The first step is a forward pass (parameters to root), where we determine
+  // the potential candidate instructions to use bfloat16 in the outputs that
+  // are not likely to cause overhead from extra explicit conversions. This is
+  // done forwardly because we determine whether an HLO is a candidate partially
+  // based on whether its operands are candidates.
+  for (auto computation : computations_topological_order) {
+    for (auto inst : computation->MakeInstructionPostOrder()) {
+      if (InstructionIsCandidateForBF16Output(inst)) {
+        consider_using_bfloat16_.insert(inst);
+      }
+    }
+  }
+
+  // The second step is a backward pass (root to parameters), where we modify
+  // the precisions of the instructions identified in the first step when
+  // feasible. This is done backwardly because we determine the precision of an
+  // HLO's output based on how it is later used.
+  //
+  // The precision of an instruction is determined by its users, so we do the
+  // propagation in reverse topological order.
+  for (auto comp_it = computations_topological_order.rbegin();
+       comp_it != computations_topological_order.rend(); ++comp_it) {
+    if ((*comp_it)->IsFusionComputation()) {
+      // Fusion computations are handled when visiting the fusion instruction.
+      continue;
+    }
+    auto insts = (*comp_it)->MakeInstructionPostOrder();
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      DetermineAndMutateInstructionPrecision(*inst_it,
+                                             /*skip_parameters=*/true);
+    }
+  }
+
+  if (!changed_) {
+    return false;
+  }
+
+  // It's possible that an instruction does not define a buffer, but the
+  // defining instruction's shape has changed. So we need to adjust the output
+  // shapes of instructions according to the HLO values they refer to.
+  TF_RETURN_IF_ERROR(ResolveInconsistencyOfAliasingBuffers(module));
   return true;
 }
 

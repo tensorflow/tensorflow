@@ -39,7 +39,7 @@ py_library(
 
 cuda_py_test(
     name = "metropolis_hastings_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/metropolis_hastings_test.py"],
     additional_deps = [
         ":bayesflow_py",
