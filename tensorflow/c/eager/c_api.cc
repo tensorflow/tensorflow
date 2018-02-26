@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -821,6 +822,25 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
         tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
     if (!status->status.ok()) {
       delete kernel;
+      return;
+    }
+    // Update output_dtypes inside `kernel`.
+    const tensorflow::OpDef* op_def = nullptr;
+    const tensorflow::FunctionDef* function_def =
+        ctx->func_lib_def.Find(ndef.op());
+    if (function_def != nullptr) {
+      op_def = &(function_def->signature());
+    }
+    if (op_def == nullptr) {
+      status->status = OpDefForOp(ndef.op().c_str(), &op_def);
+      if (!status->status.ok()) {
+        return;
+      }
+    }
+    tensorflow::DataTypeVector input_dtypes;
+    status->status = InOutTypesForNode(ndef, *op_def, &input_dtypes,
+                                       kernel->output_dtypes());
+    if (!status->status.ok()) {
       return;
     }
     tensorflow::mutex_lock ml(ctx->cache_mu);
