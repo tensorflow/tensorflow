@@ -86,4 +86,7 @@ Compiler::GetPlatformCompilers() {
   return compilers->at(platform->id()).get();
 }
 
+AotCompilationOptions::AotCompilationOptions()
+    : debug_options_(legacy_flags::GetDebugOptionsFromFlags()) {}
+
 }  // namespace xla

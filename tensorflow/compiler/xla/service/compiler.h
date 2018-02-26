@@ -79,11 +79,15 @@ class AotCompilationOptions {
     device_allocator_ = device_allocator;
   }
 
+  const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions* mutable_debug_options() { return &debug_options_; }
+
  protected:
-  AotCompilationOptions() = default;
+  AotCompilationOptions();
 
  private:
   DeviceMemoryAllocator* device_allocator_ = nullptr;
+  DebugOptions debug_options_;
 };
 
 // Abstract compiler interface that is subclassed for compilation on a
