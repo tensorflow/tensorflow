@@ -1434,6 +1434,17 @@ void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node,
   graph_modified_ = true;
 }
 
+void ConstantFolding::ReplaceSubtractionFromZeroByNegation(NodeDef* node,
+                                                           GraphDef* graph) {
+  node->set_op("Neg");
+  node->mutable_input()->SwapElements(0, 1);
+  const string ctrl_dep =
+      AddControlDependency(node->input(1), graph, node_map_.get());
+  node_map_->UpdateInput(node->name(), node->input(1), ctrl_dep);
+  node->set_input(1, ctrl_dep);
+  graph_modified_ = true;
+}
+
 Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const TensorShapeProto& shape, NodeDef* node,
     GraphDef* graph) {
@@ -1636,9 +1647,14 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
       if (y_matches_output_shape &&
           ((is_mul && x_is_one) || (is_add && x_is_zero))) {
-        // TODO(rmlarsen): Handle subtraction 0 - y.
         // 1 * y = y or 0 + y = y.
         ReplaceOperationWithSnapshot(1, node, output);
+        continue;
+      }
+
+      if (y_matches_output_shape && (is_sub && x_is_zero)) {
+        // Replace 0 - y with Neg(y).
+        ReplaceSubtractionFromZeroByNegation(node, output);
         continue;
       }
 
