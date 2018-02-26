@@ -2467,27 +2467,27 @@ static Status ValidateGatherDimensionNumbers(
 
   const int64 output_window_dim_count = dim_numbers.output_window_dims_size();
   const int64 output_shape_rank =
-      output_window_dim_count + gather_indices_shape.size();
+      output_window_dim_count + gather_indices_shape.size() - 1;
 
   for (int i = 0; i < dim_numbers.output_window_dims_size(); ++i) {
     int64 window_index = dim_numbers.output_window_dims(i);
     if (window_index < 0 || window_index >= output_shape_rank) {
       return InvalidArgument(
           "Window index %d in gather op is out of bounds; got %lld, but should "
-          "have been in"
-          "[0,%lld)",
+          "have been in [0,%lld)",
           i, window_index, output_shape_rank);
     }
   }
 
   if (dim_numbers.gather_dims_to_operand_dims_size() !=
-      gather_indices_shape.back()) {
+      gather_indices_shape[dim_numbers.index_vector_dim()]) {
     return InvalidArgument(
-        "There must be exactly as many elements in gather_dims_to_operand_dims "
-        "as there are elements in the last dimension of %%gather_indices; got: "
-        "%d, expected %lld",
+        "Gather op has %d elements in gather_dims_to_operand_dims and the "
+        "bound of dimension index_vector_dim=%lld of gather_indices is "
+        "%lld. These two numbers must be equal.",
         dim_numbers.gather_dims_to_operand_dims_size(),
-        gather_indices_shape.back());
+        dim_numbers.index_vector_dim(),
+        gather_indices_shape[dim_numbers.index_vector_dim()]);
   }
 
   for (int i = 0; i < dim_numbers.gather_dims_to_operand_dims_size(); i++) {
@@ -2550,24 +2550,33 @@ static Status ValidateGatherDimensionNumbers(
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
       gather_indices_shape, "gather indices operand of gather op"));
 
-  if (gather_indices_shape.dimensions_size() < 1) {
-    return InvalidArgument(
-        "Gather indices parameter must at least of rank 1; got %s",
-        ShapeUtil::HumanString(gather_indices_shape).c_str());
-  }
-
   if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
     return InvalidArgument(
         "Gather indices parameter must be an integral tensor; got %s",
         ShapeUtil::HumanString(gather_indices_shape).c_str());
   }
 
+  // We implicitly reshape gather indices of shape P[A,B,C] to P[A,B,C,1] if
+  // index_vector_dim is rank(P).  The bounds of this expanded shape is
+  // stored in expanded_gather_indices_shape.
+
+  if (gather_indices_shape.dimensions_size() <
+          gather_dim_numbers.index_vector_dim() ||
+      gather_dim_numbers.index_vector_dim() < 0) {
+    return InvalidArgument(
+        "Gather index leaf dimension must be within [0, rank(gather_indices) + "
+        "1). rank(gather_indices) is %d and gather index leaf dimension is "
+        "%lld.",
+        gather_indices_shape.dimensions_size(),
+        gather_dim_numbers.index_vector_dim());
+  }
+
   std::vector<int64> expanded_gather_indices_shape;
-  // We implicitly reshape gather indices of shape P[N] to P[N,1].
   expanded_gather_indices_shape.reserve(gather_indices_shape.dimensions_size());
   c_copy(gather_indices_shape.dimensions(),
          std::back_inserter(expanded_gather_indices_shape));
-  if (expanded_gather_indices_shape.size() == 1) {
+  if (expanded_gather_indices_shape.size() ==
+      gather_dim_numbers.index_vector_dim()) {
     expanded_gather_indices_shape.push_back(1);
   }
 
@@ -2632,6 +2641,9 @@ static Status ValidateGatherDimensionNumbers(
       }
       current_bound = window_bounds[window_dims_seen++];
     } else {
+      if (gather_dims_seen == gather_dim_numbers.index_vector_dim()) {
+        gather_dims_seen++;
+      }
       current_bound = expanded_gather_indices_shape[gather_dims_seen++];
     }
 

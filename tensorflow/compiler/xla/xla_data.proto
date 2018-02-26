@@ -418,6 +418,10 @@ message GatherDimensionNumbers {
   // transforms the gather index looked up from the gather_indices tensor into
   // the starting index in the input space.
   repeated int64 gather_dims_to_operand_dims = 3;
+
+  // The dimension in the gather_indices input that contains the starting
+  // indices.
+  int64 index_vector_dim = 4;
 }
 
 // Operation requests that are all collected as a tagged union with a oneof
