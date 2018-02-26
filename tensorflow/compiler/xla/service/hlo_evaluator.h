@@ -153,6 +153,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleCall(HloInstruction* call) override;
+
  private:
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
