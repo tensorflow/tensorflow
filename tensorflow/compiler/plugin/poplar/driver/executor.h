@@ -206,7 +206,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
-  port::Status GetCompilerReports(std::string&);
+  port::Status GetCompilerReports(std::vector<std::string>& out);
 
   port::StatusOr<DeviceMemoryBase>
   ExecuteEngine(perftools::gputools::StreamExecutor* executor,

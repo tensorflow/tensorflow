@@ -122,17 +122,14 @@ PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
   return port::Status::OK();
 }
 
-port::Status PoplarPlatform::GetCompilerReports(std::string& out) {
+port::Status PoplarPlatform::GetCompilerReports(std::vector<std::string>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
     StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
     auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 
-    std::string reports;
-    TF_RETURN_IF_ERROR(e->GetCompilerReports(reports));
-
-    out += reports;
+    TF_RETURN_IF_ERROR(e->GetCompilerReports(out));
   }
 
   return port::Status::OK();

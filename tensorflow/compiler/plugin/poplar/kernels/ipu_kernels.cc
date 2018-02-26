@@ -41,15 +41,20 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
 
   auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
 
-  Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(ctx,
-                 ctx->allocate_output("out", TensorShape({}), &output_tensor));
-  auto output_flat = output_tensor->flat<string>();
-
-  std::string out;
+  std::vector<std::string> out;
   OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
 
-  output_flat(0) = out;
+  int num = out.size();
+
+  Tensor* output_tensor = nullptr;
+  OP_REQUIRES_OK(ctx,
+                 ctx->allocate_output("out", TensorShape({num}),
+                                      &output_tensor));
+  auto output_flat = output_tensor->flat<string>();
+
+  for (int i=0; i<out.size(); i++) {
+    output_flat(i) = out[i];
+  }
 }
 
 IpuSummaryOp::~IpuSummaryOp() {}

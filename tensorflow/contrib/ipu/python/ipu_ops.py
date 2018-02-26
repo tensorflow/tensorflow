@@ -16,6 +16,8 @@
 """Ops related to the Graphcore IPU."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -25,13 +27,18 @@ def ipu_compile_summary(name, op, collections=None):
   with ops.device("cpu"):
     with ops.control_dependencies([op]):
 
-      report = gen_ipu_ops.ipu_summary()
+      reports = gen_ipu_ops.ipu_summary()
+
+      reports = string_ops.reduce_join(reports, 0, separator="</PRE><PRE>")
+      reports = string_ops.string_join([constant_op.constant("<PRE>"),
+                                        reports,
+                                        constant_op.constant("</PRE>")])
 
       summary_metadata = summary_pb2.SummaryMetadata(
         plugin_data=summary_pb2.SummaryMetadata.PluginData(
           plugin_name="text"))
 
-      t_summary = tensor_summary(name=name, tensor=report,
+      t_summary = tensor_summary(name=name, tensor=reports,
                                  summary_metadata=summary_metadata,
                                  collections=collections)
 
