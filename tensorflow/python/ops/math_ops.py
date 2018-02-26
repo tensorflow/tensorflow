@@ -158,14 +158,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
-from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -2181,14 +2178,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  NOTE: This operation is not differentiable and cannot be used if inputs depend
-  on trainable variables. Please use `tf.add_n` for such cases.
+  `tf.accumulate_n` performs the same operation as `tf.add_n`, but does not
+  wait for all of its inputs to be ready before beginning to sum. This can
+  save memory if inputs are ready at different times, since minimum temporary
+  storage is proportional to the output size rather than the inputs size.
 
-  Aside from differentiability, `tf.accumulate_n` performs the same operation as
-  `tf.add_n`, but does not wait for all of its inputs to be ready before
-  beginning to sum. This can save memory if inputs are ready at different times,
-  since minimum temporary storage is proportional to the output size rather than
-  the inputs size.
+  `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
 
   For example:
 
@@ -2198,8 +2193,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   tf.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
 
   # Explicitly pass shape and type
-  tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)  # [[7,  4],
-                                                                   #  [6, 14]]
+  tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
+                                                                 # [[7,  4],
+                                                                 #  [6, 14]]
   ```
 
   Args:
@@ -2215,20 +2211,17 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if context.in_eager_mode():
-    # TODO(apassos) remove this once the lifetime of eager variables gets
-    # addressed.
-    raise ValueError("accumulate_n not supported in eager mode")
+  def _input_error():
+    return ValueError(
+        "inputs must be a list of at least one Tensor with the "
+        "same dtype and shape")
   if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _input_error()
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):
-    raise ValueError("inputs must be a list of at least one Tensor with the "
-                     "same dtype and shape")
+    raise _input_error()
   if shape is not None:
     shape = tensor_shape.as_shape(shape)
   else:
@@ -2236,27 +2229,31 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   for input_tensor in inputs:
     if isinstance(input_tensor, ops.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
-  if tensor_dtype is None:
-    tensor_dtype = inputs[0].dtype
-  if tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
-        tensor_dtype, inputs[0].dtype))
-  if len(inputs) == 1:
+
+  # tensor_dtype is for safety only; operator's output type computed in C++
+  if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
+    raise TypeError("tensor_dtype is {}, but input is of type {}"
+                    .format(tensor_dtype, inputs[0].dtype))
+
+  if len(inputs) == 1 and name is None:
     return inputs[0]
-  with ops.name_scope(name, "AccumulateN", inputs) as name:
-    var = gen_state_ops._temporary_variable(
-        shape=tensor_shape.vector(0), dtype=tensor_dtype)
-    with ops.colocate_with(var):
-      zeros = array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0])
-      zeros.set_shape(shape)
-      ref = state_ops.assign(var, zeros, validate_shape=False)
-      update_ops = [
-          state_ops.assign_add(ref, input_tensor, use_locking=True)
-          for input_tensor in inputs
-      ]
-      with ops.control_dependencies(update_ops):
-        return gen_state_ops._destroy_temporary_variable(
-            ref, var_name=var.op.name, name=name)
+  elif len(inputs) == 1 and name is not None:
+    return array_ops.identity(inputs[0], name=name)
+  elif context.in_eager_mode():
+    # TemporaryVariable not currently supported in eager mode; fall back
+    # onto AddN for now.
+    # TODO(frreiss) remove this once the lifetime of eager variables gets
+    # addressed
+    return add_n(inputs, name=name)
+  else:
+    return gen_math_ops._accumulate_nv2(inputs, name=name, shape=shape)  # pylint: disable=protected-access
+
+
+@ops.RegisterGradient("AccumulateNV2")
+def _accumulate_n_grad(op, grad):
+  """Same as gradient for AddN. Copies the gradient to all inputs."""
+  # Not broadcasting.
+  return [grad] * len(op.inputs)
 
 
 @tf_export("nn.sigmoid", "sigmoid")
