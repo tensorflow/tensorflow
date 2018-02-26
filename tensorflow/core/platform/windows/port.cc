@@ -25,6 +25,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
