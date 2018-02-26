@@ -2445,6 +2445,26 @@ Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleCall(HloInstruction* call) {
+  auto* computation = call->to_apply();
+  auto operands = call->operands();
+
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[call] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
   return Status::OK();
