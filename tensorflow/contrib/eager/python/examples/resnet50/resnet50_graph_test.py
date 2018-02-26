@@ -55,7 +55,7 @@ class ResNet50GraphTest(tf.test.TestCase):
     with tf.Graph().as_default():
       images = tf.placeholder(tf.float32, image_shape(None))
       model = resnet50.ResNet50(data_format())
-      predictions = model(images)
+      predictions = model(images, training=False)
 
       init = tf.global_variables_initializer()
 
@@ -114,7 +114,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     with tf.Graph().as_default():
       images = tf.placeholder(tf.float32, image_shape(None))
       model = resnet50.ResNet50(data_format())
-      predictions = model(images)
+      predictions = model(images, training=False)
 
       init = tf.global_variables_initializer()
 

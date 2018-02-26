@@ -134,7 +134,10 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     input = ops.convert_to_tensor(input)
     in_device = input.device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
-    if context.context().device_name != in_device:
+    context_device = context.context().device_name
+    if not context_device:
+      context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    if context_device != in_device:
       return input._copy()  # pylint: disable=protected-access
     return input
 
@@ -401,8 +404,11 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
-      if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.num_elements(), out_type, name=name)
+      if optimize:
+        if input_shape.is_fully_defined():
+          return constant(input_shape.num_elements(), out_type, name=name)
+        if input_shape.dims and any(dim == 0 for dim in input_shape.dims):
+          return constant(0, out_type, name=name)
       return gen_array_ops.size(input, name=name, out_type=out_type)
 
 

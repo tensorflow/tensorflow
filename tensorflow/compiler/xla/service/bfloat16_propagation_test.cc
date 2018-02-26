@@ -68,7 +68,7 @@ class BFloat16PropagationTest : public HloTestBase {
 
   // Returns whether the given HloInstruction's output element type is BF16 or
   // the only use of it is converting to BF16.
-  bool OutputsBF16(HloInstruction* inst) {
+  bool OutputsBF16(const HloInstruction* inst) {
     if (inst->shape().element_type() == BF16) {
       return true;
     }
@@ -285,6 +285,64 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
   EXPECT_TRUE(OutputsBF16(b_f0));
   EXPECT_TRUE(OutputsBF16(a_f1));
   EXPECT_TRUE(OutputsBF16(b_f1));
+}
+
+// Tests that if 1) the root instruction of a fusion is a tuple, 2) the fusion
+// outputs are only used by a dot, and 3) one element of the tuple is used by
+// an add in the fusion computation, then the propagation pass should create a
+// convert in the fusion computation to keep the add's operand in F32 but change
+// the fusion output to BF16. E.g., the following fusion computation
+//   (F32, F32) fusion_computation(F32 a, F32 b)
+//     = tuple(F32 a, F32 add(F32 a, F32 b))
+// will be changed to
+//   (BF16, BF16) fusion_computation(F32 a, F32 b)
+//     = tuple(BF16 convert(a), BF16 add(F32 a, F32 b))
+TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, param));
+
+  auto builder_f = HloComputation::Builder("fusion0");
+  HloInstruction* a_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b_f =
+      builder_f.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* add_f = builder_f.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a_f, b_f));
+  HloInstruction* tuple_f =
+      builder_f.AddInstruction(HloInstruction::CreateTuple({a_f, add_f}));
+  auto comp_f = module->AddEmbeddedComputation(builder_f.Build());
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      tuple_f->shape(), HloInstruction::FusionKind::kCustom, {add, add},
+      comp_f));
+
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion, 1));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, gte0, gte1));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_TRUE(OutputsBF16(gte0));
+  EXPECT_TRUE(OutputsBF16(gte1));
+  EXPECT_FALSE(OutputsBF16(a_f));
+  EXPECT_FALSE(OutputsBF16(b_f));
+  EXPECT_TRUE(OutputsBF16(add_f));
+  auto new_fusion_root = comp_f->root_instruction();
+  EXPECT_EQ(new_fusion_root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(new_fusion_root->operand(1), add_f);
+  EXPECT_EQ(new_fusion_root->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_TRUE(OutputsBF16(new_fusion_root->operand(0)));
 }
 
 // A select over tuples does not define the leaf buffers, so the types in

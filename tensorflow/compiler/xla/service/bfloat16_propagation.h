@@ -94,9 +94,20 @@ class BFloat16Propagation : public HloPassInterface {
   // Special handling in the mutation pass for fusion computations.
   void DetermineAndMutateFusionComputationPrecision(HloInstruction* fusion);
 
+  // ***************************
+  // Functions called by the final inconsistency resolving pass.
+
+  // Adjusts the output shapes of HloInstructions such that if two
+  // HloInstructions have aliasing buffers in their outputs, they must have the
+  // same precision.
+  Status ResolveInconsistencyOfAliasingBuffers(HloModule* module);
+
   // Makes the fusion parameters match the precision of the actual parameters
   // passed to the fusion node.
   void AdjustFusionParameters(HloInstruction* fusion);
+
+  // ***************************
+  // Functions called and state used by two or more passes.
 
   // Returns whether all uses of the given HloInstruction can consume BF16
   // input.
