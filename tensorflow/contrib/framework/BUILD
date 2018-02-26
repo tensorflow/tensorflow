@@ -63,6 +63,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:smart_cond",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",

@@ -766,6 +766,31 @@ py_library(
 )
 
 py_library(
+    name = "smart_cond",
+    srcs = ["framework/smart_cond.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":tensor_util",
+    ],
+)
+
+py_test(
+    name = "smart_cond_test",
+    size = "small",
+    srcs = ["framework/smart_cond_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":framework_ops",
+        ":math_ops",
+        ":session",
+        ":smart_cond",
+    ],
+)
+
+py_library(
     name = "sparse_tensor",
     srcs = ["framework/sparse_tensor.py"],
     srcs_version = "PY2AND3",
@@ -4091,6 +4116,7 @@ py_library(
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":platform",
+        ":smart_cond",
         ":tensor_util",
         ":util",
         ":variable_scope",
