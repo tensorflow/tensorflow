@@ -125,11 +125,17 @@ TEST(FloatSubOpModel, WithBroadcast) {
 TEST(QuantizedSubOpModel, QuantizedTestsNoActivation) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::initializer_list<float>> inputs1 = {
-      {0.1, 0.2, 0.3, 0.4}, {-0.2, 0.2, 0.4, 0.7}, {-0.01, 0.2, 0.7, 0.3}};
+                                {0.1, 0.2, 0.3, 0.4},
+                                {-0.2, 0.2, 0.4, 0.7},
+                                {-0.01, 0.2, 0.7, 0.3}};
   std::vector<std::initializer_list<float>> inputs2 = {
-      {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.2}, {0.6, 0.4, -0.18, 0.5}};
+                                {0.6, 0.4, 0.3, 0.1},
+                                {0.6, 0.4, 0.5, -0.2},
+                                {0.6, 0.4, -0.18, 0.5}};
   std::vector<std::initializer_list<float>> results = {
-      {-0.5, -0.2, 0.0, 0.3}, {-0.8, -0.2, -0.1, 0.9}, {-0.61, -0.2, 0.88, -0.2}};
+                              {-0.5, -0.2, 0.0, 0.3},
+                              {-0.8, -0.2, -0.1, 0.9},
+                              {-0.61, -0.2, 0.88, -0.2}};
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedSubOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
@@ -179,7 +185,8 @@ TEST(QuantizedSubOpModel, QuantizedVariousInputShapes) {
     m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1, 0.3, 0.3, 0.5, 1.1, 0.1});
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(),
-                ElementsAreArray(ArrayFloatNear({-2.1, -0.1, 0.4, 0.3, 0.0, 1.9},
+                ElementsAreArray(ArrayFloatNear({-2.1, -0.1, 0.4,
+                                                  0.3,  0.0, 1.9},
                                                 kQuantizedTolerance)))
         << "With shape number " << i;
   }
@@ -198,7 +205,8 @@ TEST(QuantizedSubOpModel, QuantizedWithBroadcast) {
     m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.7});
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(),
-                ElementsAreArray(ArrayFloatNear({-2.7, -0.5, 0.0, 0.1, 0.4, 1.3},
+                ElementsAreArray(ArrayFloatNear({-2.7, -0.5, 0.0,
+                                                  0.1,  0.4, 1.3},
                                                 kQuantizedTolerance)))
         << "With shape number " << i;
   }
