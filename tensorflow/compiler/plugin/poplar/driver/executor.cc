@@ -107,6 +107,7 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 }
 
 PoplarExecutor::PoplarExecutor() :
+    poplar_device_(poplar::Device::createCPUDevice()),
     profile_enabled_(false) {}
 
 PoplarExecutor::~PoplarExecutor() {}
