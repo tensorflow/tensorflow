@@ -228,7 +228,7 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
         "/data/local/tmp/hexagon_graph_execution"
     adb wait-for-device
 
-    for i in $(seq 1 "${TEST_COUNT}"); do
+    for _ in $(seq 1 "${TEST_COUNT}"); do
       adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
           "/data/local/tmp/hexagon_graph_execution" ${gtest_args[@]}
     done

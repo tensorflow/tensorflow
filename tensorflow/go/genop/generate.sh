@@ -24,8 +24,8 @@ then
   GOPATH=$(go env GOPATH)
 fi
 
-cd $(dirname $0)
-for g in $(echo "${GOPATH//:/ }"); do
+cd "$(dirname "$0")"
+for g in "${GOPATH//:/ }"; do
     TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
     PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
     if [ -x "${PROTOC}" ]; then
@@ -53,6 +53,6 @@ fi
 export PATH=$PATH:${GOPATH}/bin
 mkdir -p ./internal/proto
 ${PROTOC} \
-  -I ${TF_DIR} \
+  -I "${TF_DIR}" \
   --go_out=./internal/proto \
-  ${TF_DIR}/tensorflow/core/framework/*.proto
+  "${TF_DIR}"/tensorflow/core/framework/*.proto

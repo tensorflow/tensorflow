@@ -22,7 +22,7 @@ die() {
   # Usage: die <error_message>
   #   e.g., die "Something bad happened."
 
-  echo $@
+  echo "$@"
   exit 1
 }
 
@@ -35,39 +35,38 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
   echo
   echo "== cat /etc/issue ==============================================="
   uname -a
-  uname=`uname -s`
+  uname=$(uname -s)
   if [ "$(uname)" == "Darwin" ]; then
-    echo Mac OS X `sw_vers -productVersion`
+    echo Mac OS X $(sw_vers -productVersion)
   elif [ "$(uname)" == "Linux" ]; then
     cat /etc/*release | grep VERSION
   fi
-  
+
   echo
   echo '== are we in docker ============================================='
-  num=`cat /proc/1/cgroup | grep docker | wc -l`;
-  if [ $num -ge 1 ]; then
+  num=$(grep -c docker < /proc/1/cgroup);
+  if [ "$num" -ge 1 ]; then
     echo "Yes"
   else
     echo "No"
   fi
-  
+
   echo
   echo '== compiler ====================================================='
   c++ --version 2>&1
-  
+
   echo
   echo '== uname -a ====================================================='
   uname -a
-  
+
   echo
   echo '== check pips ==================================================='
   pip list 2>&1 | grep "proto\|numpy\|tensorflow"
-  
-  
+
   echo
   echo '== check for virtualenv ========================================='
   ${python_bin_path} -c "import sys;print(hasattr(sys, \"real_prefix\"))"
-  
+
   echo
   echo '== tensorflow import ============================================'
 } >> ${OUTPUT_FILE}
@@ -88,22 +87,22 @@ DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
   grep libcudnn.so /tmp/loadedlibs
   echo
   echo '== env =========================================================='
-  if [ -z ${LD_LIBRARY_PATH+x} ]; then
+  if [ -z "${LD_LIBRARY_PATH+x}" ]; then
     echo "LD_LIBRARY_PATH is unset";
   else
-    echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH} ;
+    echo LD_LIBRARY_PATH "${LD_LIBRARY_PATH}" ;
   fi
-  if [ -z ${DYLD_LIBRARY_PATH+x} ]; then
+  if [ -z "${DYLD_LIBRARY_PATH+x}" ]; then
     echo "DYLD_LIBRARY_PATH is unset";
   else
-    echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH} ;
+    echo DYLD_LIBRARY_PATH "${DYLD_LIBRARY_PATH}" ;
   fi
-  
-  
+
+
   echo
   echo '== nvidia-smi ==================================================='
   nvidia-smi 2>&1
-  
+
   echo
   echo '== cuda libs  ==================================================='
 } >> ${OUTPUT_FILE}
@@ -120,4 +119,3 @@ echo "and use it to populate the fields in the github issue template."
 echo
 echo "cat ${OUTPUT_FILE}"
 echo
-

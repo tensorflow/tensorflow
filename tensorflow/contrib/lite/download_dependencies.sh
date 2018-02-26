@@ -65,19 +65,19 @@ download_and_extract() {
     tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
 
-    curl -L ${url} > ${tempdir}/zipped.zip
-    unzip ${tempdir}/zipped.zip -d ${tempdir2}
+    curl -L "${url}" > "${tempdir}/zipped.zip"
+    unzip "${tempdir}"/zipped.zip -d "${tempdir2}"
 
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if ls "${tempdir2}"/*/* 1> /dev/null 2>&1; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
-      cp -R ${tempdir2}/*/* ${dir}/
+      cp -R "${tempdir2}"/*/* "${dir}"/
     else
-      cp -R ${tempdir2}/* ${dir}/
+      cp -R "${tempdir2}"/* "${dir}"/
     fi
-    rm -rf ${tempdir2} ${tempdir}
+    rm -rf "${tempdir2}" "${tempdir}"
   fi
 
   # Delete any potential BUILD files, which would interfere with Bazel builds.

@@ -48,7 +48,7 @@ while true ; do
     esac
 done
 
-[ -z $TF_VERSION ] && echo "Specify a version using -v or --version" && exit 1
+[ -z "$TF_VERSION" ] && echo "Specify a version using -v or --version" && exit 1
 
 echo "Generating pkgconfig file for TensorFlow $TF_VERSION in $TF_PREFIX"
 

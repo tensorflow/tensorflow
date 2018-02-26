@@ -26,20 +26,18 @@ if [[ ! -f "tensorflow/contrib/makefile/downloads/protobuf/autogen.sh" ]]; then
     echo "tensorflow/contrib/makefile/download_dependencies.sh" 1>&2
     exit 1
 fi
-source "${SCRIPT_DIR}"/build_helper.subr
+. "${SCRIPT_DIR}"/build_helper.subr
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 cd tensorflow/contrib/makefile/downloads/protobuf
 
-./autogen.sh
-if [ $? -ne 0 ]
+if ./autogen.sh -ne 0
 then
   echo "./autogen.sh command failed."
   exit 1
 fi
 
-./configure --prefix="${GENDIR}" --with-pic
-if [ $? -ne 0 ]
+if ./configure --prefix="${GENDIR}" --with-pic -ne 0
 then
   echo "./configure command failed."
   exit 1
@@ -47,8 +45,7 @@ fi
 
 make clean
 
-make -j"${JOB_COUNT}"
-if [ $? -ne 0 ]
+if make -j"${JOB_COUNT}" -ne 0
 then
   echo "make command failed."
   exit 1
@@ -56,4 +53,4 @@ fi
 
 make install
 
-echo "$(basename $0) finished successfully!!!"
+echo "$(basename "$0") finished successfully!!!"

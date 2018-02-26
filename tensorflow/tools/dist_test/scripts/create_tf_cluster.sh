@@ -53,7 +53,7 @@ SERVER_DOCKER_IMAGE=${TF_DIST_SERVER_DOCKER_IMAGE:-\
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Get utility functions
-source "${DIR}/utils.sh"
+. "${DIR}/utils.sh"
 
 # Check input arguments
 if [[ $# != 2 ]]; then
@@ -115,8 +115,7 @@ if [[ ${IS_LOCAL_CLUSTER} == "0" ]]; then
   "${GCLOUD_BIN}" config set container/cluster "${CONTAINER_CLUSTER}"
 
   # Get container cluster credentials
-  "${GCLOUD_BIN}" container clusters get-credentials "${CONTAINER_CLUSTER}"
-  if [[ $? != "0" ]]; then
+  if "${GCLOUD_BIN}" container clusters get-credentials "${CONTAINER_CLUSTER}" != "0"; then
     die "FAILED to get credentials for container cluster: ${CONTAINER_CLUSTER}"
   fi
 

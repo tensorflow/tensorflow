@@ -54,16 +54,16 @@ if [ "$ARCH" == "tegra" ]; then
     if [[ -z "${JETPACK}" ]]; then
         export JETPACK="$HOME/JetPack_Android_3.2"
     fi
-    if [ ! -d ${JETPACK} ]; then
-        echo "Can't find Jetpack at ${JETPACK}"
+    if [ ! -d "${JETPACK}" ]; then
+        echo "Can't find Jetpack at "${JETPACK}""
         echo "Set JETPACK=<path to Jetpack Android> to specify a non-default Jetpack path"
         exit -1
     fi
-    if [ ! -d ${JETPACK}/cuda ]; then
-        ln -s $(ls -d ${JETPACK}/cuda-*/|sort -r|head -n1) ${JETPACK}/cuda
+    if [ ! -d "${JETPACK}/cuda" ]; then
+        ln -s $(ls -d "${JETPACK}"/cuda-*/|sort -r|head -n1) "${JETPACK}/cuda"
     fi
-    if [ ! -d ${JETPACK}/cuda ]; then
-        ln -s $(ls -d ${JETPACK}/cuda-*/|sort -r|head -n1) ${JETPACK}/cuda
+    if [ ! -d "${JETPACK}/cuda" ]; then
+        ln -s $(ls -d "${JETPACK}"/cuda-*/|sort -r|head -n1) "${JETPACK}/cuda"
     fi
 
     export BUILD_FOR_TEGRA=1
@@ -93,9 +93,9 @@ fi
 
 # Compile nsync for the host and the target Android device architecture.
 # Don't use  export var=`something` syntax; it swallows the exit status.
-HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
-TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
-      tensorflow/contrib/makefile/compile_nsync.sh -t android -a ${ARCH}`
+HOST_NSYNC_LIB=$(tensorflow/contrib/makefile/compile_nsync.sh)
+TARGET_NSYNC_LIB=$(CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
+      tensorflow/contrib/makefile/compile_nsync.sh -t android -a ${ARCH})
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
 if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then

@@ -21,7 +21,7 @@ MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite
 QUANTIZED_MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip"
 DOWNLOADS_DIR=$(mktemp -d)
 
-cd $SCRIPT_DIR
+cd "$SCRIPT_DIR"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -32,26 +32,25 @@ download_and_extract() {
   tempdir=$(mktemp -d)
   tempdir2=$(mktemp -d)
 
-  curl -L ${url} > ${tempdir}/zipped.zip
-  unzip ${tempdir}/zipped.zip -d ${tempdir2}
+  curl -L "${url}" > "${tempdir}/zipped.zip"
+  unzip "${tempdir}/zipped.zip" -d "${tempdir2}"
 
   # If the zip file contains nested directories, extract the files from the
   # inner directory.
-  if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+  if ls "${tempdir2}"/*/* 1> /dev/null 2>&1; then
     # unzip has no strip components, so unzip to a temp dir, and move the
     # files we want from the tempdir to destination.
-    cp -R ${tempdir2}/*/* ${dir}/
+    cp -R "${tempdir2}"/*/* "${dir}"/
   else
-    cp -R ${tempdir2}/* ${dir}/
+    cp -R "${tempdir2}"/* "${dir}"/
   fi
-  rm -rf ${tempdir2} ${tempdir}
+  rm -rf "${tempdir2}" "${tempdir}"
 }
 
 download_and_extract "${MODELS_URL}" "${DOWNLOADS_DIR}/models"
 download_and_extract "${QUANTIZED_MODELS_URL}" "${DOWNLOADS_DIR}/quantized_models"
 
-file ${DOWNLOADS_DIR}/models
+file "${DOWNLOADS_DIR}"/models
 
-cp ${DOWNLOADS_DIR}/models/models/* simple/data/
-cp ${DOWNLOADS_DIR}/quantized_models/* camera/data/
-
+cp "${DOWNLOADS_DIR}"/models/models/* simple/data/
+cp "${DOWNLOADS_DIR}"/quantized_models/* camera/data/

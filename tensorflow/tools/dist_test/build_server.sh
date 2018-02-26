@@ -36,7 +36,7 @@
 
 # Helper functions
 die() {
-  echo $@
+  echo "$@"
   exit 1
 }
 
@@ -57,7 +57,7 @@ echo ""
 echo "Using whl file URL: ${WHL_FILE_LOCATION}"
 echo "Building in temporary directory: ${BUILD_DIR}"
 
-cp -r ${DIR}/* "${BUILD_DIR}"/ || \
+cp -r "${DIR}"/* "${BUILD_DIR}"/ || \
     die "Failed to copy files to ${BUILD_DIR}"
 
 DOCKER_FILE="${BUILD_DIR}/server/Dockerfile"

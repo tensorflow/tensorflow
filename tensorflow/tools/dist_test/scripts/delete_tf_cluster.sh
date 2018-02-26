@@ -24,7 +24,7 @@
 
 # Helper functions
 die() {
-  echo $@
+  echo "$@"
   exit 1
 }
 
@@ -45,27 +45,27 @@ MAX_STEPS=${1:-240}
 
 # Helper functions for kubectl workflow
 get_tf_svc_count() {
-  echo $("${KUBECTL_BIN}" get svc | grep "tf-" | wc -l)
+  "${KUBECTL_BIN}" get svc | grep -c "tf-"
 }
 
 get_tf_rc_count() {
-  echo $("${KUBECTL_BIN}" get rc | grep "tf-" | wc -l)
+  "${KUBECTL_BIN}" get rc | grep -c "tf-"
 }
 
 get_tf_pods_count() {
-  echo $("${KUBECTL_BIN}" get pods | grep "tf-" | wc -l)
+  "${KUBECTL_BIN}" get pods | grep -c "tf-"
 }
 
 
 # Delete all running services, replication-controllers and pods, in that order
 ITEMS_TO_DELETE="svc rc pods"
 for ITEM in ${ITEMS_TO_DELETE}; do
-  K8S_ITEM_COUNT=$(get_tf_${ITEM}_count)
+  K8S_ITEM_COUNT=$(get_tf_"${ITEM}"_count)
   if [[ ${K8S_ITEM_COUNT} != "0" ]]; then
     echo "There are currently ${K8S_ITEM_COUNT} tf ${ITEM}(s) running. "
     echo "Attempting to delete those..."
 
-    "${KUBECTL_BIN}" delete --all ${ITEM}
+    "${KUBECTL_BIN}" delete --all "${ITEM}"
 
     # Wait until all are deleted
     # TODO(cais): Add time out
@@ -78,7 +78,7 @@ for ITEM in ${ITEMS_TO_DELETE}; do
         die "Reached maximum polling steps while trying to delete all tf ${ITEM}"
       fi
 
-      if [[ $(get_tf_${ITEM}_count) == "0" ]]; then
+      if [[ $(get_tf_"${ITEM}"_count) == "0" ]]; then
         break
       fi
     done

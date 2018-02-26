@@ -20,16 +20,16 @@ echo "Starting"
 TFLITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 
 TMP_DIR=$(mktemp -d)
-echo "Package dir: " $TMP_DIR
+echo "Package dir: " "$TMP_DIR"
 FW_DIR=$TMP_DIR/tensorflow_lite_ios_frameworks
 FW_DIR_TFLITE=$FW_DIR/tensorflow_lite.framework
 FW_DIR_TFLITE_HDRS=$FW_DIR_TFLITE/Headers
 
 echo "Creating target Headers directories"
-mkdir -p $FW_DIR_TFLITE_HDRS
+mkdir -p "$FW_DIR_TFLITE_HDRS"
 
 echo "Headers, populating: TensorFlow Lite"
-cd $TFLITE_DIR/../../..
+cd "$TFLITE_DIR"/../../..
 
 find tensorflow/contrib/lite -name '*.h' \
     -not -path 'tensorflow/contrib/lite/downloads/*' \
@@ -38,44 +38,44 @@ find tensorflow/contrib/lite -name '*.h' \
     -not -path 'tensorflow/contrib/lite/toco/*' \
     -not -path 'tensorflow/contrib/lite/nnapi/*' \
     -not -path 'tensorflow/contrib/lite/java/*' \
-    | tar -cf $FW_DIR_TFLITE_HDRS/tmp.tar -T -
-cd $FW_DIR_TFLITE_HDRS
+    | tar -cf "$FW_DIR_TFLITE_HDRS/tmp.tar" -T -
+cd "$FW_DIR_TFLITE_HDRS"
 tar xf tmp.tar
 rm -f tmp.tar
 
 echo "Headers, populating: Flatbuffer"
-cd $TFLITE_DIR/downloads/flatbuffers/include/
-find . -name '*.h' | tar -cf $FW_DIR_TFLITE_HDRS/tmp.tar -T -
-cd $FW_DIR_TFLITE_HDRS
+cd "$TFLITE_DIR/downloads/flatbuffers/include/"
+find . -name '*.h' | tar -cf "$FW_DIR_TFLITE_HDRS/tmp.tar" -T -
+cd "$FW_DIR_TFLITE_HDRS"
 tar xf tmp.tar
 rm -f tmp.tar
 
-cd $TFLITE_DIR/../../..
+cd "$TFLITE_DIR"/../../..
 echo "Generate master LICENSE file and copy to target"
 bazel build //tensorflow/tools/lib_package:clicenses_generate
-cp $TFLITE_DIR/../../../bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE \
-   $FW_DIR_TFLITE
+cp "$TFLITE_DIR"/../../../bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE \
+   "$FW_DIR_TFLITE"
 
 echo "Copying static libraries"
-cp $TFLITE_DIR/gen/lib/libtensorflow-lite.a \
-   $FW_DIR_TFLITE/tensorflow_lite
+cp "$TFLITE_DIR/gen/lib/libtensorflow-lite.a" \
+   "$FW_DIR_TFLITE/tensorflow_lite"
 
 # This is required, otherwise they interfere with the documentation of the
 # pod at cocoapods.org.
 echo "Remove all README files"
-cd $FW_DIR_TFLITE_HDRS
+cd "$FW_DIR_TFLITE_HDRS"
 find . -type f -name README\* -exec rm -f {} \;
 find . -type f -name readme\* -exec rm -f {} \;
 
 TARGET_GEN_LOCATION="$TFLITE_DIR/gen/ios_frameworks"
-echo "Moving results to target: " $TARGET_GEN_LOCATION
-cd $FW_DIR
+echo "Moving results to target: " "$TARGET_GEN_LOCATION"
+cd "$FW_DIR"
 zip -q -r tensorflow_lite.framework.zip tensorflow_lite.framework -x .DS_Store
-rm -rf $TARGET_GEN_LOCATION
-mkdir -p $TARGET_GEN_LOCATION
-cp -r tensorflow_lite.framework.zip $TARGET_GEN_LOCATION
+rm -rf "$TARGET_GEN_LOCATION"
+mkdir -p "$TARGET_GEN_LOCATION"
+cp -r tensorflow_lite.framework.zip "$TARGET_GEN_LOCATION"
 
 echo "Cleaning up"
-rm -rf $TMP_DIR
+rm -rf "$TMP_DIR"
 
 echo "Finished"

@@ -23,7 +23,7 @@
 # Make sure we're in the correct directory, at the root of the source tree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${SCRIPT_DIR}/../../../"
-cd ${WORKSPACE} || exit 1
+cd "${WORKSPACE}" || exit 1
 
 COMMAND="tensorflow/contrib/makefile/build_all_linux.sh"
 
