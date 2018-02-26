@@ -39,6 +39,9 @@ namespace tensorflow {
 // represent the TF_AttrType type of the values in the list.
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
+// Look up OpDef for `op_name`.
+Status OpDefForOp(const char* op_name, const OpDef** op_def);
+
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out);
 
@@ -180,12 +183,15 @@ class KernelAndDevice {
 
   const OpKernel* kernel() const { return kernel_.get(); }
 
+  DataTypeVector* output_dtypes() { return &output_dtypes_; }
+
  private:
   std::unique_ptr<OpKernel> kernel_;
   Device* device_;
   FunctionLibraryRuntime* flib_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   Rendezvous* rendez_;
+  DataTypeVector output_dtypes_;
 };
 
 }  // namespace tensorflow
