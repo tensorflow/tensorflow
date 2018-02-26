@@ -71,11 +71,10 @@ def custom_gradient(f):
 
     input_tensors = [tf_ops.convert_to_tensor(x) for x in args]
 
-    with tape.stop_recording():
-      result, grad_fn = f(*args, **kwargs)
-      flat_result = nest.flatten(result)
-      # TODO(apassos) consider removing the identity below.
-      flat_result = [gen_array_ops.identity(x) for x in flat_result]
+    result, grad_fn = f(*args, **kwargs)
+    flat_result = nest.flatten(result)
+    # TODO(apassos) consider removing the identity below.
+    flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
     def actual_grad_fn(*outputs):
       return nest.flatten(grad_fn(*outputs))
