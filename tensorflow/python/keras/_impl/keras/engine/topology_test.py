@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import shutil
-
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -28,7 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
-from tensorflow.python.layers import base as base_layers
+from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -38,11 +35,6 @@ try:
   import yaml  # pylint:disable=g-import-not-at-top
 except ImportError:
   yaml = None
-
-try:
-  import h5py  # pylint:disable=g-import-not-at-top
-except ImportError:
-  h5py = None
 
 
 class TopologyConstructionTest(test.TestCase):
@@ -84,7 +76,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for(x2)), 1)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
-    network = keras.engine.topology.Network(x2, y2)
+    network = keras.engine.Network(x2, y2)
     self.assertEqual(len(network.updates), 2)
     self.assertEqual(len(network.get_updates_for(x1)), 0)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
@@ -146,7 +138,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for(x2)), 1)
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
-    network = keras.engine.topology.Network(x2, y2)
+    network = keras.engine.Network(x2, y2)
     self.assertEqual(len(network.losses), 2)
     self.assertEqual(len(network.get_losses_for(x1)), 0)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
@@ -267,7 +259,7 @@ class TopologyConstructionTest(test.TestCase):
     x = keras.Input(shape=(32,))
     dense = keras.layers.Dense(2)
     y = dense(x)
-    network = keras.engine.topology.Network(x, y, name='dense_network')
+    network = keras.engine.Network(x, y, name='dense_network')
 
     # test basic attributes
     self.assertEqual(network.name, 'dense_network')
@@ -502,7 +494,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
       # test get_source_inputs
-      self.assertListEqual(keras.engine.topology.get_source_inputs(c), [a, b])
+      self.assertListEqual(keras.engine.network.get_source_inputs(c), [a, b])
 
       # serialization / deserialization
       json_config = model.to_json()
@@ -762,7 +754,7 @@ class TopologyConstructionTest(test.TestCase):
     if context.in_graph_mode():
       x = keras.Input(shape=(32,))
       y = MaskedLayer()(x)  # pylint: disable=not-callable
-      network = keras.engine.topology.Network(x, y)
+      network = keras.engine.Network(x, y)
 
       # test callability on Input
       x_2 = keras.Input(shape=(32,))
@@ -875,139 +867,12 @@ class TopologyConstructionTest(test.TestCase):
       self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
 
 
-class TestSaving(test.TestCase):
-
-  def test_weight_loading(self):
-    with self.test_session():
-      a = keras.layers.Input(shape=(2,))
-      x = keras.layers.Dense(3)(a)
-      b = keras.layers.Dense(1)(x)
-      model = keras.models.Model(a, b)
-
-      x = np.random.random((3, 2))
-      ref_y = model.predict(x)
-      weights = model.get_weights()
-      model.set_weights(weights)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      with self.assertRaises(ValueError):
-        model.set_weights(weights[1:])
-      with self.assertRaises(ValueError):
-        model.set_weights(weights[::-1])
-
-      if h5py is None:
-        return  # Skip rest of test if H5py isn't available.
-
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
-
-      h5_path = os.path.join(temp_dir, 'test.h5')
-      model.save_weights(h5_path)
-      model.load_weights(h5_path)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.load_weights(h5_path, by_name=True)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-  def test_weight_preprocessing(self):
-    input_dim = 3
-    output_dim = 3
-    size = 2
-    cases = [
-        [
-            (keras.layers.Bidirectional(keras.layers.SimpleRNN(2))),
-            [np.random.random((2, 1)), np.random.random((2, 1))],
-            (None, 3, 2),
-        ],
-        [
-            (keras.layers.TimeDistributed(keras.layers.Dense(1))),
-            [np.random.random((2, 1)), np.random.random((1,))],
-            (None, 3, 2),
-        ],
-        [
-            (keras.layers.Conv1D(output_dim, size, use_bias=False)),
-            [np.random.random((output_dim, input_dim, size, 1))],
-            (None, 4, input_dim),
-        ],
-        [
-            (keras.layers.Conv2D(output_dim, size,
-                                 use_bias=False, data_format='channels_first')),
-            [np.random.random((output_dim, input_dim, size, size))],
-            (None, input_dim, 4, 4),
-        ],
-        [
-            (keras.layers.Conv2DTranspose(output_dim, size,
-                                          use_bias=False,
-                                          data_format='channels_first')),
-            [np.random.random((output_dim, input_dim, size, size))],
-            (None, input_dim, 4, 4),
-        ],
-        [
-            (keras.layers.Conv2DTranspose(output_dim, size,
-                                          use_bias=False,
-                                          data_format='channels_last')),
-            [np.random.random((size, size, input_dim, output_dim))],
-            (None, 4, 4, input_dim),
-        ],
-        [
-            (keras.layers.Conv3D(output_dim, size,
-                                 use_bias=False, data_format='channels_first')),
-            [np.random.random((output_dim, input_dim, size, size, size))],
-            (None, input_dim, 4, 4, 4),
-        ],
-        [
-            (keras.layers.GRU(output_dim)),
-            [np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,)),
-             np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,)),
-             np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,))],
-            (None, 4, input_dim),
-        ],
-        [
-            (keras.layers.LSTM(output_dim)),
-            [np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,)),
-             np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,)),
-             np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,)),
-             np.random.random((input_dim, output_dim)),
-             np.random.random((output_dim, output_dim)),
-             np.random.random((output_dim,))],
-            (None, 4, input_dim),
-        ],
-    ]
-    for layer, weights, input_shape in cases:
-      layer.build(input_shape)
-      _ = keras.engine.topology.preprocess_weights_for_loading(
-          layer, weights, original_keras_version='1')
-
-    model = keras.models.Sequential([keras.layers.Dense(2, input_dim=2)])
-    _ = keras.engine.topology.preprocess_weights_for_loading(
-        model, model.weights, original_keras_version='1')
-
-    x = keras.Input((2,))
-    y = keras.layers.Dense(2)(x)
-    model = keras.models.Model(x, y)
-    _ = keras.engine.topology.preprocess_weights_for_loading(
-        model, model.weights, original_keras_version='1')
-
-
 class DeferredModeTest(test.TestCase):
 
   def testDeferredTensorAttributes(self):
-    x = base_layers._DeferredTensor(shape=(None, 2), dtype='float32', name='x')
+    x = tf_base_layers._DeferredTensor(shape=(None, 2),
+                                       dtype='float32',
+                                       name='x')
     self.assertEqual(str(x),
                      'DeferredTensor(\'x\', shape=(?, 2), dtype=float32)')
     self.assertEqual(repr(x),
@@ -1015,21 +880,21 @@ class DeferredModeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testSimpleNetworkBuilding(self):
-    inputs = keras.engine.topology.Input(shape=(32,))
+    inputs = keras.engine.Input(shape=(32,))
     if context.in_eager_mode():
-      self.assertIsInstance(inputs, base_layers._DeferredTensor)
+      self.assertIsInstance(inputs, tf_base_layers._DeferredTensor)
       self.assertEqual(inputs.dtype.name, 'float32')
       self.assertEqual(inputs.shape.as_list(), [None, 32])
 
     x = keras.layers.Dense(2)(inputs)
     if context.in_eager_mode():
-      self.assertIsInstance(x, base_layers._DeferredTensor)
+      self.assertIsInstance(x, tf_base_layers._DeferredTensor)
       self.assertEqual(x.dtype.name, 'float32')
       self.assertEqual(x.shape.as_list(), [None, 2])
 
     outputs = keras.layers.Dense(4)(x)
-    network = keras.engine.topology.Network(inputs, outputs)
-    self.assertIsInstance(network, keras.engine.topology.Network)
+    network = keras.engine.Network(inputs, outputs)
+    self.assertIsInstance(network, keras.engine.Network)
 
     if context.in_eager_mode():
       # It should be possible to call such a network on EagerTensors.
@@ -1040,8 +905,8 @@ class DeferredModeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testMultiIONetworkbuilding(self):
-    input_a = keras.engine.topology.Input(shape=(32,))
-    input_b = keras.engine.topology.Input(shape=(16,))
+    input_a = keras.engine.Input(shape=(32,))
+    input_b = keras.engine.Input(shape=(16,))
     a = keras.layers.Dense(16)(input_a)
 
     class AddLayer(keras.layers.Layer):
@@ -1055,7 +920,7 @@ class DeferredModeTest(test.TestCase):
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable
     c = keras.layers.Dense(2)(c)
 
-    network = keras.engine.topology.Network([input_a, input_b], [a, c])
+    network = keras.engine.Network([input_a, input_b], [a, c])
     if context.in_eager_mode():
       a_val = constant_op.constant(
           np.random.random((10, 32)).astype('float32'))

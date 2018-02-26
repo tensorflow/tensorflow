@@ -1011,6 +1011,7 @@ xla_test(
     shard_count = 40,
     tags = [
         "enable_for_xla_interpreter",
+        "optonly",
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",

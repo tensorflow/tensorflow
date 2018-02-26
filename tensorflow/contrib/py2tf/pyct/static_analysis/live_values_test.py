@@ -103,6 +103,7 @@ class LiveValuesResolverTest(test.TestCase):
         arg_types={'self': (TestClass.__name__, TestClass)})
     func_node = node.body[0].body[0].value.func
     self.assertEquals(TestClass.member, anno.getanno(func_node, 'live_val'))
+    self.assertEquals(TestClass, anno.getanno(func_node, 'parent_type'))
     self.assertEquals(('TestClass', 'member'), anno.getanno(func_node, 'fqn'))
 
 

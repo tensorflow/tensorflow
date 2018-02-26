@@ -158,6 +158,18 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_graph_optimizer",
+    hdrs = [
+        "custom_graph_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "arithmetic_optimizer",
     srcs = ["arithmetic_optimizer.cc"],
     hdrs = [
@@ -368,6 +380,8 @@ cc_library(
         ":arithmetic_optimizer",
         ":auto_parallel",
         ":constant_folding",
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
         ":dependency_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",
@@ -379,6 +393,48 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:topological_sort",
+    ],
+)
+
+tf_cc_test(
+    name = "meta_optimizer_test",
+    srcs = ["meta_optimizer_test.cc"],
+    deps = [
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
+        ":meta_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
+    name = "custom_graph_optimizer_registry",
+    srcs = ["custom_graph_optimizer_registry.cc"],
+    hdrs = ["custom_graph_optimizer_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "custom_graph_optimizer_registry_test",
+    size = "small",
+    srcs = ["custom_graph_optimizer_registry_test.cc"],
+    deps = [
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

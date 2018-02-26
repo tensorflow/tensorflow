@@ -31,8 +31,8 @@ from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras import optimizers
 from tensorflow.python.keras._impl.keras.engine import training_eager
-from tensorflow.python.keras._impl.keras.engine.topology import Layer
-from tensorflow.python.keras._impl.keras.engine.topology import Network
+from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
+from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence

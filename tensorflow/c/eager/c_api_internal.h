@@ -50,7 +50,9 @@ struct TFE_Context {
         rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
             session->device_mgr, opts.session_options.options.env,
-            TF_GRAPH_DEF_VERSION, &func_lib_def, {})) {}
+            TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
+        log_device_placement(
+            opts.session_options.options.config.log_device_placement()) {}
 
   const TFE_ContextDevicePlacementPolicy policy;
 
@@ -88,6 +90,8 @@ struct TFE_Context {
   std::atomic<bool> should_store_metadata{false};
   tensorflow::mutex metadata_mu;
   tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
+
+  const bool log_device_placement;
 };
 
 struct TFE_TensorHandle {

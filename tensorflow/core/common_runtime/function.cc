@@ -42,11 +42,8 @@ limitations under the License.
 namespace tensorflow {
 
 // A few string constant used throughout this module.
-//
-// TODO(zhifengc): Dedup some of these constants into
-// framework/function.h
-static constexpr const char* const kArgOp = "_Arg";
-static constexpr const char* const kRetOp = "_Retval";
+static constexpr const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static constexpr const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
 static constexpr const char* const kGradientOp =
     FunctionLibraryDefinition::kGradientOp;
 static constexpr const char* const kNodeLabel = "Func";
@@ -177,6 +174,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   }
 
   Device* device() override { return device_; }
+  const DeviceMgr* device_mgr() const override { return device_mgr_; }
   Env* env() override { return env_; }
   int graph_def_version() override { return graph_def_version_; }
 
@@ -1580,9 +1578,6 @@ Status FunctionDefToBodyHelper(
 
   // Call BuildControlFlowInfo to validate that this function body has
   // well-formed control flow.
-  // NOTE(skyewm): this is usually done in Partition(), but we don't partition
-  // function bodies. This should be removed if function bodies ever go through
-  // the Partition() path.
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 

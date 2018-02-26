@@ -32,7 +32,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-static const char* const kGradientOp = "SymbolicGradient";
+static const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
+static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
 
 class ArgOp : public OpKernel {
  public:
@@ -89,26 +91,25 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kArgOp).Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Arg").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
+      Name(kArgOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
 #undef REGISTER
-#define REGISTER(type)                                               \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("_Retval").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      RetvalOp);
+#define REGISTER(type)     \
+  REGISTER_KERNEL_BUILDER( \
+      Name(kRetOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
@@ -118,16 +119,16 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
+      Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
 #undef REGISTER
 
-REGISTER_KERNEL_BUILDER(Name("_Arg")
+REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
                             .TypeConstraint<ResourceHandle>("T"),
@@ -135,9 +136,9 @@ REGISTER_KERNEL_BUILDER(Name("_Arg")
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
+      Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
@@ -287,7 +288,8 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
 class RemoteCallOp : public AsyncOpKernel {
  public:
   explicit RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
   }
 
   ~RemoteCallOp() override {}
