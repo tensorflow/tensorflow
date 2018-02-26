@@ -286,10 +286,9 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ("^zeros", node.input(1));
       } else if (name == "sub2") {
-        // We don't handle this case yet.
-        EXPECT_EQ("Sub", node.op());
-        EXPECT_EQ("zeros", node.input(0));
-        EXPECT_EQ("y", node.input(1));
+        EXPECT_EQ("Neg", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
       }
       const std::set<string> square_zero_const{"mul1", "mul2",    "mul5",
                                                "mul6", "matmul1", "matmul2"};
