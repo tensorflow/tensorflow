@@ -154,7 +154,8 @@ TEST(QuantizedDivOpTest, WithBroadcast) {
                           {TensorType_UINT8, {}, -3.0, 3.0},  // always a scalar
                           {TensorType_UINT8, {}, -3.0, 3.0},
                           ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.2, 0.2, 0.07, 0.08, 0.11, -0.123});
+    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.2,  0.2,   0.07,
+                                                0.08, 0.11, -0.123});
     m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1});
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(),
