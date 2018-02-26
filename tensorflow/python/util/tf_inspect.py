@@ -149,6 +149,11 @@ def getsource(object):  # pylint: disable=redefined-builtin
   return _inspect.getsource(tf_decorator.unwrap(object)[1])
 
 
+def isbuiltin(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.isbuiltin."""
+  return _inspect.isbuiltin(tf_decorator.unwrap(object)[1])
+
+
 def isclass(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.isclass."""
   return _inspect.isclass(tf_decorator.unwrap(object)[1])
