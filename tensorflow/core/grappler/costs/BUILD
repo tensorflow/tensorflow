@@ -142,6 +142,7 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
