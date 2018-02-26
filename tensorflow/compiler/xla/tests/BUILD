@@ -1143,6 +1143,9 @@ xla_test(
 xla_test(
     name = "call_test",
     srcs = ["call_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
