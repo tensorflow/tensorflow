@@ -53,6 +53,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -2039,6 +2040,61 @@ class MetaGraphTest(test.TestCase):
     self._testGraphExtensionSave(test_dir)
     self._testGraphExtensionRestore(test_dir)
     self._testRestoreFromTrainGraphWithControlContext(test_dir)
+
+  def testNestedWhileLoops(self):
+    test_dir = self._get_test_dir("nested_whiles")
+    filename = os.path.join(test_dir, "metafile")
+    saver_ckpt = os.path.join(test_dir, "saver.ckpt")
+
+    # Create two simple nested while loops.
+    with ops_lib.Graph().as_default():
+      def body(i, x):
+        _, r = control_flow_ops.while_loop(lambda j, y: j < 3,
+                                           lambda j, y: (j + 1, y + x),
+                                           [0, 0])
+        return i + 1, x + r
+
+      var = variables.Variable(0)
+      var_name = var.name
+
+      _, output = control_flow_ops.while_loop(lambda i, x: i < 5, body,
+                                              [0, var])
+      output_name = output.name
+
+      init_op = variables.global_variables_initializer()
+
+      # Generate a MetaGraphDef containing the nested loops.
+      with session.Session() as sess:
+        sess.run(init_op)
+        sess.run(output)
+        saver = saver_module.Saver()
+        saver.save(sess, saver_ckpt)
+        saver.export_meta_graph(filename)
+
+      # Build and run the gradients of the nested while loop. We use this below
+      # to verify that the gradients are correct with an imported MetaGraphDef.
+      grad = gradients_impl.gradients([output], [var])
+      with session.Session() as sess:
+        sess.run(init_op)
+        expected_grad_value = sess.run(grad)
+
+    # Restore the MetaGraphDef into a new Graph.
+    with ops_lib.Graph().as_default():
+      with session.Session() as sess:
+        saver = saver_module.import_meta_graph(filename)
+        saver.restore(sess, saver_ckpt)
+
+      # Make sure we can still build gradients and get the same result.
+      var = ops_lib.get_default_graph().get_tensor_by_name(var_name)
+      output = ops_lib.get_default_graph().get_tensor_by_name(output_name)
+      grad = gradients_impl.gradients([output], [var])
+
+      init_op = variables.global_variables_initializer()
+
+      with session.Session() as sess:
+        sess.run(init_op)
+        actual_grad_value = sess.run(grad)
+        self.assertEqual(expected_grad_value, actual_grad_value)
 
   def testStrippedOpListDef(self):
     with self.test_session():
