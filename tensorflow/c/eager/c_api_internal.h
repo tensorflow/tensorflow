@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -45,7 +46,15 @@ struct TFE_ContextOptions {
 
 struct TFE_Context {
   explicit TFE_Context(const TFE_ContextOptions& opts, TF_Session* s)
-      : policy(opts.policy),
+      : thread_pool(new tensorflow::thread::ThreadPool(
+            opts.session_options.options.env, "EagerCompute",
+            opts.session_options.options.config
+                        .inter_op_parallelism_threads() != 0
+                ? opts.session_options.options.config
+                      .inter_op_parallelism_threads()
+                : tensorflow::port::NumSchedulableCPUs())),
+        runner([this](std::function<void()> f) { thread_pool->Schedule(f); }),
+        policy(opts.policy),
         session(s),
         rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
@@ -53,6 +62,9 @@ struct TFE_Context {
             TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
         log_device_placement(
             opts.session_options.options.config.log_device_placement()) {}
+
+  const std::unique_ptr<tensorflow::thread::ThreadPool> thread_pool;
+  std::function<void(std::function<void()>)> runner;
 
   const TFE_ContextDevicePlacementPolicy policy;
 
