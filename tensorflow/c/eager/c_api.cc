@@ -818,8 +818,8 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     // See WARNING comment below - would be nice to rework to avoid this
     // subtlety.
     tensorflow::tf_shared_lock l(ctx->functions_mu);
-    status->status =
-        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
+    status->status = tensorflow::KernelAndDevice::Init(
+        ndef, ctx->func_lib(device), &ctx->runner, kernel);
     if (!status->status.ok()) {
       delete kernel;
       return;
