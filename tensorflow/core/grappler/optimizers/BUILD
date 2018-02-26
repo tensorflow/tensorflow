@@ -1,6 +1,8 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 filegroup(
     name = "all_files",
@@ -282,18 +284,48 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "gpu_swapping_kernels",
+    srcs = [
+        "gpu_swapping_kernels.cc",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "gpu_swapping_ops",
+    srcs = [
+        "gpu_swapping_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "memory_optimizer",
-    srcs = ["memory_optimizer.cc"],
+    srcs = [
+        "memory_optimizer.cc",
+    ],
     hdrs = [
         "memory_optimizer.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":gpu_swapping_kernels",
+        ":gpu_swapping_ops",
         ":graph_optimizer",
         ":graph_rewriter",
         ":static_schedule",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -307,7 +339,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     deps = [

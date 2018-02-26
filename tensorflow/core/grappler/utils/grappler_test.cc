@@ -35,6 +35,23 @@ std::vector<Tensor> GrapplerTest::EvaluateNodes(
   return output_tensors;
 }
 
+std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
+  SessionOptions options;
+  std::unique_ptr<tensorflow::Session> session(NewSession(options));
+  TF_CHECK_OK(session->Create(item.graph));
+  RunOptions run_options;
+  if (!item.init_ops.empty()) {
+    std::vector<Tensor> dummy;
+    TF_CHECK_OK(
+        session->Run(run_options, {}, {}, item.init_ops, &dummy, nullptr));
+  }
+  std::vector<Tensor> output_tensors;
+  TF_CHECK_OK(
+      session->Run(run_options, {}, item.fetch, {}, &output_tensors, nullptr));
+  TF_CHECK_OK(session->Close());
+  return output_tensors;
+}
+
 void GrapplerTest::AddNode(const string& name, const string& op,
                            const std::vector<string>& inputs, GraphDef* graph) {
   auto* node = graph->add_node();
