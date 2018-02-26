@@ -247,7 +247,7 @@ hours_per_week = tf.feature_column.numeric_column('hours_per_week')
 ### Making Continuous Features Categorical through Bucketization
 
 Sometimes the relationship between a continuous feature and the label is not
-linear. As an hypothetical example, a person's income may grow with age in the
+linear. As a hypothetical example, a person's income may grow with age in the
 early stage of one's career, then the growth may slow at some point, and finally
 the income decreases after retirement. In this scenario, using the raw `age` as
 a real-valued feature column might not be a good choice because the model can
@@ -360,6 +360,16 @@ for key in sorted(results):
 The first line of the final output should be something like
 `accuracy: 0.83557522`, which means the accuracy is 83.6%. Feel free to try more
 features and transformations and see if you can do even better!
+
+After the model is evaluated, we can use the model to predict whether an individual has an annual income of over
+50,000 dollars given an individual's information input.
+```python
+  pred_iter = model.predict(input_fn=lambda: input_fn(FLAGS.test_data, 1, False, 1))
+  for pred in pred_iter:
+    print(pred['classes'])
+```
+
+The model prediction output would be like `[b'1']` or `[b'0']` which means whether corresponding individual has an annual income of over 50,000 dollars or not.
 
 If you'd like to see a working end-to-end example, you can download our
 [example code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
