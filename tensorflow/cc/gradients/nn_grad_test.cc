@@ -31,8 +31,11 @@ using ops::Elu;
 using ops::L2Loss;
 using ops::LogSoftmax;
 using ops::LRN;
+using ops::AvgPool;
+using ops::AvgPool3D;
 using ops::MaxPool;
 using ops::MaxPoolV2;
+using ops::MaxPool3D;
 using ops::Placeholder;
 using ops::Relu;
 using ops::Relu6;
@@ -70,9 +73,9 @@ class NNGradTest : public ::testing::Test {
 
   // Sets tensor with random values, ensuring that the max value is largest by
   // a reasonable amount.
-  // This is an issue for MaxPool and MaxPoolV2, in which perturbations by the
-  // numeric gradient computation in the gradient checker can change the max
-  // value if values are too close together.
+  // This is an issue for MaxPool, MaxPoolV2 and MaxPool3D, in which
+  // perturbations by the numeric gradient computation in the gradient checker
+  // can change the max value if values are too close together.
   template <typename T>
   void SetRandomValuesWithBumpedMax(Tensor* tensor) {
     auto tensor_flat = tensor->flat<T>();
@@ -201,6 +204,41 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
   Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
   SetRandomValuesWithBumpedMax<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NNGradTest, MaxPool3DGradHelper) {
+  TensorShape x_shape({1, 3, 3, 3, 1});
+  TensorShape y_shape({1, 1, 1, 1, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Setup window and strides so that we only do one MaxPool3D.
+  const std::vector<int> ksize{1, 3, 3, 3, 1};
+  const std::vector<int> strides{1, 3, 3, 3, 1};
+  auto y = MaxPool3D(scope_, x, ksize, strides, "VALID");
+  Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NNGradTest, AvgPoolGradHelper) {
+  TensorShape x_shape({1, 2, 2, 1});
+  TensorShape y_shape({1, 1, 1, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Setup window and strides so that we only do one AvgPool.
+  const std::vector<int> ksize{1, 2, 2, 1};
+  const std::vector<int> strides{1, 2, 2, 1};
+  auto y = AvgPool(scope_, x, ksize, strides, "SAME");
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(NNGradTest, AvgPool3DGradHelper) {
+  TensorShape x_shape({1, 3, 3, 3, 1});
+  TensorShape y_shape({1, 1, 1, 1, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Setup window and strides so that we only do one AvgPool3D.
+  const std::vector<int> ksize{1, 3, 3, 3, 1};
+  const std::vector<int> strides{1, 3, 3, 3, 1};
+  auto y = AvgPool3D(scope_, x, ksize, strides, "SAME");
+  RunTest(x, x_shape, y, y_shape);
 }
 
 TEST_F(NNGradTest, LRN){
