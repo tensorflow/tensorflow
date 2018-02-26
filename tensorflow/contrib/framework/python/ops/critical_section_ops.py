@@ -143,7 +143,7 @@ class CriticalSection(object):
   def _init_from_args(self, name, shared_name):  # pylint: disable=invalid-name
     """Initialize the CriticalSection from constructor arguments."""
     with ops.name_scope(name, "CriticalSection", []) as name:
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         # pylint: disable=protected-access
         container = ops.get_default_graph()._container
         # pylint: enable=protected-access
@@ -226,7 +226,9 @@ class CriticalSection(object):
         # mode.  This is generally ok; since eager mode (as of
         # writing) executes sequentially anyway.
         for sg in ops.get_collection(CRITICAL_SECTION_EXECUTIONS):
-          if sg.handle.name == self._handle.name:
+          sg_handle_name = ops.convert_to_tensor(sg.handle).name
+          self_handle_name = ops.convert_to_tensor(self._handle).name
+          if sg_handle_name == self_handle_name:
             # Other executions in the same critical section are allowed.
             continue
           if not (exclusive_resource_access or sg.exclusive_resource_access):
