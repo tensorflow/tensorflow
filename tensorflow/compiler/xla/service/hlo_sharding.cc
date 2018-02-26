@@ -183,6 +183,10 @@ Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
   // shape tree.
   ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
   for (const auto& index_to_sharding : shape_tree.leaves()) {
+    if (index_to_sharding.first.empty()) {
+      // An empty tuple has a ShapeTree with a single leaf at the empty index.
+      continue;
+    }
     Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
@@ -222,7 +226,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   Status status = Status::OK();
   std::set<int64> seen_cores;
   tile_assignment_.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 core) {
+      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 core) {
         // Don't overwrite a bad status, so we report the first error.
         if (status.ok()) {
           if (core >= num_devices) {

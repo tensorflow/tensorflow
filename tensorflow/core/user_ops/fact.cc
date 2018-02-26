@@ -15,10 +15,13 @@ limitations under the License.
 
 // An example Op.
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
-REGISTER_OP("Fact").Output("fact: string");
+REGISTER_OP("Fact")
+    .Output("fact: string")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape);
 
 class FactOp : public tensorflow::OpKernel {
  public:

@@ -313,6 +313,47 @@ TEST(QuantizedActivationsOpTest, Softmax2D) {
                                              kQuantizedTolerance)));
 }
 
+// This contains the same test values as the Softmax test, but reference answer
+// generated via the following snippet of python:
+//   logits1 = tf.constant([[0, -6, 2, 4],[3, -2, 10, 1]], dtype=tf.float32)
+//   logits2 = tf.constant([[0,-6],[2,4],[3,-2],[10,1]], dtype=tf.float32)
+//   lsm1 = tf.nn.log_softmax(logits1)
+//   lsm2 = tf.nn.log_softmax(logits2)
+//   with tf.Session() as sess:
+//     print('lsm1', sess.run(lsm1))
+//     print('lsm2', sess.run(lsm2))
+
+TEST(FloatActivationsOpTest, LogSoftmax) {
+  FloatActivationsOpModel m(BuiltinOperator_LOG_SOFTMAX,
+                            /*input=*/{TensorType_FLOAT32, {2, 4}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 -4.14297, -10.14297, -2.14297, -.142971,    //
+                                 -7.00104, -12.00104, -.00104087, -9.00104,  //
+                             })));
+
+  // Same input, but a different shape.
+  FloatActivationsOpModel m2(BuiltinOperator_LOG_SOFTMAX,
+                             /*input=*/{TensorType_FLOAT32, {4, 2}});
+  m2.SetInput({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                  -.00247565, -6.00247,   //
+                                  -2.12692, -.126928,     //
+                                  -.00671534, -5.00671,   //
+                                  -.000123374, -9.00012,  //
+                              })));
+}
+
 }  // namespace
 }  // namespace tflite
 

@@ -67,7 +67,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
-  # since the batch dimensions, [2, 1], are brodcast to
+  # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)

@@ -557,7 +557,8 @@ def MakeNdarray(tensor):
   dtype = tensor_dtype.as_numpy_dtype
 
   if tensor.tensor_content:
-    return np.frombuffer(tensor.tensor_content, dtype=dtype).reshape(shape)
+    return (np.frombuffer(tensor.tensor_content, dtype=dtype).copy()
+            .reshape(shape))
   elif tensor_dtype == dtypes.float16:
     # the half_val field of the TensorProto stores the binary representation
     # of the fp16: we need to reinterpret this as a proper float16

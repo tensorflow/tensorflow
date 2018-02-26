@@ -149,6 +149,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddOutfeedInstruction(
       const OutfeedRequest& outfeed_request);
 
+  // Enqueues a host compute instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddHostComputeInstruction(
+      const HostComputeRequest& host_compute_request);
+
   // Enqueues a call instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCallInstruction(
       const CallRequest& call_request,
@@ -232,11 +236,16 @@ class UserComputation {
       const UserComputation& false_computation);
 
   // Enqueues a Send instruction onto this user computation.
-  Status AddSendInstruction(const SendRequest& send_request);
+  StatusOr<ComputationDataHandle> AddSendInstruction(
+      const SendRequest& send_request);
 
   // Enqueues a Recv instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddRecvInstruction(
       const RecvRequest& recv_request);
+
+  // Enqueues a Gather instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddGatherInstruction(
+      const GatherRequest& gather_request);
 
   // Returns the user-provided name of this user computation, which is provided
   // via the XLA computation-building API.

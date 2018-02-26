@@ -138,6 +138,7 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/62863147
     deps = [
         ":extenders",
         "//tensorflow/contrib/data/python/ops:dataset_ops",

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -575,6 +576,9 @@ PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
 
+// Python function that returns a backward_function.
+PyObject* backward_function_getter = nullptr;
+
 tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
 tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
 
@@ -643,6 +647,23 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e) {
   } else {
     Py_INCREF(e);
     fallback_exception_class = e;
+    Py_RETURN_NONE;
+  }
+}
+
+PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e) {
+  if (backward_function_getter != nullptr) {
+    Py_DECREF(backward_function_getter);
+  }
+  if (!PyCallable_Check(e)) {
+    backward_function_getter = nullptr;
+    PyErr_SetString(PyExc_TypeError,
+                    "TFE_Py_RegisterBackwardFunctionGetter: "
+                    "Registered object should be function.");
+    return nullptr;
+  } else {
+    Py_INCREF(e);
+    backward_function_getter = e;
     Py_RETURN_NONE;
   }
 }
@@ -1062,16 +1083,10 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   return result;
 }
 
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensors,
-                                   PyObject* backward_function) {
-  if (GetTapeSet()->empty() || *ThreadTapeIsStopped()) {
-    return;
-  }
-  std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
-  if (PyErr_Occurred()) {
-    return;
-  }
+namespace {
+void TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
+                            const std::vector<tensorflow::int64>& input_ids,
+                            PyObject* backward_function) {
   std::vector<tensorflow::eager::TapeTensor> output_info;
   PyObject* seq = PySequence_Fast(output_tensors,
                                   "expected a sequence of integer tensor ids");
@@ -1109,6 +1124,19 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
         op_type_str, output_info, input_ids, backward_function,
         [backward_function]() { Py_DECREF(backward_function); });
   }
+}
+}  // namespace
+
+void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
+                                   PyObject* input_tensors,
+                                   PyObject* backward_function) {
+  if (GetTapeSet()->empty() || *ThreadTapeIsStopped()) {
+    return;
+  }
+  std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
+  if (PyErr_Occurred()) return;
+
+  TapeSetRecordOperation(op_type, output_tensors, input_ids, backward_function);
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
@@ -1430,6 +1458,164 @@ bool RaiseIfNotPyList(PyObject* list, const string& attr_name) {
   return true;
 }
 
+bool OpDoesntRequireOutput(const string& op_name) {
+  static tensorflow::gtl::FlatSet<string>* ops_that_dont_require_outputs =
+      new tensorflow::gtl::FlatSet<string>({
+          "Identity",
+          "MatMul",
+          "Conv2DBackpropInput",
+          "Conv2DBackpropFilter",
+          "Conv3D",
+          "Conv3DBackpropInputV2",
+          "AvgPool3D",
+          "AvgPool3DGrad",
+          "MaxPool3D",
+          "MaxPool3DGrad",
+          "MaxPool3DGradGrad",
+          "BiasAdd",
+          "BiasAddV1",
+          "BiasAddGrad",
+          "Relu6",
+          "Softplus",
+          "SoftplusGrad",
+          "Softsign",
+          "ReluGrad",
+          "Conv2D",
+          "DepthwiseConv2dNative",
+          "Dilation2D",
+          "AvgPool",
+          "AvgPoolGrad",
+          "BatchNormWithGlobalNormalization",
+          "L2Loss",
+          "Sum",
+          "Prod",
+          "SegmentSum",
+          "SegmentMean",
+          "SparseSegmentSum",
+          "SparseSegmentMean",
+          "SparseSegmentSqrtN",
+          "SegmentMin",
+          "SegmentMax",
+          "UnsortedSegmentSum",
+          "UnsortedSegmentMax",
+          "Abs",
+          "Neg",
+          "ReciprocalGrad",
+          "Square",
+          "Expm1",
+          "Log",
+          "Log1p",
+          "TanhGrad",
+          "SigmoidGrad",
+          "Sign",
+          "Sin",
+          "Cos",
+          "Tan",
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "RealDiv",
+          "Maximum",
+          "Minimum",
+          "SquaredDifference",
+          "Select",
+          "SparseMatMul",
+          "BatchMatMul",
+          "Complex",
+          "Real",
+          "Imag",
+          "Angle",
+          "Conj",
+          "Cast",
+          "Cross",
+          "Cumsum",
+          "Cumprod",
+          "ReadVariableOp",
+          "VarHandleOp",
+          "Shape",
+      });
+
+  return ops_that_dont_require_outputs->find(op_name) !=
+         ops_that_dont_require_outputs->end();
+}
+
+bool OpDoesntRequireInput(const string& op_name) {
+  static tensorflow::gtl::FlatSet<string>* ops_that_dont_require_inputs =
+      new tensorflow::gtl::FlatSet<string>({
+          "Identity",
+          "Softmax",
+          "LogSoftmax",
+          "BiasAdd",
+          "Relu",
+          "Elu",
+          "Selu",
+          "SparseSoftmaxCrossEntropyWithLogits",
+          "Neg",
+          "Inv",
+          "Reciprocal",
+          "Sqrt",
+          "Exp",
+          "Tanh",
+          "Sigmoid",
+          "Real",
+          "Imag",
+          "Conj",
+          "ReadVariableOp",
+          "VarHandleOp",
+          "Shape",
+      });
+
+  return ops_that_dont_require_inputs->find(op_name) !=
+         ops_that_dont_require_inputs->end();
+}
+
+PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
+                         PyObject* results, PyObject* name) {
+  std::vector<tensorflow::int64> input_ids = MakeTensorIDList(inputs);
+  if (PyErr_Occurred()) return nullptr;
+
+  bool should_record = false;
+  for (TFE_Py_Tape* tape : SafeTapeSet()) {
+    if (tape->tape->ShouldRecord(input_ids)) {
+      should_record = true;
+      break;
+    }
+  }
+
+  if (!should_record) Py_RETURN_NONE;
+
+  string c_op_name = TFE_GetPythonString(op_name);
+  PyObject* op_outputs;
+  if (OpDoesntRequireOutput(c_op_name)) {
+    op_outputs = Py_None;
+  } else {
+    op_outputs = results;
+  }
+
+  PyObject* op_inputs;
+  if (OpDoesntRequireInput(c_op_name)) {
+    op_inputs = Py_None;
+  } else {
+    op_inputs = inputs;
+  }
+
+  PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
+  PyObject* callback_args =
+      Py_BuildValue("OOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs);
+
+  PyObject* backward_function =
+      PyObject_CallObject(backward_function_getter, callback_args);
+  Py_DECREF(callback_args);
+  if (backward_function == nullptr) return nullptr;
+
+  TapeSetRecordOperation(op_name, results, input_ids, backward_function);
+
+  Py_DECREF(backward_function);
+
+  Py_RETURN_NONE;
+}
+
 bool RunCallbacks(bool run_gradient_callback, bool run_post_exec_callbacks,
                   const tensorflow::OpDef* op_def, PyObject* args,
                   const std::vector<PyObject*>& flattened_inputs,
@@ -1471,21 +1657,7 @@ bool RunCallbacks(bool run_gradient_callback, bool run_post_exec_callbacks,
   });
 
   if (run_gradient_callback) {
-    if (!PyCallable_Check(record_gradient_callback)) {
-      PyErr_SetString(PyExc_TypeError,
-                      Printf("expected a function for "
-                             "record_gradient_callback, got %s instead",
-                             record_gradient_callback->ob_type->tp_name)
-                          .c_str());
-      return false;
-    }
-
-    PyObject* callback_result =
-        PyObject_CallObject(record_gradient_callback, callback_args);
-    if (!callback_result) {
-      return false;
-    }
-    Py_DECREF(callback_result);
+    RecordGradient(op_name, inputs, attrs, flattened_result, name);
   }
 
   if (run_post_exec_callbacks) {
@@ -1795,4 +1967,14 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
   Py_DECREF(flat_result);
   return result;
+}
+
+PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
+                                PyObject* attrs, PyObject* results,
+                                PyObject* name) {
+  if (*ThreadTapeIsStopped() || GetTapeSet()->empty()) {
+    Py_RETURN_NONE;
+  }
+
+  return RecordGradient(op_name, inputs, attrs, results, name);
 }

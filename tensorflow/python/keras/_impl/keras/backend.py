@@ -3087,7 +3087,8 @@ def rnn(step_function,
   outputs_shape[1] = inputs_shape[1]
   outputs.set_shape(outputs_shape)
 
-  last_output._uses_learning_phase = uses_learning_phase
+  if not context.in_eager_mode():
+    last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 
 

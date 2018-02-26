@@ -887,11 +887,7 @@ class AnyReductionTest(test.TestCase):
 
 class CountNonzeroReductionTest(test.TestCase):
 
-  def _compare(self,
-               x,
-               reduction_axes,
-               keepdims,
-               use_gpu=False,
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False,
                feed_dict=None):
     np_ans = (x != 0).astype(np.int32)
     if reduction_axes is None:

@@ -482,7 +482,6 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
      https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0rc1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
-
 <a name="ValidateYourInstallation"></a>
 ## Validate your installation
 
