@@ -192,17 +192,34 @@ LayoutConstraints::LayoutConstraints(
   }
 }
 
+PointsToSet::BufferSet* LayoutConstraints::GetBufferSet(
+    const HloInstruction* instruction) const {
+  auto it = buffer_sets_cache_.find(instruction);
+  if (it != buffer_sets_cache_.end()) {
+    return it->second.get();
+  }
+  auto& buffer_set =
+      buffer_sets_cache_
+          .emplace(instruction, MakeUnique<PointsToSet::BufferSet>())
+          .first->second;
+  const auto& points_to_set = points_to_analysis_.GetPointsToSet(instruction);
+  points_to_set.ForEachElement(
+      [&buffer_set](const ShapeIndex& /*index*/,
+                    const PointsToSet::BufferList& buffers) {
+        buffer_set->insert(buffers.begin(), buffers.end());
+      });
+  return buffer_set.get();
+}
+
 bool LayoutConstraints::OperandBufferForwarded(
     const HloInstruction* instruction, int64 operand_no) const {
   // The operand is potentially forwarded if the intersection of points-to sets
   // of the operand and the instruction is non-empty.
-  auto output_buffers =
-      points_to_analysis_.GetPointsToSet(instruction).CreateFlattenedSet();
-  auto operand_buffers =
-      points_to_analysis_.GetPointsToSet(instruction->operand(operand_no))
-          .CreateFlattenedSet();
-  for (const LogicalBuffer* output_buffer : output_buffers) {
-    if (operand_buffers.count(output_buffer) > 0) {
+  PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
+  PointsToSet::BufferSet* operand_buffers =
+      GetBufferSet(instruction->operand(operand_no));
+  for (const LogicalBuffer* output_buffer : *output_buffers) {
+    if (operand_buffers->count(output_buffer) > 0) {
       return true;
     }
   }
