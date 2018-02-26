@@ -87,5 +87,8 @@ message RewriterConfig {
   // ("autoparallel"). Memory optimization passes ("memory") invoked here are
   // not configurable (in contrast to memory optimization passes through the
   // meta-optimizer) and act only on manual op annotations.
+  //
+  // Custom registered optimizers will be run after the base optimizers, in
+  // the order that they are specified.
   repeated string optimizers = 100;
 }

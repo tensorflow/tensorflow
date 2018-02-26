@@ -317,7 +317,10 @@ tf_cc_test(
         "//tensorflow/contrib/lite:testdata/multi_add.bin",
         "//tensorflow/contrib/lite:testdata/multi_add.pb",
     ],
-    tags = ["no_oss"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",
+    ],
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",

@@ -667,15 +667,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "cub_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.4.zip",
-          "https://github.com/NVlabs/cub/archive/1.7.4.zip",
+          "https://mirror.bazel.build/github.com/NVlabs/cub/archive/1.8.0.zip",
+          "https://github.com/NVlabs/cub/archive/1.8.0.zip",
       ],
-      sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
-      strip_prefix = "cub-1.7.4",
+      sha256 = "6bfa06ab52a650ae7ee6963143a0bbc667d6504822cbd9670369b598f18c58c3",
+      strip_prefix = "cub-1.8.0",
       build_file = str(Label("//third_party:cub.BUILD")),
-      # TODO: remove the patch when upstream fix is accepted and released.
-      #       PR with a fix: https://github.com/NVlabs/cub/pull/125
-      patch_file = str(Label("//third_party/cub:fix_compilation_in_clang.patch")),
   )
 
   tf_http_archive(
