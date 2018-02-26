@@ -41,17 +41,26 @@ const uint32 kIsList = 1U << 31;
 
 }  // namespace
 
+Status OpDefForOp(const char* op_name, const OpDef** op_def) {
+  const OpRegistrationData* op_reg_data = nullptr;
+  Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  if (s.ok()) {
+    *op_def = &op_reg_data->op_def;
+  }
+  return s;
+}
+
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
   mutex_lock l(g_op_name_to_attr_type_map_lock);
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
   if (*out != nullptr) return Status::OK();
-  const OpRegistrationData* op_reg_data = nullptr;
-  Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name, &op_def);
   if (!s.ok()) return s;
   std::unique_ptr<AttrTypeMap> m(new AttrTypeMap);
   // TODO(agarwal): Avoid having to create this "registry" at runtime,
   // perhaps can be done at op registration time?
-  for (const auto& attr : op_reg_data->op_def.attr()) {
+  for (const auto& attr : op_def->attr()) {
     string type = attr.type();
     const bool is_list = (type.length() > 6 && type.compare(0, 4, "list") == 0);
     if (is_list) {
