@@ -57,6 +57,12 @@ struct is_complex_t : public std::false_type {};
 template <>
 struct is_complex_t<complex64> : public std::true_type {};
 
+template <typename T>
+struct is_complex64_t : public std::false_type {};
+
+template <>
+struct is_complex64_t<complex64> : public std::true_type {};
+
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                                            const Literal& lhs_literal,
@@ -248,17 +254,37 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   template <
       typename NativeT,
-      typename std::enable_if<std::is_signed<NativeT>::value ||
-                              is_complex_t<NativeT>::value>::type* = nullptr>
+      typename std::enable_if<std::is_signed<NativeT>::value>::type* = nullptr>
   Status HandleAbs(HloInstruction* abs) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
-                        ElementWiseUnaryOp(abs, [](ElementwiseT elem_operand) {
+                        ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return std::abs(elem_operand);
                         }));
     return Status::OK();
   }
 
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex64_t<NativeT>::value>::type* = nullptr>
+  Status HandleAbs(HloInstruction* abs) {
+    const Literal& operand_literal =
+        parent_->GetEvaluatedLiteralFor(abs->operand(0));
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[abs],
+        (ElementWiseUnaryOpImpl<float, NativeT>(
+            abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
+            operand_literal)));
+
+    return Status::OK();
+  }
+
   Status HandleAbs(HloInstruction* abs) override {
+    // If the operand is of C64 type, the return type of abs will be F32.
+    // However, ElementwiseT would still be the return type, F32, and thus
+    // specifying the ElementwiseT explicitly as C64 is needed below.
+    if (abs->operand(0)->shape().element_type() == C64) {
+      return HandleAbs<complex64>(abs);
+    }
     return HandleAbs<ElementwiseT>(abs);
   }
 
