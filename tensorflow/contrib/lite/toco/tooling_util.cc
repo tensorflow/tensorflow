@@ -1199,7 +1199,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       << "This model does not define output arrays, so a "
          "--output_arrays flag must be given on the command-line.";
 
-  for (const auto& input_array_proto : model->flags.input_arrays()) {
+  for (auto& input_array_proto : *model->flags.mutable_input_arrays()) {
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
     if (input_array_proto.has_data_type()) {
       const ArrayDataType specified_type =
@@ -1242,6 +1242,11 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                  input_array_proto.shape().dims_size());
         for (int i = 0; i < input_array_dims.size(); i++) {
           CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
+      } else {
+        for (int i = 0; i < input_array.shape().dimensions_count(); i++) {
+          input_array_proto.mutable_shape()->add_dims(
+              input_array.shape().dims(i));
         }
       }
     }
