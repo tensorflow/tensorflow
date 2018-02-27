@@ -1561,6 +1561,13 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     // infeeds.  Clearing the layouts here avoids hiding potential bugs in the
     // layout assignment pass that may accidently use the existing layout.
     for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kBitcast) {
+        // bitcasts are inherently layout sensitive and so a bitcast instruction
+        // present in the IR before layout assignment is a bug.
+        return InternalError(
+            "Unexpected bitcast operation seen during layout assignment: %s.",
+            instruction->ToString().c_str());
+      }
       if (instruction->opcode() != HloOpcode::kInfeed) {
         LayoutUtil::ClearLayout(instruction->mutable_shape());
       }
