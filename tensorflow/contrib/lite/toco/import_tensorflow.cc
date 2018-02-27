@@ -272,6 +272,39 @@ void ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
   }
 }
 
+void ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_BOOL);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  ImportShape(input_shape.dim(), output_array->mutable_shape());
+  int input_flat_size = 1;
+  for (int k = 0; k < input_shape.dim_size(); k++) {
+    input_flat_size *= input_shape.dim(k).size();
+  }
+  auto& output_bool_data =
+      output_array->GetMutableBuffer<ArrayDataType::kBool>().data;
+  output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                          false);
+  if (input_tensor.bool_val_size()) {
+    for (int i = 0; i < input_tensor.bool_val_size(); i++) {
+      output_bool_data[i] = input_tensor.bool_val(i);
+    }
+  } else if (input_tensor.tensor_content().size() == input_flat_size) {
+    std::vector<char> buf(input_tensor.tensor_content().size());
+    toco::port::CopyToBuffer(input_tensor.tensor_content(), buf.data());
+    for (int i = 0; i < input_tensor.tensor_content().size(); i++) {
+      output_bool_data[i] = static_cast<bool>(buf[i]);
+    }
+  } else {
+    // Some graphs have bool const nodes without actual value...
+    // assuming that 'false' is implied.
+    // So far only encountered that in an array with 1 entry, let's
+    // require that until we encounter a graph where that's not the case.
+    CHECK_EQ(output_bool_data.size(), 1);
+    output_bool_data[0] = false;
+  }
+}
+
 void ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_STRING);
   const auto& input_shape = input_tensor.tensor_shape();
@@ -346,6 +379,10 @@ void ConvertConstOperator(const NodeDef& node,
     case DT_STRING:
       array.data_type = ArrayDataType::kString;
       ImportStringArray(tensor, &array);
+      break;
+    case DT_BOOL:
+      array.data_type = ArrayDataType::kBool;
+      ImportBoolArray(tensor, &array);
       break;
     default:
       array.data_type = ArrayDataType::kNone;

@@ -244,6 +244,8 @@ struct GenericBuffer {
   // in containers and have the containers call the right subclass destructor.
   virtual ~GenericBuffer() {}
 
+  virtual int Length() const = 0;
+
   const ArrayDataType type;
 
  protected:
@@ -255,6 +257,8 @@ struct GenericBuffer {
 template <ArrayDataType A>
 struct Buffer : GenericBuffer {
   Buffer() : GenericBuffer(A) {}
+
+  int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
 };
