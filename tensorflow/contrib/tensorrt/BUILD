@@ -93,6 +93,7 @@ cc_library(
     "@local_config_tensorrt//:nv_infer",
   ]) + tf_custom_op_library_additional_deps(),
   alwayslink=1,
+  visibility=["//visibility:public"],
 )
 
 tf_gen_op_libs(
