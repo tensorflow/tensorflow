@@ -2749,7 +2749,7 @@ class Function(object):
       self.updates_op = control_flow_ops.group(*updates_ops)
     self.name = name
     # additional tensor substitutions
-    self.feed_dict = session_kwargs.pop('feed_dict', {})
+    self.feed_dict = session_kwargs.pop('feed_dict', None)
     # additional operations
     self.fetches = session_kwargs.pop('fetches', [])
     if not isinstance(self.fetches, list):
@@ -2759,8 +2759,15 @@ class Function(object):
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
       raise TypeError('`inputs` should be a list or tuple.')
-    feed_dict = self.feed_dict.copy()
+
+    if self.feed_dict:
+      feed_dict = self.feed_dict.copy()
+    else:
+      feed_dict = {}
+
     for tensor, value in zip(self.inputs, inputs):
+      if value is None:
+        continue
       if is_sparse(tensor):
         sparse_coo = value.tocoo()
         indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
