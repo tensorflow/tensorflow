@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for downloading and reading MNIST data."""
+"""Functions for downloading and reading MNIST data (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +32,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import gfile
+from tensorflow.python.util.deprecation import deprecated
 
 # CVDF mirror of http://yann.lecun.com/exdb/mnist/
 DEFAULT_SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -37,6 +43,7 @@ def _read32(bytestream):
   return numpy.frombuffer(bytestream.read(4), dtype=dt)[0]
 
 
+@deprecated(None, 'Please use tf.data to implement this functionality.')
 def extract_images(f):
   """Extract the images into a 4D uint8 numpy array [index, y, x, depth].
 
@@ -65,6 +72,7 @@ def extract_images(f):
     return data
 
 
+@deprecated(None, 'Please use tf.one_hot on tensors.')
 def dense_to_one_hot(labels_dense, num_classes):
   """Convert class labels from scalars to one-hot vectors."""
   num_labels = labels_dense.shape[0]
@@ -74,6 +82,7 @@ def dense_to_one_hot(labels_dense, num_classes):
   return labels_one_hot
 
 
+@deprecated(None, 'Please use tf.data to implement this functionality.')
 def extract_labels(f, one_hot=False, num_classes=10):
   """Extract the labels into a 1D uint8 numpy array [index].
 
@@ -103,7 +112,15 @@ def extract_labels(f, one_hot=False, num_classes=10):
 
 
 class DataSet(object):
+  """Container class for a dataset (deprecated).
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Please use alternatives such as official/mnist/dataset.py'
+              ' from tensorflow/models.')
   def __init__(self,
                images,
                labels,
@@ -210,6 +227,8 @@ class DataSet(object):
       return self._images[start:end], self._labels[start:end]
 
 
+@deprecated(None, 'Please use alternatives such as official/mnist/dataset.py'
+            ' from tensorflow/models.')
 def read_data_sets(train_dir,
                    fake_data=False,
                    one_hot=False,
@@ -275,5 +294,7 @@ def read_data_sets(train_dir,
   return base.Datasets(train=train, validation=validation, test=test)
 
 
+@deprecated(None, 'Please use alternatives such as official/mnist/dataset.py'
+            ' from tensorflow/models.')
 def load_mnist(train_dir='MNIST-data'):
   return read_data_sets(train_dir)

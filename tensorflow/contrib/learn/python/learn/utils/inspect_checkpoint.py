@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A simple script for inspect checkpoint files."""
+"""A simple script for inspect checkpoint files (deprecated)."""
 
 from __future__ import absolute_import
 from __future__ import division

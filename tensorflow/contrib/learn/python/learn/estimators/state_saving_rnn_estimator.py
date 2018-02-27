@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator for State Saving RNNs."""
+"""Estimator for State Saving RNNs (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -528,6 +533,12 @@ def _get_rnn_model_fn(cell_type,
 
 
 class StateSavingRnnEstimator(estimator.Estimator):
+  """RNN with static unrolling and state saving (deprecated).
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self,
                problem_type,

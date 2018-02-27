@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Linear Estimators."""
+"""Linear Estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -304,6 +309,10 @@ class _SdcaUpdateWeightsHook(session_run_hook.SessionRunHook):
 
 class LinearClassifier(estimator.Estimator):
   """Linear classifier model.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Train a linear model to classify instances into one of multiple possible
   classes. When number of possible classes is 2, this is binary classification.
@@ -625,6 +634,10 @@ class LinearClassifier(estimator.Estimator):
 class LinearRegressor(estimator.Estimator):
   """Linear regressor model.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Train a linear regression model to predict label value given observation of
   feature values.
 
@@ -859,6 +872,10 @@ class LinearRegressor(estimator.Estimator):
 
 class LinearEstimator(estimator.Estimator):
   """Linear model with user specified head.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Train a generalized linear model to predict label value given observation of
   feature values.
