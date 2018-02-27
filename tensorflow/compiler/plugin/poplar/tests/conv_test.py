@@ -164,6 +164,47 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'call/addToChannel']
       self.assertTrue(check_all_compute_sets_in_list(cs_list, ok))
 
+  def testDepthwiseConv3x1(self):
+    with tf.device("/device:IPU:0"):
+      pa = tf.placeholder(tf.float32, [1,2,2,3], name="a")
+      pb = tf.placeholder(tf.float32, [1,1,3,1], name="b")
+      pc = tf.placeholder(tf.float32, [1,2,2,3], name="c")
+      c = tf.nn.depthwise_conv2d(pa, pb, strides=[1,1,1,1], padding="SAME")
+      output = c + pc
+
+    with tf.device('cpu'):
+      report = gen_ipu_ops.ipu_summary()
+
+    with ipu_session() as sess:
+      fd = {
+        pa: [[[[1,2,3],
+               [4,5,6]],
+              [[7,8,9],
+               [10,11,12]]]],
+        pb: [[[[6],
+               [4],
+               [2]]]],
+        pc: [[[[1,1,1],
+               [1,1,1]],
+              [[1,1,1],
+               [1,1,1]]]]
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, [[[[7, 9, 7],
+                                     [25, 21, 13]],
+                                    [[43, 33, 19],
+                                     [61, 45, 25]]]])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 1)
+      cs_list = get_compute_sets_from_report(result[0])
+
+      print(cs_list)
+
+      ok = ['call.1.clone/Conv_1x1',
+            'Copy_partials_to_call',
+            'call/addToChannel']
+      self.assertTrue(check_all_compute_sets_in_list(cs_list, ok))
 
 
 if __name__ == "__main__":
