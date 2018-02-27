@@ -1718,8 +1718,15 @@ class CondContext(ControlFlowContext):
     self._pivot = g.as_graph_element(
         ops.prepend_name_scope(context_def.pivot_name, import_scope))
     self._branch = context_def.branch
-    super(CondContext, self).__init__(
-        values_def=context_def.values_def, import_scope=import_scope)
+    super(CondContext, self).__init__(values_def=context_def.values_def,
+                                      import_scope=import_scope)
+    # The predicate and pivot ops appear in self._values, but don't have self
+    # set as their control context. The __init__ call above will set self for
+    # all values, so manually override the predicate and pivot contexts here.
+    # pylint: disable=protected-access
+    self._pred.op._set_control_flow_context(self.outer_context)
+    self._pivot.op._set_control_flow_context(self.outer_context)
+    # pylint: enable=protected-access
 
   @property
   def pred(self):
