@@ -190,7 +190,6 @@ class MutexLockOp : public AsyncOpKernel {
                                          // End of bound arguments.
                                          const Status& s,
                                          Mutex::SharedLockReleaser&& lock) {
-                 core::ScopedUnref unref(mutex);
                  VLOG(2) << "Finished locking mutex " << mutex
                          << " with lock: " << lock.shared_lock.get()
                          << " status: " << s.ToString();
@@ -199,6 +198,7 @@ class MutexLockOp : public AsyncOpKernel {
                  } else {
                    c->SetStatus(s);
                  }
+                 mutex->Unref();
                  done_();
                },
                std::move(done), std::placeholders::_1, std::placeholders::_2));
