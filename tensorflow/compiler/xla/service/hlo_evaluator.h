@@ -153,6 +153,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleConditional(HloInstruction* conditional) override;
+
   Status HandleCall(HloInstruction* call) override;
 
  private:
