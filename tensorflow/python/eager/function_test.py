@@ -606,7 +606,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(v + 1)
         v.assign(2 * v)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(), 4.0)
 
   def testCondMustRun(self):
@@ -626,7 +626,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
@@ -647,7 +647,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         one = constant_op.constant(1.0)
-        c.mark_as_return(one)
+        one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
       self.assertAllEqual(v.read_value().eval(), 5.0)
       one.eval(feed_dict={p: True})
@@ -681,7 +681,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         control_flow_ops.cond(p, true_fn, false_fn)
         with ops.name_scope('final'):
           val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: True}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
@@ -703,7 +703,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
@@ -724,7 +724,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
@@ -745,7 +745,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         control_flow_ops.cond(p, true_fn, false_fn)
         v.assign(v * 2)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
 
