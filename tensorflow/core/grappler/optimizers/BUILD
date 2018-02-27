@@ -133,6 +133,44 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "function_optimizer",
+    srcs = ["function_optimizer.cc"],
+    hdrs = [
+        "function_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/utils:functions",
+    ],
+)
+
+tf_cc_test(
+    name = "function_optimizer_test",
+    srcs = ["function_optimizer_test.cc"],
+    deps = [
+        ":function_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
     name = "graph_rewriter",
     srcs = ["graph_rewriter.cc"],
     hdrs = [

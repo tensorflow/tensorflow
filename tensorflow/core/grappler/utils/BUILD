@@ -146,3 +146,35 @@ cc_library(
         "//tensorflow/core/grappler:utils",
     ],
 )
+
+cc_library(
+    name = "functions",
+    srcs = [
+        "functions.cc",
+    ],
+    hdrs = ["functions.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "functions_test",
+    srcs = ["functions_test.cc"],
+    deps = [
+        ":functions",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)

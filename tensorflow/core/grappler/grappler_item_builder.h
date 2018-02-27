@@ -58,13 +58,6 @@ struct ItemConfig {
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
 
-// Factory method for creating a GrapplerItem from a FunctionDef.
-// Returns nullptr if the given function def cannot be converted.
-std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr,
-    const FunctionDefLibrary& library);
-
 }  // end namespace grappler
 }  // end namespace tensorflow
 
