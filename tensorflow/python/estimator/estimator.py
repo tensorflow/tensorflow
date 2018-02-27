@@ -288,7 +288,7 @@ class Estimator(object):
             hooks=None,
             steps=None,
             max_steps=None,
-            saving_listeners=None
+            saving_listeners=None,
             logging_every_n_iter=100):
     """Trains a model given training data input_fn.
 
