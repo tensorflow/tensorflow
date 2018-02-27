@@ -56,8 +56,8 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
-    # convolutions (and possibly more in the future). You will also need
-    # appropriate -mavx*, as required by specific op you use.
+    # sparse matrix multiplications. You will also need appropriate -mavx*
+    # options, as required by specific op you use.
     name = "xsmm",
     values = {
         "define": "tensorflow_xsmm=1",
@@ -65,12 +65,23 @@ config_setting(
 )
 
 config_setting(
-    # Add "--define tensorflow_xsmm_backward=1" to your build command to use
-    # libxsmm for backward convolutions (and possibly more in the future). You
-    # will also need appropriate -mavx*, as required by specific op you use.
-    name = "xsmm_backward",
+    # Add "--define tensorflow_xsmm_convolutions=1" to your build command to
+    # use libxsmm for forward convolutions. You will also need appropriate
+    # -mavx* # options, as required by specific op you use.
+    name = "xsmm_convolutions",
     values = {
-        "define": "tensorflow_xsmm_backward=1",
+        "define": "tensorflow_xsmm_convolutions=1",
+    },
+)
+
+config_setting(
+    # Add "--define tensorflow_xsmm_convolutions=1 --define
+    # tensorflow_xsmm_backward_convolutions=1" to your build command to use libxsmm for
+    # backward convolutions (and possibly more in the future). You will also
+    # need appropriate -mavx* options, as required by specific op you use.
+    name = "xsmm_backward_convolutions",
+    values = {
+        "define": "tensorflow_xsmm_backward_convolutions=1",
     },
 )
 
@@ -1017,7 +1028,7 @@ tf_cc_test(
     name = "xsmm_conv2d_test",
     size = "small",
     srcs = select({
-        ":xsmm": ["xsmm_conv2d_test.cc"],
+        ":xsmm_convolutions": ["xsmm_conv2d_test.cc"],
         "//conditions:default": [],
     }),
     deps = [
@@ -1032,7 +1043,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ] + select({
-        ":xsmm": [
+        ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
@@ -1891,9 +1902,9 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
-        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
+        ":mutex_ops",
         ":scatter_functor",
         ":state",
         ":training_op_helpers",
@@ -3138,7 +3149,7 @@ tf_kernel_library(
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
     ] + select({
-        ":xsmm": ["xsmm_conv2d.cc"],
+        ":xsmm_convolutions": ["xsmm_conv2d.cc"],
         "//conditions:default": [],
     }),
     hdrs = [
@@ -3148,7 +3159,7 @@ tf_kernel_library(
         "gemm_functors.h",
         "winograd_transform.h",
     ] + select({
-        ":xsmm": ["xsmm_conv2d.h"],
+        ":xsmm_convolutions": ["xsmm_conv2d.h"],
         "//conditions:default": [],
     }),
     # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
@@ -3156,13 +3167,15 @@ tf_kernel_library(
     # on Windows. See https://github.com/tensorflow/tensorflow/issues/10521
     copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     defines = select({
-        ":xsmm": [
-            "TENSORFLOW_USE_LIBXSMM",
-            "EIGEN_USE_LIBXSMM",
+        ":xsmm_convolutions": [
+            "TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS",
         ],
         "//conditions:default": [],
     }) + select({
-        ":xsmm_backward": ["TENSORFLOW_USE_LIBXSMM_BACKWARD"],
+        ":xsmm": ["EIGEN_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }) + select({
+        ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
         "//conditions:default": [],
     }),
     prefix = "conv_ops",
@@ -3179,7 +3192,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
     ] + select({
-        ":xsmm": [
+        ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
@@ -4094,9 +4107,9 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "critical_section",
-    prefix = "critical_section",
-    deps = STATE_DEPS + [":captured_function"],
+    name = "mutex_ops",
+    prefix = "mutex_ops",
+    deps = STATE_DEPS + [":ops_util"],
 )
 
 tf_cc_test(
@@ -4868,7 +4881,7 @@ filegroup(
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({
-        ":xsmm": [
+        ":xsmm_convolutions": [
             "xsmm_conv2d.h",
             "xsmm_conv2d.cc",
         ],
@@ -5048,7 +5061,7 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
-            "critical_section.*",
+            "mutex_ops.*",
             "batch_kernels.*",
         ],
     ),
@@ -5115,7 +5128,6 @@ tf_kernel_library(
     srcs = [
         "dequantize_op.cc",
         "meta_support.cc",
-        "quantization_utils.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
@@ -5136,7 +5148,6 @@ tf_kernel_library(
     ],
     hdrs = [
         "meta_support.h",
-        "quantization_utils.h",
         "reference_gemm.h",
     ],
     deps = [
@@ -5147,6 +5158,7 @@ tf_kernel_library(
         ":image_resizer_state",
         ":ops_util",
         ":pooling_ops",
+        ":quantization_utils",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -5694,6 +5706,16 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "quantization_utils",
+    srcs = ["quantization_utils.cc"],
+    hdrs = ["quantization_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@gemmlowp",
+    ],
+)
+
+cc_library(
     name = "remote_fused_graph_execute_utils",
     srcs = [
         "i_remote_fused_graph_ops_definitions.cc",
@@ -6068,7 +6090,6 @@ cc_library(
     srcs = [
         "cwise_ops_common.cc",
         "meta_support.cc",
-        "quantization_utils.cc",
     ],
     hdrs = [
         "cwise_ops.h",
@@ -6077,10 +6098,10 @@ cc_library(
         "cwise_ops_gpu_gradients.cu.h",
         "cwise_ops_gradients.h",
         "meta_support.h",
-        "quantization_utils.h",
     ],
     deps = [
         ":bounds_check",
+        ":quantization_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",

@@ -134,8 +134,8 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/contrib/rnn:gru_ops_op_lib",
         "//tensorflow/contrib/rnn:lstm_ops_op_lib",
+        "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
     ]),

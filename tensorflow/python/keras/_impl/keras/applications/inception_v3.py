@@ -37,7 +37,7 @@ from tensorflow.python.keras._impl.keras import layers
 from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
 from tensorflow.python.keras._impl.keras.layers import BatchNormalization

@@ -71,7 +71,7 @@ class ResNet50Test(tf.test.TestCase):
       model.call = tfe.defun(model.call)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 1000), output.shape)
 
   def test_apply(self):
@@ -85,7 +85,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     output_shape = ((2, 2048, 1, 1)
                     if data_format == 'channels_first' else (2, 1, 1, 2048))
     self.assertEqual(output_shape, output.shape)
@@ -95,7 +95,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False, pooling='avg')
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 2048), output.shape)
 
   def test_train(self):

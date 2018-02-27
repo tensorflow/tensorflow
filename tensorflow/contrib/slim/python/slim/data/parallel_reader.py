@@ -221,7 +221,7 @@ def parallel_read(data_sources,
         the data will be cycled through indefinitely.
     num_readers: a integer, number of Readers to create.
     reader_kwargs: an optional dict, of kwargs for the reader.
-    shuffle: boolean, wether should shuffle the files and the records by using
+    shuffle: boolean, whether should shuffle the files and the records by using
       RandomShuffleQueue as common_queue.
     dtypes:  A list of types.  The length of dtypes must equal the number
         of elements in each record. If it is None it will default to

@@ -45,6 +45,7 @@ See the @{$python/control_flow_ops} guide.
 @@add_check_numerics_ops
 @@Assert
 @@Print
+@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -1834,8 +1835,6 @@ class CondContext(ControlFlowContext):
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
-      for x in op.outputs:
-        self._values.add(x.name)
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
@@ -1846,11 +1845,18 @@ class CondContext(ControlFlowContext):
           # pylint: enable=protected-access
       # Remove any external control dependency on this op.
       self._RemoveExternalControlEdges(op)
-      for x in op.outputs:
-        self._values.add(x.name)
       # pylint: disable=protected-access
       if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
         op._add_control_input(self._pivot.op)
+      # pylint: enable=protected-access
+
+    # Mark op's outputs as seen by this context and any outer contexts.
+    output_names = [x.name for x in op.outputs]
+    ctxt = self
+    while ctxt is not None:
+      # pylint: disable=protected-access
+      ctxt._values.update(output_names)
+      ctxt = ctxt._outer_context
       # pylint: enable=protected-access
 
     if self._outer_context or not util.IsLoopExit(op):
@@ -2142,9 +2148,9 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
   if not callable(true_fn):
-    raise TypeError('`true_fn` must be callable.')
+    raise TypeError("`true_fn` must be callable.")
   if not callable(false_fn):
-    raise TypeError('`false_fn` must be callable.')
+    raise TypeError("`false_fn` must be callable.")
 
   pred_value = smart_constant_value(pred)
   if pred_value is not None:
@@ -2173,7 +2179,7 @@ def smart_constant_value(pred):
   elif isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
   else:
-    raise TypeError('`pred` must be a Tensor or a Python bool.')
+    raise TypeError("`pred` must be a Tensor or a Python bool.")
   return pred_value
 
 
@@ -3173,24 +3179,24 @@ def while_loop(cond,
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
   ```
-  
-  Example which demonstrates non-strict semantics: In the following 
-  example, the final value of the counter `i` does not depend on `x`. So 
-  the `while_loop` can increment the counter parallel to updates of `x`. 
+
+  Example which demonstrates non-strict semantics: In the following
+  example, the final value of the counter `i` does not depend on `x`. So
+  the `while_loop` can increment the counter parallel to updates of `x`.
   However, because the loop counter at one loop iteration depends
   on the value at the previous iteration, the loop counter itself cannot
-  be incremented in parallel. Hence if we just want the final value of the 
-  counter (which we print on the line `print(sess.run(i))`), then  
-  `x` will never be incremented, but the counter will be updated on a 
+  be incremented in parallel. Hence if we just want the final value of the
+  counter (which we print on the line `print(sess.run(i))`), then
+  `x` will never be incremented, but the counter will be updated on a
   single thread. Conversely, if we want the value of the output (which we
-  print on the line `print(sess.run(out).shape)`), then the counter may be 
-  incremented on its own thread, while `x` can be incremented in 
-  parallel on a separate thread. In the extreme case, it is conceivable 
-  that the thread incrementing the counter runs until completion before 
-  `x` is incremented even a single time. The only thing that can never 
-  happen is that the thread updating `x` can never get ahead of the 
-  counter thread because the thread incrementing `x` depends on the value 
-  of the counter. 
+  print on the line `print(sess.run(out).shape)`), then the counter may be
+  incremented on its own thread, while `x` can be incremented in
+  parallel on a separate thread. In the extreme case, it is conceivable
+  that the thread incrementing the counter runs until completion before
+  `x` is incremented even a single time. The only thing that can never
+  happen is that the thread updating `x` can never get ahead of the
+  counter thread because the thread incrementing `x` depends on the value
+  of the counter.
   ```python
   import tensorflow as tf
 
@@ -3202,13 +3208,13 @@ def while_loop(cond,
   with tf.Session() as sess:
       print(sess.run(i))  # prints [0] ... [9999]
 
-      # The following line may increment the counter and x in parallel. 
-      # The counter thread may get ahead of the other thread, but not the 
-      # other way around. So you may see things like 
+      # The following line may increment the counter and x in parallel.
+      # The counter thread may get ahead of the other thread, but not the
+      # other way around. So you may see things like
       # [9996] x:[9987]
-      # meaning that the counter thread is on iteration 9996, 
+      # meaning that the counter thread is on iteration 9996,
       # while the other thread is on iteration 9987
-      print(sess.run(out).shape)  
+      print(sess.run(out).shape)
   ```
 
   """
@@ -3469,7 +3475,12 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
   if context.in_eager_mode():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
-    gating_ops = [t.op for t in tensors if t is not None]
+    tensors = [t if (isinstance(t, ops.Operation)
+                     or tensor_util.is_tensor(t)
+                     or t is None)
+               else ops.convert_to_tensor(t) for t in tensors]
+    gating_ops = [t if isinstance(t, ops.Operation) else t.op for t in tensors
+                  if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -3485,8 +3496,11 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t is not None:
+      if tensor_util.is_tensor(t):
         tpl.append(with_dependencies([gate], t))
+      elif isinstance(t, ops.Operation):
+        with ops.control_dependencies([gate]):
+          tpl.append(group(t))
       else:
         tpl.append(None)
     return tpl

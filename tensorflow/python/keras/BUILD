@@ -39,7 +39,11 @@ py_library(
         "_impl/keras/datasets/mnist.py",
         "_impl/keras/datasets/reuters.py",
         "_impl/keras/engine/__init__.py",
-        "_impl/keras/engine/topology.py",
+        "_impl/keras/engine/base_layer.py",
+        "_impl/keras/engine/input_layer.py",
+        "_impl/keras/engine/network.py",
+        "_impl/keras/engine/saving.py",
+        "_impl/keras/engine/sequential.py",
         "_impl/keras/engine/training.py",
         "_impl/keras/engine/training_eager.py",
         "_impl/keras/estimator.py",
@@ -256,6 +260,11 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -756,9 +765,31 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "saving_test",
+    size = "small",
+    srcs = ["_impl/keras/engine/saving_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sequential_test",
+    size = "small",
+    srcs = ["_impl/keras/engine/sequential_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -779,7 +810,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/estimator_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],

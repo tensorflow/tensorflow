@@ -55,8 +55,11 @@ class ConversionTest(test.TestCase):
     self.assertTrue(f in conversion_map.dependency_cache)
     self.assertTrue(g in conversion_map.dependency_cache)
     self.assertEqual('tf__f', conversion_map.dependency_cache[f].name)
+    # need the extra .body[0] in order to step past the with tf.name_scope('f')
+    # that is added automatically
     self.assertEqual(
-        'tf__g', conversion_map.dependency_cache[f].body[0].value.func.id)
+        'tf__g',
+        conversion_map.dependency_cache[f].body[0].body[0].value.func.id)
     self.assertEqual('tf__g', conversion_map.dependency_cache[g].name)
 
 

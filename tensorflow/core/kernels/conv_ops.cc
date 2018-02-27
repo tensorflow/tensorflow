@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/lib/core/errors.h"
@@ -185,7 +185,7 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, typename T>
 class LaunchXsmmConvOp {
  public:
@@ -401,7 +401,7 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
     if (LaunchXsmmConvOp<Device, T>::Run(
             context, input, filter, batch, input_rows, input_cols, in_depth,
             filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,

@@ -344,6 +344,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
+  // Ops created for function arguments bear the name given by `kArgOp`; those
+  // created for return values bear the name given by `kRetOp`.
+  static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kRetOp = "_Retval";
+
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
 
@@ -404,6 +409,8 @@ struct FunctionBody;
 
 // Forward declare. Defined in common_runtime/device.h
 class Device;
+// Forward declare. Defined in common_runtime/device_mgr.h
+class DeviceMgr;
 
 class FunctionLibraryRuntime {
  public:
@@ -517,6 +524,9 @@ class FunctionLibraryRuntime {
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+
+  // Get the DeviceMgr from which the device was obtained.
+  virtual const DeviceMgr* device_mgr() const = 0;
 
   // Returns the function library definition that backs this runtime.
   // NOTE(mrry): The returned library definition is the default function library

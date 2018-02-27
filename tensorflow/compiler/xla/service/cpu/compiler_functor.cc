@@ -93,8 +93,8 @@ class FilteredPassManager : public llvm::legacy::PassManager {
 };
 }  // anonymous namespace
 
-llvm::object::OwningBinary<llvm::object::ObjectFile> CompilerFunctor::
-operator()(llvm::Module& module) const {
+std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
+    llvm::Module& module) const {
   FilteredPassManager module_passes(disable_expensive_passes_);
   FilteredFunctionPassManager function_passes(&module,
                                               disable_expensive_passes_);
@@ -157,27 +157,8 @@ operator()(llvm::Module& module) const {
   codegen_passes.run(module);
 
   // Construct ObjectFile from machine code buffer.
-  std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
+  return std::unique_ptr<llvm::MemoryBuffer>(
       new llvm::ObjectMemoryBuffer(std::move(stream_buffer)));
-  llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>>
-      object_file_or_error = llvm::object::ObjectFile::createObjectFile(
-          memory_buffer->getMemBufferRef());
-  CHECK(object_file_or_error);
-
-  std::unique_ptr<llvm::object::ObjectFile> object_file =
-      std::move(object_file_or_error.get());
-  if (VLOG_IS_ON(2)) {
-    StatusOr<DisassemblerResult> disassembly_status =
-        disassembler_->DisassembleObjectFile(*object_file);
-    if (disassembly_status.ok()) {
-      auto result = disassembly_status.ValueOrDie();
-      XLA_VLOG_LINES(2, result.text);
-      VLOG(2) << "compiled code size: " << result.code_size_bytes << " bytes";
-    }
-  }
-
-  return llvm::object::OwningBinary<llvm::object::ObjectFile>(
-      std::move(object_file), std::move(memory_buffer));
 }
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {

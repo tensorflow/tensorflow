@@ -31,8 +31,8 @@ class ApiTest(test.TestCase):
   def setUp(self):
     config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     config.COMPILED_IMPORT_STATEMENTS = (
-        'from tensorflow.python.ops '
-        'import control_flow_ops as tf',
+        'from tensorflow.python.framework '
+        'import ops as tf',
         'from tensorflow.contrib.py2tf import utils as '
         'py2tf_utils')
 
