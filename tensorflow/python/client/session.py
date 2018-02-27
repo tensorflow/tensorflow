@@ -1085,7 +1085,10 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, numpy ndarrays, or TensorHandles.')
+                            'strings, lists, numpy ndarrays, or TensorHandles.'
+                            'For reference, the tensor object was ' +
+                            str(feed_val) + ' which was passed to the '
+                            'feed with key ' + str(feed) + '.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
           if isinstance(subfeed_val, int) and _convert_to_numpy_obj(
