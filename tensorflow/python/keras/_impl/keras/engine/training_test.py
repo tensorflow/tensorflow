@@ -1046,15 +1046,7 @@ class TestTrainingUtils(test.TestCase):
 
     b_np = np.random.random((3, 4))
     with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, None, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, a_np, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [None], None)
-    with self.assertRaises(ValueError):
       keras.engine.training._check_array_lengths([a_np], [b_np], None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], None, [b_np])
 
   def test_slice_arrays(self):
     input_a = np.random.random((10, 3))
