@@ -21,7 +21,6 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:lib",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
