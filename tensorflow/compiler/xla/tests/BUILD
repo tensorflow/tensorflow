@@ -478,6 +478,7 @@ xla_test(
 xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",

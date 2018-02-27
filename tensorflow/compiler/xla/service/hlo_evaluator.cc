@@ -2491,6 +2491,34 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
+  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
+  const auto& true_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1));
+  const auto& false_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(2));
+
+  auto* true_computation = conditional->true_computation();
+  auto* false_computation = conditional->false_computation();
+
+  auto result = Literal::CreateFromShape(conditional->shape());
+  HloEvaluator embedded_evaluator;
+  if (pred.Get<bool>({})) {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*true_computation,
+                                           {&true_computation_arg})
+                 .ConsumeValueOrDie();
+  } else {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*false_computation,
+                                           {&false_computation_arg})
+                 .ConsumeValueOrDie();
+  }
+
+  evaluated_[conditional] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
   return Status::OK();
