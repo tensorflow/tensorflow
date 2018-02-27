@@ -3,8 +3,12 @@ ArrayElementwiseOpTest.MaxF64s    POPLAR // F64
 ArrayElementwiseOpTest.MinF64s    POPLAR // F64
 ScalarComputationsTest.TanhDoubleScalar    POPLAR // F64
 ScalarComputationsTest.AddTwoScalarsF64    POPLAR // F64
-DotOperationTest.OneElementVectorDotF64    POPLAR // F64
-DotOperationTest.VectorDotF64    POPLAR // F64
+ParametricDotTestWithoutLayoutAssignment.TestF64 POPLAR // F64
+ParametricDotTest.TestF64 POPLAR // F64
+DotOperationTest.VectorDotF64 POPLAR // F64
+DotOperationTest.OneElementVectorDotF64 POPLAR // F64
+DotOperationTest.NonsquareMatrixDotF64 POPLAR // F64
+DotOperationTest.SquareMatrixDotF64 POPLAR // F64
 ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
 ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
 SliceR1Test.DoIt_F64 POPLAR // F64
@@ -90,6 +94,8 @@ PrngTest.HundredValuesB10p5U32 POPLAR // U32
 PrngTest.HundredValuesB10p1U32 POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values POPLAR // U32
 
+ArrayElementwiseOpTest.NegConstantS64 POPLAR // S64
+ArrayElementwiseOpTest.SubTwoConstantS64s POPLAR // S64
 ScalarComputationsTest.AddTwoScalarsS64      POPLAR // S64
 DynamicUpdateSliceTest.Int64R3 POPLAR // S64
 DynamicUpdateSliceTest.Int64R2 POPLAR // S64
@@ -107,6 +113,7 @@ DynamicUpdateSliceTest.UInt64Wrap POPLAR // U64
 DynamicSliceTest.UInt64R3 POPLAR // U64
 DynamicSliceTest.UInt64R2 POPLAR // U64
 DynamicSliceTest.UInt64R1 POPLAR // U64
+ArrayElementwiseOpTest.AddTwoConstantU64s POPLAR // U64
 
 ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
@@ -137,11 +144,18 @@ ArrayElementwiseOpTest.MulTwoConstantZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareNeC64s POPLAR // Complex<double>
+DotOperationTest.SquareMatrixDotC64MinorToMajorFT POPLAR // Complex<double>
+DotOperationTest.NonsquareMatrixDotC64MajorToMinorFT POPLAR // Complex<double>
+DotOperationTest.SquareMatrixDotC64MinorToMajorTT POPLAR // Complex<double>
+DotOperationTest.SquareMatrixDotC64MinorToMajorFF POPLAR // Complex<double>
+DotOperationTest.SquareMatrixDotC64MinorToMajorTF POPLAR // Complex<double>
+DotOperationTest.NonsquareMatrixDotC64MajorToMinorFF POPLAR // Complex<double>
+DotOperationTest.NonsquareMatrixDotC64MajorToMinorTF POPLAR // Complex<double>
+DotOperationTest.NonsquareMatrixDotC64MajorToMinorTT POPLAR // Complex<double>
+DotOperationTest.MatrixVectorC64 POPLAR // Complex<double>
 TupleTest.ComplexTuples POPLAR // Complex<>
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
-
-DotOperationTest POPLAR // Test hangs
 
 ReducePrecisionInsertionTest POPLAR // Don't support this
 ReducePrecisionAccuracyTest POPLAR // Don't support this
@@ -178,3 +192,13 @@ ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 SelectAndScatterTest.ParamTest POPLAR // Timeout
 
 HloProfileTest POPLAR // Don't support profiling
+
+ArrayElementwiseOpTest.ShiftLeftS32 POPLAR // Shifting > word length
+ArrayElementwiseOpTest.ShiftRightArithmeticS32 POPLAR // Shifting > word length
+ArrayElementwiseOpTest.ShiftRightLogicalS32 POPLAR // Shifting > word length
+
+SliceR1LargeTest POPLAR // Too long
+
+ParamsTest.ThreeThousandParameters POPLAR // Too long
+ParamsTest.ThreeThousandParametersAndOutputElements POPLAR // Too long
+ParamsTest.ManyParametersIntoWhileLoop POPLAR // Too long
