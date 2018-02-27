@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.util import compat
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
@@ -41,7 +42,7 @@ class TextLineDataset(dataset_ops.Dataset):
     """Creates a `TextLineDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
+      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
@@ -49,6 +50,7 @@ class TextLineDataset(dataset_ops.Dataset):
         based on the compression type.
     """
     super(TextLineDataset, self).__init__()
+    filenames = compat.path_to_str(filenames)
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._compression_type = convert.optional_param_to_tensor(
@@ -83,7 +85,7 @@ class _TFRecordDataset(dataset_ops.Dataset):
     """Creates a `TFRecordDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
+      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
@@ -91,6 +93,7 @@ class _TFRecordDataset(dataset_ops.Dataset):
     """
     super(_TFRecordDataset, self).__init__()
     # Force the type to string even if filenames is an empty list.
+    filenames = compat.path_to_str(filenames)
     self._filenames = ops.convert_to_tensor(
         filenames, dtypes.string, name="filenames")
     self._compression_type = convert.optional_param_to_tensor(
@@ -252,7 +255,7 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
+      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
       record_bytes: A `tf.int64` scalar representing the number of bytes in
         each record.
       header_bytes: (Optional.) A `tf.int64` scalar representing the number of
@@ -263,6 +266,7 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         bytes to buffer when reading.
     """
     super(FixedLengthRecordDataset, self).__init__()
+    filenames = compat.path_to_str(filenames)
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._record_bytes = ops.convert_to_tensor(
