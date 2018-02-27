@@ -117,6 +117,18 @@ static std::vector<std::pair<int, int>> CreateSamePadding(
   return padding;
 }
 
+string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
+  size_t last_scope_separator = 0;
+  for (size_t i = 0; i < std::min(op_name_a.size(), op_name_b.size()); ++i) {
+    if (op_name_a[i] != op_name_b[i]) {
+      break;
+    } else if (op_name_a[i] == '/') {
+      last_scope_separator = i + 1;
+    }
+  }
+  return op_name_a.substr(0, last_scope_separator);
+}
+
 class TRT_ShapedWeights {
  public:
   TRT_ShapedWeights(tensorflow::DataType type, const void* values,
@@ -325,12 +337,21 @@ void reorder_ck_to_kc(TRT_ShapedWeights const& iweights,
   nvinfer1::DimsHW istrides = {1, k};
   nvinfer1::DimsHW ostrides = {c, 1};
   switch (iweights.type_) {
-    case tensorflow::DataType::DT_FLOAT:
+    case tensorflow::DataType::DT_FLOAT: {
       reorder2({k, c}, static_cast<float const*>(iweights.GetValues()),
                istrides,
                static_cast<float*>(const_cast<void*>(oweights->GetValues())),
                ostrides);
       break;
+    }
+    case tensorflow::DataType::DT_HALF: {
+      reorder2(
+          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+          istrides,
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
+      break;
+    }
     default:
       LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
   }
@@ -356,12 +377,22 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   nvinfer1::DimsNCHW istrides = {1, k, s * k * c, c * k};
   nvinfer1::DimsNCHW ostrides = {c * r * s, r * s, s, 1};
   switch (iweights.type_) {
-    case tensorflow::DataType::DT_FLOAT:
+    case tensorflow::DataType::DT_FLOAT: {
       Reorder4({k, c, r, s}, static_cast<float const*>(iweights.GetValues()),
                istrides,
                static_cast<float*>(const_cast<void*>(oweights->GetValues())),
                ostrides);
       break;
+    }
+    case tensorflow::DataType::DT_HALF: {
+      Reorder4(
+          {k, c, r, s}, static_cast<Eigen::half const*>(iweights.GetValues()),
+          istrides,
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
+      break;
+    }
+
     default:
       LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
   }
@@ -395,6 +426,7 @@ class Converter {
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
   tensorflow::trt::TRTWeightStore* weight_store_;
+  bool fp16_;
   void register_op_converters();
   std::vector<TRT_TensorOrWeights> get_inputs(
       const tensorflow::NodeDef& node_def) {
@@ -430,8 +462,8 @@ class Converter {
 
  public:
   explicit Converter(nvinfer1::INetworkDefinition* trt_network,
-                     tensorflow::trt::TRTWeightStore* ws)
-      : trt_network_(trt_network), weight_store_(ws) {
+                     tensorflow::trt::TRTWeightStore* ws, bool fp16)
+      : trt_network_(trt_network), weight_store_(ws), fp16_(fp16) {
     this->register_op_converters();
   }
   tensorflow::trt::TRTWeightStore* weight_store() { return weight_store_; }
@@ -444,7 +476,7 @@ class Converter {
     weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
-
+  bool isFP16() { return fp16_; };
   TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
     return this->get_temp_weights(weights.type_, weights.shape_);
   }
@@ -529,7 +561,7 @@ struct LambdaFactory {
     switch (op) {
       case OP_CATEGORY::RSQRT: {
         VLOG(2) << "RSQRT GETS DONE";
-        return [](T t) -> T { return 1.0 / std::sqrt(t); };
+        return [](T t) -> T { return 1.0 / sqrt(t); };
       }
       case OP_CATEGORY::NEG:
         return [](T t) -> T { return -t; };
@@ -615,6 +647,22 @@ struct LambdaFactory {
   }
 };
 
+template <>
+std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
+  switch (op) {
+    case OP_CATEGORY::RSQRT: {
+      VLOG(2) << "RSQRT GETS DONE";
+      return [](Eigen::half t) -> Eigen::half {
+        return Eigen::half(1.0 / sqrt(float(t)));
+      };
+    }
+    case OP_CATEGORY::NEG:
+      return [](Eigen::half t) -> Eigen::half { return -t; };
+    default:
+      VLOG(2) << "Not supported op for unary: " << static_cast<int>(op);
+      return nullptr;
+  }
+}
 tensorflow::Status UnaryCompute(const TRT_ShapedWeights& iweights,
                                 TRT_ShapedWeights* oweights,
                                 LambdaFactory unary_op) {
@@ -624,6 +672,14 @@ tensorflow::Status UnaryCompute(const TRT_ShapedWeights& iweights,
       auto inp = static_cast<float const*>(iweights.GetValues());
       auto oup = static_cast<float*>(const_cast<void*>(oweights->GetValues()));
       std::transform(inp, inp + iweights.count(), oup, unary_op.unary<float>());
+      break;
+    }
+    case tensorflow::DataType::DT_HALF: {
+      auto inp = static_cast<Eigen::half const*>(iweights.GetValues());
+      auto oup =
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues()));
+      std::transform(inp, inp + iweights.count(), oup,
+                     unary_op.unary<Eigen::half>());
       break;
     }
     default:
@@ -666,6 +722,32 @@ tensorflow::Status BinaryCompute(const TRT_ShapedWeights& iweights_l,
       } else {
         std::transform(inp_l, inp_l + iweights_l.count(), inp_r, oup,
                        binary_op.binary<float>());
+      }
+      break;
+    }
+    case tensorflow::DataType::DT_HALF: {
+      auto inp_l = static_cast<const Eigen::half*>(iweights_l.GetValues());
+      auto inp_r = static_cast<const Eigen::half*>(iweights_r.GetValues());
+      auto oup =
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues()));
+
+      if (iweights_l.count() != iweights_r.count()) {
+        // We only supports broadcast of RankZero
+        if (iweights_l.count() == 1) {
+          VLOG(2) << "I bet it is not working!" << (*inp_l);
+          std::transform(inp_r, inp_r + iweights_r.count(), oup,
+                         binary_op.broadcast_l<Eigen::half>(*inp_l));
+        } else if (iweights_r.count() == 1) {
+          VLOG(2) << "I bet it is not working!" << (*inp_r);
+          std::transform(inp_l, inp_l + iweights_l.count(), oup,
+                         binary_op.broadcast_r<Eigen::half>(*inp_r));
+        } else {
+          return tensorflow::errors::Unimplemented(
+              "Binary op with non-rankZero broadcast not supported");
+        }
+      } else {
+        std::transform(inp_l, inp_l + iweights_l.count(), inp_r, oup,
+                       binary_op.binary<Eigen::half>());
       }
       break;
     }
@@ -1317,16 +1399,33 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    size_t lenData = tensorflow::DataTypeSize(dtype);
-    for (int i = 0; i < scalar_shape.nbDims; i++) lenData *= scalar_shape.d[i];
-    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
-    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    std::vector<float> tensor_data(
-        weights_tensor.float_val().begin(),
-        weights_tensor.float_val()
-            .end());  //  make a local copy first to flatten
-    memcpy(dst, tensor_data.data(), lenData);  // store into weight store
-    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
+    if (ctx.isFP16()) {
+      auto dtypeNew = tensorflow::DataType::DT_HALF;
+      size_t lenData = tensorflow::DataTypeSize(dtypeNew);
+      for (int i = 0; i < scalar_shape.nbDims; i++)
+        lenData *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+      tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
+      auto half_tensor = temp_tensor.flat<Eigen::half>();
+      Eigen::DefaultDevice defd;
+      half_tensor.device(defd) =
+          tensor.flat<float>().template cast<Eigen::half>();
+      memcpy(dst, half_tensor.data(), lenData);  // store into weight store
+      weights = TRT_ShapedWeights(dtypeNew, dst, scalar_shape);
+    } else {
+      size_t lenData = tensorflow::DataTypeSize(dtype);
+      for (int i = 0; i < scalar_shape.nbDims; i++)
+        lenData *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+      std::vector<float> tensor_data(
+          weights_tensor.float_val().begin(),
+          weights_tensor.float_val()
+              .end());  //  make a local copy first to flatten
+      memcpy(dst, tensor_data.data(), lenData);  // store into weight store
+      weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
+    }
     // LOG(INFO) << " add: " << weights_tensor.float_val().data();
     // LOG(INFO) << " value: " << (*weights_tensor.float_val().data());
 
@@ -1362,18 +1461,61 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    size_t lenData = tensorflow::DataTypeSize(dtype);
-    for (int i = 0; i < scalar_shape.nbDims; i++) lenData *= scalar_shape.d[i];
-    size_t lenTensor = weights_tensor.int_val_size() * sizeof(int32);
-    lenData = std::max(lenData, lenTensor);
-    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
-    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    std::vector<int32> tensor_data(
-        weights_tensor.int_val().begin(),
-        weights_tensor.int_val().end());  //  make a local copy first to flatten
-                                          //  doesn't have to be contigous
-    memcpy(dst, tensor_data.data(), lenTensor);  // store into weight store
-    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
+    if (ctx.isFP16()) {
+      auto dtypeNew = tensorflow::DataType::DT_HALF;
+      size_t lenData = tensorflow::DataTypeSize(dtypeNew);
+      for (int i = 0; i < scalar_shape.nbDims; i++)
+        lenData *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+      tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
+      TTypes<Eigen::half>::Flat half_tensor = temp_tensor.flat<Eigen::half>();
+      Eigen::DefaultDevice defd;
+      switch (dtype) {
+        case (tensorflow::DT_INT32): {
+          half_tensor.device(defd) =
+              tensor.flat<int32>().template cast<Eigen::half>();
+          break;
+        }
+        case (tensorflow::DT_INT16): {
+          half_tensor.device(defd) =
+              tensor.flat<int16>().template cast<Eigen::half>();
+          break;
+        }
+        case (tensorflow::DT_INT8): {
+          half_tensor.device(defd) =
+              tensor.flat<int8>().template cast<Eigen::half>();
+          break;
+        }
+        case (tensorflow::DT_UINT8): {
+          half_tensor.device(defd) =
+              tensor.flat<uint8>().template cast<Eigen::half>();
+          break;
+        }
+        default:
+          return tensorflow::errors::InvalidArgument(
+              "Datatype " + tensorflow::DataTypeString(dtype) +
+              " for FP16 conversion");
+          break;
+      };
+      memcpy(dst, half_tensor.data(), lenData);  // store into weight store
+      weights = TRT_ShapedWeights(dtypeNew, dst, scalar_shape);
+    } else {
+      size_t lenData = tensorflow::DataTypeSize(dtype);
+      for (int i = 0; i < scalar_shape.nbDims; i++)
+        lenData *= scalar_shape.d[i];
+      size_t lenTensor = weights_tensor.int_val_size() * sizeof(int32);
+      lenData = std::max(lenData, lenTensor);
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+      std::vector<int32> tensor_data(
+          weights_tensor.int_val().begin(),
+          weights_tensor.int_val()
+              .end());  //  make a local copy first to flatten
+                        //  doesn't have to be contigous
+      memcpy(dst, tensor_data.data(), lenTensor);  // store into weight store
+      weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
+    }
   } else if (!weights_tensor.tensor_content().empty()) {
     VLOG(2) << "TENSOR!!!" << node_def.name();
     const auto& content = weights_tensor.tensor_content();
@@ -1757,29 +1899,81 @@ tensorflow::Status ConvertFusedBatchNorm(
   TRT_ShapedWeights combined_offset_weights =
       ctx.get_temp_weights_like(offset_weights);
   size_t nweight = scale_weights.count();
-  if (scale_weights.type_ != tensorflow::DataType::DT_FLOAT ||
-      offset_weights.type_ != tensorflow::DataType::DT_FLOAT ||
-      mean_weights.type_ != tensorflow::DataType::DT_FLOAT ||
-      variance_weights.type_ != tensorflow::DataType::DT_FLOAT) {
-    return tensorflow::errors::Unimplemented(
-        "only float32 weights data type is supported, at " + node_def.name());
+  if ((scale_weights.type_ == offset_weights.type_) &&
+      (mean_weights.type_ == variance_weights.type_) &&
+      (scale_weights.type_ == variance_weights.type_)) {
+    if ((scale_weights.type_ != tensorflow::DataType::DT_FLOAT) &&
+        (scale_weights.type_ != tensorflow::DataType::DT_HALF)) {
+      return tensorflow::errors::Unimplemented(
+          "only float32 weights data type is supported, at " + node_def.name() +
+          " " + tensorflow::DataTypeString(scale_weights.type_));
+    }
+    if (scale_weights.type_ == tensorflow::DT_FLOAT) {
+      for (size_t i = 0; i < nweight; ++i) {
+        float scale = (static_cast<float const*>(scale_weights.GetValues()))[i];
+        float offset =
+            (static_cast<float const*>(offset_weights.GetValues()))[i];
+        float mean = (static_cast<float const*>(mean_weights.GetValues()))[i];
+        float variance =
+            (static_cast<float const*>(variance_weights.GetValues()))[i];
+        float& combined_scale_ref = const_cast<float*>(
+            static_cast<float const*>(combined_scale_weights.GetValues()))[i];
+        float& combined_offset_ref = const_cast<float*>(
+            static_cast<float const*>(combined_offset_weights.GetValues()))[i];
+        combined_scale_ref = scale / sqrtf(variance + epsilon);
+        combined_offset_ref = offset - mean * combined_scale_ref;
+      }
+    } else {
+      const Eigen::half* scale_vals =
+          (static_cast<Eigen::half const*>(scale_weights.GetValues()));
+      const Eigen::half* off_vals =
+          (static_cast<Eigen::half const*>(offset_weights.GetValues()));
+      const Eigen::half* mean_vals =
+          (static_cast<Eigen::half const*>(mean_weights.GetValues()));
+      const Eigen::half* variance_vals =
+          (static_cast<Eigen::half const*>(variance_weights.GetValues()));
+      Eigen::half* comb_scale_vals = const_cast<Eigen::half*>(
+          static_cast<Eigen::half const*>(combined_scale_weights.GetValues()));
+      Eigen::half* comb_off_vals = const_cast<Eigen::half*>(
+          static_cast<Eigen::half const*>(combined_offset_weights.GetValues()));
+      for (size_t i = 0; i < nweight; ++i) {
+        float scale(scale_vals[i]);
+        float offset(off_vals[i]);
+        float mean(mean_vals[i]);
+        float variance(variance_vals[i]);
+        float combined_scale_ref = scale / sqrtf(variance + epsilon);
+        comb_scale_vals[i] = Eigen::half(combined_scale_ref);
+        float combined_offset_ref = offset - mean * combined_scale_ref;
+        comb_off_vals[i] = Eigen::half(combined_offset_ref);
+      }
+    }
   }
-  for (size_t i = 0; i < nweight; ++i) {
-    float scale = (static_cast<float const*>(scale_weights.GetValues()))[i];
-    float offset = (static_cast<float const*>(offset_weights.GetValues()))[i];
-    float mean = (static_cast<float const*>(mean_weights.GetValues()))[i];
-    float variance =
-        (static_cast<float const*>(variance_weights.GetValues()))[i];
-    float& combined_scale_ref = const_cast<float*>(
-        static_cast<float const*>(combined_scale_weights.GetValues()))[i];
-    float& combined_offset_ref = const_cast<float*>(
-        static_cast<float const*>(combined_offset_weights.GetValues()))[i];
-    combined_scale_ref = scale / sqrtf(variance + epsilon);
-    combined_offset_ref = offset - mean * combined_scale_ref;
-  }
+  // if (scale_weights.type_ != tensorflow::DataType::DT_FLOAT ||
+  //     offset_weights.type_ != tensorflow::DataType::DT_FLOAT ||
+  //     mean_weights.type_ != tensorflow::DataType::DT_FLOAT ||
+  //     variance_weights.type_ != tensorflow::DataType::DT_FLOAT) {
+  //   return tensorflow::errors::Unimplemented(
+  //       "only float32 weights data type is supported, at " +
+  //       node_def.name());
+  // }
+  // for (size_t i = 0; i < nweight; ++i) {
+  //   float scale = (static_cast<float const*>(scale_weights.GetValues()))[i];
+  //   float offset = (static_cast<float
+  //   const*>(offset_weights.GetValues()))[i]; float mean = (static_cast<float
+  //   const*>(mean_weights.GetValues()))[i]; float variance =
+  //       (static_cast<float const*>(variance_weights.GetValues()))[i];
+  //   float& combined_scale_ref = const_cast<float*>(
+  //       static_cast<float const*>(combined_scale_weights.GetValues()))[i];
+  //   float& combined_offset_ref = const_cast<float*>(
+  //       static_cast<float const*>(combined_offset_weights.GetValues()))[i];
+  //   combined_scale_ref = scale / sqrtf(variance + epsilon);
+  //   combined_offset_ref = offset - mean * combined_scale_ref;
+  // }
   nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
       *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::ScaleMode::kCHANNEL,
-      combined_offset_weights, combined_scale_weights, dummy_power_weights);
+      combined_offset_weights.GetWeightsForTRT(),
+      combined_scale_weights.GetWeightsForTRT(),
+      dummy_power_weights.GetWeightsForTRT());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -2065,10 +2259,18 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   // topological order is needed to build TRT network
   VLOG(2) << "BUILDING 1";
   static int static_id = 0;
-  string calib_op_name =
-      tensorflow::strings::StrCat("my_trt_calib_op_", static_id);
-  string engine_name = tensorflow::strings::StrCat("my_trt_op", static_id);
-
+  string subgraph_name_scope;
+  if (!order.empty()) {
+    subgraph_name_scope = order.front()->name();
+  }
+  for (const tensorflow::Node* node : order) {
+    subgraph_name_scope = GetCommonNameScope(subgraph_name_scope, node->name());
+  }
+  // TODO(sami,ben,jie): proper naming!
+  string calib_op_name = tensorflow::strings::StrCat(
+      subgraph_name_scope, "my_trt_calib_op_", static_id);
+  string engine_name =
+      tensorflow::strings::StrCat(subgraph_name_scope, "my_trt_op", static_id);
   static_id++;
   VLOG(2) << "BUILDING 2";
   auto trt_rmgr = tensorflow::trt::TRTResourceManager::instance();
@@ -2098,7 +2300,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   auto weight_rmgr = trt_rmgr->getManager("WeightStore");
   auto ws = new tensorflow::trt::TRTWeightStore();
   TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
-  Converter converter(op_res->network, ws);
+  Converter converter(op_res->network, ws, s.precision_mode == 1);
 
   VLOG(2) << "BUILDING 5";
   std::vector<string> input_names;
@@ -2257,18 +2459,6 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   return tensorflow::Status::OK();
 }
 
-string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
-  size_t last_scope_separator = 0;
-  for (size_t i = 0; i < std::min(op_name_a.size(), op_name_b.size()); ++i) {
-    if (op_name_a[i] != op_name_b[i]) {
-      break;
-    } else if (op_name_a[i] == '/') {
-      last_scope_separator = i + 1;
-    }
-  }
-  return op_name_a.substr(0, last_scope_separator);
-}
-
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     tensorrt::convert::SubGraphParams& s) {
   // Visit nodes in reverse topological order and construct the TRT network.
@@ -2319,7 +2509,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   TF_CHECK_OK(weight_rmgr->Create(engine_name, engine_name, ws));
 
   // Build the network
-  Converter converter(trt_network.get(), ws);
+  Converter converter(trt_network.get(), ws, s.precision_mode == 1);
 
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
