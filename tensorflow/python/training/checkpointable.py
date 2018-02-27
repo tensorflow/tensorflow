@@ -322,7 +322,8 @@ class CheckpointableBase(object):
 
   def _add_variable_with_custom_getter(
       self, name, shape=None, dtype=dtypes.float32,
-      initializer=None, getter=None, **kwargs_for_getter):
+      initializer=None, getter=None, overwrite=False,
+      **kwargs_for_getter):
     """Restore-on-create for a variable be saved with this `Checkpointable`.
 
     If the user has requested that this object or another `Checkpointable` which
@@ -334,12 +335,11 @@ class CheckpointableBase(object):
       name: A name for the variable. Must be unique within this object.
       shape: The shape of the variable.
       dtype: The data type of the variable.
-
       initializer: The initializer to use. Ignored if there is a deferred
         restoration left over from a call to
         `_restore_from_checkpoint_position`.
-
       getter: The getter to wrap which actually fetches the variable.
+      overwrite: If True, disables unique name and type checks.
       **kwargs_for_getter: Passed to the getter.
 
     Returns:
@@ -349,7 +349,7 @@ class CheckpointableBase(object):
       ValueError: If the variable name is not unique.
     """
     self._maybe_initialize_checkpointable()
-    if name in self._dependency_names:
+    if not overwrite and name in self._dependency_names:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
            "Checkpointable._add_variable called to create another with "
@@ -385,7 +385,13 @@ class CheckpointableBase(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    return self._track_checkpointable(new_variable, name=name)
+    if not overwrite or isinstance(new_variable, CheckpointableBase):
+      return self._track_checkpointable(new_variable, name=name,
+                                        overwrite=overwrite)
+    else:
+      # TODO(allenl): Some variable types are not yet supported. Remove this
+      # fallback once all get_variable() return types are Checkpointable.
+      return new_variable
 
   def _preload_simple_restoration(self, name, shape):
     """Return a dependency's value for restore-on-create.

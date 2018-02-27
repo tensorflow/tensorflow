@@ -42,24 +42,6 @@ from tensorflow.python.training import saver as core_saver
 from tensorflow.python.training import training_util
 
 
-class CheckpointableDenseLayer(core.Dense, checkpointable.Checkpointable):
-
-  def __init__(self, *args, **kwargs):
-    checkpointable.Checkpointable.__init__(self)
-    core.Dense.__init__(self, *args, **kwargs)
-
-  def add_variable(self, name, shape, **kwargs):
-    # Calls both Checkpointable._add_variable and Layer.add_variable. Eventually
-    # Layer.add_variable should inherit from Checkpointable and simply call
-    # super and then do post-processing.
-    return checkpointable.Checkpointable._add_variable_with_custom_getter(
-        self,
-        name=name,
-        shape=shape,
-        getter=functools.partial(core.Dense.add_variable, self),
-        **kwargs)
-
-
 # pylint: disable=not-callable
 class CheckpointableNetwork(network_lib.Network, checkpointable.Checkpointable):
 
@@ -122,9 +104,9 @@ class MyNetwork(CheckpointableNetwork):
 
   def __init__(self):
     super(MyNetwork, self).__init__()
-    self._named_dense = CheckpointableDenseLayer(1, use_bias=True)
+    self._named_dense = core.Dense(1, use_bias=True)
     self._via_track_layer = self.track_layer(
-        CheckpointableDenseLayer(1, use_bias=False), name="via_track_layer")
+        core.Dense(1, use_bias=False), name="via_track_layer")
     # We can still track Checkpointables which aren't Layers.
     self._non_layer = NonLayerCheckpointable()
 
@@ -326,10 +308,10 @@ class CheckpointingTests(test.TestCase):
         "global_step:0",
         named_variables["optimizer_step" + suffix].name)
     self.assertEqual(
-        "my_network/checkpointable_dense_layer_1/kernel:0",
+        "my_network/dense_1/kernel:0",
         named_variables["network/via_track_layer/kernel" + suffix].name)
     self.assertEqual(
-        "my_network/checkpointable_dense_layer/kernel:0",
+        "my_network/dense/kernel:0",
         named_variables["network/_named_dense/kernel" + suffix].name)
     self.assertEqual(
         "beta1_power:0",
@@ -348,18 +330,18 @@ class CheckpointingTests(test.TestCase):
                      serialized_graph.nodes[optimizer_node.children[0].node_id]
                      .attributes[0].full_name)
     self.assertEqual(
-        "my_network/checkpointable_dense_layer/kernel",
+        "my_network/dense/kernel",
         serialized_graph.nodes[optimizer_node.slot_variables[0]
                                .original_variable_node_id]
         .attributes[0].full_name)
     # We strip off the :0 suffix, as variable.name-based saving does.
     self.assertEqual(
-        "my_network/checkpointable_dense_layer/kernel/Adam",
+        "my_network/dense/kernel/Adam",
         serialized_graph.nodes[optimizer_node.slot_variables[0]
                                .slot_variable_node_id]
         .attributes[0].full_name)
     self.assertEqual(
-        "my_network/checkpointable_dense_layer/kernel/Adam:0",
+        "my_network/dense/kernel/Adam:0",
         optimizer.get_slot(
             var=named_variables["network/_named_dense/kernel" + suffix],
             name="m").name)
