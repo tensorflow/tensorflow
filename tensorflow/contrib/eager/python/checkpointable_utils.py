@@ -518,7 +518,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-class Saver(object):
+class CheckpointableSaver(object):
   """Saves and restores a `Checkpointable` object and its dependencies.
 
   See `Checkpointable` for details of dependency management. `Saver` wraps
@@ -770,3 +770,94 @@ class Saver(object):
     load_status = CheckpointLoadStatus(
         checkpoint, feed_dict=file_prefix_feed_dict)
     return load_status
+
+
+class Checkpoint(core_checkpointable.Checkpointable):
+  """A utility class which groups `Checkpointable` objects.
+
+  Accepts arbitrary keyword arguments to its constructor and saves those values
+  with a checkpoint. Maintains a `save_counter` for numbering checkpoints.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  import tensorflow.contrib.eager as tfe
+  import os
+
+  checkpoint_directory = "/tmp/training_checkpoints"
+  checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+  root = tfe.Checkpoint(optimizer=optimizer, model=model)
+  root.restore(tf.train.latest_checkpoint(checkpoint_directory))
+  for _ in range(num_training_steps):
+    optimizer.minimize( ... )
+  root.save(file_prefix=checkpoint_prefix)
+  ```
+
+  For more manual control over saving, use `tfe.CheckpointableSaver` directly.
+
+  Attributes:
+    save_counter: Incremented when `save()` is called. Used to number
+      checkpoints.
+  """
+
+  def __init__(self, **kwargs):
+    """Group objects into a training checkpoint.
+
+    Args:
+      **kwargs: Keyword arguments are set as attributes of this object, and are
+        saved with the checkpoint. Attribute values must derive from
+        `CheckpointableBase`.
+    Raises:
+      ValueError: If objects in `kwargs` are not Checkpointable.
+    """
+    super(Checkpoint, self).__init__()
+    for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
+      if not isinstance(v, core_checkpointable.CheckpointableBase):
+        raise ValueError(
+            ("`Checkpoint` was expecting an object derived from "
+             "`CheckpointableBase`, got %s.") % (v,))
+      setattr(self, k, v)
+    self._save_counter = None  # Created lazily for restore-on-create.
+    self._saver = CheckpointableSaver(weakref.ref(self))
+
+  def _maybe_create_save_counter(self):
+    """Create a save counter if it does not yet exist."""
+    if self._save_counter is None:
+      # Initialized to 0 and incremented before saving.
+      self._save_counter = add_variable(
+          self, name="save_counter", initializer=0, dtype=dtypes.int64)
+
+  @property
+  def save_counter(self):
+    """An integer variable which starts at zero and is incremented on save.
+
+    Used to number checkpoints.
+
+    Returns:
+      The save counter variable.
+    """
+    self._maybe_create_save_counter()
+    return self._save_counter
+
+  def save(self, file_prefix, session=None):
+    """Save a checkpoint. Wraps `tfe.CheckpointableSaver.save`."""
+    assign_op = self.save_counter.assign_add(1)
+    if context.in_graph_mode():
+      if session is None:
+        session = ops.get_default_session()
+      session.run(assign_op)
+    return self._saver.save(
+        file_prefix=file_prefix,
+        checkpoint_number=self.save_counter,
+        session=session)
+
+  def restore(self, save_path):
+    """Restore a checkpoint. Wraps `tfe.CheckpointableSaver.restore`."""
+    status = self._saver.restore(save_path=save_path)
+    # Create the save counter now so it gets initialized with other variables
+    # when graph building. Creating it earlier would lead to double
+    # initialization when executing eagerly.
+    self._maybe_create_save_counter()
+    return status

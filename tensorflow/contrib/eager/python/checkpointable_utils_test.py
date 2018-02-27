@@ -18,7 +18,6 @@ from __future__ import print_function
 
 import functools
 import os
-import weakref
 
 import six
 
@@ -112,51 +111,6 @@ class MyNetwork(CheckpointableNetwork):
 
   def call(self, values):
     return self._via_track_layer(self._named_dense(values))
-
-
-class Checkpoint(checkpointable.Checkpointable):
-  """A utility class which groups `Checkpointable` objects."""
-
-  def __init__(self, **kwargs):
-    super(Checkpoint, self).__init__()
-    for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      setattr(self, k, v)
-    self._save_counter = None  # Created lazily for restore-on-create.
-    self._saver = checkpointable_utils.Saver(weakref.ref(self))
-
-  @property
-  def save_counter(self):
-    """An integer variable which starts at zero and is incremented on save.
-
-    Used to number checkpoints.
-
-    Returns:
-      The save counter variable.
-    """
-    if self._save_counter is None:
-      # Initialized to 0 and incremented before saving.
-      self._save_counter = checkpointable_utils.add_variable(
-          self, name="save_counter", initializer=0, dtype=dtypes.int64)
-    return self._save_counter
-
-  def save(self, file_prefix, session=None):
-    assign_op = self.save_counter.assign_add(1)
-    if context.in_graph_mode():
-      if session is None:
-        session = ops.get_default_session()
-      session.run(assign_op)
-    return self._saver.save(
-        file_prefix=file_prefix,
-        checkpoint_number=self.save_counter,
-        session=session)
-
-  def restore(self, save_path):
-    status = self._saver.restore(save_path=save_path)
-    # Create the save counter now so it gets initialized with other variables
-    # when graph building. Creating it earlier would lead to double
-    # initialization when executing eagerly.
-    self.save_counter  # pylint: disable=pointless-statement
-    return status
 
 
 class InterfaceTests(test.TestCase):
@@ -256,7 +210,7 @@ class CheckpointingTests(test.TestCase):
     other_network = MyNetwork()
     optimizer = CheckpointableAdam(0.001)
     optimizer_step = training_util.get_or_create_global_step()
-    root_checkpointable = Checkpoint(
+    root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, network=network, optimizer_step=optimizer_step)
     if context.in_eager_mode():
       optimizer.minimize(
@@ -361,7 +315,8 @@ class CheckpointingTests(test.TestCase):
   def testSaveRestore(self):
     network = MyNetwork()
     optimizer = CheckpointableAdam(0.001)
-    root_checkpointable = Checkpoint(optimizer=optimizer, network=network)
+    root_checkpointable = checkpointable_utils.Checkpoint(
+        optimizer=optimizer, network=network)
     input_value = constant_op.constant([[3.]])
     if context.in_eager_mode():
       optimizer.minimize(
@@ -392,7 +347,7 @@ class CheckpointingTests(test.TestCase):
       return  # Restore-on-create is only supported when executing eagerly
     on_create_network = MyNetwork()
     on_create_optimizer = CheckpointableAdam(0.001)
-    on_create_root = Checkpoint(
+    on_create_root = checkpointable_utils.Checkpoint(
         optimizer=on_create_optimizer, network=on_create_network)
     # Deferred restoration
     status = on_create_root.restore(save_path=save_path)
@@ -424,7 +379,7 @@ class CheckpointingTests(test.TestCase):
     for training_continuation in range(3):
       network = MyNetwork()
       optimizer = CheckpointableAdam(0.001)
-      root = Checkpoint(
+      root = checkpointable_utils.Checkpoint(
           optimizer=optimizer, network=network,
           optimizer_step=training_util.get_or_create_global_step())
       root.restore(core_saver.latest_checkpoint(checkpoint_directory))
@@ -448,7 +403,7 @@ class CheckpointingTests(test.TestCase):
         with ops.Graph().as_default():
           network = MyNetwork()
           optimizer = CheckpointableAdam(0.001)
-          root = Checkpoint(
+          root = checkpointable_utils.Checkpoint(
               optimizer=optimizer, network=network,
               global_step=training_util.get_or_create_global_step())
           input_value = constant_op.constant([[3.]])
@@ -485,7 +440,7 @@ class CheckpointingTests(test.TestCase):
           graph=ops.get_default_graph()):
         network = MyNetwork()
         optimizer = CheckpointableAdam(0.001)
-        root = Checkpoint(
+        root = checkpointable_utils.Checkpoint(
             optimizer=optimizer, network=network,
             global_step=training_util.get_or_create_global_step())
         checkpoint_path = core_saver.latest_checkpoint(checkpoint_directory)
@@ -567,9 +522,11 @@ class CheckpointingTests(test.TestCase):
     self.evaluate(state_ops.assign(original.dep.var, 123.))
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    save_path = checkpointable_utils.Saver(original).save(checkpoint_prefix)
+    save_path = checkpointable_utils.CheckpointableSaver(
+        original).save(checkpoint_prefix)
     load_into = LateDependencies()
-    status = checkpointable_utils.Saver(load_into).restore(save_path)
+    status = checkpointable_utils.CheckpointableSaver(
+        load_into).restore(save_path)
     with self.assertRaises(AssertionError):
       status.assert_consumed()
     load_into.add_dep()
@@ -598,11 +555,12 @@ class CheckpointingTests(test.TestCase):
     self.evaluate(state_ops.assign(dep_after_var.dep.var, -14.))
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    save_path = checkpointable_utils.Saver(dep_after_var).save(
+    save_path = checkpointable_utils.CheckpointableSaver(dep_after_var).save(
         checkpoint_prefix)
 
     loaded_dep_after_var = DepAfterVar()
-    status = checkpointable_utils.Saver(loaded_dep_after_var).restore(save_path)
+    status = checkpointable_utils.CheckpointableSaver(
+        loaded_dep_after_var).restore(save_path)
     loaded_dep_after_var.add_dep()
     status.assert_consumed()
     status.run_restore_ops()
@@ -622,24 +580,26 @@ class CheckpointingTests(test.TestCase):
       # `root`. Create a one-off grouping so that slot variables for `root.var`
       # get initialized too.
       self.evaluate(checkpointable_utils.gather_initializers(
-          Checkpoint(root=root, optimizer=optimizer)))
+          checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
       self.evaluate(train_op)
     else:
       optimizer.minimize(root.var.read_value)
     self.evaluate(state_ops.assign(root.var, 12.))
-    no_slots_path = checkpointable_utils.Saver(root).save(
+    no_slots_path = checkpointable_utils.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "no_slots"))
     root.optimizer = optimizer
     self.evaluate(state_ops.assign(root.var, 13.))
     self.evaluate(state_ops.assign(optimizer.get_slot(name="m", var=root.var),
                                    14.))
-    slots_path = checkpointable_utils.Saver(root).save(
+    slots_path = checkpointable_utils.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "with_slots"))
     new_root = checkpointable.Checkpointable()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
-    slot_status = checkpointable_utils.Saver(new_root).restore(slots_path)
-    no_slot_status = checkpointable_utils.Saver(new_root).restore(no_slots_path)
+    slot_status = checkpointable_utils.CheckpointableSaver(
+        new_root).restore(slots_path)
+    no_slot_status = checkpointable_utils.CheckpointableSaver(
+        new_root).restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
     new_root.var = checkpointable_utils.add_variable(
@@ -679,15 +639,17 @@ class CheckpointingTests(test.TestCase):
     save_root.dep.var = checkpointable_utils.add_variable(
         save_root.dep, name="var", initializer=0.)
     self.evaluate(state_ops.assign(save_root.dep.var, 12.))
-    saver = checkpointable_utils.Saver(save_root)
+    saver = checkpointable_utils.CheckpointableSaver(save_root)
     first_path = saver.save(os.path.join(checkpoint_directory, "first"))
     self.evaluate(state_ops.assign(save_root.dep.var, 13.))
     second_path = saver.save(os.path.join(checkpoint_directory, "second"))
 
     first_root = checkpointable.Checkpointable()
     second_root = checkpointable.Checkpointable()
-    first_status = checkpointable_utils.Saver(first_root).restore(first_path)
-    second_status = checkpointable_utils.Saver(second_root).restore(second_path)
+    first_status = checkpointable_utils.CheckpointableSaver(
+        first_root).restore(first_path)
+    second_status = checkpointable_utils.CheckpointableSaver(
+        second_root).restore(second_path)
     load_dep = checkpointable.Checkpointable()
     load_dep.var = checkpointable_utils.add_variable(
         load_dep, name="var", shape=[])
@@ -704,8 +666,10 @@ class CheckpointingTests(test.TestCase):
     # determines the final value.
     first_root = checkpointable.Checkpointable()
     second_root = checkpointable.Checkpointable()
-    second_status = checkpointable_utils.Saver(second_root).restore(second_path)
-    first_status = checkpointable_utils.Saver(first_root).restore(first_path)
+    second_status = checkpointable_utils.CheckpointableSaver(
+        second_root).restore(second_path)
+    first_status = checkpointable_utils.CheckpointableSaver(
+        first_root).restore(first_path)
     load_dep = checkpointable.Checkpointable()
     load_dep.var = checkpointable_utils.add_variable(
         load_dep, name="var", shape=[])
@@ -730,10 +694,10 @@ class CheckpointingTests(test.TestCase):
     save_root.dep_two.dep_three = dep_three
     checkpointable_utils.add_variable(dep_three, name="var", initializer=0.)
     self.evaluate(checkpointable_utils.gather_initializers(save_root))
-    save_path = checkpointable_utils.Saver(save_root).save(
+    save_path = checkpointable_utils.CheckpointableSaver(save_root).save(
         os.path.join(checkpoint_directory, "ckpt"))
     load_root = checkpointable.Checkpointable()
-    checkpointable_utils.Saver(load_root).restore(save_path)
+    checkpointable_utils.CheckpointableSaver(load_root).restore(save_path)
     load_root.dep_one = checkpointable.Checkpointable()
     load_root.dep_two = checkpointable.Checkpointable()
     load_root.dep_one.dep_three = checkpointable.Checkpointable()
@@ -753,7 +717,7 @@ class CheckpointingTests(test.TestCase):
     checkpointable_utils.add_variable(
         save_root.dep_two, name="var2", initializer=64., dtype=dtypes.float64)
     self.evaluate(checkpointable_utils.gather_initializers(save_root))
-    save_path = checkpointable_utils.Saver(save_root).save(
+    save_path = checkpointable_utils.CheckpointableSaver(save_root).save(
         os.path.join(checkpoint_directory, "ckpt"))
     load_root = checkpointable.Checkpointable()
     load_root.dep_one = checkpointable.Checkpointable()
@@ -762,7 +726,7 @@ class CheckpointingTests(test.TestCase):
         load_root.dep_one, name="var1", shape=[], dtype=dtypes.float64)
     v2 = checkpointable_utils.add_variable(
         load_root.dep_one, name="var2", shape=[], dtype=dtypes.float64)
-    status = checkpointable_utils.Saver(load_root).restore(
+    status = checkpointable_utils.CheckpointableSaver(load_root).restore(
         save_path).assert_consumed()
     status.run_restore_ops()
     self.assertEqual(32., self.evaluate(v1))
@@ -782,12 +746,13 @@ class CheckpointingTests(test.TestCase):
         second, "v2", initializer=[1., 1., 2., 3.])
     self.evaluate(checkpointable_utils.gather_initializers(first))
     checkpoint_directory = self.get_temp_dir()
-    save_path = checkpointable_utils.Saver(first).save(
+    save_path = checkpointable_utils.CheckpointableSaver(first).save(
         os.path.join(checkpoint_directory, "ckpt"))
 
     # Test deferred loading
     first_load = checkpointable.Checkpointable()
-    status = checkpointable_utils.Saver(first_load).restore(save_path)
+    status = checkpointable_utils.CheckpointableSaver(
+        first_load).restore(save_path)
     second_load = checkpointable.Checkpointable()
     first_load.second = second_load
     second_load.first = first_load
@@ -807,7 +772,7 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([2., 7., 1.], self.evaluate(first_load.v))
     self.evaluate(second_load.v.assign([2., 7., 1., 8.]))
     self.assertAllEqual([2., 7., 1., 8.], self.evaluate(second_load.v))
-    status = checkpointable_utils.Saver(first_load).restore(
+    status = checkpointable_utils.CheckpointableSaver(first_load).restore(
         save_path).assert_consumed()
     status.run_restore_ops()
     self.assertAllEqual([3., 1., 4.], self.evaluate(first_load.v))
@@ -826,14 +791,15 @@ class CheckpointingTests(test.TestCase):
           name="blah", initializer=0.)
       self.evaluate(first.var1.assign(4.))
       self.evaluate(first.var2.assign(8.))
-      save_path = checkpointable_utils.Saver(first).save(
+      save_path = checkpointable_utils.CheckpointableSaver(first).save(
           checkpoint_prefix)
     restore_graph = ops.Graph()
     with restore_graph.as_default(), self.test_session(restore_graph):
       second = checkpointable.Checkpointable()
       second.var2 = variable_scope.get_variable(
           name="blah", initializer=0.)
-      status = checkpointable_utils.Saver(second).restore(save_path)
+      status = checkpointable_utils.CheckpointableSaver(
+          second).restore(save_path)
       recreated_var1 = variable_scope.get_variable(
           name="outside_var", initializer=0.)
       status.run_restore_ops()
@@ -856,7 +822,7 @@ class CheckpointingTests(test.TestCase):
         obj.opt = CheckpointableAdam(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.Saver(obj)
+        saver = checkpointable_utils.CheckpointableSaver(obj)
         saver.save(checkpoint_prefix)
         before_ops = graph.get_operations()
         saver.save(checkpoint_prefix)
@@ -874,7 +840,7 @@ class CheckpointingTests(test.TestCase):
         obj.opt = CheckpointableAdam(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.Saver(obj)
+        saver = checkpointable_utils.CheckpointableSaver(obj)
         save_path = saver.save(checkpoint_prefix)
         saver.restore(save_path)
         before_ops = graph.get_operations()
@@ -889,7 +855,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     network = MyNetwork()
     optimizer = CheckpointableAdam(0.001)
     optimizer_step = training_util.get_or_create_global_step()
-    root_checkpointable = Checkpoint(
+    root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, network=network, optimizer_step=optimizer_step)
     train_op = optimizer.minimize(
         functools.partial(network, input_value),
@@ -945,7 +911,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     self._set_sentinels(root)
     with self.assertRaises(AssertionError):
       self._check_sentinels(root)
-    object_saver = checkpointable_utils.Saver(root)
+    object_saver = checkpointable_utils.CheckpointableSaver(root)
     status = object_saver.restore(save_path)
     with self.assertRaises(AssertionError):
       status.assert_consumed()
@@ -966,7 +932,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       with save_graph.as_default(), self.test_session(
           graph=save_graph) as session:
         root = self._initialized_model()
-        object_saver = checkpointable_utils.Saver(root)
+        object_saver = checkpointable_utils.CheckpointableSaver(root)
         save_path = object_saver.save(
             session=session, file_prefix=checkpoint_prefix)
     with context.eager_mode():
@@ -980,7 +946,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.eager_mode():
       root = self._initialized_model()
-      object_saver = checkpointable_utils.Saver(root)
+      object_saver = checkpointable_utils.CheckpointableSaver(root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
     with context.graph_mode():
       save_graph = ops.Graph()
