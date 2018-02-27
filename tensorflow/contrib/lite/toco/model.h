@@ -115,6 +115,8 @@ enum class OperatorType {
   kTensorFlowTile,
   kTranspose,
   kTopK_V2,
+  kDynamicPartition,
+  kDynamicStitch,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -1412,6 +1414,30 @@ struct SvdfOperator : Operator {
 //    input tensor and top_k scalar.
 struct TopKV2Operator : Operator {
   TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
+};
+
+// DynamicPartition operator:
+//
+// Inputs:
+//  inputs[0]: required: data.
+//  inputs[1]: required: partitions.
+//
+// TensorFlow equivalent: DynamicPartition
+struct DynamicPartitionOperator : Operator {
+  DynamicPartitionOperator() : Operator(OperatorType::kDynamicPartition) {}
+  int num_partitions;
+};
+
+// DynamicStitch operator:
+//
+// Inputs:
+//  inputs[0,N): required: indices.
+//  inputs[N,2N): required: data.
+//
+// TensorFlow equivalent: DynamicStitch/ParallelDynamicStitch
+struct DynamicStitchOperator : Operator {
+  DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
+  int num_partitions;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

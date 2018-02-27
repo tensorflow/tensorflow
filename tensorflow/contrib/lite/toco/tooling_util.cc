@@ -159,6 +159,15 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   return false;
 }
 
+void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+  for (const string& array_name : op->inputs) {
+    DeleteArrayIfUsedOnce(array_name, model);
+  }
+  auto op_it = FindOp(*model, op);
+  CHECK(op_it != model->operators.end());
+  model->operators.erase(op_it);
+}
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name) {
   for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
@@ -347,6 +356,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

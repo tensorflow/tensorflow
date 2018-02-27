@@ -1896,6 +1896,42 @@ void ConvertTopKV2Operator(const NodeDef& node,
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op.release());
 }
+
+void ConvertDynamicPartitionOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  auto op = absl::make_unique<DynamicPartitionOperator>();
+  CHECK(HasAttr(node, "num_partitions"));
+  op->num_partitions = GetIntAttr(node, "num_partitions");
+  CheckInputsCount(node, tf_import_flags, 2);
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  CHECK_GT(op->num_partitions, 1);
+  op->outputs.push_back(node.name());  // Implicit :0.
+  for (int i = 1; i < op->num_partitions; ++i) {
+    op->outputs.push_back(node.name() + ":" + std::to_string(i));
+  }
+  model->operators.emplace_back(op.release());
+}
+
+void ConvertDynamicStitchOperator(const NodeDef& node,
+                                  const TensorFlowImportFlags& tf_import_flags,
+                                  Model* model) {
+  // The parallel and non-parallel variants are the same besides whether they
+  // have a parallel loop; there are no behavioral differences.
+  CHECK(node.op() == "DynamicStitch" || node.op() == "ParallelDynamicStitch");
+  auto op = absl::make_unique<DynamicStitchOperator>();
+  CHECK(HasAttr(node, "N"));
+  op->num_partitions = GetIntAttr(node, "N");
+  // Expect all ID partitions + all value partitions.
+  CheckInputsCount(node, tf_import_flags, op->num_partitions * 2);
+  for (int i = 0; i < op->num_partitions * 2; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op.release());
+}
+
 }  // namespace
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
@@ -2081,6 +2117,11 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertExpOperator(node, tf_import_flags, model);
     } else if (node.op() == "TopK" || node.op() == "TopKV2") {
       ConvertTopKV2Operator(node, tf_import_flags, model);
+    } else if (node.op() == "DynamicPartition") {
+      ConvertDynamicPartitionOperator(node, tf_import_flags, model);
+    } else if (node.op() == "DynamicStitch" ||
+               node.op() == "ParallelDynamicStitch") {
+      ConvertDynamicStitchOperator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }
