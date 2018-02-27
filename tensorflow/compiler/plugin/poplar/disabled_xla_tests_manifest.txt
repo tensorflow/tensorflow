@@ -93,6 +93,8 @@ PrngTest.HundredValuesB10p1      POPLAR // U32
 PrngTest.HundredValuesB10p5U32 POPLAR // U32
 PrngTest.HundredValuesB10p1U32 POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values POPLAR // U32
+ConvertTest.ConvertR1U32ToR1F32 POPLAR // U32
+ConvertTest.ConvertR1U32ToR1S64 POPLAR // U32
 
 ArrayElementwiseOpTest.NegConstantS64 POPLAR // S64
 ArrayElementwiseOpTest.SubTwoConstantS64s POPLAR // S64
@@ -104,6 +106,7 @@ DynamicSliceTest.Int64R3 POPLAR // S64
 DynamicSliceTest.Int64R2 POPLAR // S64
 DynamicSliceTest.Int64R1 POPLAR // S64
 ScalarComputationsTest.CastS64ToF32 POPLAR // S64
+ConvertTest.ConvertR1S64ToR1F32 POPLAR // S64
 
 ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 DynamicUpdateSliceTest.UInt64R3 POPLAR // U64
