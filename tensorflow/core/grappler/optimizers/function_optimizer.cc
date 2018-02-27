@@ -27,12 +27,15 @@ namespace tensorflow {
 namespace grappler {
 
 Status InlineFunction(const NodeDef& node, const FunctionDef& func,
-                      GraphDef* graph) {
+                      const FunctionDefLibrary& library, GraphDef* graph) {
   const std::unordered_map<string, AttrValue> attr(node.attr().begin(),
                                                    node.attr().end());
-  FunctionDefLibrary library;
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromFunctionDef(func, attr, library);
+  if (!item) {
+    return errors::InvalidArgument("Failed to inline function ", node.op(),
+                                   " instantiated by ", node.name());
+  }
 
   std::unordered_map<string, int> input_nodes;
   for (int i = 0; i < func.signature().input_arg_size(); ++i) {
@@ -129,7 +132,8 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (it == functions.end()) {
       *optimized_graph->add_node() = node;
     } else {
-      TF_RETURN_IF_ERROR(InlineFunction(node, *it->second, optimized_graph));
+      TF_RETURN_IF_ERROR(InlineFunction(node, *it->second, item.graph.library(),
+                                        optimized_graph));
     }
   }
 
