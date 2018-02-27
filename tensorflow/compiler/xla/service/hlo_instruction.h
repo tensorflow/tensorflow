@@ -502,7 +502,8 @@ class HloInstruction {
   static GatherDimensionNumbers MakeGatherDimNumbers(
       tensorflow::gtl::ArraySlice<int64> output_window_dims,
       tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims);
+      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+      int64 index_vector_dim);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }

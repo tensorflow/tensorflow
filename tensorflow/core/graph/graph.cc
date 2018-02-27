@@ -339,7 +339,7 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   return node;
 }
 
-Node* Graph::CopyNode(Node* node) {
+Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
   Node* copy = AllocateNode(node->props_, node);

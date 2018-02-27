@@ -97,6 +97,24 @@ class ConversionMap(object):
     self.dependency_cache[original_entity] = converted_ast
 
 
+def is_whitelisted_for_graph(o):
+  """Check whether an entity is whitelisted for use in graph mode.
+
+  Examples of whitelisted entities include all members of the tensorflow
+  package.
+
+  Args:
+    o: A Python entity.
+  Returns:
+    Boolean
+  """
+  m = tf_inspect.getmodule(o)
+  for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
+    if m.__name__.startswith(prefix):
+      return True
+  return False
+
+
 def entity_to_graph(o, conversion_map, arg_values, arg_types):
   """Compile a Python entity into equivalent TensorFlow.
 

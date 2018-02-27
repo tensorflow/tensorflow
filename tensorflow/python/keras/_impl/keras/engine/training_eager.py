@@ -139,6 +139,8 @@ def _model_loss(model, inputs, targets, training=False):
                                    model.output_names[i])
       loss_metrics.append(K.mean(output_loss))
 
+      # TODO(fchollet): support masking; in practice `_keras_mask` is never
+      # set in this context currently.
       mask = outs[i]._keras_mask
       # adapted from weighted_loss_fn
       if mask is not None:
@@ -148,17 +150,7 @@ def _model_loss(model, inputs, targets, training=False):
         #  to the number of unmasked samples.
         output_loss /= K.mean(mask)
 
-      # adapted from weighted_loss_fn
-      # apply sample weighting
-      if model.sample_weights:
-        # reduce score_array to same ndim as weight array
-        ndim = K.ndim(output_loss)
-        weight_ndim = K.ndim(model.sample_weights)
-        output_loss = K.mean(output_loss, axis=list(range(weight_ndim, ndim)))
-        output_loss *= model.sample_weights
-        output_loss /= K.mean(K.cast(K.not_equal(model.sample_weights, 0),
-                                     K.floatx()))
-        output_loss = K.mean(output_loss)
+      # TODO(fchollet): support sample weighting
 
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
@@ -231,7 +223,8 @@ def train_on_batch(model, ins):
   """
   ins_batch_converted = []
   for ib in ins:
-    ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
+    if ib is not None:
+      ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
   eager_model_inputs = []
   eager_model_outputs = []
   for i in range(len(model.inputs)):

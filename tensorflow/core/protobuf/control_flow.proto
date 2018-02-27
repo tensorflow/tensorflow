@@ -17,6 +17,15 @@ message ValuesDef {
   map<string, string> external_values = 2;
 }
 
+// Container for any kind of control flow context. Any other control flow
+// contexts that are added below should also be added here.
+message ControlFlowContextDef {
+  oneof ctxt {
+    CondContextDef cond_ctxt = 1;
+    WhileContextDef while_ctxt = 2;
+  }
+}
+
 // Protocol buffer representing a CondContext object.
 message CondContextDef {
   // Name of the context.
@@ -33,6 +42,9 @@ message CondContextDef {
 
   // Values and external values in control flow context.
   ValuesDef values_def = 5;
+
+  // Contexts contained inside this context (e.g. nested conds).
+  repeated ControlFlowContextDef nested_contexts = 6;
 }
 
 // Protocol buffer representing a WhileContext object.
@@ -70,5 +82,8 @@ message WhileContextDef {
   // Optional name of the maximum_iterations tensor.
   string maximum_iterations_name = 11;
 
-  // Next available id: 12.
+  // Contexts contained inside this context (e.g. nested whiles).
+  repeated ControlFlowContextDef nested_contexts = 12;
+
+  // Next available id: 13.
 }

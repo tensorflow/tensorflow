@@ -27,13 +27,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 
-namespace {
-
-// std::vector preallocation tuning.
-constexpr const int kSlotsToReserve = 128;
-
-}  // namespace
-
 namespace tflite {
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -85,8 +78,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.GetExecutionPlan = nullptr;
 
   // Reserve some space for the tensors to avoid excessive resizing.
-  tensors_.reserve(kSlotsToReserve);
-  nodes_and_registration_.reserve(kSlotsToReserve);
+  tensors_.reserve(kTensorsReservedCapacity);
+  nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
   UseNNAPI(false);
 }
@@ -353,6 +346,7 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+    EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
       return kTfLiteError;
     }
@@ -430,6 +424,7 @@ TfLiteStatus Interpreter::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+    EnsureTensorsVectorCapacity();
     if (OpInvoke(registration, &node) == kTfLiteError) {
       status = kTfLiteError;
     }

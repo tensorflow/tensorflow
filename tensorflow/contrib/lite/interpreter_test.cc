@@ -561,6 +561,46 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.calls, 1);
 }
 
+TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(Interpreter::kTensorsReservedCapacity),
+            kTfLiteOk);
+  TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
+  registration.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+    TfLiteTensor* first_tensor = context->tensors;
+
+    int new_tensor_index;
+    context->AddTensors(context, Interpreter::kTensorsCapacityHeadroom,
+                        &new_tensor_index);
+    EXPECT_EQ(first_tensor, context->tensors);
+    return kTfLiteOk;
+  };
+  ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                              &registration),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(Interpreter::kTensorsReservedCapacity),
+            kTfLiteOk);
+  TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
+  registration.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+    TfLiteTensor* first_tensor = context->tensors;
+
+    int new_tensor_index;
+    context->AddTensors(context, Interpreter::kTensorsCapacityHeadroom + 1,
+                        &new_tensor_index);
+    EXPECT_NE(first_tensor, context->tensors);
+    return kTfLiteOk;
+  };
+  ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                              &registration),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
 // Test fixture that allows playing with execution plans. It creates a two
 // node graph that can be executed in either [0,1] order or [1,0] order.
 // The CopyOp records when it is invoked in the class member run_order_

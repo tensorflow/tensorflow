@@ -12,20 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Some common SessionRunHook classes."""
+"""Some common SessionRunHook classes (deprected).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.util.deprecation import deprecated_alias
 
 # pylint: disable=invalid-name
-LoggingTensorHook = basic_session_run_hooks.LoggingTensorHook
-StopAtStepHook = basic_session_run_hooks.StopAtStepHook
-CheckpointSaverHook = basic_session_run_hooks.CheckpointSaverHook
-StepCounterHook = basic_session_run_hooks.StepCounterHook
-NanLossDuringTrainingError = basic_session_run_hooks.NanLossDuringTrainingError
-NanTensorHook = basic_session_run_hooks.NanTensorHook
-SummarySaverHook = basic_session_run_hooks.SummarySaverHook
+LoggingTensorHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.LoggingTensorHook',
+    'tf.train.LoggingTensorHook',
+    basic_session_run_hooks.LoggingTensorHook)
+StopAtStepHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.StopAtStepHook',
+    'tf.train.StopAtStepHook',
+    basic_session_run_hooks.StopAtStepHook)
+CheckpointSaverHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.CheckpointSaverHook',
+    'tf.train.CheckpointSaverHook',
+    basic_session_run_hooks.CheckpointSaverHook)
+StepCounterHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.StepCounterHook',
+    'tf.train.StepCounterHook',
+    basic_session_run_hooks.StepCounterHook)
+NanLossDuringTrainingError = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.NanLossDuringTrainingError',
+    'tf.train.NanLossDuringTrainingError',
+    basic_session_run_hooks.NanLossDuringTrainingError)
+NanTensorHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.NanTensorHook',
+    'tf.train.NanTensorHook',
+    basic_session_run_hooks.NanTensorHook)
+SummarySaverHook = deprecated_alias(
+    'tf.contrib.learn.basic_session_run_hooks.SummarySaverHook',
+    'tf.train.SummarySaverHook',
+    basic_session_run_hooks.SummarySaverHook)
 # pylint: enable=invalid-name

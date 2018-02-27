@@ -720,18 +720,19 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   // Force the tensor to be copied to cpu.
   NodeDef* swap_out_node = graph->add_node();
   swap_out_node->set_name(swap_out_name);
-  swap_out_node->set_op("Identity");
-  swap_out_node->set_device("/device:CPU:0");
+  swap_out_node->set_op("_CopyFromGpuToHost");
 
   // Force the tensor to be restored to the device.
   NodeDef* swap_in_node = graph->add_node();
   swap_in_node->set_name(swap_in_name);
-  swap_in_node->set_op("Identity");
+  swap_in_node->set_op("_CopyFromHostToGpu");
   *swap_in_node->add_input() = swap_out_node->name();
 
-  // Colocate the swap_in_ node with the node itself.
+  // Colocate the swap_out_ and swap_in_ nodes with the node itself.
+  swap_out_node->set_device(node->device());
   swap_in_node->set_device(node->device());
   string coloc_group = strings::StrCat("loc@", tensor_to_swap);
+  (*swap_out_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
 

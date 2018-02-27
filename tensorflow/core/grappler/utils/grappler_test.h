@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -29,6 +30,8 @@ class GrapplerTest : public ::testing::Test {
  protected:
   std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
                                     const std::vector<string>& node_names);
+
+  std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item);
 
   void AddNode(const string& name, const string& op,
                const std::vector<string>& inputs, GraphDef* graph);

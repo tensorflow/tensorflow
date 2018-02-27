@@ -23,6 +23,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.impl.api import convert
+from tensorflow.contrib.py2tf.impl.api import converted_call
 from tensorflow.contrib.py2tf.impl.api import graph_ready
 from tensorflow.contrib.py2tf.impl.api import to_code
 from tensorflow.contrib.py2tf.impl.api import to_graph
@@ -30,7 +31,8 @@ from tensorflow.contrib.py2tf.pyct.transformer import PyFlowParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'to_graph', 'to_code', 'convert', 'graph_ready', 'utils', 'PyFlowParseError'
+    'to_graph', 'to_code', 'convert', 'graph_ready', 'converted_call', 'utils',
+    'PyFlowParseError'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

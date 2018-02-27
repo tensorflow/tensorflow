@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -199,6 +200,11 @@ class LayoutConstraints {
   string ToString() const;
 
  private:
+  // Find a bufferset in the bufferset cache. This is useful since we can
+  // currently create the flattened buffer set for the same instruction many
+  // times, which is often slow.
+  PointsToSet::BufferSet* GetBufferSet(const HloInstruction* instruction) const;
+
   // The set of BufferLayoutConstraints applied to the computation.
   std::unordered_map<const LogicalBuffer*, BufferLayoutConstraint>
       buffer_constraints_;
@@ -220,6 +226,10 @@ class LayoutConstraints {
 
   // Array-shaped buffers which have not yet been constrained.
   std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
+
+  mutable tensorflow::gtl::FlatMap<const HloInstruction*,
+                                   std::unique_ptr<PointsToSet::BufferSet>>
+      buffer_sets_cache_;
 
   HloComputation* computation_;
 };

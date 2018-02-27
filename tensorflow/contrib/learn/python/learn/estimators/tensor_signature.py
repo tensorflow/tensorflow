@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorSignature class and utilities."""
+"""TensorSignature class and utilities (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -32,6 +37,10 @@ from tensorflow.python.ops import parsing_ops
 class TensorSignature(collections.namedtuple(
     "TensorSignature", ["dtype", "shape", "is_sparse"])):
   """Signature of the `Tensor` object.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Useful to check compatibility of tensors.
 

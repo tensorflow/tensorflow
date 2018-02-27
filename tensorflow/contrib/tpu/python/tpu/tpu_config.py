@@ -26,6 +26,7 @@ import os
 import numpy as np
 
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import tf_logging as logging
 
@@ -140,6 +141,7 @@ class RunConfig(run_config_lib.RunConfig):
                tpu_config=None,
                evaluation_master=None,
                master=None,
+               cluster=None,
                **kwargs):
     """Constructs a RunConfig.
 
@@ -148,15 +150,26 @@ class RunConfig(run_config_lib.RunConfig):
       evaluation_master: a string. The address of the master to use for eval.
         Defaults to master if not set.
       master: a string. The address of the master to use for training.
+      cluster: a ClusterResolver
       **kwargs: keyword config parameters.
+
+    Raises:
+      ValueError: if cluster is not None and the provided session_config has a
+        cluster_def already.
     """
     super(RunConfig, self).__init__(**kwargs)
     self._tpu_config = tpu_config or TPUConfig()
+    self._cluster = cluster
 
     # If user sets master and/or evaluation_master explicilty, including empty
     # string '', take it. Otherwise, take the values set by parent class.
     if master is not None:
+      if cluster is not None:
+        raise ValueError('Both master and cluster are set.')
       self._master = master
+    else:
+      if cluster:
+        self._master = cluster.master()
 
     if evaluation_master is not None:
       self._evaluation_master = evaluation_master
@@ -170,6 +183,20 @@ class RunConfig(run_config_lib.RunConfig):
       # evaluation_master to master, unless user overwrites it.
       self._evaluation_master = self._master
 
+    # Set the ClusterSpec to use
+    if cluster:
+      self._cluster_spec = cluster.cluster_spec()
+
+      # Merge the cluster_def into the ConfigProto.
+      if self._session_config is None:  # pylint: disable=access-member-before-definition
+        self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+      if self._session_config.HasField('cluster_def'):
+        raise ValueError(
+            'You cannot provide a ClusterResolver and '
+            'session_config.cluster_def.')
+      self._session_config.cluster_def.CopyFrom(
+          self._cluster_spec.as_cluster_def())
+
   @property
   def evaluation_master(self):
     return self._evaluation_master
@@ -181,6 +208,10 @@ class RunConfig(run_config_lib.RunConfig):
   @property
   def tpu_config(self):
     return self._tpu_config
+
+  @property
+  def cluster(self):
+    return self._cluster
 
   def replace(self, **kwargs):
     if 'tpu_config' not in kwargs:

@@ -4805,7 +4805,14 @@ def container(container_name):
 @tf_export("colocate_with")
 def colocate_with(op, ignore_existing=False):
   if context.in_graph_mode():
-    return get_default_graph().colocate_with(op, ignore_existing)
+    default_graph = get_default_graph()
+    if isinstance(op, EagerTensor):
+      if default_graph.building_function:
+        op = internal_convert_to_tensor(op)
+      else:
+        raise ValueError("Encountered an Eager-defined Tensor during graph "
+                         "construction, but a function was not being built.")
+    return default_graph.colocate_with(op, ignore_existing)
   else:
     if op is not None:
       return device(op.device)

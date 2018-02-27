@@ -1049,9 +1049,40 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
       break;
     }
-    case HloOpcode::kGather:
-      // TODO(b/72710576): HLO parsing is not implemented for Gather.
-      return TokenError("HLO parsing is not implemented for Gather");
+    case HloOpcode::kGather: {
+      optional<std::vector<int64>> output_window_dims;
+      attrs["output_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &output_window_dims};
+      optional<std::vector<int64>> elided_window_dims;
+      attrs["elided_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &elided_window_dims};
+      optional<std::vector<int64>> gather_dims_to_operand_dims;
+      attrs["gather_dims_to_operand_dims"] = {/*required=*/true,
+                                              AttrTy::kBracedInt64List,
+                                              &gather_dims_to_operand_dims};
+      optional<int64> index_vector_dim;
+      attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
+                                   &index_vector_dim};
+      optional<std::vector<int64>> window_bounds;
+      attrs["window_bounds"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                                &window_bounds};
+
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+
+      GatherDimensionNumbers dim_numbers = HloInstruction::MakeGatherDimNumbers(
+          /*output_window_dims=*/*output_window_dims,
+          /*elided_window_dims=*/*elided_window_dims,
+          /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
+          /*index_vector_dim=*/*index_vector_dim);
+
+      instruction = builder->AddInstruction(HloInstruction::CreateGather(
+          shape, /*operand=*/operands[0], /*gather_indices=*/operands[1],
+          dim_numbers, *window_bounds));
+      break;
+    }
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));

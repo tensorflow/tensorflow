@@ -522,12 +522,16 @@ class ShapeUtil {
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(
       const Shape& input_shape, const Shape& output_shape,
       tensorflow::gtl::ArraySlice<int64> dimension_mapping);
 
   // Returns whether a reshape from "input_shape" to "output_shape" is a
   // bitcast.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 

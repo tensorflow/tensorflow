@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""This file is deprecated. Use tensorflow.python.training.session_run_hook."""
+"""This file is deprecated. Use `tensorflow.python.training.session_run_hook`.
+
+See [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

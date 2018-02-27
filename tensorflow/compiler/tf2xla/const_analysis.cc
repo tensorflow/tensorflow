@@ -37,7 +37,7 @@ Status BackwardsConstAnalysis(const Graph& g,
   };
 
   Status status;
-  std::unordered_set<Node*> must_be_const;
+  std::unordered_set<const Node*> must_be_const;
   auto visit = [&status, &metadata_ops, &must_be_const,
                 compile_time_const_args](Node* node) {
     if (!status.ok()) return;
@@ -55,7 +55,7 @@ Status BackwardsConstAnalysis(const Graph& g,
         compile_time_const_args->at(index) = true;
         return;
       }
-      for (Node* pred : node->in_nodes()) {
+      for (const Node* pred : node->in_nodes()) {
         must_be_const.insert(pred);
       }
       return;

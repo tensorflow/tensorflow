@@ -210,7 +210,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "hmc_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/hmc_test.py"],
     additional_deps = [
         ":bayesflow_py",

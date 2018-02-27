@@ -787,6 +787,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",

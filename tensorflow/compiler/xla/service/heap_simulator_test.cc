@@ -410,6 +410,56 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   });
 }
 
+TEST_F(HeapSimulatorTest, IndependentTupleElements) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32scalar_, "paramA"));
+  auto paramB = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32scalar_, "paramB"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kMultiply, paramA, paramB));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kAdd, paramA, paramB));
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({mul, add}));
+  auto element0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 0));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec4_, element0, {0}));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kSubtract, paramA, paramB));
+  auto element1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 1));
+  auto output = builder.AddInstruction(
+      HloInstruction::CreateTuple({broadcast, sub, element1}));
+
+  HeapSimulatorTracker tracker(TestName(), builder.Build(),
+                               {paramA, paramB, mul, add, tuple, element0,
+                                broadcast, sub, element1, output});
+  tracker.ExpectCallSequence({
+      {kAlloc, tracker.BufferAt(paramA, {})},
+      {kAlloc, tracker.BufferAt(paramB, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(add, {})},
+      {kAlloc, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(broadcast, {})},
+      // The mul can be freed right after the broadcast happens, even though
+      // The other GetTupleElement is still alive.
+      {kFree, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(sub, {})},
+      // The temporary tuple is now dead.
+      {kFree, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(output, {})},
+      // All params and outputs are freed at the end.
+      {kFree, tracker.BufferAt(paramA, {})},
+      {kFree, tracker.BufferAt(paramB, {})},
+      {kFree, tracker.BufferAt(add, {})},
+      {kFree, tracker.BufferAt(broadcast, {})},
+      {kFree, tracker.BufferAt(sub, {})},
+      {kFree, tracker.BufferAt(output, {})},
+      {kFinish, nullptr},
+  });
+}
+
 TEST_F(HeapSimulatorTest, WholeModule) {
   HeapSimulatorTracker tracker(TestName());
 
