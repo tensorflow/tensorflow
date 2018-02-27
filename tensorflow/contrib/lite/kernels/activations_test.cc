@@ -52,6 +52,14 @@ class BaseActivationsOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
+  BaseActivationsOpModel(BuiltinOperator type, const TensorData &input,
+                         const TensorData &output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)});
+  }
+
  protected:
   int input_;
   int output_;
@@ -141,6 +149,27 @@ TEST(FloatActivationsOpTest, Tanh) {
                                  0, -0.9999877, 0.9640275, 0.999329,    //
                                  0.99505475, -0.9640275, 1, 0.7615941,  //
                              })));
+}
+
+TEST(QuantizedActivationsOpTest, Tanh) {
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_TANH,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -8, 8},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, -1, 1});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      -4, -2, 8, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, -0.999987, 0.964027, 0.999329,     //
+                      -0.996078, -0.96402, 0.99999, 0.76159,  //
+                  },
+                  4 * (1. / 256))));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({128, 0, 251, 255, 0, 5, 255, 226}));
 }
 
 TEST(FloatActivationsOpTest, Sigmoid) {

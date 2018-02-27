@@ -97,10 +97,13 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     SetDataTypeForAllOutputs(model, op, data_type);
   } else if (op->type == OperatorType::kTensorFlowUnsupported) {
     auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
-    if (unsupported_op->output_data_types.size() != op->outputs.size()) {
+    // Some output tensors from the op could be eliminated by optimization.
+    // This can make unsupported_op->output_data_types have more elements than
+    // op->outputs.
+    if (unsupported_op->output_data_types.size() < op->outputs.size()) {
       return false;
     }
-    for (int i = 0; i < unsupported_op->output_data_types.size(); ++i) {
+    for (int i = 0; i < op->outputs.size(); ++i) {
       auto output = op->outputs[i];
       auto data_type = unsupported_op->output_data_types[i];
       model->GetArray(output).data_type = data_type;
