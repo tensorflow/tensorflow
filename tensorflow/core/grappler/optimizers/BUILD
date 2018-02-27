@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 filegroup(
     name = "all_files",
@@ -319,8 +320,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpu_swapping_kernels",
-        ":gpu_swapping_ops",
         ":graph_optimizer",
         ":graph_rewriter",
         ":static_schedule",
@@ -336,7 +335,10 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
-    ],
+    ] + if_cuda([
+        ":gpu_swapping_kernels",
+        ":gpu_swapping_ops",
+    ]),
 )
 
 tf_cc_test_gpu(
