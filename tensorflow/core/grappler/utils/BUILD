@@ -155,7 +155,6 @@ cc_library(
     hdrs = ["functions.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",

@@ -455,6 +455,7 @@ cc_library(
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",
         ":dependency_optimizer",
+        ":function_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",
         ":loop_optimizer",

@@ -50,33 +50,40 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
     if (node.name() == "y/inlined_inputs") {
       count++;
       EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
     } else if (node.name() == "y/x") {
       count++;
       EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y/inlined_inputs:0", node.input(0));
     } else if (node.name() == "y/two") {
       count++;
       EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(device, node.device());
     } else if (node.name() == "y/scale") {
       count++;
       EXPECT_EQ("Cast", node.op());
+      EXPECT_EQ(device, node.device());
     } else if (node.name() == "y/y") {
       count++;
       EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(device, node.device());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("y/x", node.input(0));
       EXPECT_EQ("y/scale:0", node.input(1));
     } else if (node.name() == "y") {
       count++;
       EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y/y", node.input(0));
     } else if (node.name() == "z") {
       count++;
       EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(device, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y", node.input(0));
     }

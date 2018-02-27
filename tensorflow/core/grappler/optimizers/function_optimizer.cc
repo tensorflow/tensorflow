@@ -45,6 +45,7 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   NodeDef* func_inputs = graph->add_node();
   func_inputs->set_name(strings::StrCat(node.name(), "/", "inlined_inputs"));
   func_inputs->set_op("IdentityN");
+  func_inputs->set_device(node.device());
   *func_inputs->mutable_input() = node.input();
   AttrValue::ListValue* type_list =
       (*func_inputs->mutable_attr())["T"].mutable_list();
@@ -79,6 +80,9 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
     func_body_node.set_name(
         strings::StrCat(node.name(), "/", func_body_node.name()));
 
+    // Make sure the node is placed
+    func_body_node.set_device(node.device());
+
     // Move the node to the main graph
     graph->add_node()->Swap(&func_body_node);
   }
@@ -88,6 +92,7 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   NodeDef* func_outputs = graph->add_node();
   func_outputs->set_name(node.name());
   func_outputs->set_op("IdentityN");
+  func_outputs->set_device(node.device());
   type_list = (*func_outputs->mutable_attr())["T"].mutable_list();
   for (const OpDef::ArgDef& arg : func.signature().output_arg()) {
     auto it = attr.find(arg.type_attr());
