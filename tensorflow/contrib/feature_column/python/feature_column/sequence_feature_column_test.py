@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.feature_column.python.feature_column import sequential_feature_column as sfc
+from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column.feature_column import _LazyBuilder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors

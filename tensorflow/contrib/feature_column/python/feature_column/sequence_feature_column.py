@@ -34,8 +34,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 
-# TODO(b/73160931): Fix pydoc.
-# pylint: disable=g-doc-args,missing-docstring,protected-access
+# pylint: disable=protected-access
 # TODO(b/73827486): Support SequenceExample.
 
 
@@ -43,8 +42,7 @@ def sequence_input_layer(
     features,
     feature_columns,
     weight_collections=None,
-    trainable=True,
-    scope=None):
+    trainable=True):
   """"Builds input layer for sequence input.
 
   All `feature_columns` must be sequence dense columns with the same
@@ -76,6 +74,17 @@ def sequence_input_layer(
       rnn_cell, inputs=input_layer, sequence_length=sequence_length)
   ```
 
+  Args:
+    features: A dict mapping keys to tensors.
+    feature_columns: An iterable of dense sequence columns. Valid columns are
+      - `embedding_column` that wraps a `sequence_categorical_column_with_*`
+      - `sequence_numeric_column`.
+    weight_collections: A list of collection names to which the Variable will be
+      added. Note that variables will also be added to collections
+      `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
+    trainable: If `True` also add the variable to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES`.
+
   Returns:
     An `(input_layer, sequence_length)` tuple where:
     - input_layer: A float `Tensor` of shape `[batch_size, T, D]`.
@@ -84,6 +93,7 @@ def sequence_input_layer(
         `feature_columns`.
     - sequence_length: An int `Tensor` of shape `[batch_size]`. The sequence
         length for each example.
+
   Raises:
     ValueError: If any of the `feature_columns` is the wrong type.
   """
@@ -95,7 +105,7 @@ def sequence_input_layer(
           'Given (type {}): {}'.format(type(c), c))
 
   with variable_scope.variable_scope(
-      scope, default_name='sequence_input_layer', values=features.values()):
+      None, default_name='sequence_input_layer', values=features.values()):
     builder = fc._LazyBuilder(features)
     output_tensors = []
     sequence_lengths = []
@@ -124,6 +134,35 @@ def sequence_input_layer(
 # TODO(b/73160931): Add remaining categorical columns.
 def sequence_categorical_column_with_identity(
     key, num_buckets, default_value=None):
+  """Returns a feature column that represents sequences of integers.
+
+  Example:
+
+  ```python
+  watches = sequence_categorical_column_with_identity(
+      'watches', num_buckets=1000)
+  watches_embedding = embedding_column(watches, dimension=10)
+  columns = [watches]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    key: A unique string identifying the input feature.
+    num_buckets: Range of inputs. Namely, inputs are expected to be in the
+      range `[0, num_buckets)`.
+    default_value: If `None`, this column's graph operations will fail for
+      out-of-range inputs. Otherwise, this value must be in the range
+      `[0, num_buckets)`, and will replace out-of-range inputs.
+
+  Returns:
+    A `_SequenceCategoricalColumn`.
+  """
   return _SequenceCategoricalColumn(
       fc.categorical_column_with_identity(
           key=key,
@@ -135,6 +174,46 @@ def sequence_categorical_column_with_identity(
 def _sequence_embedding_column(
     categorical_column, dimension, initializer=None, ckpt_to_load_from=None,
     tensor_name_in_ckpt=None, max_norm=None, trainable=True):
+  """Returns a feature column that represents sequences of embeddings.
+
+  Use this to convert sequence categorical data into dense representation for
+  input to sequence NN, such as RNN.
+
+  Example:
+
+  ```python
+  watches = sequence_categorical_column_with_identity(
+      'watches', num_buckets=1000)
+  watches_embedding = embedding_column(watches, dimension=10)
+  columns = [watches]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    categorical_column: A `_SequenceCategoricalColumn` created with a
+      `sequence_cateogrical_column_with_*` function.
+    dimension: Integer dimension of the embedding.
+    initializer: Initializer function used to initialize the embeddings.
+    ckpt_to_load_from: String representing checkpoint name/pattern from which to
+      restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
+    tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
+      which to restore the column weights. Required if `ckpt_to_load_from` is
+      not `None`.
+    max_norm: If not `None`, embedding values are l2-normalized to this value.
+    trainable: Whether or not the embedding is trainable. Default is True.
+
+  Returns:
+    A `_SequenceEmbeddingColumn`.
+
+  Raises:
+    ValueError: If `categorical_column` is not the right type.
+  """
   if not isinstance(categorical_column, _SequenceCategoricalColumn):
     raise ValueError(
         'categorical_column must be of type _SequenceCategoricalColumn. '
@@ -156,6 +235,33 @@ def sequence_numeric_column(
     shape=(1,),
     default_value=0.,
     dtype=dtypes.float32):
+  """Returns a feature column that represents sequences of numeric data.
+
+  Example:
+
+  ```python
+  temperature = sequence_numeric_column('temperature')
+  columns = [temperature]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    key: A unique string identifying the input features.
+    shape: The shape of the input data per sequence id. E.g. if `shape=(2,)`,
+      each example must contain `2 * sequence_length` values.
+    default_value: A single value compatible with `dtype` that is used for
+      padding the sparse data into a dense `Tensor`.
+    dtype: The type of values.
+
+  Returns:
+    A `_SequenceNumericColumn`.
+  """
   # TODO(b/73160931): Add validations.
   return _SequenceNumericColumn(
       key,
@@ -202,6 +308,7 @@ class _SequenceCategoricalColumn(
     fc._CategoricalColumn,
     collections.namedtuple(
         '_SequenceCategoricalColumn', ['categorical_column'])):
+  """Represents sequences of categorical data."""
 
   @property
   def name(self):
@@ -254,6 +361,7 @@ class _SequenceCategoricalColumn(
 class _SequenceEmbeddingColumn(
     _SequenceDenseColumn,
     collections.namedtuple('_SequenceEmbeddingColumn', ['embedding_column'])):
+  """Represents sequences of embeddings."""
 
   @property
   def name(self):
@@ -287,6 +395,7 @@ class _SequenceNumericColumn(
     collections.namedtuple(
         '_SequenceNumericColumn',
         ['key', 'shape', 'default_value', 'dtype'])):
+  """Represents sequences of numeric data."""
 
   @property
   def name(self):
@@ -322,4 +431,4 @@ class _SequenceNumericColumn(
     return _SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
 
-# pylint: enable=g-doc-args,missing-docstring,protected-access
+# pylint: enable=protected-access
