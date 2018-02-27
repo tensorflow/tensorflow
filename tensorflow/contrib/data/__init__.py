@@ -25,6 +25,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@Counter
 
 @@batch_and_drop_remainder
+@@bucket_by_sequence_length
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
@@ -58,6 +59,7 @@ from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.get_single_element import get_single_element
+from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
