@@ -30,12 +30,17 @@ message RewriterConfig {
   }
 
   // Optimize tensor layouts (default is ON)
+  // e.g. This will try to use NCHW layout on GPU which is faster.
   Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
+  // Statically infer the value of tensors when possible, and materialize the
+  // result using constants.
   Toggle constant_folding = 3;
   // Arithmetic optimizations (default is ON)
+  // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;
   // Control dependency optimizations (default is ON).
+  // Remove redundant control dependencies, which may enable other optimization.
   Toggle dependency_optimization = 8;
   // Loop optimizations (default is OFF).
   Toggle loop_optimization = 9;
@@ -49,12 +54,20 @@ message RewriterConfig {
     NO_MEM_OPT = 1;
     // Driven by manual op-level annotations.
     MANUAL = 2;
+
     // Driven by heuristics. The behavior of these heuristics is subject to
     // change. Currently includes an experimental recomputation and swapping
     // heuristics. Manual annotations are respected, but additional nodes are
     // selected automatically.
+
+    // Swapping heuristic will move a tensor from the GPU to the CPU and move
+    // it back when needed to reduce peak memory usage.
     SWAPPING_HEURISTICS = 4;
+    // Recomputation heuristics will recompute ops (such as Relu activation)
+    // during backprop instead of storing them, reducing peak memory usage.
     RECOMPUTATION_HEURISTICS = 5;
+    // Scheduling will split big ops such as AddN and try to enforce a schedule
+    // of the new computations that decreases peak memory usage.
     SCHEDULING_HEURISTICS = 6;
     // Use any combination of swapping and recomputation heuristics.
     HEURISTICS = 3;
