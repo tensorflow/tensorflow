@@ -46,6 +46,7 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":converters",
+        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
@@ -59,7 +60,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -70,7 +70,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -81,7 +80,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -92,7 +90,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/impl",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -103,7 +101,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -114,7 +111,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -125,7 +121,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -136,7 +131,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -157,7 +151,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -168,7 +161,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -184,7 +176,6 @@ py_test(
     ],
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
