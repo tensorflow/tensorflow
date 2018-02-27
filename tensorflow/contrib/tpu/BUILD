@@ -163,6 +163,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         ":profiler",
         ":tpu_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
@@ -179,6 +180,33 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/losses",
     ],
+)
+
+py_library(
+    name = "datasets",
+    srcs = [
+        "python/tpu/datasets.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:function",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
+
+tf_py_test(
+    name = "datasets_test",
+    srcs = ["python/tpu/datasets_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        ":datasets",
+    ],
+    grpc_enabled = True,
 )
 
 tf_py_test(
