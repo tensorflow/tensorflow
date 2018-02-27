@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
@@ -272,6 +273,25 @@ class OpsTest(test_util.TensorFlowTestCase):
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
+    finally:
+      del context._context
+      context._context = context.Context()
+    # pylint: enable=protected-access
+
+  def testSoftPlacement(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    # Temporarily replace the context
+    # pylint: disable=protected-access
+    del context._context
+    try:
+      context._context = context.Context(
+          device_policy=context.DEVICE_PLACEMENT_SILENT,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
+      cpu_tensor = constant_op.constant(1.0)
+      result = cpu_tensor + cpu_tensor
+      self.assertEqual(result.device,
+                       '/job:localhost/replica:0/task:0/device:GPU:0')
     finally:
       del context._context
       context._context = context.Context()
