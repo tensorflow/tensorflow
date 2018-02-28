@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 
 #include <atomic>
 #include <chrono>
@@ -91,9 +91,11 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   }
   return true;
 }
+
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
   return nullptr;
 }
+
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {}
 TRTInt8Calibrator::~TRTInt8Calibrator() {

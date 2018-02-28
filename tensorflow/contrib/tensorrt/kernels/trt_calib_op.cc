@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/kernels/trt_calib_op.h"
-#include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
-#include "tensorflow/contrib/tensorrt/resources/TRTResourceManager.h"
-#include "tensorflow/contrib/tensorrt/resources/TRTResources.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 namespace tensorflow {
@@ -36,11 +38,11 @@ class TRTCalibOp : public OpKernel {
   void Compute(OpKernelContext* context) override;
 
  private:
-  std::string resource_name_;
-  std::vector<std::string> segment_nodes_;
-  std::vector<std::string> input_names_;
+  string resource_name_;
+  std::vector<string> segment_nodes_;
+  std::vector<string> input_names_;
   std::vector<tensorflow::TensorShape> shapes_;
-  std::unordered_map<std::string, std::pair<void*, size_t>> device_buffers_;
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
 };
 }  // namespace trt

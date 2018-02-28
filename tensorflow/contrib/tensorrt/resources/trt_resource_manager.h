@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCEMANAGER_H_
-
-#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRTRESOURCEMANAGER_H_
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
 #include <memory>
 
 #include <string>
@@ -44,4 +43,4 @@ class TRTResourceManager {
 };
 }  // namespace trt
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCEMANAGER_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_

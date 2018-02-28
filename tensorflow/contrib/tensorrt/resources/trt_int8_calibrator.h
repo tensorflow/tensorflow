@@ -33,7 +33,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   TRTInt8Calibrator(
       const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
       int batch_size, string engineName);
-  int getBatchSize() const;
+  int getBatchSize() const override;
   bool getBatch(void* bindings[], const char* names[], int nbBindings) override;
   bool setBatch(const std::unordered_map<string, void*>& data);
   void setDone() { done_ = true; }
