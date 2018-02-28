@@ -2156,14 +2156,6 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertIs(g, ops.get_default_graph())
           self.assertTrue(context.in_graph_mode())
 
-  def testAllGraphsBuildingFunctionsRaisesError(self):
-    g = ops.Graph()
-    g._building_function = True  # pylint: disable=protected-access
-    with g.as_default():
-      with self.assertRaises(AssertionError):
-        with ops.init_scope():
-          pass
-
   def testStaysInEagerWhenOnlyEagerContextActive(self):
     with context.eager_mode():
       with ops.init_scope():
@@ -2240,6 +2232,29 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       # stateful.
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
+
+  def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
+    with context.graph_mode():
+      ops.reset_default_graph()
+      # This doesn't push anything onto the graph stack, but it does
+      # set the stack's global graph.
+      global_graph = ops.get_default_graph()
+      fn_graph = ops.Graph()
+
+      # pylint: disable=protected-access
+      fn_graph._building_function = True
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with fn_graph.as_default():
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        with ops.init_scope():
+          self.assertGreater(len(ops._default_graph_stack.stack), 1)
+          dummy = constant_op.constant(1.0)
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+      # Note that the global graph is _not_ on the graph stack.
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # Ensure that `dummy` was added to the global graph.
+      self.assertEqual(global_graph, dummy.graph)
+      # pylint: enable=protected-access
 
   def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
     with context.graph_mode():
