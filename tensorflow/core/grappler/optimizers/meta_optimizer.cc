@@ -110,7 +110,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new DependencyOptimizer(cfg_.dependency_optimization())));
     }
-    if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+    if (cfg_.loop_optimization() == RewriterConfig::ON) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new LoopOptimizer(cfg_.loop_optimization())));
     }
