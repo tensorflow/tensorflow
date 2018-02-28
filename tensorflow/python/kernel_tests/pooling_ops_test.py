@@ -31,6 +31,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -731,7 +732,8 @@ class PoolingTest(test.TestCase):
                                             [1, 1, 1, 3], "evenly divide")
     if test.is_gpu_available():
       with self.test_session(use_gpu=True):
-        t = constant_op.constant(1.0, shape=[1, 2, 2, 4])
+        t = variables.Variable(np.ones([1, 2, 2, 4]))
+        variables.global_variables_initializer().run()
         with self.assertRaisesOpError("for CPU devices"):
           nn_ops.max_pool(
               t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
@@ -1210,7 +1212,9 @@ class PoolingTest(test.TestCase):
                              padding, use_gpu, v2):
     pool_func = gen_nn_ops.max_pool_v2 if v2 else nn_ops.max_pool
     with self.test_session(use_gpu=use_gpu):
-      input_tensor = constant_op.constant(input_data, shape=input_sizes)
+      input_tensor = variables.Variable(
+          np.array(input_data, dtype=np.float32).reshape(input_sizes))
+      variables.global_variables_initializer().run()
       output_tensor = pool_func(input_tensor, [1, window_rows, window_cols, 1],
                                 [1, row_stride, col_stride, 1], padding)
       output_backprop_tensor = constant_op.constant(
