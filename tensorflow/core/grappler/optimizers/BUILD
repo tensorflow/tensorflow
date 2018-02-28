@@ -382,6 +382,7 @@ cc_library(
 tf_cc_test_gpu(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":memory_optimizer",
         "//tensorflow/cc:cc_ops",
