@@ -23,7 +23,7 @@ limitations under the License.
 #include <thread>
 #include <vector>
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-#include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorrt/include/NvInfer.h"
 

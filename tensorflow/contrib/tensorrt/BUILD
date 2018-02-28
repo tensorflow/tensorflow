@@ -188,20 +188,21 @@ tf_py_wrap_cc(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
-        "resources/TRTInt8Calibrator.cc",
-        "resources/TRTResourceManager.cc",
+        "resources/trt_int8_calibrator.cc",
+        "resources/trt_resource_manager.cc",
     ],
     hdrs = [
-        "resources/TRTInt8Calibrator.h",
-        "resources/TRTResourceManager.h",
-        "resources/TRTResources.h",
+        "resources/trt_int8_calibrator.h",
+        "resources/trt_resource_manager.h",
+        "resources/trt_resources.h",
     ],
     deps = [
-        "@local_config_tensorrt//:nv_infer",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 # Library for the node-level conversion portion of TensorRT operation creation

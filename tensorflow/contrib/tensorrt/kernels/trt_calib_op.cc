@@ -62,21 +62,21 @@ TRTCalibOp::TRTCalibOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
-  auto resmgr = trt_rm->getManager("TRTCalibOps");
-  tensorflow::trt::TRTCalibrationResource* calibRes = nullptr;
-  auto status = resmgr->Lookup(resource_name_, resource_name_, &calibRes);
+  auto res_mgr = trt_rm->getManager("TRTCalibOps");
+  tensorflow::trt::TRTCalibrationResource* calib_res = nullptr;
+  auto status = res_mgr->Lookup(resource_name_, resource_name_, &calib_res);
 
   if (!status.ok()) {
     ctx->SetStatus(status);
     return;
   }
   int numInputs = ctx->num_inputs();
-  if (calibRes->calibrator_ == nullptr) {  // first run instantiate calibrator
+  if (calib_res->calibrator_ == nullptr) {  // first run instantiate calibrator
     dev_tensors_.resize(numInputs);
     int batchSize = ctx->input(0).dim_size(0);
     VLOG(1) << " Constructing calibrator";
-    for (int i = 0; i < numInputs;
-         i++) {  // allocate workspace on device for inputs
+    for (int i = 0; i < numInputs; i++) {
+      // allocate workspace on device for inputs
       const tensorflow::Tensor& t = ctx->input(i);
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_persistent(t.dtype(), t.shape(),
@@ -90,16 +90,16 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
           std::pair<void*, size_t>(devAddr, dTensor->TotalBytes()));
     }
 
-    calibRes->calibrator_ =
+    calib_res->calibrator_ =
         new TRTInt8Calibrator(device_buffers_, batchSize, resource_name_);
     string label(resource_name_);
-    calibRes->thr_ = new std::thread([calibRes, label]() {
+    calib_res->thr_ = new std::thread([calib_res, label]() {
       VLOG(1) << "Starting calibration thread, Calibration Resource @ "
-              << calibRes;
-      calibRes->builder_->setInt8Calibrator(calibRes->calibrator_);
-      calibRes->builder_->setInt8Mode(true);
-      calibRes->engine_ = calibRes->builder_->buildCudaEngine(
-          *calibRes->network_);  // will loop until we terminate calibrator
+              << calib_res;
+      calib_res->builder_->setInt8Calibrator(calib_res->calibrator_);
+      calib_res->builder_->setInt8Mode(true);
+      calib_res->engine_ = calib_res->builder_->buildCudaEngine(
+          *calib_res->network_);  // will loop until we terminate calibrator
       VLOG(1) << "Calibration loop terminated " << label;
     });
     VLOG(1) << "initialized calibrator resource";
@@ -119,7 +119,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
     ctx->set_output(i, t);
   }
   VLOG(2) << "Filled map for sending";
-  calibRes->calibrator_->setBatch(input_data);
+  calib_res->calibrator_->setBatch(input_data);
   VLOG(2) << "Passed calibration data";
 };
 
