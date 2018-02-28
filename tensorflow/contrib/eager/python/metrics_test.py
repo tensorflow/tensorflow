@@ -180,6 +180,19 @@ class MetricsTest(test.TestCase):
         m2 = metrics.Mean()
         m2(2)
 
+  def testMetricsChain(self):
+    with context.graph_mode(), self.test_session():
+      m1 = metrics.Mean()
+      m2 = metrics.Mean(name="m2")
+      update_m2 = m2(3.0)
+      update_m2_2 = m2(m1(1.0))
+      m1.init_variables().run()
+      m2.init_variables().run()
+      update_m2.eval()
+      update_m2_2.eval()
+      self.assertAllEqual(m2.result().eval(), 2.0)
+      self.assertAllEqual(m1.result().eval(), 1.0)
+
 
 if __name__ == "__main__":
   test.main()

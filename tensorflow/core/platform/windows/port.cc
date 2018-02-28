@@ -149,8 +149,20 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  // TODO(yuefengz): implement it for this platform.
+#ifdef TENSORFLOW_USE_ABSL
+  return absl::base_internal::NominalCPUFrequency();
+#else
   return 1.0;
+#endif
+}
+
+int64 AvailableRam() {
+  MEMORYSTATUSEX statex;
+  statex.dwLength = sizeof(statex);
+  if (GlobalMemoryStatusEx(&statex)) {
+    return statex.ullAvailPhys / 1024;
+  }
+  return INT64_MAX;
 }
 
 }  // namespace port

@@ -66,6 +66,8 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
+bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
+
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
@@ -233,7 +235,9 @@ bool IsReciprocalGrad(const NodeDef& node) {
   return node.op() == "ReciprocalGrad";
 }
 
-bool IsRecv(const NodeDef& node) { return node.op() == "_Recv"; }
+bool IsRecv(const NodeDef& node) {
+  return node.op() == "_Recv" || node.op() == "_HostRecv";
+}
 
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
@@ -252,6 +256,10 @@ bool IsRestore(const NodeDef& node) {
           node.op() == "RestoreSlice");
 }
 
+bool IsReverse(const NodeDef& node) {
+  return node.op() == "Reverse" || node.op() == "ReverseV2";
+}
+
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
@@ -260,11 +268,17 @@ bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
-bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
+bool IsSend(const NodeDef& node) {
+  return node.op() == "_Send" || node.op() == "_HostSend";
+}
 
 bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
+
+bool IsShuffle(const NodeDef& node) {
+  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
+}
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
@@ -330,13 +344,18 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }
 }  // namespace
 
+bool IsPersistent(const NodeDef& node) {
+  return IsConstant(node) || IsVariable(node);
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  const string& op_name = node.op();
+  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -350,7 +369,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace")) {
+  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
+      StringPiece(op_name).starts_with("Inplace")) {
     return false;
   }
   return true;

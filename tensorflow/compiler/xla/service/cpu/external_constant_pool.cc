@@ -38,7 +38,7 @@ void ExternalConstantPool::Insert(string name, const Literal& literal,
   CHECK(raw_pointer != nullptr) << "failed to allocate " << literal_size
                                 << " bytes with alignment of " << alignment;
 
-  std::memcpy(raw_pointer, literal.InternalData(), literal_size);
+  std::memcpy(raw_pointer, literal.untyped_data(), literal_size);
   entries_.emplace(std::move(name), static_cast<uint8*>(raw_pointer));
 }
 

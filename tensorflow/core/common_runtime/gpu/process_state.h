@@ -114,6 +114,10 @@ class ProcessState {
  protected:
   ProcessState();
 
+  // Helper method for unit tests to reset the ProcessState singleton by
+  // cleaning up everything. Never use in production.
+  virtual void TestOnlyReset();
+
   static ProcessState* instance_;
   bool gpu_device_enabled_;
 
@@ -132,6 +136,8 @@ class ProcessState {
   std::vector<Allocator*> cpu_al_ GUARDED_BY(mu_);
   std::vector<Allocator*> gpu_al_ GUARDED_BY(mu_);
   std::vector<Allocator*> cuda_al_ GUARDED_BY(mu_);
+
+  friend class GPUDeviceTest;
 };
 
 namespace internal {
@@ -155,9 +161,10 @@ class RecordingAllocator : public Allocator {
     a_->DeallocateRaw(p);
   }
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
-  size_t RequestedSize(void* p) override { return a_->RequestedSize(p); }
-  size_t AllocatedSize(void* p) override { return a_->AllocatedSize(p); }
-  void GetStats(AllocatorStats* stats) override { return a_->GetStats(stats); }
+  size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
+  size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
+  void GetStats(AllocatorStats* stats) override { a_->GetStats(stats); }
+  void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

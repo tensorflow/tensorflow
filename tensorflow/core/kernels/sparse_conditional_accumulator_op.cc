@@ -103,8 +103,9 @@ class SparseAccumulatorTakeGradientOp
                       DoneCallback callback) override {
     // Check signature
     OP_REQUIRES_OK_ASYNC(
-        ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
-                                 {DT_INT64, accumulator->dtype(), DT_INT64}),
+        ctx,
+        ctx->MatchSignature({DT_STRING_REF, DT_INT32},
+                            {DT_INT64, accumulator->dtype(), DT_INT64}),
         callback);
   }
 

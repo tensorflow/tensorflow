@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -28,6 +29,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
+template <typename T>
+bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > std::numeric_limits<RealType>::max() ||
+      value < std::numeric_limits<RealType>::min()) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+}  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
   CHECK(graph != nullptr);
@@ -131,7 +144,7 @@ string ParseNodeName(const string& name, int* position) {
   strings::Scanner scan(name);
   scan.ZeroOrOneLiteral("^")
       .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT)
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
       .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
   StringPiece capture;
   StringPiece remaining;
@@ -207,7 +220,7 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
-int NumOutputs(const NodeDef& node) {
+int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
   auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -221,6 +234,12 @@ int NumOutputs(const NodeDef& node) {
       } else {
         num_outputs++;
       }
+    }
+  } else {
+    FunctionLibraryDefinition fdef(OpRegistry::Global(), graph->library());
+    auto status = fdef.LookUpOpDef(node.op(), &op_def);
+    if (status.ok()) {
+      num_outputs = op_def->output_arg_size();
     }
   }
   return num_outputs;
@@ -305,6 +324,20 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
   }
 }
 
+void DedupControlInputs(NodeDef* node) {
+  std::unordered_set<string> inputs;
+  int pos = 0;
+  while (pos < node->input_size()) {
+    const string& input = node->input(pos);
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
+      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+    } else {
+      ++pos;
+    }
+  }
+}
+
 namespace {
 template <typename T>
 inline void STLSortAndRemoveDuplicates(T* v) {
@@ -380,6 +413,44 @@ string SimpleGraphView::PrintToString() const {
   }
   return str;
 }
+
+#define HANDLE_CASE(DTYPE)                                          \
+  case DTYPE:                                                       \
+    if (!SafeSetScalarTensorValue<EnumToDataType<DTYPE>::Type>(     \
+            static_cast<double>(value), tensor)) {                  \
+      return errors::InvalidArgument("Cannot store value ", value,  \
+                                     " in tensor of type " #DTYPE); \
+    }                                                               \
+    break
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
+  // TODO(rmlarsen): Support more general shapes.
+  if (tensor->NumElements() != 1) {
+    return errors::InvalidArgument(
+        "Expected scalar tensor, got num_elements = ", tensor->NumElements());
+  }
+  switch (dtype) {
+    // TODO(rmlarsen): Handle DT_HALF.
+    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BOOL);
+    HANDLE_CASE(DT_FLOAT);
+    HANDLE_CASE(DT_DOUBLE);
+    HANDLE_CASE(DT_UINT8);
+    HANDLE_CASE(DT_INT8);
+    HANDLE_CASE(DT_UINT16);
+    HANDLE_CASE(DT_INT16);
+    HANDLE_CASE(DT_INT32);
+    HANDLE_CASE(DT_INT64);
+    HANDLE_CASE(DT_COMPLEX64);
+    HANDLE_CASE(DT_COMPLEX128);
+    default:
+      return errors::InvalidArgument("Unsupported type ",
+                                     DataTypeString(dtype));
+  }
+  return Status::OK();
+}
+
+#undef HANDLE_CASE
 
 }  // end namespace grappler
 }  // end namespace tensorflow

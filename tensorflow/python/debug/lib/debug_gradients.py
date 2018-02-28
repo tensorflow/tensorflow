@@ -156,9 +156,12 @@ class GradientsDebugger(object):
     # TODO(cais): Implement value_stack.
     grad_debug_op_name = _tensor_to_grad_debug_op_name(input_tensor, self._uuid)
     # pylint: disable=protected-access
-    debug_grad_identity = gen_array_ops._debug_gradient_identity(
-        input_tensor, name=grad_debug_op_name)
+    identity_op = (gen_array_ops._debug_gradient_ref_identity
+                   if input_tensor.dtype._is_ref_dtype
+                   else gen_array_ops._debug_gradient_identity)
+    debug_grad_identity = identity_op(input_tensor, name=grad_debug_op_name)
     # pylint: enable=protected-access
+    assert debug_grad_identity.dtype == input_tensor.dtype
     if debug_grad_identity.op.name != grad_debug_op_name:
       raise ValueError(
           "The graph already contains an op named %s" % grad_debug_op_name)
@@ -261,32 +264,22 @@ class GradientsDebugger(object):
       The GradientsDebugger instance itself.
     """
     tensor_name_pattern = re.compile(tensor_name_regex)
-
-    # pylint: disable=protected-access
     with graph.as_default():
       for op in graph.get_operations():
         for output in op.outputs:
           if tensor_name_pattern.match(output.name):
             debug_op = self.identify_gradient(output)
 
-            for consumer in output.consumers():
+            # Make a copy of output.consumers() since we'll modify the consumers
+            # TODO(skyewm): this is unnecessary once the C API is enabled
+            for consumer in list(output.consumers()):
               if consumer == debug_op.op:
                 continue
 
               # Locate the slot index of the original input.
-              input_slots = []
-              for i, consumer_input in enumerate(consumer._inputs):
+              for i, consumer_input in enumerate(consumer.inputs):
                 if consumer_input == output:
-                  input_slots.append(i)
-
-              for slot in input_slots:
-                consumer._inputs[slot] = debug_op
-                debug_op._consumers.append(consumer)
-
-            del output._consumers[:]
-            output._consumers.append(debug_op.op)
-    # pylint: enable=protected-access
-
+                  consumer._update_input(i, debug_op)  # pylint: disable=protected-access
     return self
 
   def _check_same_graph(self, tensor):
@@ -367,6 +360,12 @@ def _identify_gradient_grad(op, dy):
   grad_debugger = _gradient_debuggers[grad_debugger_uuid]
   grad_debugger.register_gradient_tensor(orig_tensor_name, dy)
   return dy
+
+
+@ops.RegisterGradient("DebugGradientRefIdentity")
+def _identify_gradient_grad_ref(op, dy):
+  """Gradient function for the DebugIdentity op."""
+  return _identify_gradient_grad(op, dy)
 
 
 def gradient_values_from_dump(grad_debugger, x_tensor, dump):

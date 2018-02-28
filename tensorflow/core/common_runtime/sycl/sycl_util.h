@@ -20,8 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_UTIL_H_
 
-#include "tensorflow/core/common_runtime/device.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/common_runtime/device.h"
 // For DMA helper
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"

@@ -29,6 +29,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_module
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
@@ -47,6 +48,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -54,6 +56,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.training import moving_averages
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 py_all = all
@@ -85,7 +88,7 @@ _MANUAL_VAR_INIT = False
 _FLOATX = 'float32'
 
 # Epsilon fuzz factor used throughout the codebase.
-_EPSILON = 10e-8
+_EPSILON = 1e-7
 
 # Default image data format, one of "channels_last", "channels_first".
 _IMAGE_DATA_FORMAT = 'channels_last'
@@ -96,6 +99,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 _LOCAL_DEVICES = None
 
 
+@tf_export('keras.backend.backend')
 def backend():
   """Publicly accessible method for determining the current backend.
 
@@ -107,6 +111,7 @@ def backend():
   return 'tensorflow'
 
 
+@tf_export('keras.backend.epsilon')
 def epsilon():
   """Returns the value of the fuzz factor used in numeric expressions.
 
@@ -116,12 +121,13 @@ def epsilon():
   Example:
   ```python
       >>> keras.backend.epsilon()
-      1e-08
+      1e-07
   ```
   """
   return _EPSILON
 
 
+@tf_export('keras.backend.set_epsilon')
 def set_epsilon(value):
   """Sets the value of the fuzz factor used in numeric expressions.
 
@@ -132,7 +138,7 @@ def set_epsilon(value):
   ```python
       >>> from keras import backend as K
       >>> K.epsilon()
-      1e-08
+      1e-07
       >>> K.set_epsilon(1e-05)
       >>> K.epsilon()
       1e-05
@@ -142,6 +148,7 @@ def set_epsilon(value):
   _EPSILON = value
 
 
+@tf_export('keras.backend.floatx')
 def floatx():
   """Returns the default float type, as a string.
 
@@ -159,6 +166,7 @@ def floatx():
   return _FLOATX
 
 
+@tf_export('keras.backend.set_floatx')
 def set_floatx(value):
   """Sets the default float type.
 
@@ -184,6 +192,7 @@ def set_floatx(value):
   _FLOATX = str(value)
 
 
+@tf_export('keras.backend.cast_to_floatx')
 def cast_to_floatx(x):
   """Cast a Numpy array to the default Keras float type.
 
@@ -211,6 +220,7 @@ def cast_to_floatx(x):
   return np.asarray(x, dtype=_FLOATX)
 
 
+@tf_export('keras.backend.image_data_format')
 def image_data_format():
   """Returns the default image data format convention.
 
@@ -226,6 +236,7 @@ def image_data_format():
   return _IMAGE_DATA_FORMAT
 
 
+@tf_export('keras.backend.set_image_data_format')
 def set_image_data_format(data_format):
   """Sets the value of the image data format convention.
 
@@ -247,10 +258,11 @@ def set_image_data_format(data_format):
   """
   global _IMAGE_DATA_FORMAT
   if data_format not in {'channels_last', 'channels_first'}:
-    raise ValueError('Unknown data_format:', data_format)
+    raise ValueError('Unknown data_format: ' + str(data_format))
   _IMAGE_DATA_FORMAT = str(data_format)
 
 
+@tf_export('keras.backend.get_uid')
 def get_uid(prefix=''):
   """Associates a string prefix with an integer counter in a TensorFlow graph.
 
@@ -278,6 +290,7 @@ def get_uid(prefix=''):
   return layer_name_uids[prefix]
 
 
+@tf_export('keras.backend.reset_uids')
 def reset_uids():
   per_graph_layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS
   keys = list(per_graph_layer_name_uids.keys())
@@ -285,6 +298,7 @@ def reset_uids():
     del per_graph_layer_name_uids[key]
 
 
+@tf_export('keras.backend.clear_session')
 def clear_session():
   """Destroys the current TF graph and creates a new one.
 
@@ -295,11 +309,13 @@ def clear_session():
   ops.reset_default_graph()
   reset_uids()
   _SESSION = None
-  phase = array_ops.placeholder(dtype='bool', name='keras_learning_phase')
+  phase = array_ops.placeholder_with_default(
+      False, shape=(), name='keras_learning_phase')
   _GRAPH_LEARNING_PHASES = {}
   _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
 
 
+@tf_export('keras.backend.manual_variable_initialization')
 def manual_variable_initialization(value):
   """Sets the manual variable initialization flag.
 
@@ -316,6 +332,7 @@ def manual_variable_initialization(value):
   _MANUAL_VAR_INIT = value
 
 
+@tf_export('keras.backend.learning_phase')
 def learning_phase():
   """Returns the learning phase flag.
 
@@ -326,13 +343,21 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
+  if context.in_eager_mode():
+    if 'eager' not in _GRAPH_LEARNING_PHASES:
+      # Fallback to inference mode as default.
+      return 0
+    return _GRAPH_LEARNING_PHASES['eager']
+
   graph = ops.get_default_graph()
   if graph not in _GRAPH_LEARNING_PHASES:
-    phase = array_ops.placeholder(dtype='bool', name='keras_learning_phase')
+    phase = array_ops.placeholder_with_default(
+        False, shape=(), name='keras_learning_phase')
     _GRAPH_LEARNING_PHASES[graph] = phase
   return _GRAPH_LEARNING_PHASES[graph]
 
 
+@tf_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
 
@@ -345,9 +370,13 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be ' '0 or 1.')
-  _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+  if context.in_eager_mode():
+    _GRAPH_LEARNING_PHASES['eager'] = value
+  else:
+    _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
 
+@tf_export('keras.backend.get_session')
 def get_session():
   """Returns the TF session to be used by the backend.
 
@@ -383,6 +412,7 @@ def get_session():
   return session
 
 
+@tf_export('keras.backend.set_session')
 def set_session(session):
   """Sets the global TensorFlow session.
 
@@ -456,7 +486,7 @@ def _get_available_gpus():
 def _has_nchw_support():
   """Check whether the current scope supports NCHW ops.
 
-  Tensorflow does not support NCHW on CPU. Therefore we check if we are not
+  TensorFlow does not support NCHW on CPU. Therefore we check if we are not
   explicitly put on
   CPU, and have GPUs available. In this case there will be soft-placing on the
   GPU device.
@@ -485,6 +515,7 @@ def _to_tensor(x, dtype):
   return ops.convert_to_tensor(x, dtype=dtype)
 
 
+@tf_export('keras.backend.is_sparse')
 def is_sparse(tensor):
   """Returns whether a tensor is a sparse tensor.
 
@@ -508,6 +539,7 @@ def is_sparse(tensor):
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
 
+@tf_export('keras.backend.to_dense')
 def to_dense(tensor):
   """Converts a sparse tensor into a dense tensor and returns it.
 
@@ -537,6 +569,7 @@ def to_dense(tensor):
 name_scope = ops.name_scope
 
 
+@tf_export('keras.backend.variable')
 def variable(value, dtype=None, name=None, constraint=None):
   """Instantiates a variable and returns it.
 
@@ -575,7 +608,7 @@ def variable(value, dtype=None, name=None, constraint=None):
     v._keras_shape = sparse_coo.shape
     v._uses_learning_phase = False
     return v
-  v = variables_module.Variable(
+  v = resource_variable_ops.ResourceVariable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -609,6 +642,7 @@ def _initialize_variables(session):
       session.run(variables_module.variables_initializer(uninitialized_vars))
 
 
+@tf_export('keras.backend.constant')
 def constant(value, dtype=None, shape=None, name=None):
   """Creates a constant tensor.
 
@@ -677,6 +711,7 @@ def is_keras_tensor(x):
   return hasattr(x, '_keras_history')
 
 
+@tf_export('keras.backend.placeholder')
 def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   """Instantiates a placeholder tensor and returns it.
 
@@ -729,6 +764,7 @@ def is_placeholder(x):
     return False
 
 
+@tf_export('keras.backend.shape')
 def shape(x):
   """Returns the symbolic shape of a tensor or variable.
 
@@ -761,6 +797,7 @@ def shape(x):
   return array_ops.shape(x)
 
 
+@tf_export('keras.backend.int_shape')
 def int_shape(x):
   """Returns the shape of tensor or variable as a tuple of int or None entries.
 
@@ -788,6 +825,7 @@ def int_shape(x):
     return None
 
 
+@tf_export('keras.backend.ndim')
 def ndim(x):
   """Returns the number of axes in a tensor, as an integer.
 
@@ -815,6 +853,7 @@ def ndim(x):
   return None
 
 
+@tf_export('keras.backend.dtype')
 def dtype(x):
   """Returns the dtype of a Keras tensor or variable, as a string.
 
@@ -845,6 +884,7 @@ def dtype(x):
   return x.dtype.base_dtype.name
 
 
+@tf_export('keras.backend.eval')
 def eval(x):
   """Evaluates the value of a variable.
 
@@ -866,6 +906,7 @@ def eval(x):
   return to_dense(x).eval(session=get_session())
 
 
+@tf_export('keras.backend.zeros')
 def zeros(shape, dtype=None, name=None):
   """Instantiates an all-zeros variable and returns it.
 
@@ -876,6 +917,8 @@ def zeros(shape, dtype=None, name=None):
 
   Returns:
       A variable (including Keras metadata), filled with `0.0`.
+      Note that if `shape` was symbolic, we cannot return a variable,
+      and will return a dynamically-shaped tensor instead.
 
   Example:
   ```python
@@ -890,12 +933,15 @@ def zeros(shape, dtype=None, name=None):
   if dtype is None:
     dtype = floatx()
   tf_dtype = dtypes_module.as_dtype(dtype)
-  return variable(
-      init_ops.constant_initializer(0., dtype=tf_dtype)(shape), dtype, name)
+  v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
+  if py_all(v.get_shape().as_list()):
+    return variable(v, dtype=dtype, name=name)
+  return v
 
 
+@tf_export('keras.backend.ones')
 def ones(shape, dtype=None, name=None):
-  """Instantiates an all-ones tensor variable and returns it.
+  """Instantiates an all-ones variable and returns it.
 
   Arguments:
       shape: Tuple of integers, shape of returned Keras variable.
@@ -904,6 +950,8 @@ def ones(shape, dtype=None, name=None):
 
   Returns:
       A Keras variable, filled with `1.0`.
+      Note that if `shape` was symbolic, we cannot return a variable,
+      and will return a dynamically-shaped tensor instead.
 
   Example:
   ```python
@@ -918,10 +966,13 @@ def ones(shape, dtype=None, name=None):
   if dtype is None:
     dtype = floatx()
   tf_dtype = dtypes_module.as_dtype(dtype)
-  return variable(
-      init_ops.constant_initializer(1., dtype=tf_dtype)(shape), dtype, name)
+  v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
+  if py_all(v.get_shape().as_list()):
+    return variable(v, dtype=dtype, name=name)
+  return v
 
 
+@tf_export('keras.backend.eye')
 def eye(size, dtype=None, name=None):
   """Instantiate an identity matrix and returns it.
 
@@ -950,6 +1001,7 @@ def eye(size, dtype=None, name=None):
   return variable(linalg_ops.eye(size, dtype=tf_dtype), dtype, name)
 
 
+@tf_export('keras.backend.zeros_like')
 def zeros_like(x, dtype=None, name=None):
   """Instantiates an all-zeros variable of the same shape as another tensor.
 
@@ -975,6 +1027,7 @@ def zeros_like(x, dtype=None, name=None):
   return array_ops.zeros_like(x, dtype=dtype, name=name)
 
 
+@tf_export('keras.backend.ones_like')
 def ones_like(x, dtype=None, name=None):
   """Instantiates an all-ones variable of the same shape as another tensor.
 
@@ -1013,6 +1066,7 @@ def identity(x, name=None):
   return array_ops.identity(x, name=name)
 
 
+@tf_export('keras.backend.random_uniform_variable')
 def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
   """Instantiates a variable with values drawn from a uniform distribution.
 
@@ -1049,6 +1103,7 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
   return variable(value, dtype=dtype, name=name)
 
 
+@tf_export('keras.backend.random_normal_variable')
 def random_normal_variable(shape, mean, scale, dtype=None, name=None,
                            seed=None):
   """Instantiates a variable with values drawn from a normal distribution.
@@ -1086,6 +1141,7 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
   return variable(value, dtype=dtype, name=name)
 
 
+@tf_export('keras.backend.count_params')
 def count_params(x):
   """Returns the static number of elements in a variable or tensor.
 
@@ -1108,6 +1164,7 @@ def count_params(x):
   return np.prod(x.get_shape().as_list())
 
 
+@tf_export('keras.backend.cast')
 def cast(x, dtype):
   """Casts a tensor to a different dtype and returns it.
 
@@ -1143,10 +1200,12 @@ def cast(x, dtype):
 # UPDATES OPS
 
 
+@tf_export('keras.backend.update')
 def update(x, new_x):
   return state_ops.assign(x, new_x)
 
 
+@tf_export('keras.backend.update_add')
 def update_add(x, increment):
   """Update the value of `x` by adding `increment`.
 
@@ -1160,6 +1219,7 @@ def update_add(x, increment):
   return state_ops.assign_add(x, increment)
 
 
+@tf_export('keras.backend.update_sub')
 def update_sub(x, decrement):
   """Update the value of `x` by subtracting `decrement`.
 
@@ -1173,6 +1233,7 @@ def update_sub(x, decrement):
   return state_ops.assign_sub(x, decrement)
 
 
+@tf_export('keras.backend.moving_average_update')
 def moving_average_update(x, value, momentum):
   """Compute the moving average of a variable.
 
@@ -1185,12 +1246,13 @@ def moving_average_update(x, value, momentum):
       An Operation to update the variable.
   """
   return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=False)
+      x, value, momentum, zero_debias=True)
 
 
 # LINEAR ALGEBRA
 
 
+@tf_export('keras.backend.dot')
 def dot(x, y):
   """Multiplies 2 tensors (and/or variables) and returns a *tensor*.
 
@@ -1262,6 +1324,7 @@ def dot(x, y):
   return out
 
 
+@tf_export('keras.backend.batch_dot')
 def batch_dot(x, y, axes=None):
   """Batchwise dot product.
 
@@ -1354,6 +1417,7 @@ def batch_dot(x, y, axes=None):
   return out
 
 
+@tf_export('keras.backend.transpose')
 def transpose(x):
   """Transposes a tensor and returns it.
 
@@ -1389,6 +1453,7 @@ def transpose(x):
   return array_ops.transpose(x)
 
 
+@tf_export('keras.backend.gather')
 def gather(reference, indices):
   """Retrieves the elements of indices `indices` in the tensor `reference`.
 
@@ -1405,6 +1470,7 @@ def gather(reference, indices):
 # ELEMENT-WISE OPERATIONS
 
 
+@tf_export('keras.backend.max')
 def max(x, axis=None, keepdims=False):
   """Maximum value in a tensor.
 
@@ -1419,9 +1485,10 @@ def max(x, axis=None, keepdims=False):
   Returns:
       A tensor with maximum values of `x`.
   """
-  return math_ops.reduce_max(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_max(x, axis, keepdims)
 
 
+@tf_export('keras.backend.min')
 def min(x, axis=None, keepdims=False):
   """Minimum value in a tensor.
 
@@ -1436,9 +1503,10 @@ def min(x, axis=None, keepdims=False):
   Returns:
       A tensor with miminum values of `x`.
   """
-  return math_ops.reduce_min(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_min(x, axis, keepdims)
 
 
+@tf_export('keras.backend.sum')
 def sum(x, axis=None, keepdims=False):
   """Sum of the values in a tensor, alongside the specified axis.
 
@@ -1453,9 +1521,10 @@ def sum(x, axis=None, keepdims=False):
   Returns:
       A tensor with sum of `x`.
   """
-  return math_ops.reduce_sum(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_sum(x, axis, keepdims)
 
 
+@tf_export('keras.backend.prod')
 def prod(x, axis=None, keepdims=False):
   """Multiplies the values in a tensor, alongside the specified axis.
 
@@ -1470,7 +1539,7 @@ def prod(x, axis=None, keepdims=False):
   Returns:
       A tensor with the product of elements of `x`.
   """
-  return math_ops.reduce_prod(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_prod(x, axis, keepdims)
 
 
 def cumsum(x, axis=0):
@@ -1499,6 +1568,7 @@ def cumprod(x, axis=0):
   return math_ops.cumprod(x, axis=axis)
 
 
+@tf_export('keras.backend.var')
 def var(x, axis=None, keepdims=False):
   """Variance of a tensor, alongside the specified axis.
 
@@ -1515,12 +1585,13 @@ def var(x, axis=None, keepdims=False):
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
-  m = math_ops.reduce_mean(x, axis=axis, keep_dims=True)
+  m = math_ops.reduce_mean(x, axis, True)
   devs_squared = math_ops.square(x - m)
   return math_ops.reduce_mean(
-      devs_squared, axis=axis, keep_dims=keepdims)
+      devs_squared, axis, keepdims)
 
 
+@tf_export('keras.backend.std')
 def std(x, axis=None, keepdims=False):
   """Standard deviation of a tensor, alongside the specified axis.
 
@@ -1538,6 +1609,7 @@ def std(x, axis=None, keepdims=False):
   return math_ops.sqrt(var(x, axis=axis, keepdims=keepdims))
 
 
+@tf_export('keras.backend.mean')
 def mean(x, axis=None, keepdims=False):
   """Mean of a tensor, alongside the specified axis.
 
@@ -1546,7 +1618,7 @@ def mean(x, axis=None, keepdims=False):
       axis: A list of integer. Axes to compute the mean.
       keepdims: A boolean, whether to keep the dimensions or not.
           If `keepdims` is `False`, the rank of the tensor is reduced
-          by 1 for each entry in `axis`. If `keep_dims` is `True`,
+          by 1 for each entry in `axis`. If `keepdims` is `True`,
           the reduced dimensions are retained with length 1.
 
   Returns:
@@ -1554,9 +1626,10 @@ def mean(x, axis=None, keepdims=False):
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
-  return math_ops.reduce_mean(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_mean(x, axis, keepdims)
 
 
+@tf_export('keras.backend.any')
 def any(x, axis=None, keepdims=False):
   """Bitwise reduction (logical OR).
 
@@ -1569,9 +1642,10 @@ def any(x, axis=None, keepdims=False):
       A uint8 tensor (0s and 1s).
   """
   x = math_ops.cast(x, dtypes_module.bool)
-  return math_ops.reduce_any(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_any(x, axis, keepdims)
 
 
+@tf_export('keras.backend.all')
 def all(x, axis=None, keepdims=False):
   """Bitwise reduction (logical AND).
 
@@ -1584,9 +1658,10 @@ def all(x, axis=None, keepdims=False):
       A uint8 tensor (0s and 1s).
   """
   x = math_ops.cast(x, dtypes_module.bool)
-  return math_ops.reduce_all(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_all(x, axis, keepdims)
 
 
+@tf_export('keras.backend.argmax')
 def argmax(x, axis=-1):
   """Returns the index of the maximum value along an axis.
 
@@ -1600,6 +1675,7 @@ def argmax(x, axis=-1):
   return math_ops.argmax(x, axis)
 
 
+@tf_export('keras.backend.argmin')
 def argmin(x, axis=-1):
   """Returns the index of the minimum value along an axis.
 
@@ -1613,6 +1689,7 @@ def argmin(x, axis=-1):
   return math_ops.argmin(x, axis)
 
 
+@tf_export('keras.backend.square')
 def square(x):
   """Element-wise square.
 
@@ -1625,6 +1702,7 @@ def square(x):
   return math_ops.square(x)
 
 
+@tf_export('keras.backend.abs')
 def abs(x):
   """Element-wise absolute value.
 
@@ -1637,6 +1715,7 @@ def abs(x):
   return math_ops.abs(x)
 
 
+@tf_export('keras.backend.sqrt')
 def sqrt(x):
   """Element-wise square root.
 
@@ -1652,6 +1731,7 @@ def sqrt(x):
   return math_ops.sqrt(x)
 
 
+@tf_export('keras.backend.exp')
 def exp(x):
   """Element-wise exponential.
 
@@ -1664,6 +1744,7 @@ def exp(x):
   return math_ops.exp(x)
 
 
+@tf_export('keras.backend.log')
 def log(x):
   """Element-wise log.
 
@@ -1694,9 +1775,10 @@ def logsumexp(x, axis=None, keepdims=False):
   Returns:
       The reduced tensor.
   """
-  return math_ops.reduce_logsumexp(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_logsumexp(x, axis, keepdims)
 
 
+@tf_export('keras.backend.round')
 def round(x):
   """Element-wise rounding to the closest integer.
 
@@ -1711,6 +1793,7 @@ def round(x):
   return math_ops.round(x)
 
 
+@tf_export('keras.backend.sign')
 def sign(x):
   """Element-wise sign.
 
@@ -1723,6 +1806,7 @@ def sign(x):
   return math_ops.sign(x)
 
 
+@tf_export('keras.backend.pow')
 def pow(x, a):
   """Element-wise exponentiation.
 
@@ -1736,6 +1820,7 @@ def pow(x, a):
   return math_ops.pow(x, a)
 
 
+@tf_export('keras.backend.clip')
 def clip(x, min_value, max_value):
   """Element-wise value clipping.
 
@@ -1756,6 +1841,7 @@ def clip(x, min_value, max_value):
   return clip_ops.clip_by_value(x, min_value, max_value)
 
 
+@tf_export('keras.backend.equal')
 def equal(x, y):
   """Element-wise equality between two tensors.
 
@@ -1769,6 +1855,7 @@ def equal(x, y):
   return math_ops.equal(x, y)
 
 
+@tf_export('keras.backend.not_equal')
 def not_equal(x, y):
   """Element-wise inequality between two tensors.
 
@@ -1782,6 +1869,7 @@ def not_equal(x, y):
   return math_ops.not_equal(x, y)
 
 
+@tf_export('keras.backend.greater')
 def greater(x, y):
   """Element-wise truth value of (x > y).
 
@@ -1795,6 +1883,7 @@ def greater(x, y):
   return math_ops.greater(x, y)
 
 
+@tf_export('keras.backend.greater_equal')
 def greater_equal(x, y):
   """Element-wise truth value of (x >= y).
 
@@ -1808,6 +1897,7 @@ def greater_equal(x, y):
   return math_ops.greater_equal(x, y)
 
 
+@tf_export('keras.backend.less')
 def less(x, y):
   """Element-wise truth value of (x < y).
 
@@ -1821,6 +1911,7 @@ def less(x, y):
   return math_ops.less(x, y)
 
 
+@tf_export('keras.backend.less_equal')
 def less_equal(x, y):
   """Element-wise truth value of (x <= y).
 
@@ -1834,6 +1925,7 @@ def less_equal(x, y):
   return math_ops.less_equal(x, y)
 
 
+@tf_export('keras.backend.maximum')
 def maximum(x, y):
   """Element-wise maximum of two tensors.
 
@@ -1847,6 +1939,7 @@ def maximum(x, y):
   return math_ops.maximum(x, y)
 
 
+@tf_export('keras.backend.minimum')
 def minimum(x, y):
   """Element-wise minimum of two tensors.
 
@@ -1860,6 +1953,7 @@ def minimum(x, y):
   return math_ops.minimum(x, y)
 
 
+@tf_export('keras.backend.sin')
 def sin(x):
   """Computes sin of x element-wise.
 
@@ -1872,6 +1966,7 @@ def sin(x):
   return math_ops.sin(x)
 
 
+@tf_export('keras.backend.cos')
 def cos(x):
   """Computes cos of x element-wise.
 
@@ -1884,6 +1979,109 @@ def cos(x):
   return math_ops.cos(x)
 
 
+def _regular_normalize_batch_in_training(x,
+                                         gamma,
+                                         beta,
+                                         reduction_axes,
+                                         epsilon=1e-3):
+  """Non-fused version of `normalize_batch_in_training`.
+
+  Arguments:
+      x: Input tensor or variable.
+      gamma: Tensor by which to scale the input.
+      beta: Tensor with which to center the input.
+      reduction_axes: iterable of integers,
+          axes over which to normalize.
+      epsilon: Fuzz factor.
+
+  Returns:
+      A tuple length of 3, `(normalized_tensor, mean, variance)`.
+  """
+  mean, var = nn.moments(x, reduction_axes, None, None, False)
+  normed = nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
+  return normed, mean, var
+
+
+def _broadcast_normalize_batch_in_training(x,
+                                           gamma,
+                                           beta,
+                                           reduction_axes,
+                                           epsilon=1e-3):
+  """Non-fused, broadcast version of `normalize_batch_in_training`.
+
+  Arguments:
+      x: Input tensor or variable.
+      gamma: Tensor by which to scale the input.
+      beta: Tensor with which to center the input.
+      reduction_axes: iterable of integers,
+          axes over which to normalize.
+      epsilon: Fuzz factor.
+
+  Returns:
+      A tuple length of 3, `(normalized_tensor, mean, variance)`.
+  """
+  mean, var = nn.moments(x, reduction_axes, None, None, False)
+  target_shape = []
+  for axis in range(ndim(x)):
+    if axis in reduction_axes:
+      target_shape.append(1)
+    else:
+      target_shape.append(array_ops.shape(x)[axis])
+  target_shape = array_ops.stack(target_shape)
+
+  broadcast_mean = array_ops.reshape(mean, target_shape)
+  broadcast_var = array_ops.reshape(var, target_shape)
+  if gamma is None:
+    broadcast_gamma = None
+  else:
+    broadcast_gamma = array_ops.reshape(gamma, target_shape)
+  if beta is None:
+    broadcast_beta = None
+  else:
+    broadcast_beta = array_ops.reshape(beta, target_shape)
+
+  normed = nn.batch_normalization(x, broadcast_mean, broadcast_var,
+                                  broadcast_beta, broadcast_gamma, epsilon)
+  return normed, mean, var
+
+
+def _fused_normalize_batch_in_training(x,
+                                       gamma,
+                                       beta,
+                                       reduction_axes,
+                                       epsilon=1e-3):
+  """Fused version of `normalize_batch_in_training`.
+
+  Arguments:
+      x: Input tensor or variable.
+      gamma: Tensor by which to scale the input.
+      beta: Tensor with which to center the input.
+      reduction_axes: iterable of integers,
+          axes over which to normalize.
+      epsilon: Fuzz factor.
+
+  Returns:
+      A tuple length of 3, `(normalized_tensor, mean, variance)`.
+  """
+  if list(reduction_axes) == [0, 1, 2]:
+    normalization_axis = 3
+    tf_data_format = 'NHWC'
+  else:
+    normalization_axis = 1
+    tf_data_format = 'NCHW'
+
+  if gamma is None:
+    gamma = constant_op.constant(
+        1.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+  if beta is None:
+    beta = constant_op.constant(
+        0.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+
+  return nn.fused_batch_norm(
+      x, gamma, beta, epsilon=epsilon, data_format=tf_data_format)
+
+
+@tf_export('keras.backend.normalize_batch_in_training')
 def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
   """Computes mean and std for batch then apply batch_normalization on batch.
 
@@ -1898,35 +2096,22 @@ def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
   Returns:
       A tuple length of 3, `(normalized_tensor, mean, variance)`.
   """
-  mean, var = nn.moments(
-      x, reduction_axes, shift=None, name=None, keep_dims=False)
-  if sorted(reduction_axes) == list(range(ndim(x)))[:-1]:
-    normed = nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
+  if ndim(x) == 4 and list(reduction_axes) in [[0, 1, 2], [0, 2, 3]]:
+    if not _has_nchw_support() and list(reduction_axes) == [0, 2, 3]:
+      return _broadcast_normalize_batch_in_training(
+          x, gamma, beta, reduction_axes, epsilon=epsilon)
+    return _fused_normalize_batch_in_training(
+        x, gamma, beta, reduction_axes, epsilon=epsilon)
   else:
-    # need broadcasting
-    target_shape = []
-    for axis in range(ndim(x)):
-      if axis in reduction_axes:
-        target_shape.append(1)
-      else:
-        target_shape.append(array_ops.shape(x)[axis])
-    target_shape = array_ops.stack(target_shape)
-
-    broadcast_mean = array_ops.reshape(mean, target_shape)
-    broadcast_var = array_ops.reshape(var, target_shape)
-    if gamma is None:
-      broadcast_gamma = None
+    if sorted(reduction_axes) == list(range(ndim(x)))[:-1]:
+      return _regular_normalize_batch_in_training(
+          x, gamma, beta, reduction_axes, epsilon=epsilon)
     else:
-      broadcast_gamma = array_ops.reshape(gamma, target_shape)
-    if beta is None:
-      broadcast_beta = None
-    else:
-      broadcast_beta = array_ops.reshape(beta, target_shape)
-    normed = nn.batch_normalization(x, broadcast_mean, broadcast_var,
-                                    broadcast_beta, broadcast_gamma, epsilon)
-  return normed, mean, var
+      return _broadcast_normalize_batch_in_training(
+          x, gamma, beta, reduction_axes, epsilon=epsilon)
 
 
+@tf_export('keras.backend.batch_normalization')
 def batch_normalization(x, mean, var, beta, gamma, epsilon=1e-3):
   """Applies batch normalization on x given mean, var, beta and gamma.
 
@@ -1950,6 +2135,7 @@ def batch_normalization(x, mean, var, beta, gamma, epsilon=1e-3):
 # SHAPE OPERATIONS
 
 
+@tf_export('keras.backend.concatenate')
 def concatenate(tensors, axis=-1):
   """Concatenates a list of tensors alongside the specified axis.
 
@@ -1973,6 +2159,7 @@ def concatenate(tensors, axis=-1):
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
 
+@tf_export('keras.backend.reshape')
 def reshape(x, shape):
   """Reshapes a tensor to the specified shape.
 
@@ -1986,6 +2173,7 @@ def reshape(x, shape):
   return array_ops.reshape(x, shape)
 
 
+@tf_export('keras.backend.permute_dimensions')
 def permute_dimensions(x, pattern):
   """Permutes axes in a tensor.
 
@@ -2000,6 +2188,7 @@ def permute_dimensions(x, pattern):
   return array_ops.transpose(x, perm=pattern)
 
 
+@tf_export('keras.backend.resize_images')
 def resize_images(x, height_factor, width_factor, data_format):
   """Resizes the images contained in a 4D tensor.
 
@@ -2041,9 +2230,10 @@ def resize_images(x, height_factor, width_factor, data_format):
                  if original_shape[2] is not None else None, None))
     return x
   else:
-    raise ValueError('Invalid data_format:', data_format)
+    raise ValueError('Invalid data_format: ' + str(data_format))
 
 
+@tf_export('keras.backend.resize_volumes')
 def resize_volumes(x, depth_factor, height_factor, width_factor, data_format):
   """Resizes the volume contained in a 5D tensor.
 
@@ -2072,9 +2262,10 @@ def resize_volumes(x, depth_factor, height_factor, width_factor, data_format):
     output = repeat_elements(output, width_factor, axis=3)
     return output
   else:
-    raise ValueError('Invalid data_format:', data_format)
+    raise ValueError('Invalid data_format: ' + str(data_format))
 
 
+@tf_export('keras.backend.repeat_elements')
 def repeat_elements(x, rep, axis):
   """Repeats the elements of a tensor along an axis, like `np.repeat`.
 
@@ -2127,6 +2318,7 @@ def repeat_elements(x, rep, axis):
   return x_rep
 
 
+@tf_export('keras.backend.repeat')
 def repeat(x, n):
   """Repeats a 2D tensor.
 
@@ -2146,12 +2338,13 @@ def repeat(x, n):
   return array_ops.tile(x, pattern)
 
 
+@tf_export('keras.backend.arange')
 def arange(start, stop=None, step=1, dtype='int32'):
   """Creates a 1D tensor containing a sequence of integers.
 
   The function arguments use the same convention as
   Theano's arange: if only one argument is provided,
-  it is in fact the "stop" argument.
+  it is in fact the "stop" argument and "start" is 0.
 
   The default type of the returned tensor is `'int32'` to
   match TensorFlow's default.
@@ -2166,7 +2359,7 @@ def arange(start, stop=None, step=1, dtype='int32'):
       An integer tensor.
 
   """
-  # Match the behavior of numpy and Theano by returning an empty seqence.
+  # Match the behavior of numpy and Theano by returning an empty sequence.
   if stop is None and start < 0:
     start = 0
   result = math_ops.range(start, limit=stop, delta=step, name='arange')
@@ -2191,6 +2384,7 @@ def tile(x, n):
   return array_ops.tile(x, n)
 
 
+@tf_export('keras.backend.flatten')
 def flatten(x):
   """Flatten a tensor.
 
@@ -2203,6 +2397,7 @@ def flatten(x):
   return array_ops.reshape(x, [-1])
 
 
+@tf_export('keras.backend.batch_flatten')
 def batch_flatten(x):
   """Turn a nD tensor into a 2D tensor with same 0th dimension.
 
@@ -2218,6 +2413,7 @@ def batch_flatten(x):
   return x
 
 
+@tf_export('keras.backend.expand_dims')
 def expand_dims(x, axis=-1):
   """Adds a 1-sized dimension at index "axis".
 
@@ -2231,6 +2427,7 @@ def expand_dims(x, axis=-1):
   return array_ops.expand_dims(x, axis)
 
 
+@tf_export('keras.backend.squeeze')
 def squeeze(x, axis):
   """Removes a 1-dimension from the tensor at index "axis".
 
@@ -2244,6 +2441,7 @@ def squeeze(x, axis):
   return array_ops.squeeze(x, [axis])
 
 
+@tf_export('keras.backend.temporal_padding')
 def temporal_padding(x, padding=(1, 1)):
   """Pads the middle dimension of a 3D tensor.
 
@@ -2260,6 +2458,7 @@ def temporal_padding(x, padding=(1, 1)):
   return array_ops.pad(x, pattern)
 
 
+@tf_export('keras.backend.spatial_2d_padding')
 def spatial_2d_padding(x, padding=((1, 1), (1, 1)), data_format=None):
   """Pads the 2nd and 3rd dimensions of a 4D tensor.
 
@@ -2281,7 +2480,7 @@ def spatial_2d_padding(x, padding=((1, 1), (1, 1)), data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   if data_format == 'channels_first':
     pattern = [[0, 0], [0, 0], list(padding[0]), list(padding[1])]
@@ -2290,6 +2489,7 @@ def spatial_2d_padding(x, padding=((1, 1), (1, 1)), data_format=None):
   return array_ops.pad(x, pattern)
 
 
+@tf_export('keras.backend.spatial_3d_padding')
 def spatial_3d_padding(x, padding=((1, 1), (1, 1), (1, 1)), data_format=None):
   """Pads 5D tensor with zeros along the depth, height, width dimensions.
 
@@ -2321,7 +2521,7 @@ def spatial_3d_padding(x, padding=((1, 1), (1, 1), (1, 1)), data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   if data_format == 'channels_first':
     pattern = [[0, 0], [0, 0], [padding[0][0], padding[0][1]],
@@ -2333,6 +2533,7 @@ def spatial_3d_padding(x, padding=((1, 1), (1, 1), (1, 1)), data_format=None):
   return array_ops.pad(x, pattern)
 
 
+@tf_export('keras.backend.stack')
 def stack(x, axis=0):
   """Stacks a list of rank `R` tensors into a rank `R+1` tensor.
 
@@ -2346,6 +2547,7 @@ def stack(x, axis=0):
   return array_ops.stack(x, axis=axis)
 
 
+@tf_export('keras.backend.one_hot')
 def one_hot(indices, num_classes):
   """Computes the one-hot representation of an integer tensor.
 
@@ -2364,6 +2566,7 @@ def one_hot(indices, num_classes):
   return array_ops.one_hot(indices, depth=num_classes, axis=-1)
 
 
+@tf_export('keras.backend.reverse')
 def reverse(x, axes):
   """Reverse a tensor along the specified axes.
 
@@ -2383,6 +2586,7 @@ def reverse(x, axes):
 # VALUE MANIPULATION
 
 
+@tf_export('keras.backend.get_value')
 def get_value(x):
   """Returns the value of a variable.
 
@@ -2392,9 +2596,12 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
+  if context.in_eager_mode():
+    return x.numpy()
   return x.eval(session=get_session())
 
 
+@tf_export('keras.backend.batch_get_value')
 def batch_get_value(tensors):
   """Returns the value of more than one tensor variable.
 
@@ -2404,12 +2611,15 @@ def batch_get_value(tensors):
   Returns:
       A list of Numpy arrays.
   """
+  if context.in_eager_mode():
+    return [x.numpy() for x in tensors]
   if tensors:
     return get_session().run(tensors)
   else:
     return []
 
 
+@tf_export('keras.backend.set_value')
 def set_value(x, value):
   """Sets the value of a variable, from a Numpy array.
 
@@ -2419,18 +2629,22 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-  if hasattr(x, '_assign_placeholder'):
-    assign_placeholder = x._assign_placeholder
-    assign_op = x._assign_op
+  if context.in_eager_mode():
+    x.assign(value)
   else:
-    assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-    assign_op = x.assign(assign_placeholder)
-    x._assign_placeholder = assign_placeholder
-    x._assign_op = assign_op
-  get_session().run(assign_op, feed_dict={assign_placeholder: value})
+    tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+    if hasattr(x, '_assign_placeholder'):
+      assign_placeholder = x._assign_placeholder
+      assign_op = x._assign_op
+    else:
+      assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+      assign_op = x.assign(assign_placeholder)
+      x._assign_placeholder = assign_placeholder
+      x._assign_op = assign_op
+    get_session().run(assign_op, feed_dict={assign_placeholder: value})
 
 
+@tf_export('keras.backend.batch_set_value')
 def batch_set_value(tuples):
   """Sets the values of many tensor variables at once.
 
@@ -2438,25 +2652,31 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if tuples:
-    assign_ops = []
-    feed_dict = {}
+  if context.in_eager_mode():
     for x, value in tuples:
-      value = np.asarray(value, dtype=dtype(x))
-      tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-      if hasattr(x, '_assign_placeholder'):
-        assign_placeholder = x._assign_placeholder
-        assign_op = x._assign_op
-      else:
-        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-        assign_op = x.assign(assign_placeholder)
-        x._assign_placeholder = assign_placeholder
-        x._assign_op = assign_op
-      assign_ops.append(assign_op)
-      feed_dict[assign_placeholder] = value
-    get_session().run(assign_ops, feed_dict=feed_dict)
+      x.assign(np.asarray(value, dtype=dtype(x)))
+  else:
+    if tuples:
+      assign_ops = []
+      feed_dict = {}
+      for x, value in tuples:
+        value = np.asarray(value, dtype=dtype(x))
+        tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+        if hasattr(x, '_assign_placeholder'):
+          assign_placeholder = x._assign_placeholder
+          assign_op = x._assign_op
+        else:
+          assign_placeholder = array_ops.placeholder(tf_dtype,
+                                                     shape=value.shape)
+          assign_op = x.assign(assign_placeholder)
+          x._assign_placeholder = assign_placeholder
+          x._assign_op = assign_op
+        assign_ops.append(assign_op)
+        feed_dict[assign_placeholder] = value
+      get_session().run(assign_ops, feed_dict=feed_dict)
 
 
+@tf_export('keras.backend.print_tensor')
 def print_tensor(x, message=''):
   """Prints `message` and the tensor value when evaluated.
 
@@ -2529,7 +2749,7 @@ class Function(object):
       self.updates_op = control_flow_ops.group(*updates_ops)
     self.name = name
     # additional tensor substitutions
-    self.feed_dict = session_kwargs.pop('feed_dict', {})
+    self.feed_dict = session_kwargs.pop('feed_dict', None)
     # additional operations
     self.fetches = session_kwargs.pop('fetches', [])
     if not isinstance(self.fetches, list):
@@ -2539,8 +2759,15 @@ class Function(object):
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
       raise TypeError('`inputs` should be a list or tuple.')
-    feed_dict = self.feed_dict.copy()
+
+    if self.feed_dict:
+      feed_dict = self.feed_dict.copy()
+    else:
+      feed_dict = {}
+
     for tensor, value in zip(self.inputs, inputs):
+      if value is None:
+        continue
       if is_sparse(tensor):
         sparse_coo = value.tocoo()
         indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
@@ -2554,6 +2781,7 @@ class Function(object):
     return updated[:len(self.outputs)]
 
 
+@tf_export('keras.backend.function')
 def function(inputs, outputs, updates=None, **kwargs):
   """Instantiates a Keras function.
 
@@ -2573,12 +2801,13 @@ def function(inputs, outputs, updates=None, **kwargs):
     for key in kwargs:
       if (key not in tf_inspect.getargspec(session_module.Session.run)[0] and
           key not in tf_inspect.getargspec(Function.__init__)[0]):
-        msg = ('Invalid argument "%s" passed to K.function with Tensorflow '
+        msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
   return Function(inputs, outputs, updates=updates, **kwargs)
 
 
+@tf_export('keras.backend.gradients')
 def gradients(loss, variables):
   """Returns the gradients of `variables` w.r.t. `loss`.
 
@@ -2593,6 +2822,7 @@ def gradients(loss, variables):
       loss, variables, colocate_gradients_with_ops=True)
 
 
+@tf_export('keras.backend.stop_gradient')
 def stop_gradient(variables):
   """Returns `variables` but with zero gradient w.r.t. every other variable.
 
@@ -2613,13 +2843,15 @@ def stop_gradient(variables):
 # CONTROL FLOW
 
 
+@tf_export('keras.backend.rnn')
 def rnn(step_function,
         inputs,
         initial_states,
         go_backwards=False,
         mask=None,
         constants=None,
-        unroll=False):
+        unroll=False,
+        input_length=None):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -2648,6 +2880,7 @@ def rnn(step_function,
       constants: a list of constant values passed at each step.
       unroll: whether to unroll the RNN or to use a symbolic loop
           (`while_loop` or `scan` depending on backend).
+      input_length: Unused; exists for API compatibility.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -2665,9 +2898,11 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
+  del input_length
   ndim = len(inputs.get_shape())
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
+  inputs_shape = inputs.get_shape()
   axes = [1, 0] + list(range(2, ndim))
   inputs = array_ops.transpose(inputs, (axes))
 
@@ -2686,7 +2921,7 @@ def rnn(step_function,
 
   if unroll:
     if not inputs.get_shape()[0]:
-      raise ValueError('Unrolling requires a ' 'fixed number of timesteps.')
+      raise ValueError('Unrolling requires a fixed number of timesteps.')
     states = initial_states
     successive_states = []
     successive_outputs = []
@@ -2852,10 +3087,19 @@ def rnn(step_function,
 
   axes = [1, 0] + list(range(2, len(outputs.get_shape())))
   outputs = array_ops.transpose(outputs, axes)
-  last_output._uses_learning_phase = uses_learning_phase
+
+  # Static shape inference: (samples, time, ...)
+  outputs_shape = outputs.get_shape().as_list()
+  outputs_shape[0] = inputs_shape[0]
+  outputs_shape[1] = inputs_shape[1]
+  outputs.set_shape(outputs_shape)
+
+  if not context.in_eager_mode():
+    last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 
 
+@tf_export('keras.backend.switch')
 def switch(condition, then_expression, else_expression):
   """Switches between two operations depending on a scalar value.
 
@@ -2919,6 +3163,7 @@ def switch(condition, then_expression, else_expression):
   return x
 
 
+@tf_export('keras.backend.in_train_phase')
 def in_train_phase(x, alt, training=None):
   """Selects `x` in train phase, and `alt` otherwise.
 
@@ -2962,6 +3207,7 @@ def in_train_phase(x, alt, training=None):
   return x
 
 
+@tf_export('keras.backend.in_test_phase')
 def in_test_phase(x, alt, training=None):
   """Selects `x` in test phase, and `alt` otherwise.
 
@@ -2985,6 +3231,7 @@ def in_test_phase(x, alt, training=None):
 # NN OPERATIONS
 
 
+@tf_export('keras.backend.relu')
 def relu(x, alpha=0., max_value=None):
   """Rectified linear unit.
 
@@ -3011,12 +3258,13 @@ def relu(x, alpha=0., max_value=None):
   return x
 
 
+@tf_export('keras.backend.elu')
 def elu(x, alpha=1.):
   """Exponential linear unit.
 
   Arguments:
       x: A tensor or variable to compute the activation function for.
-      alpha: A scalar, slope of positive section.
+      alpha: A scalar, slope of negative section.
 
   Returns:
       A tensor.
@@ -3028,6 +3276,7 @@ def elu(x, alpha=1.):
     return array_ops.where(x > 0, res, alpha * res)
 
 
+@tf_export('keras.backend.softmax')
 def softmax(x):
   """Softmax of a tensor.
 
@@ -3040,6 +3289,7 @@ def softmax(x):
   return nn.softmax(x)
 
 
+@tf_export('keras.backend.softplus')
 def softplus(x):
   """Softplus of a tensor.
 
@@ -3052,6 +3302,7 @@ def softplus(x):
   return nn.softplus(x)
 
 
+@tf_export('keras.backend.softsign')
 def softsign(x):
   """Softsign of a tensor.
 
@@ -3064,6 +3315,7 @@ def softsign(x):
   return nn.softsign(x)
 
 
+@tf_export('keras.backend.categorical_crossentropy')
 def categorical_crossentropy(target, output, from_logits=False):
   """Categorical crossentropy between an output tensor and a target tensor.
 
@@ -3082,8 +3334,8 @@ def categorical_crossentropy(target, output, from_logits=False):
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
-    output /= math_ops.reduce_sum(
-        output, axis=len(output.get_shape()) - 1, keep_dims=True)
+    output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
+        output, len(output.get_shape()) - 1, True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
@@ -3094,6 +3346,7 @@ def categorical_crossentropy(target, output, from_logits=False):
     return nn.softmax_cross_entropy_with_logits(labels=target, logits=output)
 
 
+@tf_export('keras.backend.sparse_categorical_crossentropy')
 def sparse_categorical_crossentropy(target, output, from_logits=False):
   """Categorical crossentropy with integer targets.
 
@@ -3127,6 +3380,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
     return res
 
 
+@tf_export('keras.backend.binary_crossentropy')
 def binary_crossentropy(target, output, from_logits=False):
   """Binary crossentropy between an output tensor and a target tensor.
 
@@ -3150,6 +3404,7 @@ def binary_crossentropy(target, output, from_logits=False):
   return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
 
+@tf_export('keras.backend.sigmoid')
 def sigmoid(x):
   """Element-wise sigmoid.
 
@@ -3162,6 +3417,7 @@ def sigmoid(x):
   return nn.sigmoid(x)
 
 
+@tf_export('keras.backend.hard_sigmoid')
 def hard_sigmoid(x):
   """Segment-wise linear approximation of sigmoid.
 
@@ -3182,6 +3438,7 @@ def hard_sigmoid(x):
   return x
 
 
+@tf_export('keras.backend.tanh')
 def tanh(x):
   """Element-wise tanh.
 
@@ -3194,6 +3451,7 @@ def tanh(x):
   return nn.tanh(x)
 
 
+@tf_export('keras.backend.dropout')
 def dropout(x, level, noise_shape=None, seed=None):
   """Sets entries in `x` to zero at random, while scaling the entire tensor.
 
@@ -3216,6 +3474,7 @@ def dropout(x, level, noise_shape=None, seed=None):
   return nn.dropout(x * 1., retain_prob, noise_shape, seed=seed)
 
 
+@tf_export('keras.backend.l2_normalize')
 def l2_normalize(x, axis=None):
   """Normalizes a tensor wrt the L2 norm alongside the specified axis.
 
@@ -3229,6 +3488,7 @@ def l2_normalize(x, axis=None):
   return nn.l2_normalize(x, dim=axis)
 
 
+@tf_export('keras.backend.in_top_k')
 def in_top_k(predictions, targets, k):
   """Returns whether the `targets` are in the top `k` `predictions`.
 
@@ -3246,6 +3506,25 @@ def in_top_k(predictions, targets, k):
 
 
 # CONVOLUTIONS
+
+
+def _preprocess_conv1d_input(x, data_format):
+  """Transpose and cast the input before the conv1d.
+
+  Arguments:
+      x: input tensor.
+      data_format: string, `"channels_last"` or `"channels_first"`.
+
+  Returns:
+      A tensor.
+  """
+  tf_data_format = 'NHWC'  # to pass TF Conv2dNative operations
+  if data_format == 'channels_first':
+    if not _has_nchw_support():
+      x = array_ops.transpose(x, (0, 2, 1))  # NCW -> NWC
+    else:
+      tf_data_format = 'NCHW'
+  return x, tf_data_format
 
 
 def _preprocess_conv2d_input(x, data_format):
@@ -3287,7 +3566,7 @@ def _preprocess_conv3d_input(x, data_format):
 
 
 def _preprocess_padding(padding):
-  """Convert keras' padding to tensorflow's padding.
+  """Convert keras' padding to TensorFlow's padding.
 
   Arguments:
       padding: string, one of 'same' , 'valid'
@@ -3303,10 +3582,11 @@ def _preprocess_padding(padding):
   elif padding == 'valid':
     padding = 'VALID'
   else:
-    raise ValueError('Invalid padding:', padding)
+    raise ValueError('Invalid padding: ' + str(padding))
   return padding
 
 
+@tf_export('keras.backend.conv1d')
 def conv1d(x,
            kernel,
            strides=1,
@@ -3333,7 +3613,7 @@ def conv1d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   kernel_shape = kernel.get_shape().as_list()
   if padding == 'causal':
@@ -3356,6 +3636,7 @@ def conv1d(x,
   return x
 
 
+@tf_export('keras.backend.conv2d')
 def conv2d(x,
            kernel,
            strides=(1, 1),
@@ -3384,7 +3665,7 @@ def conv2d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -3400,6 +3681,7 @@ def conv2d(x,
   return x
 
 
+@tf_export('keras.backend.conv2d_transpose')
 def conv2d_transpose(x,
                      kernel,
                      output_shape,
@@ -3430,7 +3712,7 @@ def conv2d_transpose(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
   if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(output_shape)
 
@@ -3461,6 +3743,69 @@ def conv2d_transpose(x,
   return x
 
 
+def separable_conv1d(x,
+                     depthwise_kernel,
+                     pointwise_kernel,
+                     strides=1,
+                     padding='valid',
+                     data_format=None,
+                     dilation_rate=1):
+  """1D convolution with separable filters.
+
+  Arguments:
+      x: input tensor
+      depthwise_kernel: convolution kernel for the depthwise convolution.
+      pointwise_kernel: kernel for the 1x1 convolution.
+      strides: stride integer.
+      padding: string, `"same"` or `"valid"`.
+      data_format: string, `"channels_last"` or `"channels_first"`.
+      dilation_rate: integer dilation rate.
+
+  Returns:
+      Output tensor.
+
+  Raises:
+      ValueError: if `data_format` is neither `channels_last` or
+      `channels_first`.
+  """
+  if data_format is None:
+    data_format = image_data_format()
+  if data_format not in {'channels_first', 'channels_last'}:
+    raise ValueError('Unknown data_format: ' + str(data_format))
+
+  x, tf_data_format = _preprocess_conv1d_input(x, data_format)
+  padding = _preprocess_padding(padding)
+  if not isinstance(strides, tuple):
+    strides = tuple(strides)
+  if tf_data_format == 'NHWC':
+    spatial_start_dim = 1
+    strides = (1,) + strides * 2 + (1,)
+  else:
+    spatial_start_dim = 2
+    strides = (1, 1) + strides * 2
+  x = array_ops.expand_dims(x, spatial_start_dim)
+  depthwise_kernel = array_ops.expand_dims(depthwise_kernel, 0)
+  pointwise_kernel = array_ops.expand_dims(pointwise_kernel, 0)
+  dilation_rate = (1,) + dilation_rate
+
+  x = nn.separable_conv2d(
+      x,
+      depthwise_kernel,
+      pointwise_kernel,
+      strides=strides,
+      padding=padding,
+      rate=dilation_rate,
+      data_format=tf_data_format)
+
+  x = array_ops.squeeze(x, [spatial_start_dim])
+
+  if data_format == 'channels_first' and tf_data_format == 'NHWC':
+    x = array_ops.transpose(x, (0, 2, 1))  # NWC -> NCW
+
+  return x
+
+
+@tf_export('keras.backend.separable_conv2d')
 def separable_conv2d(x,
                      depthwise_kernel,
                      pointwise_kernel,
@@ -3490,10 +3835,12 @@ def separable_conv2d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
+  if not isinstance(strides, tuple):
+    strides = tuple(strides)
   if tf_data_format == 'NHWC':
     strides = (1,) + strides + (1,)
   else:
@@ -3539,7 +3886,7 @@ def depthwise_conv2d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -3560,6 +3907,7 @@ def depthwise_conv2d(x,
   return x
 
 
+@tf_export('keras.backend.conv3d')
 def conv3d(x,
            kernel,
            strides=(1, 1, 1),
@@ -3588,7 +3936,7 @@ def conv3d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv3d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -3634,7 +3982,7 @@ def conv3d_transpose(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
   if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(output_shape)
 
@@ -3665,6 +4013,7 @@ def conv3d_transpose(x,
   return x
 
 
+@tf_export('keras.backend.pool2d')
 def pool2d(x,
            pool_size,
            strides=(1, 1),
@@ -3692,7 +4041,7 @@ def pool2d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -3710,13 +4059,14 @@ def pool2d(x,
     x = nn.avg_pool(
         x, pool_size, strides, padding=padding, data_format=tf_data_format)
   else:
-    raise ValueError('Invalid pooling mode:', pool_mode)
+    raise ValueError('Invalid pooling mode: ' + str(pool_mode))
 
   if data_format == 'channels_first' and tf_data_format == 'NHWC':
     x = array_ops.transpose(x, (0, 3, 1, 2))  # NHWC -> NCHW
   return x
 
 
+@tf_export('keras.backend.pool3d')
 def pool3d(x,
            pool_size,
            strides=(1, 1, 1),
@@ -3744,7 +4094,7 @@ def pool3d(x,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   x, tf_data_format = _preprocess_conv3d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -3762,7 +4112,7 @@ def pool3d(x,
     x = nn.avg_pool3d(
         x, pool_size, strides, padding=padding, data_format=tf_data_format)
   else:
-    raise ValueError('Invalid pooling mode:', pool_mode)
+    raise ValueError('Invalid pooling mode: ' + str(pool_mode))
 
   if data_format == 'channels_first' and tf_data_format == 'NDHWC':
     x = array_ops.transpose(x, (0, 4, 1, 2, 3))
@@ -3793,7 +4143,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   stride = strides[0]
   kernel_shape = int_shape(kernel)
@@ -3849,7 +4199,7 @@ def local_conv2d(inputs,
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
 
   stride_row, stride_col = strides
   output_row, output_col = output_shape
@@ -3880,6 +4230,7 @@ def local_conv2d(inputs,
   return output
 
 
+@tf_export('keras.backend.bias_add')
 def bias_add(x, bias, data_format=None):
   """Adds a bias vector to a tensor.
 
@@ -3901,53 +4252,59 @@ def bias_add(x, bias, data_format=None):
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format ' + str(data_format))
+    raise ValueError('Unknown data_format: ' + str(data_format))
   bias_shape = int_shape(bias)
   if len(bias_shape) != 1 and len(bias_shape) != ndim(x) - 1:
     raise ValueError(
         'Unexpected bias dimensions %d, expect to be 1 or %d dimensions' %
         (len(bias_shape), ndim(x)))
+  # pylint: disable=g-no-augmented-assignment
   if ndim(x) == 5:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, bias_shape[0], 1, 1, 1))
+        x = x + reshape(bias, (1, bias_shape[0], 1, 1, 1))
       else:
-        x += reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
+        x = x + reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, 1, 1, bias_shape[0]))
+        x = x + reshape(bias, (1, 1, 1, bias_shape[0]))
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   elif ndim(x) == 4:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, bias_shape[0], 1, 1))
+        if _has_nchw_support():
+          x = nn.bias_add(x, bias, data_format='NCHW')
+        else:
+          x = x + reshape(bias, (1, bias_shape[0], 1, 1))
       else:
-        x += reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
+        x = x + reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
         x = nn.bias_add(x, bias, data_format='NHWC')
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   elif ndim(x) == 3:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, bias_shape[0], 1))
+        x = x + reshape(bias, (1, bias_shape[0], 1))
       else:
-        x += reshape(bias, (1, bias_shape[1], bias_shape[0]))
+        x = x + reshape(bias, (1, bias_shape[1], bias_shape[0]))
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, 1, bias_shape[0]))
+        x = x + reshape(bias, (1, 1, bias_shape[0]))
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   else:
     x = nn.bias_add(x, bias)
+  # pylint: enable=g-no-augmented-assignment
   return x
 
 
 # RANDOMNESS
 
 
+@tf_export('keras.backend.random_normal')
 def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   """Returns a tensor with normal distribution of values.
 
@@ -3970,6 +4327,7 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
       shape, mean=mean, stddev=stddev, dtype=dtype, seed=seed)
 
 
+@tf_export('keras.backend.random_uniform')
 def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
   """Returns a tensor with uniform distribution of values.
 
@@ -3993,6 +4351,7 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
       shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
 
 
+@tf_export('keras.backend.random_binomial')
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """Returns a tensor with random binomial distribution of values.
 
@@ -4014,6 +4373,7 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
       array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
 
 
+@tf_export('keras.backend.truncated_normal')
 def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   """Returns a tensor with truncated random normal distribution of values.
 
@@ -4047,6 +4407,7 @@ def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 # in TensorFlow's CTC implementation
 
 
+@tf_export('keras.backend.ctc_label_dense_to_sparse')
 def ctc_label_dense_to_sparse(labels, label_lengths):
   """Converts CTC labels from dense to sparse.
 
@@ -4091,6 +4452,7 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
       math_ops.to_int64(indices), vals_sparse, math_ops.to_int64(label_shape))
 
 
+@tf_export('keras.backend.ctc_batch_cost')
 def ctc_batch_cost(y_true, y_pred, input_length, label_length):
   """Runs CTC loss algorithm on each batch element.
 
@@ -4113,13 +4475,14 @@ def ctc_batch_cost(y_true, y_pred, input_length, label_length):
   sparse_labels = math_ops.to_int32(
       ctc_label_dense_to_sparse(y_true, label_length))
 
-  y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + 1e-8)
+  y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
 
   return array_ops.expand_dims(
       ctc.ctc_loss(
           inputs=y_pred, labels=sparse_labels, sequence_length=input_length), 1)
 
 
+@tf_export('keras.backend.ctc_decode')
 def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
   """Decodes the output of a softmax.
 
@@ -4148,7 +4511,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
           Tensor `(top_paths, )` that contains
               the log probability of each decoded sequence.
   """
-  y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + 1e-8)
+  y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.to_int32(input_length)
 
   if greedy:
@@ -4171,6 +4534,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
 # HIGH ORDER FUNCTIONS
 
 
+@tf_export('keras.backend.map_fn')
 def map_fn(fn, elems, name=None, dtype=None):
   """Map the function fn over the elements elems and return the outputs.
 
@@ -4186,6 +4550,7 @@ def map_fn(fn, elems, name=None, dtype=None):
   return functional_ops.map_fn(fn, elems, name=name, dtype=dtype)
 
 
+@tf_export('keras.backend.foldl')
 def foldl(fn, elems, initializer=None, name=None):
   """Reduce elems using fn to combine them from left to right.
 
@@ -4202,6 +4567,7 @@ def foldl(fn, elems, initializer=None, name=None):
   return functional_ops.foldl(fn, elems, initializer=initializer, name=name)
 
 
+@tf_export('keras.backend.foldr')
 def foldr(fn, elems, initializer=None, name=None):
   """Reduce elems using fn to combine them from right to left.
 

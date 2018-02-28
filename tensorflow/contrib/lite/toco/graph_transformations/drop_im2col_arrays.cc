@@ -32,7 +32,7 @@ bool DropIm2colArrays::Run(Model* model, std::size_t op_index) {
 
   // Drop the im2col array.
   CHECK_EQ(conv_op->outputs.size(), 2);
-  model->arrays.erase(conv_op->outputs[1]);
+  model->EraseArray(conv_op->outputs[1]);
   conv_op->outputs.resize(1);
   AddMessageF("Dropped an im2col array for %s", LogName(*conv_op));
 

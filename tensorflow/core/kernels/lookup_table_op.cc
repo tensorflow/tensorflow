@@ -709,8 +709,8 @@ class LookupTableInsertOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };
@@ -786,8 +786,8 @@ class LookupTableImportOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };

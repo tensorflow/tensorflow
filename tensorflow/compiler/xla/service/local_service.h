@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -41,11 +42,13 @@ class LocalService : public Service {
 
   // Builds an Executable with the given argument layouts and options. If
   // result_layout is non-null, then the executable is compiled to produce a
-  // result of the given layout.
+  // result of the given layout.  If device_allocator is non-null, then the
+  // compiler may use it to allocate temp space on the device.  The compiler is
+  // responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const ComputationHandle& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape* result_layout, int device_ordinal);
+      const ExecutableBuildOptions& options);
 
   // Returns the device ordinal that corresponds to the given replica number.
   //

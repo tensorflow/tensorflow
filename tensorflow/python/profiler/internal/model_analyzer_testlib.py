@@ -109,3 +109,9 @@ def ProfilerFromFile(profile_file):
   profiler = model_analyzer.Profiler.__new__(model_analyzer.Profiler)
   yield profiler
   print_mdl.DeleteProfiler()
+
+
+def CheckAndRemoveDoc(profile):
+  assert 'Doc:' in profile
+  start_pos = profile.find('Profile:')
+  return profile[start_pos + 9:]

@@ -82,9 +82,10 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
     arguments = MakeFakeArgumentsOrDie(computation, client);
   } else {  // use recorded data if available
     for (const auto& proto : module.arguments()) {
-      Literal literal(proto);
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+                          Literal::CreateFromProto(proto));
       TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
-                          client->TransferToServer(literal));
+                          client->TransferToServer(*literal));
       arguments.push_back(std::move(data));
     }
   }
@@ -162,12 +163,16 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
               ShapeUtil::HumanString(result->shape()).c_str(),
               result->ToString().c_str());
       if (module.has_result()) {
+        std::unique_ptr<Literal> literal =
+            Literal::CreateFromProto(module.result()).ConsumeValueOrDie();
         fprintf(stdout, "was %s:%s\n",
                 ShapeUtil::HumanString(module.result().shape()).c_str(),
-                Literal(module.result()).ToString().c_str());
+                literal->ToString().c_str());
       }
     }
   }
+
+  ClientLibrary::DestroyLocalInstances();
   return exit_status;
 }
 

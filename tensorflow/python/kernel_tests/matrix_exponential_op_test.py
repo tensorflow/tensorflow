@@ -46,10 +46,8 @@ def np_expm(x):
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
-    # TODO(pfau): add matrix logarithm and test that it is inverse of expm.
     inp = x.astype(np_type)
     with self.test_session(use_gpu=True):
-      # Verify that x^{-1} * x == Identity matrix.
       tf_ans = gen_linalg_ops._matrix_exponential(inp)
       if x.size == 0:
         np_ans = np.empty(x.shape, dtype=np_type)
@@ -121,7 +119,7 @@ class ExponentialOpTest(test.TestCase):
       gen_linalg_ops._matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
 
   def testWrongDimensions(self):
-    # The input to the inverse should be at least a 2-dimensional tensor.
+    # The input to the exponential should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       gen_linalg_ops._matrix_exponential(tensor3)

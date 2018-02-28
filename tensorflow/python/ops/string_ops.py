@@ -47,9 +47,11 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
+@tf_export("string_split")
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
@@ -120,6 +122,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
+@tf_export("reduce_join")
 def reduce_join(inputs, axis=None,
                 keep_dims=False,
                 separator="",

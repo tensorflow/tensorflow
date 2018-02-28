@@ -57,6 +57,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 NUMERIC_TYPES = frozenset(
     [dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32,
@@ -111,6 +112,7 @@ def _shape_and_dtype_str(tensor):
   return 'shape=%s dtype=%s' % (tensor.shape, tensor.dtype.name)
 
 
+@tf_export('assert_proper_iterable')
 def assert_proper_iterable(values):
   """Static assert that values is a "proper" iterable.
 
@@ -138,6 +140,7 @@ def assert_proper_iterable(values):
         'Expected argument "values" to be iterable.  Found: %s' % type(values))
 
 
+@tf_export('assert_negative')
 def assert_negative(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
 
@@ -178,6 +181,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
     return assert_less(x, zero, data=data, summarize=summarize)
 
 
+@tf_export('assert_positive')
 def assert_positive(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x > 0` holds element-wise.
 
@@ -217,6 +221,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
     return assert_less(zero, x, data=data, summarize=summarize)
 
 
+@tf_export('assert_non_negative')
 def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x >= 0` holds element-wise.
 
@@ -258,6 +263,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
     return assert_less_equal(zero, x, data=data, summarize=summarize)
 
 
+@tf_export('assert_non_positive')
 def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x <= 0` holds element-wise.
 
@@ -299,6 +305,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
     return assert_less_equal(x, zero, data=data, summarize=summarize)
 
 
+@tf_export('assert_equal')
 def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x == y` holds element-wise.
 
@@ -327,9 +334,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     @compatibility{eager} returns None
 
   Raises:
-    InvalidArgumentError if the check can be performed immediately and
-    `x == y` is False. The check can be performed immediately during
-    eager execution or if `x` and `y` are statically known.
+    InvalidArgumentError: if the check can be performed immediately and
+      `x == y` is False. The check can be performed immediately during eager
+      execution or if `x` and `y` are statically known.
   """
   message = message or ''
   with ops.name_scope(name, 'assert_equal', [x, y, data]):
@@ -395,6 +402,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_none_equal')
 def assert_none_equal(
     x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x != y` holds for all elements.
@@ -445,6 +453,7 @@ def assert_none_equal(
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_near')
 def assert_near(
     x, y, rtol=None, atol=None, data=None, summarize=None, message=None,
     name=None):
@@ -522,6 +531,7 @@ def assert_near(
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_less')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x < y` holds element-wise.
 
@@ -569,6 +579,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_less_equal')
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
 
@@ -616,6 +627,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_greater')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x > y` holds element-wise.
 
@@ -663,6 +675,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_greater_equal')
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
                          name=None):
   """Assert the condition `x >= y` holds element-wise.
@@ -760,6 +773,7 @@ def _assert_rank_condition(
   return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_rank')
 def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   """Assert `x` has rank equal to `rank`.
 
@@ -821,6 +835,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   return assert_op
 
 
+@tf_export('assert_rank_at_least')
 def assert_rank_at_least(
     x, rank, data=None, summarize=None, message=None, name=None):
   """Assert `x` has rank equal to `rank` or higher.
@@ -951,6 +966,7 @@ def _assert_ranks_condition(
   return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
+@tf_export('assert_rank_in')
 def assert_rank_in(
     x, ranks, data=None, summarize=None, message=None, name=None):
   """Assert `x` has rank in `ranks`.
@@ -1012,6 +1028,7 @@ def assert_rank_in(
   return assert_op
 
 
+@tf_export('assert_integer')
 def assert_integer(x, message=None, name=None):
   """Assert that `x` is of integer dtype.
 
@@ -1049,6 +1066,7 @@ def assert_integer(x, message=None, name=None):
     return control_flow_ops.no_op('statically_determined_was_integer')
 
 
+@tf_export('assert_type')
 def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
 
@@ -1096,10 +1114,12 @@ def _get_diff_for_monotonic_comparison(x):
   return control_flow_ops.cond(is_shorter_than_two, short_result, diff)
 
 
+@tf_export('is_numeric_tensor')
 def is_numeric_tensor(tensor):
   return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
+@tf_export('is_non_decreasing')
 def is_non_decreasing(x, name=None):
   """Returns `True` if `x` is non-decreasing.
 
@@ -1126,6 +1146,7 @@ def is_non_decreasing(x, name=None):
     return math_ops.reduce_all(math_ops.less_equal(zero, diff))
 
 
+@tf_export('is_strictly_increasing')
 def is_strictly_increasing(x, name=None):
   """Returns `True` if `x` is strictly increasing.
 
@@ -1184,6 +1205,7 @@ def _assert_same_base_type(items, expected_type=None):
   return expected_type
 
 
+@tf_export('assert_same_float_dtype')
 def assert_same_float_dtype(tensors=None, dtype=None):
   """Validate and return float type based on `tensors` and `dtype`.
 
@@ -1212,6 +1234,7 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   return dtype
 
 
+@tf_export('assert_scalar')
 def assert_scalar(tensor, name=None):
   with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:
     tensor = ops.convert_to_tensor(tensor, name=name_scope)

@@ -24,6 +24,7 @@ import math
 
 import numpy as np
 
+from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -330,7 +331,7 @@ def _luong_score(query, keys, scale):
   # batched matmul on:
   #   [batch_size, 1, depth] . [batch_size, depth, max_time]
   # resulting in an output shape of:
-  #   [batch_time, 1, max_time].
+  #   [batch_size, 1, max_time].
   # we then squeeze out the center singleton dimension.
   score = math_ops.matmul(query, keys, transpose_b=True)
   score = array_ops.squeeze(score, [1])
@@ -923,8 +924,7 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
     super(LuongMonotonicAttention, self).__init__(
-        query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+        query_layer=None,
         memory_layer=layers_core.Dense(
             num_units, name="memory_layer", use_bias=False, dtype=dtype),
         memory=memory,
@@ -989,6 +989,10 @@ class AttentionWrapperState(
   def clone(self, **kwargs):
     """Clone this object, overriding components provided by kwargs.
 
+    The new state fields' shape must match original state fields' shape. This
+    will be validated, and original fields' shape will be propagated to new
+    fields.
+
     Example:
 
     ```python
@@ -1004,7 +1008,16 @@ class AttentionWrapperState(
       A new `AttentionWrapperState` whose properties are the same as
       this one, except any overridden properties as provided in `kwargs`.
     """
-    return super(AttentionWrapperState, self)._replace(**kwargs)
+    def with_same_shape(old, new):
+      """Check and set new tensor's shape."""
+      if isinstance(old, ops.Tensor) and isinstance(new, ops.Tensor):
+        return tensor_util.with_same_shape(old, new)
+      return new
+
+    return nest.map_structure(
+        with_same_shape,
+        self,
+        super(AttentionWrapperState, self)._replace(**kwargs))
 
 
 def hardmax(logits, name=None):

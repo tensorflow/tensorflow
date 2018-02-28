@@ -91,9 +91,7 @@ HloTestBase::HloTestBase()
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform)
     : test_runner_(test_platform), reference_runner_(reference_platform) {
-  hlo_verifier_ = MakeUnique<HloVerifier>([this](const Shape& shape) {
-    return backend().transfer_manager()->GetByteSizeRequirement(shape);
-  });
+  hlo_verifier_ = MakeUnique<HloVerifier>();
 }
 
 /* static */
@@ -232,7 +230,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
@@ -260,13 +258,35 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
   }
   return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
                                   reference_preprocessor);
+}
+
+HloComputation* HloTestBase::FindComputation(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  auto it = c_find_if(module->computations(),
+                      [&](HloComputation* c) { return c->name() == name; });
+  if (it == module->computations().end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  for (const HloComputation* c : module->computations()) {
+    auto it = c_find_if(c->instructions(),
+                        [&](HloInstruction* i) { return i->name() == name; });
+    if (it != c->instructions().end()) {
+      return *it;
+    }
+  }
+  return nullptr;
 }
 
 Backend& HloTestBase::backend() { return test_runner_.backend(); }

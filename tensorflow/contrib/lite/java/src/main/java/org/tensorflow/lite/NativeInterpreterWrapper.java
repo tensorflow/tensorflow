@@ -34,7 +34,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   NativeInterpreterWrapper(String modelPath) {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle);
   }
 
   /**
@@ -46,7 +46,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     modelByteBuffer = mappedByteBuffer;
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle);
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -103,10 +103,21 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputs;
   }
 
+  private static native long[] run(
+      long interpreterHandle,
+      long errorHandle,
+      Object[] sizes,
+      int[] dtypes,
+      int[] numsOfBytes,
+      Object[] values);
+
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
     resizeInput(interpreterHandle, errorHandle, idx, dims);
   }
+
+  private static native void resizeInput(
+      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
@@ -245,9 +256,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native String[] getOutputNames(long interpreterHandle);
 
-  private static native void resizeInput(
-      long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
-
   private static native void useNNAPI(long interpreterHandle, boolean state);
 
   private static native long createErrorReporter(int size);
@@ -256,15 +264,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long createModelWithBuffer(MappedByteBuffer modelBuffer, long errorHandle);
 
-  private static native long createInterpreter(long modelHandle);
-
-  private static native long[] run(
-      long interpreterHandle,
-      long errorHandle,
-      Object[] sizes,
-      int[] dtypes,
-      int[] numsOfBytes,
-      Object[] values);
+  private static native long createInterpreter(long modelHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

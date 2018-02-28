@@ -211,14 +211,14 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
-  std::vector<Node*> input_nodes(node->num_inputs());
+  std::vector<const Node*> input_nodes(node->num_inputs());
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
       input_handle_shapes_and_types(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
-    Node* input = e->src();
+    const Node* input = e->src();
     auto it = node_to_context_.find(input);
     if (it == node_to_context_.end()) {
       return errors::FailedPrecondition(
@@ -558,6 +558,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
+  if (target_node->type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // TODO(skyewm): more of the filtering applied in input nodes below should be
+  // applied to target_node here
+
   struct NodeAndRecursed {
     Node* new_node = nullptr;
     bool recursed = false;
@@ -604,6 +611,14 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Placeholders should never be constant folded because their outputs are
+    // fed by the user. Note that "Placeholder" nodes have no inputs so are
+    // handled below.
+    if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
       return Status::OK();
     }

@@ -23,6 +23,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
 from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops.autoregressive import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -39,6 +40,7 @@ from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+from tensorflow.contrib.distributions.python.ops.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
@@ -84,6 +86,7 @@ from tensorflow.python.ops.distributions.uniform import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    'auto_correlation',
     'bijectors',
     'Cauchy',
     'ConditionalDistribution',
@@ -92,9 +95,9 @@ _allowed_symbols = [
     'NOT_REPARAMETERIZED',
     'ReparameterizationType',
     'Distribution',
+    'Autoregressive',
     'Binomial',
     'Bernoulli',
-    'BernoulliWithSigmoidProbs',
     'Beta',
     'BetaWithSoftplusConcentration',
     'Categorical',
@@ -112,6 +115,7 @@ _allowed_symbols = [
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
+    'Kumaraswamy',
     'Laplace',
     'LaplaceWithSoftplusScale',
     'Logistic',

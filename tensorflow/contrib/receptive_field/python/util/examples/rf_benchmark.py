@@ -28,19 +28,19 @@ import argparse
 import csv
 import sys
 
+from tensorflow.contrib import framework
+from tensorflow.contrib import slim
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import app
 from nets import alexnet
 from nets import inception
 from nets import mobilenet_v1
 from nets import resnet_v1
 from nets import resnet_v2
 from nets import vgg
-from tensorflow.contrib import framework
-from tensorflow.contrib import receptive_field
-from tensorflow.contrib import slim
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import app
 
 cmd_args = None
 
@@ -245,7 +245,8 @@ def _model_rf(graphdef,
               end_points,
               desired_end_point_keys,
               model_type='resnet_v1_50',
-              csv_writer=None):
+              csv_writer=None,
+              input_resolution=None):
   """Computes receptive field information for a given CNN model.
 
   The information will be printed to stdout. If the RF parameters are the same
@@ -261,45 +262,93 @@ def _model_rf(graphdef,
       information will be computed.
     model_type: Type of model to be used, used only for printing purposes.
     csv_writer: A CSV writer for RF parameters, which is used if it is not None.
+    input_resolution: Input resolution to use when computing RF
+      parameters. This is important for the case where padding can only be
+      defined if the input resolution is known, which may happen if using SAME
+      padding. This is assumed the resolution for both height and width. If
+      None, we consider the resolution is unknown.
   """
   for desired_end_point_key in desired_end_point_keys:
     print('- %s:' % desired_end_point_key)
     output_node_with_colon = end_points[desired_end_point_key].name
     pos = output_node_with_colon.rfind(':')
     output_node = output_node_with_colon[:pos]
-    (receptive_field_x, receptive_field_y, effective_stride_x,
-     effective_stride_y, effective_padding_x, effective_padding_y
-    ) = receptive_field.compute_receptive_field_from_graph_def(
-        graphdef, _INPUT_NODE, output_node)
-    # If values are the same in horizontal/vertical directions, just report one
-    # of them. Otherwise, report both.
-    if (receptive_field_x == receptive_field_y) and (
-        effective_stride_x == effective_stride_y) and (
-            effective_padding_x == effective_padding_y):
-      print('Receptive field size = %5s, effective stride = %5s, effective '
-            'padding = %5s' % (str(receptive_field_x), str(effective_stride_x),
-                               str(effective_padding_x)))
-    else:
-      print('Receptive field size: horizontal = %5s, vertical = %5s. '
-            'Effective stride: horizontal = %5s, vertical = %5s. Effective '
-            'padding: horizontal = %5s, vertical = %5s' %
-            (str(receptive_field_x), str(receptive_field_y),
-             str(effective_stride_x), str(effective_stride_y),
-             str(effective_padding_x), str(effective_padding_y)))
-    if csv_writer is not None:
-      csv_writer.writerow({
-          'CNN': model_type,
-          'end_point': desired_end_point_key,
-          'RF size hor': str(receptive_field_x),
-          'RF size ver': str(receptive_field_y),
-          'effective stride hor': str(effective_stride_x),
-          'effective stride ver': str(effective_stride_y),
-          'effective padding hor': str(effective_padding_x),
-          'effective padding ver': str(effective_padding_y)
-      })
+    try:
+      (receptive_field_x, receptive_field_y, effective_stride_x,
+       effective_stride_y, effective_padding_x, effective_padding_y
+      ) = receptive_field.compute_receptive_field_from_graph_def(
+          graphdef, _INPUT_NODE, output_node, input_resolution=input_resolution)
+      # If values are the same in horizontal/vertical directions, just report
+      # one of them. Otherwise, report both.
+      if (receptive_field_x == receptive_field_y) and (
+          effective_stride_x == effective_stride_y) and (
+              effective_padding_x == effective_padding_y):
+        print('Receptive field size = %5s, effective stride = %5s, effective '
+              'padding = %5s' % (str(receptive_field_x),
+                                 str(effective_stride_x),
+                                 str(effective_padding_x)))
+      else:
+        print('Receptive field size: horizontal = %5s, vertical = %5s. '
+              'Effective stride: horizontal = %5s, vertical = %5s. Effective '
+              'padding: horizontal = %5s, vertical = %5s' %
+              (str(receptive_field_x), str(receptive_field_y),
+               str(effective_stride_x), str(effective_stride_y),
+               str(effective_padding_x), str(effective_padding_y)))
+      if csv_writer is not None:
+        csv_writer.writerow({
+            'CNN':
+                model_type,
+            'input resolution':
+                str(input_resolution[0])
+                if input_resolution is not None else 'None',
+            'end_point':
+                desired_end_point_key,
+            'RF size hor':
+                str(receptive_field_x),
+            'RF size ver':
+                str(receptive_field_y),
+            'effective stride hor':
+                str(effective_stride_x),
+            'effective stride ver':
+                str(effective_stride_y),
+            'effective padding hor':
+                str(effective_padding_x),
+            'effective padding ver':
+                str(effective_padding_y)
+        })
+    except ValueError as e:
+      print('---->ERROR: Computing RF parameters for model %s with final end '
+            'point %s and input resolution %s did not work' %
+            (model_type, desired_end_point_key, input_resolution))
+      print('---->The returned error is: %s' % e)
+      if csv_writer is not None:
+        csv_writer.writerow({
+            'CNN':
+                model_type,
+            'input resolution':
+                str(input_resolution[0])
+                if input_resolution is not None else 'None',
+            'end_point':
+                desired_end_point_key,
+            'RF size hor':
+                'None',
+            'RF size ver':
+                'None',
+            'effective stride hor':
+                'None',
+            'effective stride ver':
+                'None',
+            'effective padding hor':
+                'None',
+            'effective padding ver':
+                'None'
+        })
 
 
-def _process_model_rf(model_type='resnet_v1_50', csv_writer=None, arg_sc=None):
+def _process_model_rf(model_type='resnet_v1_50',
+                      csv_writer=None,
+                      arg_sc=None,
+                      input_resolutions=None):
   """Contructs model graph and desired end-points, and compute RF.
 
   The computed RF parameters are printed to stdout by the _model_rf function.
@@ -308,13 +357,30 @@ def _process_model_rf(model_type='resnet_v1_50', csv_writer=None, arg_sc=None):
     model_type: Type of model to be used.
     csv_writer: A CSV writer for RF parameters, which is used if it is not None.
     arg_sc: Optional arg scope to use in constructing the graph.
+    input_resolutions: List of 1D input resolutions to use when computing RF
+      parameters. This is important for the case where padding can only be
+      defined if the input resolution is known, which may happen if using SAME
+      padding. The entries in the list are assumed the resolution for both
+      height and width. If one of the elements in the list is None, we consider
+      it to mean that the resolution is unknown. If the list itself is None,
+      we use the default list [None, 224, 321].
 
   """
-  print('********************%s' % model_type)
-  graphdef, end_points = _model_graph_def(model_type, arg_sc)
-  desired_end_point_keys = _get_desired_end_point_keys(model_type)
-  _model_rf(graphdef, end_points, desired_end_point_keys, model_type,
-            csv_writer)
+  # Process default value for this list.
+  if input_resolutions is None:
+    input_resolutions = [None, 224, 321]
+
+  for n in input_resolutions:
+    print('********************%s, input resolution = %s' % (model_type, n))
+    graphdef, end_points = _model_graph_def(model_type, arg_sc)
+    desired_end_point_keys = _get_desired_end_point_keys(model_type)
+    _model_rf(
+        graphdef,
+        end_points,
+        desired_end_point_keys,
+        model_type,
+        csv_writer,
+        input_resolution=[n, n] if n is not None else None)
 
 
 def _resnet_rf(csv_writer=None):
@@ -421,7 +487,7 @@ def main(unused_argv):
   if cmd_args.csv_path:
     csv_file = open(cmd_args.csv_path, 'w')
     field_names = [
-        'CNN', 'end_point', 'RF size hor', 'RF size ver',
+        'CNN', 'input resolution', 'end_point', 'RF size hor', 'RF size ver',
         'effective stride hor', 'effective stride ver', 'effective padding hor',
         'effective padding ver'
     ]

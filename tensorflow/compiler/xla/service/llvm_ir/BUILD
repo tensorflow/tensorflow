@@ -48,11 +48,13 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 

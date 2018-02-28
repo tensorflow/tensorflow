@@ -18,9 +18,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace window_util {
+
+// Creates a window with the given sizes in the dimensions and all strides set
+// to 1.
+Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes);
+
+// Creates a padding config with symmetrical padding in each dimension, of value
+// given by sizes; e.g. {0, 1, 2} would create a R3 padding config that had zero
+// pixels of padding in dimension 0, one pixel of padding symmetrically, on each
+// side of dimension 1, and two pixels of padding symmetrically on dimension 2.
+PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes);
 
 string ToString(const WindowDimension& dim);
 string ToString(const Window& window);
@@ -32,8 +43,13 @@ string ToString(const Window& window);
 
 bool HasStride(const Window& window);
 bool HasPadding(const Window& window);
-bool HasEvenPadding(const Window& window);
+bool HasSymmetricPadding(const Window& window);
 bool HasNegativePadding(const Window& window);
+
+// As with HasSymmetricPadding(Window) above, returns whether the "padding low"
+// is equivalent to the "padding high" for all dimensions, but works on a
+// padding configuration.
+bool HasSymmetricPadding(const PaddingConfig& padding_config);
 
 bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);

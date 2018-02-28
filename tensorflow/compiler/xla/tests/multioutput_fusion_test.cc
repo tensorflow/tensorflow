@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -99,11 +101,11 @@ class MultiOutputFusionTest : public HloTestBase {
           nullptr);
     }
 
-    Literal arg1;
-    arg1.PopulateWithValue<float>(2.5f, {size, size});
+    Literal arg1(ShapeUtil::MakeShape(F32, {size, size}));
+    arg1.PopulateWithValue<float>(2.5f);
 
-    Literal expect;
-    expect.PopulateWithValue<float>(size * 1.5f * 3.5f, {size, size});
+    Literal expect(ShapeUtil::MakeShape(F32, {size, size}));
+    expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     auto actual = ExecuteAndTransfer(
         std::move(hlo_module), {Literal::CreateR0<float>(-9.0f).get(), &arg1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
@@ -159,11 +161,12 @@ class MultiOutputFusionTest : public HloTestBase {
                nullptr);
     }
 
-    Literal input0, input1;
-    input0.PopulateWithValue<float>(2.5f, {size});
-    input1.PopulateWithValue<double>(1, {size});
+    Literal input0(ShapeUtil::MakeShape(F32, {size}));
+    input0.PopulateWithValue(2.5f);
+    Literal input1(ShapeUtil::MakeShape(F64, {size}));
+    input1.PopulateWithValue(1.);
 
-    Literal expect = *Literal::CreateR1<float>({size * 1.5f * 3.5f});
+    Literal expect = std::move(*Literal::CreateR1<float>({size * 1.5f * 3.5f}));
     auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }
@@ -174,6 +177,39 @@ XLA_TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
 XLA_TEST_F(MultiOutputFusionTest, DiffentTypesNoFusion) { RunTest1D(false, 8); }
 XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
+
+XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
+  const char* testcase = R"(
+    HloModule m
+
+    fused_computation {
+      x.param_0 = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
+      gte.3 = ((s32[]), f32[]) get-tuple-element(x.param_0), index=0
+      gte.2 = (s32[]) get-tuple-element(gte.3), index=0
+      gte.4 = s32[] get-tuple-element(gte.2), index=0
+      copy = s32[] copy(gte.4)
+      ROOT tuple = (s32[]) tuple(copy)
+    }
+
+    ENTRY thing.v3 {
+      x = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
+      ROOT fusion = (s32[]) fusion(x), kind=kLoop, calls=fused_computation
+    }
+  )";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::MakeTupleOwned(
+      Literal::MakeTupleOwned(
+          Literal::MakeTupleOwned(Literal::CreateR0<int32>(42)),
+          Literal::CreateR0<float>(1.0)),
+      Literal::MakeTupleOwned(Literal::CreateR0<float>(3.0),
+                              Literal::CreateR0<int32>(4)));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42))));
+}
 
 }  // namespace
 }  // namespace xla

@@ -28,6 +28,7 @@ cc_library(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
+        ":tpu_embedding_ops_op_lib",
     ],
 )
 
@@ -35,13 +36,16 @@ py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
+        "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -69,9 +73,11 @@ tf_gen_op_libs(
         "outfeed_ops",
         "replication_ops",
         "tpu_configuration_ops",
+        "tpu_embedding_ops",
     ],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -83,6 +89,11 @@ tf_custom_op_library(
         "ops/outfeed_ops.cc",
         "ops/replication_ops.cc",
         "ops/tpu_configuration_ops.cc",
+        "ops/tpu_embedding_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -94,6 +105,7 @@ tf_gen_op_wrapper_py(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
+        ":tpu_embedding_ops_op_lib",
     ],
 )
 
@@ -151,6 +163,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         ":profiler",
         ":tpu_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
@@ -167,6 +180,33 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/ops/losses",
     ],
+)
+
+py_library(
+    name = "datasets",
+    srcs = [
+        "python/tpu/datasets.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:function",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
+
+tf_py_test(
+    name = "datasets_test",
+    srcs = ["python/tpu/datasets_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        ":datasets",
+    ],
+    grpc_enabled = True,
 )
 
 tf_py_test(

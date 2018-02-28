@@ -45,8 +45,8 @@ void FillRandomsWithSingles(PhiloxRandom gen,
                             int64 size) {
   int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 

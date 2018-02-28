@@ -176,7 +176,7 @@ class ColumnMajorMatrixVectorProductEmitter {
   }
 
   // Load a tile of values from the RHS.  For the RHS a "tile" is a contiguous
-  // sequnce of `count` values, each one broadcasted to the vector width.
+  // sequence of `count` values, each one broadcasted to the vector width.
   std::vector<llvm::Value*> LoadRhsTile(llvm::Value* offset, int64 count) {
     llvm::Value* base_pointer = vsl_.ComputeOffsetPointer(rhs_, offset);
     std::vector<llvm::Value*> result;
@@ -549,7 +549,7 @@ DotOpEmitter::DotOpEmitter(
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
+  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, addend_array,
                            executable_run_options_value, ir_builder,

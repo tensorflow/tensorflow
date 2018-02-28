@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
@@ -92,6 +93,7 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
   return server_def
 
 
+@tf_export("train.Server")
 class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
@@ -221,6 +223,7 @@ class Server(object):
                   start=start)
 
 
+@tf_export("train.ClusterSpec")
 class ClusterSpec(object):
   """Represents a cluster as a set of "tasks", organized into "jobs".
 

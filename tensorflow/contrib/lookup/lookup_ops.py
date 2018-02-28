@@ -399,7 +399,7 @@ class MutableHashTable(LookupInterface):
     Raises:
       TypeError: when `keys` do not match the table data types.
     """
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
@@ -600,7 +600,7 @@ class MutableDenseHashTable(LookupInterface):
     Raises:
       TypeError: when `keys` do not match the table data types.
     """
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 

@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -286,6 +287,43 @@ class UtilsTest(test.TestCase):
       with self.assertRaises(ValueError):  # Outside of TPU context.
         tensor = array_ops.zeros([], dtype=dtypes.float32)
         mean = utils.cross_replica_mean(tensor)
+
+  def testBatchExecute(self):
+    """Ensure batch_execute runs in a round-robin fashion."""
+
+    def increment_var(var):
+      return lambda: var.assign_add(1)
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      i = variable_scope.get_variable('i', initializer=0)
+      accumulators = [
+          variable_scope.get_variable('var%d' % j, initializer=0)
+          for j in range(3)
+      ]
+      thunks = [increment_var(var) for var in accumulators]
+      increment_accumulators = utils.batch_execute(i, thunks, 2)
+      increment_i = i.assign_add(1)
+
+      sess.run(variables.global_variables_initializer())
+
+      # Ensure one op per thunk.
+      self.assertEqual(3, len(increment_accumulators))
+
+      # Ensure round-robin execution.
+      values = []
+      for _ in range(5):
+        sess.run(increment_accumulators)
+        sess.run(increment_i)
+        values.append(sess.run(accumulators))
+      self.assertAllClose(
+          [
+              [1, 1, 0],  #
+              [2, 1, 1],  #
+              [2, 2, 2],  #
+              [3, 3, 2],  #
+              [4, 3, 3]
+          ],
+          values)
 
 
 if __name__ == '__main__':

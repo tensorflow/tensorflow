@@ -18,13 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.contrib.image.python.ops.single_image_random_dot_stereograms \
     import single_image_random_dot_stereograms
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest

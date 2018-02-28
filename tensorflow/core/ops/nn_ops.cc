@@ -74,24 +74,7 @@ REGISTER_OP("AvgPool")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::AvgPoolShape)
-    .Doc(R"doc(
-Performs average pooling on the input.
-
-Each entry in `output` is the mean of the corresponding size `ksize`
-window in `value`.
-
-value: 4-D with shape `[batch, height, width, channels]`.
-ksize: The size of the sliding window for each dimension of `value`.
-strides: The stride of the sliding window for each dimension of `value`.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-output: The average pooled output tensor.
-)doc");
+    .SetShapeFn(shape_inference::AvgPoolShape);
 
 REGISTER_OP("AvgPoolGrad")
     .Input("orig_input_shape: int32")
@@ -108,23 +91,7 @@ REGISTER_OP("AvgPoolGrad")
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes gradients of the average pooling function.
-
-orig_input_shape: 1-D.  Shape of the original input to `avg_pool`.
-grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
-  the output of `avg_pool`.
-ksize: The size of the sliding window for each dimension of the input.
-strides: The stride of the sliding window for each dimension of the input.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -154,28 +121,7 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
       c->set_output(0, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Batch normalization.
-
-This op is deprecated. Prefer `tf.nn.batch_normalization`.
-
-t: A 4D input Tensor.
-m: A 1D mean Tensor with size matching the last dimension of t.
-  This is the first output from tf.nn.moments,
-  or a saved moving average thereof.
-v: A 1D variance Tensor with size matching the last dimension of t.
-  This is the second output from tf.nn.moments,
-  or a saved moving average thereof.
-beta: A 1D beta Tensor with size matching the last dimension of t.
-  An offset to be added to the normalized tensor.
-gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this tensor will be multiplied
-  with the normalized tensor.
-variance_epsilon: A small float number to avoid dividing by 0.
-scale_after_normalization: A bool indicating whether the resulted tensor
-  needs to be multiplied with gamma.
-)doc");
+    });
 
 REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Input("t: T")
@@ -215,33 +161,7 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
       c->set_output(3, vector_shape);
       c->set_output(4, vector_shape);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Gradients for batch normalization.
-
-This op is deprecated. See `tf.nn.batch_normalization`.
-
-t: A 4D input Tensor.
-m: A 1D mean Tensor with size matching the last dimension of t.
-  This is the first output from tf.nn.moments,
-  or a saved moving average thereof.
-v: A 1D variance Tensor with size matching the last dimension of t.
-  This is the second output from tf.nn.moments,
-  or a saved moving average thereof.
-gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this Tensor will be multiplied
-  with the normalized Tensor.
-backprop: 4D backprop Tensor.
-variance_epsilon: A small float number to avoid dividing by 0.
-scale_after_normalization: A bool indicating whether the resulted tensor
-  needs to be multiplied with gamma.
-
-dx: 4D backprop tensor for input.
-dm: 1D backprop tensor for mean.
-dv: 1D backprop tensor for variance.
-db: 1D backprop tensor for beta.
-dg: 1D backprop tensor for gamma.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -260,34 +180,7 @@ REGISTER_OP("FusedBatchNorm")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormShape)
-    .Doc(R"doc(
-Batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-
-x: A 4D Tensor for input data.
-scale: A 1D Tensor for scaling factor, to scale the normalized x.
-offset: A 1D Tensor for offset, to shift to the normalized x.
-mean: A 1D Tensor for population mean. Used for inference only;
-      must be empty for training.
-variance: A 1D Tensor for population variance. Used for inference only;
-          must be empty for training.
-y: A 4D Tensor for output data.
-batch_mean: A 1D Tensor for the computed batch mean, to be used by TensorFlow
-            to compute the running mean.
-batch_variance: A 1D Tensor for the computed batch variance, to be used by
-                TensorFlow to compute the running variance.
-reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
-                 in the gradient computation.
-reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be reused in the gradient computation.
-T: The data type for the elements of input and output Tensors.
-epsilon: A small float number added to the variance of x.
-data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
-is_training: A bool value to indicate the operation is for training (default)
-             or inference.
-)doc");
+    .SetShapeFn(shape_inference::FusedBatchNormShape);
 
 REGISTER_OP("FusedBatchNormV2")
     .Input("x: T")
@@ -305,35 +198,7 @@ REGISTER_OP("FusedBatchNormV2")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormShape)
-    .Doc(R"doc(
-Batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-
-x: A 4D Tensor for input data.
-scale: A 1D Tensor for scaling factor, to scale the normalized x.
-offset: A 1D Tensor for offset, to shift to the normalized x.
-mean: A 1D Tensor for population mean. Used for inference only;
-      must be empty for training.
-variance: A 1D Tensor for population variance. Used for inference only;
-          must be empty for training.
-y: A 4D Tensor for output data.
-batch_mean: A 1D Tensor for the computed batch mean, to be used by TensorFlow
-            to compute the running mean.
-batch_variance: A 1D Tensor for the computed batch variance, to be used by
-                TensorFlow to compute the running variance.
-reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
-                 in the gradient computation.
-reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be reused in the gradient computation.
-T: The data type for the elements of input and output Tensors.
-U: The data type for the scale, offset, mean, and variance.
-epsilon: A small float number added to the variance of x.
-data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
-is_training: A bool value to indicate the operation is for training (default)
-             or inference.
-)doc");
+    .SetShapeFn(shape_inference::FusedBatchNormShape);
 
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
@@ -350,37 +215,7 @@ REGISTER_OP("FusedBatchNormGrad")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
-    .Doc(R"doc(
-Gradient for batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-
-y_backprop: A 4D Tensor for the gradient with respect to y.
-x: A 4D Tensor for input data.
-scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
-                 mean to be reused in gradient computation. When is_training is
-                 False, a 1D Tensor for the population mean to be reused in both
-                 1st and 2nd order gradient computation.
-reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
-                 variance (inverted variance in the cuDNN case) to be reused in
-                 gradient computation. When is_training is False, a 1D Tensor
-                 for the population variance to be reused in both 1st and 2nd
-                 order gradient computation.
-x_backprop: A 4D Tensor for the gradient with respect to x.
-scale_backprop: A 1D Tensor for the gradient with respect to scale.
-offset_backprop: A 1D Tensor for the gradient with respect to offset.
-reserve_space_3: Unused placeholder to match the mean input in FusedBatchNorm.
-reserve_space_4: Unused placeholder to match the variance input
-                 in FusedBatchNorm.
-T: The data type for the elements of input and output Tensors.
-epsilon: A small float number added to the variance of x.
-data_format: The data format for y_backprop, x, x_backprop.
-             Either "NHWC" (default) or "NCHW".
-is_training: A bool value to indicate the operation is for training (default)
-             or inference.
-)doc");
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
 REGISTER_OP("FusedBatchNormGradV2")
     .Input("y_backprop: T")
@@ -398,38 +233,7 @@ REGISTER_OP("FusedBatchNormGradV2")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
-    .Doc(R"doc(
-Gradient for batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
-The size of 1D Tensors matches the dimension C of the 4D Tensors.
-
-y_backprop: A 4D Tensor for the gradient with respect to y.
-x: A 4D Tensor for input data.
-scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
-                 mean to be reused in gradient computation. When is_training is
-                 False, a 1D Tensor for the population mean to be reused in both
-                 1st and 2nd order gradient computation.
-reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
-                 variance (inverted variance in the cuDNN case) to be reused in
-                 gradient computation. When is_training is False, a 1D Tensor
-                 for the population variance to be reused in both 1st and 2nd
-                 order gradient computation.
-x_backprop: A 4D Tensor for the gradient with respect to x.
-scale_backprop: A 1D Tensor for the gradient with respect to scale.
-offset_backprop: A 1D Tensor for the gradient with respect to offset.
-reserve_space_3: Unused placeholder to match the mean input in FusedBatchNorm.
-reserve_space_4: Unused placeholder to match the variance input
-                 in FusedBatchNorm.
-T: The data type for the elements of input and output Tensors.
-U: The data type for the scale, offset, mean, and variance.
-epsilon: A small float number added to the variance of x.
-data_format: The data format for y_backprop, x, x_backprop.
-             Either "NHWC" (default) or "NCHW".
-is_training: A bool value to indicate the operation is for training (default)
-             or inference.
-)doc");
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
 // --------------------------------------------------------------------------
 
@@ -439,24 +243,7 @@ REGISTER_OP("BiasAdd")
     .Input("bias: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
-    .SetShapeFn(shape_inference::BiasAddShape)
-    .Doc(R"doc(
-Adds `bias` to `value`.
-
-This is a special case of `tf.add` where `bias` is restricted to be 1-D.
-Broadcasting is supported, so `value` may have any number of dimensions.
-
-value: Any number of dimensions.
-bias: 1-D with size the last dimension of `value`.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the bias tensor will be added to the last dimension
-    of the value tensor.
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-    The tensor will be added to "in_channels", the third-to-the-last
-        dimension.
-output: Broadcasted sum of `value` and `bias`.
-)doc");
+    .SetShapeFn(shape_inference::BiasAddShape);
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAddGrad")
@@ -464,24 +251,7 @@ REGISTER_OP("BiasAddGrad")
     .Input("out_backprop: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
-    .SetShapeFn(shape_inference::BiasAddGradShape)
-    .Doc(R"doc(
-The backward operation for "BiasAdd" on the "bias" tensor.
-
-It accumulates all the values from out_backprop into the feature dimension.
-For NHWC data format, the feature dimension is the last. For NCHW data format,
-the feature dimension is the third-to-last.
-
-out_backprop: Any number of dimensions.
-output: 1-D with size the feature dimension of `out_backprop`.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the bias tensor will be added to the last dimension
-    of the value tensor.
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-    The tensor will be added to "in_channels", the third-to-the-last
-        dimension.
-)doc");
+    .SetShapeFn(shape_inference::BiasAddGradShape);
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BiasAddV1")
@@ -489,19 +259,7 @@ REGISTER_OP("BiasAddV1")
     .Input("value: T")
     .Input("bias: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::BiasAddShape)
-    .Doc(R"doc(
-Adds `bias` to `value`.
-
-This is a deprecated version of BiasAdd and will be soon removed.
-
-This is a special case of `tf.add` where `bias` is restricted to be 1-D.
-Broadcasting is supported, so `value` may have any number of dimensions.
-
-value: Any number of dimensions.
-bias: 1-D with size the last dimension of `value`.
-output: Broadcasted sum of `value` and `bias`.
-)doc");
+    .SetShapeFn(shape_inference::BiasAddShape);
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Conv2D")
@@ -514,53 +272,7 @@ REGISTER_OP("Conv2D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
-    .Doc(R"doc(
-Computes a 2-D convolution given 4-D `input` and `filter` tensors.
-
-Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
-and a filter / kernel tensor of shape
-`[filter_height, filter_width, in_channels, out_channels]`, this op
-performs the following:
-
-1. Flattens the filter to a 2-D matrix with shape
-   `[filter_height * filter_width * in_channels, output_channels]`.
-2. Extracts image patches from the input tensor to form a *virtual*
-   tensor of shape `[batch, out_height, out_width,
-   filter_height * filter_width * in_channels]`.
-3. For each patch, right-multiplies the filter matrix and the image patch
-   vector.
-
-In detail, with the default NHWC format,
-
-    output[b, i, j, k] =
-        sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *
-                        filter[di, dj, q, k]
-
-Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
-
-input: A 4-D tensor. The dimension order is interpreted according to the value
-    of `data_format`, see below for details.
-filter: A 4-D tensor of shape
-    `[filter_height, filter_width, in_channels, out_channels]`
-output: A 4-D tensor. The dimension order is determined by the value of
-    `data_format`, see below for details.
-strides: 1-D tensor of length 4.  The stride of the sliding window for each
-    dimension of `input`. The dimension order is determined by the value of
-    `data_format`, see below for details.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, height, width, channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, channels, height, width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-    `input`. If set to k > 1, there will be k-1 skipped cells between each
-    filter element on that dimension. The dimension order is determined by the
-    value of `data_format`, see above for details. Dilations in the batch and
-    depth dimensions must be 1.
-)doc");
+    .SetShapeFn(shape_inference::Conv2DShape);
 
 REGISTER_OP("Conv2DBackpropInput")
     .Input("input_sizes: int32")
@@ -579,33 +291,7 @@ REGISTER_OP("Conv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of convolution with respect to the input.
-
-input_sizes: An integer vector representing the shape of `input`,
-  where `input` is a 4-D `[batch, height, width, channels]` tensor.
-filter: 4-D with shape
-  `[filter_height, filter_width, in_channels, out_channels]`.
-out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
-  Gradients w.r.t. the output of the convolution.
-strides: The stride of the sliding window for each dimension of the input
-  of the convolution. Must be in the same order as the dimension specified with
-  format.
-padding: The type of padding algorithm to use.
-output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
-  w.r.t. the input of the convolution.
-data_format: Specify the data format of the input and output data. With the
-  default format "NHWC", the data is stored in the order of:
-      [batch, in_height, in_width, in_channels].
-  Alternatively, the format could be "NCHW", the data storage order of:
-      [batch, in_channels, in_height, in_width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-  element on that dimension. The dimension order is determined by the value of
-  `data_format`, see above for details. Dilations in the batch and depth
-  dimensions must be 1.
-)doc");
+    });
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
 // more general string attribute ('kernel_impl'?) that can be used to
@@ -627,34 +313,7 @@ REGISTER_OP("Conv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of convolution with respect to the filter.
-
-input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-filter_sizes: An integer vector representing the tensor shape of `filter`,
-  where `filter` is a 4-D
-  `[filter_height, filter_width, in_channels, out_channels]` tensor.
-out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
-  Gradients w.r.t. the output of the convolution.
-strides: The stride of the sliding window for each dimension of the input
-  of the convolution. Must be in the same order as the dimension specified with
-  format.
-padding: The type of padding algorithm to use.
-output: 4-D with shape
-  `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
-  the `filter` input of the convolution.
-data_format: Specify the data format of the input and output data. With the
-  default format "NHWC", the data is stored in the order of:
-      [batch, in_height, in_width, in_channels].
-  Alternatively, the format could be "NCHW", the data storage order of:
-      [batch, in_channels, in_height, in_width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-  element on that dimension. The dimension order is determined by the value of
-  `data_format`, see above for details. Dilations in the batch and depth
-  dimensions must be 1.
-)doc");
+    });
 
 namespace {
 
@@ -757,17 +416,7 @@ REGISTER_OP("DataFormatDimMap")
     .Attr("T: {int32, int64} = DT_INT32")
     .Attr("src_format: string = 'NHWC'")
     .Attr("dst_format: string = 'NCHW'")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Returns the dimension index in the destination data format given the one in
-the source data format.
-
-x: A Tensor with each element as a dimension index in source data format.
-  Must be in the range [-4, 4).
-y: A Tensor with each element as a dimension index in destination data format.
-src_format: source data format.
-dst_format: destination data format.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("DataFormatVecPermute")
     .Input("x: T")
@@ -775,16 +424,7 @@ REGISTER_OP("DataFormatVecPermute")
     .Attr("T: {int32, int64} = DT_INT32")
     .Attr("src_format: string = 'NHWC'")
     .Attr("dst_format: string = 'NCHW'")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Returns the permuted vector/tensor in the destination data format given the
-one in the source data format.
-
-x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
-y: Vector of size 4 or Tensor of shape (4, 2) in destination data format.
-src_format: source data format.
-dst_format: destination data format.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("FusedResizeAndPadConv2D")
     .Input("input: T")
@@ -799,35 +439,7 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       return CommonFusedConvCalculations(c, true /* has_resize */);
-    })
-    .Doc(R"doc(
-Performs a resize and padding as a preprocess during a convolution.
-
-It's often possible to do spatial transformations more efficiently as part of
-the packing stage of a convolution, so this op allows for an optimized
-implementation where these stages are fused together. This prevents the need to
-write out the intermediate results as whole tensors, reducing memory pressure,
-and we can get some latency gains by merging the transformation calculations.
-The data_format attribute for Conv2D isn't supported by this op, and defaults to
-'NHWC' order.
-Internally this op uses a single per-graph scratch buffer, which means that it
-will block if multiple versions are being run in parallel. This is because this
-operator is primarily an optimization to minimize memory usage.
-
-input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-  new size for the images.
-paddings: A two-column matrix specifying the padding sizes. The number of
-  rows must be the same as the rank of `input`.
-filter: 4-D with shape
-  `[filter_height, filter_width, in_channels, out_channels]`.
-resize_align_corners: If true, rescale input by (new_height - 1) / (height - 1),
-  which exactly aligns the 4 corners of images and resized images. If false, rescale
-  by new_height / height. Treat similarly the width dimension.
-strides: 1-D of length 4.  The stride of the sliding window for each dimension
-   of `input`. Must be in the same order as the dimension specified with format.
-padding: The type of padding algorithm to use.
- )doc");
+    });
 
 REGISTER_OP("FusedPadConv2D")
     .Input("input: T")
@@ -840,31 +452,7 @@ REGISTER_OP("FusedPadConv2D")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       return CommonFusedConvCalculations(c, false /* has_resize */);
-    })
-    .Doc(R"doc(
-Performs a padding as a preprocess during a convolution.
-
-Similar to FusedResizeAndPadConv2d, this op allows for an optimized
-implementation where the spatial padding transformation stage is fused with the
-im2col lookup, but in this case without the bilinear filtering required for
-resizing. Fusing the padding prevents the need to write out the intermediate
-results as whole tensors, reducing memory pressure, and we can get some latency
-gains by merging the transformation calculations.
-The data_format attribute for Conv2D isn't supported by this op, and 'NHWC'
-order is used instead.
-Internally this op uses a single per-graph scratch buffer, which means that it
-will block if multiple versions are being run in parallel. This is because this
-operator is primarily an optimization to minimize memory usage.
-
-input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-paddings: A two-column matrix specifying the padding sizes. The number of
-  rows must be the same as the rank of `input`.
-filter: 4-D with shape
-  `[filter_height, filter_width, in_channels, out_channels]`.
-strides: 1-D of length 4.  The stride of the sliding window for each dimension
-   of `input`. Must be in the same order as the dimension specified with format.
-padding: The type of padding algorithm to use.
- )doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -877,42 +465,7 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape)
-    .Doc(R"doc(
-Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
-
-Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
-and a filter / kernel tensor of shape
-`[filter_height, filter_width, in_channels, channel_multiplier]`, containing
-`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
-a different filter to each input channel (expanding from 1 channel to
-`channel_multiplier` channels for each), then concatenates the results
-together. Thus, the output has `in_channels * channel_multiplier` channels.
-
-```
-for k in 0..in_channels-1
-  for q in 0..channel_multiplier-1
-    output[b, i, j, k * channel_multiplier + q] =
-      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
-                        filter[di, dj, k, q]
-```
-
-Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
-strides: 1-D of length 4.  The stride of the sliding window for each dimension
-  of `input`.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, height, width, channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, channels, height, width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-  element on that dimension. The dimension order is determined by the value of
-  `data_format`, see above for details. Dilations in the batch and depth
-  dimensions must be 1.
-)doc");
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Input("input_sizes: int32")
@@ -930,37 +483,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of depthwise convolution with respect to the input.
-
-input_sizes: An integer vector representing the shape of `input`, based
-  on `data_format`.  For example, if `data_format` is 'NHWC' then
-   `input` is a 4-D `[batch, height, width, channels]` tensor.
-filter: 4-D with shape
-  `[filter_height, filter_width, in_channels, depthwise_multiplier]`.
-out_backprop: 4-D with shape  based on `data_format`.
-  For example, if `data_format` is 'NHWC' then
-  out_backprop shape is `[batch, out_height, out_width, out_channels]`.
-  Gradients w.r.t. the output of the convolution.
-strides: The stride of the sliding window for each dimension of the input
-  of the convolution.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, height, width, channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, channels, height, width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-  element on that dimension. The dimension order is determined by the value of
-  `data_format`, see above for details. Dilations in the batch and depth
-  dimensions must be 1.
-output: 4-D with shape according to `data_format`.  For example, if
-  `data_format` is 'NHWC', output shape is `[batch, in_height,
-  in_width, in_channels]`.  Gradient w.r.t. the input of the
-  convolution.
-)doc");
+    });
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Input("input: T")
@@ -978,37 +501,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of depthwise convolution with respect to the filter.
-
-input: 4-D with shape based on `data_format`.  For example, if
-  `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
-  in_width, in_channels]` tensor.
-filter_sizes: An integer vector representing the tensor shape of `filter`,
-  where `filter` is a 4-D
-  `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
-out_backprop: 4-D with shape  based on `data_format`.
-  For example, if `data_format` is 'NHWC' then
-  out_backprop shape is `[batch, out_height, out_width, out_channels]`.
-  Gradients w.r.t. the output of the convolution.
-strides: The stride of the sliding window for each dimension of the input
-  of the convolution.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, height, width, channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, channels, height, width].
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-  element on that dimension. The dimension order is determined by the value of
-  `data_format`, see above for details. Dilations in the batch and depth
-  dimensions must be 1.
-output: 4-D with shape
-  `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
-  the `filter` input of the convolution.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Conv3D")
@@ -1020,33 +513,7 @@ REGISTER_OP("Conv3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv3DShape)
-    .Doc(R"doc(
-Computes a 3-D convolution given 5-D `input` and `filter` tensors.
-
-In signal processing, cross-correlation is a measure of similarity of
-two waveforms as a function of a time-lag applied to one of them. This
-is also known as a sliding dot product or sliding inner-product.
-
-Our Conv3D implements a form of cross-correlation.
-
-input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
-  out_channels]`. `in_channels` must match between `input` and `filter`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
-    `input`. If set to k > 1, there will be k-1 skipped cells between each
-    filter element on that dimension. The dimension order is determined by the
-    value of `data_format`, see above for details. Dilations in the batch and
-    depth dimensions must be 1.
-)doc");
+    .SetShapeFn(shape_inference::Conv3DShape);
 
 REGISTER_OP("Conv3DBackpropInput")
     .Input("input: T")
@@ -1059,20 +526,7 @@ REGISTER_OP("Conv3DBackpropInput")
     .Deprecated(10, "Use Conv3DBackpropInputV2")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
-    })
-    .Doc(R"doc(
-Computes the gradients of 3-D convolution with respect to the input.
-
-input: Shape `[batch, depth, rows, cols, in_channels]`.
-filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-  `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-  out_channels]`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-
-)doc");
+    });
 
 REGISTER_OP("Conv3DBackpropFilter")
     .Input("input: T")
@@ -1088,20 +542,7 @@ REGISTER_OP("Conv3DBackpropFilter")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
       c->set_output(0, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of 3-D convolution with respect to the filter.
-
-input: Shape `[batch, depth, rows, cols, in_channels]`.
-filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-  `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-  out_channels]`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-
-)doc");
+    });
 
 REGISTER_OP("Conv3DBackpropInputV2")
     .Input("input_sizes: int32")
@@ -1119,32 +560,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of 3-D convolution with respect to the input.
-
-input_sizes: An integer vector representing the tensor shape of `input`,
-   where `input` is a 5-D
-   `[batch, depth, rows, cols, in_channels]` tensor.
-filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-  `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-  out_channels]`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
-    `input`. If set to k > 1, there will be k-1 skipped cells between each
-    filter element on that dimension. The dimension order is determined by the
-    value of `data_format`, see above for details. Dilations in the batch and
-    depth dimensions must be 1.
-
-)doc");
+    });
 
 REGISTER_OP("Conv3DBackpropFilterV2")
     .Input("input: T")
@@ -1162,32 +578,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradients of 3-D convolution with respect to the filter.
-
-input: Shape `[batch, depth, rows, cols, in_channels]`.
-filter_sizes: An integer vector representing the tensor shape of `filter`,
-  where `filter` is a 5-D
-  `[filter_depth, filter_height, filter_width, in_channels, out_channels]`
-  tensor.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-  out_channels]`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
-    `input`. If set to k > 1, there will be k-1 skipped cells between each
-    filter element on that dimension. The dimension order is determined by the
-    value of `data_format`, see above for details. Dilations in the batch and
-    depth dimensions must be 1.
-
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1199,23 +590,7 @@ REGISTER_OP("AvgPool3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {bfloat16, float, double}")
-    .SetShapeFn(shape_inference::Pool3DShape)
-    .Doc(R"doc(
-Performs 3D average pooling on the input.
-
-ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
-output: The average pooled output tensor.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-)doc");
+    .SetShapeFn(shape_inference::Pool3DShape);
 
 REGISTER_OP("AvgPool3DGrad")
     .Input("orig_input_shape: int32")
@@ -1232,24 +607,7 @@ REGISTER_OP("AvgPool3DGrad")
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes gradients of average pooling function.
-
-ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-orig_input_shape: The original input dimensions.
-grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
-output: The backprop for input.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1261,23 +619,7 @@ REGISTER_OP("MaxPool3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {bfloat16, float}")
-    .SetShapeFn(shape_inference::Pool3DShape)
-    .Doc(R"doc(
-Performs 3D max pooling on the input.
-
-ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
-output: The max pooled output tensor.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-)doc");
+    .SetShapeFn(shape_inference::Pool3DShape);
 
 REGISTER_OP("MaxPool3DGrad")
     .Input("orig_input: TInput")
@@ -1292,24 +634,7 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr("TInput: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
-    })
-    .Doc(R"doc(
-Computes gradients of max pooling function.
-
-ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-)doc");
+    });
 
 REGISTER_OP("MaxPool3DGradGrad")
     .Input("orig_input: T")
@@ -1329,25 +654,7 @@ REGISTER_OP("MaxPool3DGradGrad")
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes second-order gradients of the maxpooling function.
-
-ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-strides: 1-D tensor of length 5. The stride of the sliding window for each
-  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-padding: The type of padding algorithm to use.
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
-output: Gradients of gradients w.r.t. the input to `max_pool`.
-data_format: The data format of the input and output data. With the
-    default format "NDHWC", the data is stored in the order of:
-        [batch, in_depth, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCDHW", the data storage order is:
-        [batch, in_channels, in_depth, in_height, in_width].
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1355,17 +662,7 @@ REGISTER_OP("L2Loss")
     .Input("t: T")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-L2 Loss.
-
-Computes half the L2 norm of a tensor without the `sqrt`:
-
-    output = sum(t ** 2) / 2
-
-t: Typically 2-D, but may have any dimensions.
-output: 0-D.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 // --------------------------------------------------------------------------
 
@@ -1379,28 +676,7 @@ REGISTER_OP("LRN")
     .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-Local Response Normalization.
-
-The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last
-dimension), and each vector is normalized independently.  Within a given vector,
-each component is divided by the weighted, squared sum of inputs within
-`depth_radius`.  In detail,
-
-    sqr_sum[a, b, c, d] =
-        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
-    output = input / (bias + alpha * sqr_sum) ** beta
-
-For details, see [Krizhevsky et al., ImageNet classification with deep
-convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
-
-input: 4-D.
-depth_radius: 0-D.  Half-width of the 1-D normalization window.
-bias: An offset (usually positive to avoid dividing by 0).
-alpha: A scale factor, usually positive.
-beta: An exponent.
-)doc");
+    });
 
 REGISTER_OP("LRNGrad")
     .Input("input_grads: T")
@@ -1419,19 +695,7 @@ REGISTER_OP("LRNGrad")
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Gradients for Local Response Normalization.
-
-input_grads: 4-D with shape `[batch, height, width, channels]`.
-input_image: 4-D with shape `[batch, height, width, channels]`.
-output_image: 4-D with shape `[batch, height, width, channels]`.
-depth_radius: A depth radius.
-bias: An offset (usually > 0 to avoid dividing by 0).
-alpha: A scale factor, usually positive.
-beta: An exponent.
-output: The gradients for LRN.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1445,22 +709,7 @@ REGISTER_OP("MaxPool")
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::MaxPoolShape)
-    .Doc(R"doc(
-Performs max pooling on the input.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-input: 4-D input to pool over.
-output: The max pooled output tensor.
-)doc");
+    .SetShapeFn(shape_inference::MaxPoolShape);
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
@@ -1475,22 +724,7 @@ REGISTER_OP("MaxPoolV2")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 3));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Performs max pooling on the input.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-input: 4-D input to pool over.
-output: The max pooled output tensor.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
@@ -1504,24 +738,7 @@ REGISTER_OP("MaxPoolGrad")
     .Attr("T: realnumbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-Computes gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
-output: Gradients w.r.t. the input to `max_pool`.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGradV2")
     .Attr(GetPaddingAttrString())
@@ -1535,24 +752,7 @@ REGISTER_OP("MaxPoolGradV2")
     .Attr("T: realnumbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-Computes gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
-output: Gradients w.r.t. the input to `max_pool`.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGradGrad")
     .Attr("ksize: list(int) >= 4")
@@ -1572,24 +772,7 @@ REGISTER_OP("MaxPoolGradGrad")
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes second-order gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
-output: Gradients of gradients w.r.t. the input to `max_pool`.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGradGradV2")
     .Attr(GetPaddingAttrString())
@@ -1609,24 +792,7 @@ REGISTER_OP("MaxPoolGradGradV2")
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes second-order gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
-orig_input: The original input tensor.
-orig_output: The original output tensor.
-grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
-output: Gradients of gradients w.r.t. the input to `max_pool`.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolWithArgmax")
     .Attr("ksize: list(int) >= 4")
@@ -1641,27 +807,7 @@ REGISTER_OP("MaxPoolWithArgmax")
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Performs max pooling on the input and outputs both max values and indices.
-
-The indices in `argmax` are flattened, so that a maximum value at position
-`[b, y, x, c]` becomes flattened index
-`((b * height + y) * width + x) * channels + c`.
-
-The indices returned are always in `[0, height) x [0, width)` before flattening,
-even if padding is involved and the mathematically correct answer is outside
-(either negative or too large).  This is a bug, but fixing it is difficult to do
-in a safe backwards compatible way, especially due to flattening.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-input: 4-D with shape `[batch, height, width, channels]`.  Input to pool over.
-output: The max pooled output tensor.
-argmax: 4-D.  The flattened indices of the max values chosen for each output.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGradWithArgmax")
     .Attr("ksize: list(int) >= 4")
@@ -1675,20 +821,7 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-Computes gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-input: The original input.
-grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
-  output of `max_pool`.
-argmax: The indices of the maximum values chosen for each output of `max_pool`.
-output: Gradients w.r.t. the input of `max_pool`.
-)doc");
+    });
 
 REGISTER_OP("MaxPoolGradGradWithArgmax")
     .Attr("ksize: list(int) >= 4")
@@ -1708,20 +841,7 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
       // Validate 'argmax' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(2), c->output(0), &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes second-order gradients of the maxpooling function.
-
-ksize: The size of the window for each dimension of the input tensor.
-strides: The stride of the sliding window for each dimension of the
-  input tensor.
-padding: The type of padding algorithm to use.
-input: The original input.
-grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
-  input of `max_pool`.
-argmax: The indices of the maximum values chosen for each output of `max_pool`.
-output: Gradients of gradients w.r.t. the input of `max_pool`.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1805,43 +925,7 @@ REGISTER_OP("Dilation2D")
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
       c->set_output(0, output_shape);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors.
-
-The `input` tensor has shape `[batch, in_height, in_width, depth]` and the
-`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each
-input channel is processed independently of the others with its own structuring
-function. The `output` tensor has shape
-`[batch, out_height, out_width, depth]`. The spatial dimensions of the output
-tensor depend on the `padding` algorithm. We currently only support the default
-"NHWC" `data_format`.
-
-In detail, the grayscale morphological 2-D dilation is the max-sum correlation
-(for consistency with `conv2d`, we use unmirrored filters):
-
-    output[b, y, x, c] =
-       max_{dy, dx} input[b,
-                          strides[1] * y + rates[1] * dy,
-                          strides[2] * x + rates[2] * dx,
-                          c] +
-                    filter[dy, dx, c]
-
-Max-pooling is a special case when the filter has size equal to the pooling
-kernel size and contains all zeros.
-
-Note on duality: The dilation of `input` by the `filter` is equal to the
-negation of the erosion of `-input` by the reflected `filter`.
-
-input: 4-D with shape `[batch, in_height, in_width, depth]`.
-filter: 3-D with shape `[filter_height, filter_width, depth]`.
-strides: The stride of the sliding window for each dimension of the input
- tensor. Must be: `[1, stride_height, stride_width, 1]`.
-rates: The input stride for atrous morphological dilation. Must be:
- `[1, rate_height, rate_width, 1]`.
-padding: The type of padding algorithm to use.
-output: 4-D with shape `[batch, out_height, out_width, depth]`.
-)doc");
+    });
 
 REGISTER_OP("Dilation2DBackpropInput")
     .Input("input: T")
@@ -1852,20 +936,7 @@ REGISTER_OP("Dilation2DBackpropInput")
     .Attr("strides: list(int) >= 4")
     .Attr("rates: list(int) >= 4")
     .Attr(GetPaddingAttrString())
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes the gradient of morphological 2-D dilation with respect to the input.
-
-input: 4-D with shape `[batch, in_height, in_width, depth]`.
-filter: 3-D with shape `[filter_height, filter_width, depth]`.
-out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
-in_backprop: 4-D with shape `[batch, in_height, in_width, depth]`.
-strides: 1-D of length 4. The stride of the sliding window for each dimension of
-  the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
-rates: 1-D of length 4. The input stride for atrous morphological dilation.
-  Must be: `[1, rate_height, rate_width, 1]`.
-padding: The type of padding algorithm to use.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Dilation2DBackpropFilter")
     .Input("input: T")
@@ -1879,20 +950,7 @@ REGISTER_OP("Dilation2DBackpropFilter")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradient of morphological 2-D dilation with respect to the filter.
-
-input: 4-D with shape `[batch, in_height, in_width, depth]`.
-filter: 3-D with shape `[filter_height, filter_width, depth]`.
-out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
-filter_backprop: 3-D with shape `[filter_height, filter_width, depth]`.
-strides: 1-D of length 4. The stride of the sliding window for each dimension of
-  the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
-rates: 1-D of length 4. The input stride for atrous morphological dilation.
-  Must be: `[1, rate_height, rate_width, 1]`.
-padding: The type of padding algorithm to use.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1900,150 +958,79 @@ REGISTER_OP("Relu")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes rectified linear: `max(features, 0)`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ReluGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes rectified linear gradients for a Relu operation.
-
-gradients: The backpropagated gradients to the corresponding Relu operation.
-features: The features passed as input to the corresponding Relu operation, OR
-  the outputs of that operation (both work equivalently).
-backprops: `gradients * (features > 0)`.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Relu6")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes rectified linear 6: `min(max(features, 0), 6)`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Relu6Grad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes rectified linear 6 gradients for a Relu6 operation.
-
-gradients: The backpropagated gradients to the corresponding Relu6 operation.
-features: The features passed as input to the corresponding Relu6 operation, or
-  its output; using either one produces the same result.
-backprops: The gradients:
-  `gradients * (features > 0) * (features < 6)`.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
-
-See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
-](http://arxiv.org/abs/1511.07289)
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes gradients for the exponential linear (Elu) operation.
-
-gradients: The backpropagated gradients to the corresponding Elu operation.
-outputs: The outputs of the corresponding Elu operation.
-backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
-`gradients` otherwise.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Selu")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
-if < 0, `scale * features` otherwise.
-
-See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SeluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes gradients for the scaled exponential linear (Selu) operation.
-
-gradients: The backpropagated gradients to the corresponding Selu operation.
-outputs: The outputs of the corresponding Selu operation.
-backprops: The gradients: `gradients * (outputs + scale * alpha)`
-if outputs < 0, `scale * gradients` otherwise.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes softplus: `log(exp(features) + 1)`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftplusGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes softplus gradients for a softplus operation.
-
-gradients: The backpropagated gradients to the corresponding softplus operation.
-features: The features passed as input to the corresponding softplus operation.
-backprops: The gradients: `gradients / (1 + exp(-features))`.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Softsign")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes softsign: `features / (abs(features) + 1)`.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftsignGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
-    .Doc(R"doc(
-Computes softsign gradients for a softsign operation.
-
-gradients: The backpropagated gradients to the corresponding softsign operation.
-features: The features passed as input to the corresponding softsign operation.
-backprops: The gradients: `gradients / (1 + abs(features)) ** 2`.
-)doc");
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 // --------------------------------------------------------------------------
 
@@ -2053,17 +1040,7 @@ REGISTER_OP("Softmax")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-Computes softmax activations.
-
-For each batch `i` and class `j` we have
-
-    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
-
-logits: 2-D with shape `[batch_size, num_classes]`.
-softmax: Same shape as `logits`.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -2073,17 +1050,7 @@ REGISTER_OP("LogSoftmax")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-Computes log softmax activations.
-
-For each batch `i` and class `j` we have
-
-    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
-
-logits: 2-D with shape `[batch_size, num_classes]`.
-logsoftmax: Same shape as `logits`.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -2102,19 +1069,7 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, input);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes softmax cross entropy cost and gradients to backpropagate.
-
-Inputs are the logits, not probabilities.
-
-features: batch_size x num_classes matrix
-labels: batch_size x num_classes matrix
-  The caller must ensure that each batch of labels represents a valid
-  probability distribution.
-loss: Per example loss (batch_size vector).
-backprop: backpropagated gradients (batch_size x num_classes matrix).
-)doc");
+    });
 
 REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Input("features: T")
@@ -2137,23 +1092,7 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, features);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes softmax cross entropy cost and gradients to backpropagate.
-
-Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
-a matrix of label probabilities, but rather a single label per row
-of features.  This label is considered to have probability 1.0 for the
-given row.
-
-Inputs are the logits, not probabilities.
-
-features: batch_size x num_classes matrix
-labels: batch_size vector with values in [0, num_classes).
-  This is the label for the given minibatch entry.
-loss: Per example loss (batch_size vector).
-backprop: backpropagated gradients (batch_size x num_classes matrix).
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -2173,31 +1112,7 @@ REGISTER_OP("InTopK")
           c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
       c->set_output(0, c->Vector(batch_size));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Says whether the targets are in the top `K` predictions.
-
-This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-prediction for the target class is among the top `k` predictions among
-all predictions for example `i`. Note that the behavior of `InTopK` differs
-from the `TopK` op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-`k` boundary, all of those
-classes are considered to be in the top `k`.
-
-More formally, let
-
-  \\(predictions_i\\) be the predictions for all classes for example `i`,
-  \\(targets_i\\) be the target class for example `i`,
-  \\(out_i\\) be the output for example `i`,
-
-$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-
-predictions: A `batch_size` x `classes` tensor.
-targets: A `batch_size` vector of class ids.
-k: Number of top elements to look at for computing precision.
-precision: Computed Precision at `k` as a `bool Tensor`.
-
-)doc");
+    });
 
 // This is the same as `InTopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("InTopKV2")
@@ -2216,31 +1131,7 @@ REGISTER_OP("InTopKV2")
           c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
       c->set_output(0, c->Vector(batch_size));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Says whether the targets are in the top `K` predictions.
-
-This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-prediction for the target class is among the top `k` predictions among
-all predictions for example `i`. Note that the behavior of `InTopK` differs
-from the `TopK` op in its handling of ties; if multiple classes have the
-same prediction value and straddle the top-`k` boundary, all of those
-classes are considered to be in the top `k`.
-
-More formally, let
-
-  \\(predictions_i\\) be the predictions for all classes for example `i`,
-  \\(targets_i\\) be the target class for example `i`,
-  \\(out_i\\) be the output for example `i`,
-
-$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-
-predictions: A `batch_size` x `classes` tensor.
-targets: A `batch_size` vector of class ids.
-k: Number of top elements to look at for computing precision.
-precision: Computed precision at `k` as a `bool Tensor`.
-
-)doc");
+    });
 
 namespace {
 
@@ -2264,9 +1155,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -2288,31 +1179,7 @@ REGISTER_OP("TopK")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Deprecated(7, "Use TopKV2 instead")
-    .SetShapeFn(TopKShapeFn)
-    .Doc(R"doc(
-Finds values and indices of the `k` largest elements for the last dimension.
-
-If the input is a vector (rank-1), finds the `k` largest entries in the vector
-and outputs their values and indices as vectors.  Thus `values[j]` is the
-`j`-th largest entry in `input`, and its index is `indices[j]`.
-
-For matrices (resp. higher rank input), computes the top `k` entries in each
-row (resp. vector along the last dimension).  Thus,
-
-    values.shape = indices.shape = input.shape[:-1] + [k]
-
-If two elements are equal, the lower-index element appears first.
-
-If `k` varies dynamically, use `TopKV2` below.
-
-input: 1-D or higher with last dimension at least `k`.
-k: Number of top elements to look for along the last dimension (along each
-  row for matrices).
-sorted: If true the resulting `k` elements will be sorted by the values in
-  descending order.
-values: The `k` largest elements along each last dimensional slice.
-indices: The indices of `values` within the last dimension of `input`.
-)doc");
+    .SetShapeFn(TopKShapeFn);
 
 // This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
@@ -2322,29 +1189,7 @@ REGISTER_OP("TopKV2")
     .Output("indices: int32")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
-    .SetShapeFn(TopKShapeFn)
-    .Doc(R"doc(
-Finds values and indices of the `k` largest elements for the last dimension.
-
-If the input is a vector (rank-1), finds the `k` largest entries in the vector
-and outputs their values and indices as vectors.  Thus `values[j]` is the
-`j`-th largest entry in `input`, and its index is `indices[j]`.
-
-For matrices (resp. higher rank input), computes the top `k` entries in each
-row (resp. vector along the last dimension).  Thus,
-
-    values.shape = indices.shape = input.shape[:-1] + [k]
-
-If two elements are equal, the lower-index element appears first.
-
-input: 1-D or higher with last dimension at least `k`.
-k: 0-D.  Number of top elements to look for along the last dimension (along each
-  row for matrices).
-sorted: If true the resulting `k` elements will be sorted by the values in
-  descending order.
-values: The `k` largest elements along each last dimensional slice.
-indices: The indices of `values` within the last dimension of `input`.
-)doc");
+    .SetShapeFn(TopKShapeFn);
 
 // --------------------------------------------------------------------------
 
@@ -2366,9 +1211,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument("Input must have last dimension > n = ",
-                                       c->Value(n_dim), " but is ",
-                                       c->Value(last_dim));
+        return errors::InvalidArgument(
+            "Input must have last dimension > n = ", c->Value(n_dim),
+            " but is ", c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -2376,25 +1221,7 @@ REGISTER_OP("NthElement")
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
       c->set_output(0, s);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Finds values of the `n`-th order statistic for the last dimension.
-
-If the input is a vector (rank-1), finds the entries which is the nth-smallest
-value in the vector and outputs their values as scalar tensor.
-
-For matrices (resp. higher rank input), computes the entries which is the
-nth-smallest value in each row (resp. vector along the last dimension). Thus,
-
-    values.shape = input.shape[:-1]
-
-input: 1-D or higher with last dimension at least `n+1`.
-n: 0-D. Position of sorted vector to select along the last dimension (along
-  each row for matrices). Valid range of n is `[0, input.shape[:-1])`
-reverse: When set to True, find the nth-largest value in the vector and vice
-  versa.
-values: The `n`-th order statistic along each last dimensional slice.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -2410,70 +1237,7 @@ REGISTER_OP("FractionalMaxPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
-    .SetShapeFn(FractionalPoolShapeFn)
-    .Doc(R"doc(
-Performs fractional max pooling on the input.
-
-Fractional max pooling is slightly different than regular max pooling.  In
-regular max pooling, you downsize an input set by taking the maximum value of
-smaller N x N subsections of the set (often 2x2), and try to reduce the set by
-a factor of N, where N is an integer.  Fractional max pooling, as you might
-expect from the word "fractional", means that the overall reduction ratio N
-does not have to be an integer.
-
-The sizes of the pooling regions are generated randomly but are fairly uniform.
-For example, let's look at the height dimension, and the constraints on the
-list of rows that will be pool boundaries.
-
-First we define the following:
-
-1.  input_row_length : the number of rows from the input set
-2.  output_row_length : which will be smaller than the input
-3.  alpha = input_row_length / output_row_length : our reduction ratio
-4.  K = floor(alpha)
-5.  row_pooling_sequence : this is the result list of pool boundary rows
-
-Then, row_pooling_sequence should satisfy:
-
-1.  a[0] = 0 : the first value of the sequence is 0
-2.  a[end] = input_row_length : the last value of the sequence is the size
-3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
-4.  length(row_pooling_sequence) = output_row_length+1
-
-For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
-
-value: 4-D with shape `[batch, height, width, channels]`.
-pooling_ratio: Pooling ratio for each dimension of `value`, currently only
-  supports row and col dimension and should be >= 1.0. For example, a valid
-  pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
-  must be 1.0 because we don't allow pooling on batch and channels
-  dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
-  respectively.
-pseudo_random: When set to True, generates the pooling sequence in a
-  pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-  Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
-  difference between pseudorandom and random.
-overlapping: When set to True, it means when pooling, the values at the boundary
-  of adjacent pooling cells are used by both cells. For example:
-
-  `index  0  1  2  3  4`
-
-  `value  20 5  16 3  7`
-
-  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
-  The result would be [20, 16] for fractional max pooling.
-deterministic: When set to True, a fixed pooling region will be used when
-  iterating over a FractionalMaxPool node in the computation graph. Mainly used
-  in unit test to make FractionalMaxPool deterministic.
-seed: If either seed or seed2 are set to be non-zero, the random number
-  generator is seeded by the given seed.  Otherwise, it is seeded by a
-  random seed.
-seed2: An second seed to avoid seed collision.
-output: output tensor after fractional max pooling.
-row_pooling_sequence: row pooling sequence, needed to calculate gradient.
-col_pooling_sequence: column pooling sequence, needed to calculate gradient.
-)doc");
+    .SetShapeFn(FractionalPoolShapeFn);
 
 REGISTER_OP("FractionalMaxPoolGrad")
     .Input("orig_input: T")
@@ -2486,29 +1250,7 @@ REGISTER_OP("FractionalMaxPoolGrad")
     .Attr("T: {float, double, int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-Computes gradient of the FractionalMaxPool function.
-
-orig_input: Original input for `fractional_max_pool`
-orig_output: Original output for `fractional_max_pool`
-out_backprop: 4-D with shape `[batch, height, width, channels]`.  Gradients
-  w.r.t. the output of `fractional_max_pool`.
-row_pooling_sequence: row pooling sequence, form pooling region with
-  col_pooling_sequence.
-col_pooling_sequence: column pooling sequence, form pooling region with
-  row_pooling sequence.
-overlapping: When set to True, it means when pooling, the values at the boundary
-  of adjacent pooling cells are used by both cells. For example:
-
-  `index  0  1  2  3  4`
-
-  `value  20 5  16 3  7`
-
-  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
-  The result would be [20, 16] for fractional max pooling.
-output: 4-D.  Gradients w.r.t. the input of `fractional_max_pool`.
-)doc");
+    });
 
 // --------------------------------------------------------------------------
 
@@ -2524,46 +1266,7 @@ REGISTER_OP("FractionalAvgPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
-    .SetShapeFn(FractionalPoolShapeFn)
-    .Doc(R"doc(
-Performs fractional average pooling on the input.
-
-Fractional average pooling is similar to Fractional max pooling in the pooling
-region generation step. The only difference is that after pooling regions are
-generated, a mean operation is performed instead of a max operation in each
-pooling region.
-
-value: 4-D with shape `[batch, height, width, channels]`.
-pooling_ratio: Pooling ratio for each dimension of `value`, currently only
-  supports row and col dimension and should be >= 1.0. For example, a valid
-  pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
-  must be 1.0 because we don't allow pooling on batch and channels
-  dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
-  respectively.
-pseudo_random: When set to True, generates the pooling sequence in a
-  pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-  Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
-  difference between pseudorandom and random.
-overlapping: When set to True, it means when pooling, the values at the boundary
-  of adjacent pooling cells are used by both cells. For example:
-
-  `index  0  1  2  3  4`
-
-  `value  20 5  16 3  7`
-
-  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
-  The result would be [41/3, 26/3] for fractional avg pooling.
-deterministic: When set to True, a fixed pooling region will be used when
-  iterating over a FractionalAvgPool node in the computation graph. Mainly used
-  in unit test to make FractionalAvgPool deterministic.
-seed: If either seed or seed2 are set to be non-zero, the random number
-  generator is seeded by the given seed.  Otherwise, it is seeded by a
-  random seed.
-seed2: An second seed to avoid seed collision.
-output: output tensor after fractional avg pooling.
-row_pooling_sequence: row pooling sequence, needed to calculate gradient.
-col_pooling_sequence: column pooling sequence, needed to calculate gradient.
-)doc");
+    .SetShapeFn(FractionalPoolShapeFn);
 
 REGISTER_OP("FractionalAvgPoolGrad")
     .Input("orig_input_tensor_shape: int64")
@@ -2582,34 +1285,7 @@ REGISTER_OP("FractionalAvgPoolGrad")
         c->set_output(0, c->UnknownShapeOfRank(4));
       }
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes gradient of the FractionalAvgPool function.
-
-Unlike FractionalMaxPoolGrad, we don't need to find arg_max for
-FractionalAvgPoolGrad, we just need to evenly back-propagate each element of
-out_backprop to those indices that form the same pooling cell. Therefore, we
-just need to know the shape of original input tensor, instead of the whole
-tensor.
-
-orig_input_tensor_shape: Original input tensor shape for `fractional_avg_pool`
-out_backprop: 4-D with shape `[batch, height, width, channels]`.  Gradients
-  w.r.t. the output of `fractional_avg_pool`.
-row_pooling_sequence: row pooling sequence, form pooling region with
-  col_pooling_sequence.
-col_pooling_sequence: column pooling sequence, form pooling region with
-  row_pooling sequence.
-overlapping: When set to True, it means when pooling, the values at the boundary
-  of adjacent pooling cells are used by both cells. For example:
-
-  `index  0  1  2  3  4`
-
-  `value  20 5  16 3  7`
-
-  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
-  The result would be [41/3, 26/3] for fractional avg pooling.
-output: 4-D.  Gradients w.r.t. the input of `fractional_avg_pool`.
-)doc");
+    });
 
 REGISTER_OP("QuantizedAvgPool")
     .Input("input: T")
@@ -2630,22 +1306,7 @@ REGISTER_OP("QuantizedAvgPool")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Produces the average pool of the input tensor for quantized types.
-
-input: 4-D with shape `[batch, height, width, channels]`.
-ksize: The size of the window for each dimension of the input tensor.
-  The length must be 4 to match the number of dimensions of the input.
-strides: The stride of the sliding window for each dimension of the input
-  tensor.  The length must be 4 to match the number of dimensions of the input.
-padding: The type of padding algorithm to use.
-min_input: The float value that the lowest quantized input value represents.
-max_input: The float value that the highest quantized input value represents.
-min_output: The float value that the lowest quantized output value represents.
-max_output: The float value that the highest quantized output value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedBiasAdd")
     .Input("input: T1")
@@ -2670,21 +1331,7 @@ REGISTER_OP("QuantizedBiasAdd")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Adds Tensor 'bias' to Tensor 'input' for Quantized types.
-
-Broadcasts the values of bias on dimensions 0..N-2 of 'input'.
-
-bias: A 1D bias Tensor with size matching the last dimension of 'input'.
-min_input: The float value that the lowest quantized input value represents.
-max_input: The float value that the highest quantized input value represents.
-min_bias: The float value that the lowest quantized bias value represents.
-max_bias: The float value that the highest quantized bias value represents.
-min_out: The float value that the lowest quantized output value represents.
-max_out: The float value that the highest quantized output value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedConv2D")
     .Input("input: Tinput")
@@ -2712,30 +1359,7 @@ REGISTER_OP("QuantizedConv2D")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes a 2D convolution given quantized 4D input and filter tensors.
-The inputs are quantized tensors where the lowest value represents the real
-number of the associated minimum, and the highest represents the maximum.
-This means that you can only interpret the quantized output in the same way, by
-taking the returned minimum and maximum values into account.
-
-filter: filter's input_depth dimension must match input's depth dimensions.
-strides: The stride of the sliding window for each dimension of the input
-  tensor.
-padding: The type of padding algorithm to use.
-min_input: The float value that the lowest quantized input value represents.
-max_input: The float value that the highest quantized input value represents.
-min_filter: The float value that the lowest quantized filter value represents.
-max_filter: The float value that the highest quantized filter value represents.
-min_output: The float value that the lowest quantized output value represents.
-max_output: The float value that the highest quantized output value represents.
-dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
-    `input`. If set to k > 1, there will be k-1 skipped cells between each
-    filter element on that dimension. The dimension order is determined by the
-    value of `data_format`, see above for details. Dilations in the batch and
-    depth dimensions must be 1.
-)doc");
+    });
 
 REGISTER_OP("QuantizedMaxPool")
     .Input("input: T")
@@ -2756,22 +1380,7 @@ REGISTER_OP("QuantizedMaxPool")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Produces the max pool of the input tensor for quantized types.
-
-input: The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
-ksize: The size of the window for each dimension of the input tensor.
-  The length must be 4 to match the number of dimensions of the input.
-strides: The stride of the sliding window for each dimension of the input
-  tensor. The length must be 4 to match the number of dimensions of the input.
-padding: The type of padding algorithm to use.
-min_input: The float value that the lowest quantized input value represents.
-max_input: The float value that the highest quantized input value represents.
-min_output: The float value that the lowest quantized output value represents.
-max_output: The float value that the highest quantized output value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedRelu")
     .Input("features: Tinput")
@@ -2790,17 +1399,7 @@ REGISTER_OP("QuantizedRelu")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes Quantized Rectified Linear: `max(features, 0)`
-
-activations: Has the same output shape as "features".
-min_features: The float value that the lowest quantized value represents.
-max_features: The float value that the highest quantized value represents.
-min_activations: The float value that the lowest quantized value represents.
-max_activations: The float value that the highest quantized value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedRelu6")
     .Input("features: Tinput")
@@ -2819,17 +1418,7 @@ REGISTER_OP("QuantizedRelu6")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`
-
-activations: Has the same output shape as "features".
-min_features: The float value that the lowest quantized value represents.
-max_features: The float value that the highest quantized value represents.
-min_activations: The float value that the lowest quantized value represents.
-max_activations: The float value that the highest quantized value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedReluX")
     .Input("features: Tinput")
@@ -2849,17 +1438,7 @@ REGISTER_OP("QuantizedReluX")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
-
-activations: Has the same output shape as "features".
-min_features: The float value that the lowest quantized value represents.
-max_features: The float value that the highest quantized value represents.
-min_activations: The float value that the lowest quantized value represents.
-max_activations: The float value that the highest quantized value represents.
-
-)doc");
+    });
 
 REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     .Input("t: Tinput")
@@ -2902,39 +1481,7 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
       c->set_output(2, c->Scalar());
 
       return Status::OK();
-    })
-    .Doc(R"doc(
-Quantized Batch normalization.
-
-This op is deprecated and will be removed in the future. Prefer
-`tf.nn.batch_normalization`.
-
-t: A 4D input Tensor.
-t_min: The value represented by the lowest quantized input.
-t_max: The value represented by the highest quantized input.
-m: A 1D mean Tensor with size matching the last dimension of t.
-  This is the first output from tf.nn.moments,
-  or a saved moving average thereof.
-m_min: The value represented by the lowest quantized mean.
-m_max: The value represented by the highest quantized mean.
-v: A 1D variance Tensor with size matching the last dimension of t.
-  This is the second output from tf.nn.moments,
-  or a saved moving average thereof.
-v_min: The value represented by the lowest quantized variance.
-v_max: The value represented by the highest quantized variance.
-beta: A 1D beta Tensor with size matching the last dimension of t.
-  An offset to be added to the normalized tensor.
-beta_min: The value represented by the lowest quantized offset.
-beta_max: The value represented by the highest quantized offset.
-gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this tensor will be multiplied
-  with the normalized tensor.
-gamma_min: The value represented by the lowest quantized gamma.
-gamma_max: The value represented by the highest quantized gamma.
-variance_epsilon: A small float number to avoid dividing by 0.
-scale_after_normalization: A bool indicating whether the resulted tensor
-  needs to be multiplied with gamma.
-)doc");
+    });
 
 #ifdef INTEL_MKL
 REGISTER_OP("_MklConv2D")
@@ -3271,7 +1818,11 @@ REGISTER_OP("_MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
+#else
+    .Output("workspace: uint8")
+#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .SetShapeFn(shape_inference::MaxPoolShape)
@@ -3293,7 +1844,11 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
+#else
+    .Input("workspace: uint8")
+#endif
     .Input("mkl_orig_input: uint8")
     .Input("mkl_orig_output: uint8")
     .Input("mkl_grad: uint8")
@@ -3361,7 +1916,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -3389,7 +1944,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")

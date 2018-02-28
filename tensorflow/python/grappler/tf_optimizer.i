@@ -100,8 +100,14 @@ PyObject* TF_OptimizeGraph(
     tensorflow::grappler::ItemConfig item_config;
     item_config.inline_functions = false;
     item_config.apply_optimizations = false;
+    item_config.ignore_user_placement = false;
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
+
+    if (!grappler_item) {
+      TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Failed to import metagraph, check error log for more info.");
+      return nullptr;
+    }
 
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::GraphDef out_graph;

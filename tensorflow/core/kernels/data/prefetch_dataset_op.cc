@@ -172,7 +172,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock parent_l(parent_mu_);
         mutex_lock l(mu_);

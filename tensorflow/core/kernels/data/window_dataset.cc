@@ -65,7 +65,7 @@ class WindowDataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status RestoreInternal(OpKernelContext* ctx,
+    Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64 i;

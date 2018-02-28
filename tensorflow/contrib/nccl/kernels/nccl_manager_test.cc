@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 
 #include <algorithm>
+#include <random>
 #include <vector>
 
 #include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
@@ -239,7 +240,8 @@ TEST_F(NcclManagerTest, MultipleCallers) {
       SE_ASSERT_OK(stream->BlockHostUntilDone());
     }
 
-    std::random_shuffle(case_and_device_num.begin(), case_and_device_num.end());
+    std::shuffle(case_and_device_num.begin(), case_and_device_num.end(),
+                 std::mt19937(std::random_device()()));
 
     mutex mu;  // guards case_and_device_num.
     std::unique_ptr<thread::ThreadPool> pool(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_
+#ifndef TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_
+#define TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_
 
 #include <cassert>
 #include <cstdint>
@@ -56,7 +56,7 @@ class HeapBase {
 
   // This method adds an element at the end of the internal array without
   // "heapifying" the array afterwards. This is useful for setting up a heap
-  // where a single call to heapify at the end of the inital insertion
+  // where a single call to heapify at the end of the initial insertion
   // operations suffices.
   void InsertUnsorted(const KeyType& key, const DataType& data) {
     if (v_.size() == static_cast<size_t>(num_elements_)) {
@@ -205,4 +205,4 @@ class AugmentedHeap : public HeapBase<KeyType, DataType> {
 }  // namespace nearest_neighbor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_
+#endif  // TENSORFLOW_CONTRIB_NEAREST_NEIGHBOR_KERNELS_HEAP_H_

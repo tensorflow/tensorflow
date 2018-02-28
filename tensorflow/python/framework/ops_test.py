@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import threading
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
@@ -916,7 +917,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
-    self.assertEqual(len(op.control_inputs), 1)
     # External control dep is removed and replaced with internal control dep
     self.assertNotEqual(op.control_inputs[0], c.op)
     self.assertIsNotNone(op.control_inputs[0]._get_control_flow_context())
@@ -1379,6 +1379,180 @@ class DeviceTest(test_util.TensorFlowTestCase):
              device: "/job:ps" }
       node { name: "FloatOutput_4" op: "FloatOutput"
              device: "/job:ps" }
+    """, gd)
+
+
+@test_util.with_c_api
+class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
+
+  class TestThread(threading.Thread):
+
+    def __init__(self, graph, replica_id):
+      super(MultithreadedGraphStateTest.TestThread, self).__init__()
+      self._graph = graph
+      self._replica_id = replica_id
+      # This thread sets this event when it mutated the graph.  The caller can
+      # wait for that.
+      self.has_mutated_graph = threading.Event()
+      # This thread waits for when it should continue.  The caller can set this
+      # event.
+      self.should_continue = threading.Event()
+
+    def run(self):
+      # Mutate a graph's stack, then set `has_mutated_graph`, then wait for
+      # `should_continue`, then add an op to the graph affected by the graph's
+      # stack.
+      raise NotImplementedError("must be implemented in descendants")
+
+  def testDeviceFunctionStack(self):
+
+    class DeviceSettingThread(self.TestThread):
+
+      def run(self):
+        with g.device("/job:worker/replica:{}".format(self._replica_id)):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    # If `switch_to_thread` isn't called, then device placement of the ops
+    # below is not deterministic.
+    g.switch_to_thread_local()
+    threads = [DeviceSettingThread(g, i) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             device: "/job:worker/replica:0" }
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             device: "/job:worker/replica:1" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             device: "/job:worker/replica:2" }
+    """, gd)
+
+  def testColocateWith(self):
+
+    class ColocatingThread(self.TestThread):
+
+      def __init__(self, graph, replica_id, op_to_colocate_with):
+        super(ColocatingThread, self).__init__(graph, replica_id)
+        self._op_to_colocate_with = op_to_colocate_with
+
+      def run(self):
+        with g.colocate_with(self._op_to_colocate_with):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    ops_to_colocate_with = []
+    for i in range(3):
+      with g.device("/job:worker/replica:{}".format(i)):
+        ops_to_colocate_with.append(
+            g.create_op(
+                "FloatOutput", [], [dtypes.float32],
+                name="ColocateWithMe_{}".format(i)))
+
+    # If `switch_to_thread` isn't called, then `device` and `attr` values for
+    # the ops below are not deterministic.
+    g.switch_to_thread_local()
+    threads = [
+        ColocatingThread(g, i, ops_to_colocate_with[i]) for i in range(3)
+    ]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "ColocateWithMe_0" op: "FloatOutput"
+             device: "/job:worker/replica:0" }
+      node { name: "ColocateWithMe_1" op: "FloatOutput"
+             device: "/job:worker/replica:1" }
+      node { name: "ColocateWithMe_2" op: "FloatOutput"
+             device: "/job:worker/replica:2" }
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             device: "/job:worker/replica:0"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_0"}}}}
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             device: "/job:worker/replica:1"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_1"}}}}
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             device: "/job:worker/replica:2"
+             attr { key: "_class"
+               value { list {
+                 s: "loc:@ColocateWithMe_2"}}}}
+    """, gd)
+
+  def testControlDependencies(self):
+
+    class DependingThread(self.TestThread):
+
+      def __init__(self, graph, replica_id, dependency_op):
+        super(DependingThread, self).__init__(graph, replica_id)
+        self._dependency_op = dependency_op
+
+      def run(self):
+        with g.control_dependencies([self._dependency_op]):
+          self.has_mutated_graph.set()
+          self.should_continue.wait()
+          self.should_continue.clear()
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="FloatOutput_{}".format(self._replica_id))
+
+    g = ops.Graph()
+    dependency_ops = []
+    for i in range(3):
+      dependency_ops.append(
+          g.create_op(
+              "FloatOutput", [], [dtypes.float32],
+              name="ColocateWithMe_{}".format(i)))
+
+    # If `switch_to_thread` isn't called, then `input` values for the ops below
+    # are not deterministic.
+    g.switch_to_thread_local()
+    threads = [DependingThread(g, i, dependency_ops[i]) for i in range(3)]
+    for t in threads:
+      t.start()
+      t.has_mutated_graph.wait()
+      t.has_mutated_graph.clear()
+    for t in threads:
+      t.should_continue.set()
+      t.join()
+
+    gd = g.as_graph_def()
+    self.assertProtoEqualsVersion("""
+      node { name: "ColocateWithMe_0" op: "FloatOutput" }
+      node { name: "ColocateWithMe_1" op: "FloatOutput" }
+      node { name: "ColocateWithMe_2" op: "FloatOutput" }
+      node { name: "FloatOutput_0" op: "FloatOutput"
+             input: "^ColocateWithMe_0" }
+      node { name: "FloatOutput_1" op: "FloatOutput"
+             input: "^ColocateWithMe_1" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
+             input: "^ColocateWithMe_2" }
     """, gd)
 
 
@@ -2072,9 +2246,33 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       # pylint: disable=protected-access
       self.assertEqual(len(ops._default_graph_stack.stack), 0)
       with ops.init_scope():
-        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        self.assertGreater(len(ops._default_graph_stack.stack), 0)
       self.assertEqual(len(ops._default_graph_stack.stack), 0)
       # pylint: enable=protected-access
+
+  def testPreservesNameScopeInGraphConstruction(self):
+    with ops.Graph().as_default():
+      function_graph = ops.Graph()
+      with function_graph.as_default():
+        with ops.name_scope("inner"), ops.init_scope():
+          self.assertEqual(ops.get_name_scope(), "inner")
+      self.assertEqual(ops.get_name_scope(), "")
+
+  def testPreservesNameScopeInEagerExecution(self):
+    with context.eager_mode():
+      def foo():
+        with ops.name_scope("inner"), ops.init_scope():
+          if context.in_graph_mode():
+            self.assertEqual(ops.get_name_scope(), "inner")
+          else:
+            # A trailing slash is always appended when eager execution is
+            # enabled.
+            self.assertEqual(context.context().scope_name, "inner/")
+      foo()
+      self.assertEqual(ops.get_name_scope(), "")
+      foo_compiled = eager_function.defun(foo)
+      foo_compiled()
+      self.assertEqual(ops.get_name_scope(), "")
 
 
 @test_util.with_c_api
@@ -2290,6 +2488,8 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       t4.set_shape([43, 37])
       t5.set_shape([43, None])
 
+      b = constant_op.constant(1.0)  # pylint: disable=unused-variable
+
       gd = g.as_graph_def(add_shapes=True)
       self.assertProtoEqualsVersion("""
       node { name: "FiveFloatOutputs" op: "FiveFloatOutputs"
@@ -2306,6 +2506,26 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
           }
         }
       }
+    node { name: "Const" op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape { }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value { type: DT_FLOAT }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape { }
+         float_val: 1.0  } } } }
       """, gd)
 
 
@@ -2588,6 +2808,18 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())
 
+  def testTwoGraphs(self):
+
+    def f():
+      g1 = ops.Graph()
+      g2 = ops.Graph()
+      with g1.as_default():
+        with g2.as_default():
+          with ops.name_scope("_"):
+            pass
+
+    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
 
 @test_util.with_c_api
 class TracebackTest(test_util.TensorFlowTestCase):
@@ -2645,7 +2877,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops.unique(x)
+      y, _ = gen_array_ops._unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 
@@ -2662,47 +2894,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
-class InputTypesTest(test_util.TensorFlowTestCase):
-  """Tests Operation._input_dtypes and Operation._input_types properties.
-
-  This test should not exist as _input_types is a private property.
-  This property is used by many tests that would normally cover its
-  behavior. However, we can't yet run these tests in C
-  API mode because they use _set_device method. This test will be deleted
-  once we port _set_device.
-  """
-  # TODO(iga): Remove this test
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
-    ops._USE_C_API = True  # pylint: disable=protected-access
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
-
-  def testZeroInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      # Using a constant because creating unregistered ops
-      # doesn't work with the C API.
-      op = constant_op.constant(12, dtype=dtypes.uint16).op
-      # pylint: disable=protected-access
-      self.assertEqual([], op._input_types)
-      self.assertEqual([], op._input_dtypes)
-      # pylint: enable=protected-access
-
-  def testTwoInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      x = constant_op.constant(1.0, dtype=dtypes.double)
-      y = constant_op.constant(2.0, dtype=dtypes.double)
-      z = math_ops.multiply(x, y)
-      # pylint: disable=protected-access
-      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
-      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
-      # pylint: enable=protected-access
+class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
   def testBadArgumentsToEnableEagerExecution(self):
     with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):

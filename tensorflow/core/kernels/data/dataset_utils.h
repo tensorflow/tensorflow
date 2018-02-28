@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
@@ -32,4 +32,4 @@ Status MakeIteratorFromInputElement(
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_

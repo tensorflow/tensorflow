@@ -25,9 +25,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access, invalid-name
+@tf_export("nn.ctc_loss")
 def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
@@ -185,6 +187,7 @@ def _CTCLossGrad(op, grad_loss, _):
   return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
 
+@tf_export("nn.ctc_greedy_decoder")
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
 
@@ -228,6 +231,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
           log_probabilities)
 
 
+@tf_export("nn.ctc_beam_search_decoder")
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
                             top_paths=1, merge_repeated=True):
   """Performs beam search decoding on the logits given in input.

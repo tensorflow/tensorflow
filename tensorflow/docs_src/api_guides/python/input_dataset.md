@@ -18,7 +18,6 @@ Classes that create a dataset from input files.
 Static methods in `Dataset` that create new datasets.
 
 *   @{tf.data.Dataset.from_generator}
-*   @{tf.data.Dataset.from_sparse_tensor_slices}
 *   @{tf.data.Dataset.from_tensor_slices}
 *   @{tf.data.Dataset.from_tensors}
 *   @{tf.data.Dataset.list_files}
@@ -59,8 +58,12 @@ Custom transformation functions can be applied to a `Dataset` using @{tf.data.Da
 *   @{tf.contrib.data.enumerate_dataset}
 *   @{tf.contrib.data.group_by_window}
 *   @{tf.contrib.data.ignore_errors}
+*   @{tf.contrib.data.map_and_batch}
+*   @{tf.contrib.data.padded_batch_and_drop_remainder}
+*   @{tf.contrib.data.parallel_interleave}
 *   @{tf.contrib.data.rejection_resample}
-*   @{tf.contrib.data.sloppy_interleave}
+*   @{tf.contrib.data.scan}
+*   @{tf.contrib.data.shuffle_and_repeat}
 *   @{tf.contrib.data.unbatch}
 
 ## Iterating over datasets
@@ -77,5 +80,7 @@ The `Iterator` class also contains static methods that create a @{tf.data.Iterat
 
 ## Extra functions from `tf.contrib.data`
 
+*   @{tf.contrib.data.get_single_element}
+*   @{tf.contrib.data.make_saveable_from_iterator}
 *   @{tf.contrib.data.read_batch_features}
 

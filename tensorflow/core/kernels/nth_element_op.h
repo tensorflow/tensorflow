@@ -26,10 +26,8 @@ namespace functor {
 
 template <typename Device, typename T>
 struct NthElementFunctor {
-  void operator() (OpKernelContext* context,
-                   const Tensor& input_tensor,
-                   Tensor& output_tensor,
-                   int n);
+  void operator()(OpKernelContext* context, const Tensor& input_tensor,
+                  Tensor& output_tensor, int n);
 };
 
 }  // namespace functor

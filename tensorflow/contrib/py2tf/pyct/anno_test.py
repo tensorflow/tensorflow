@@ -37,6 +37,11 @@ class AnnoTest(test.TestCase):
     self.assertTrue(anno.hasanno(node, 'foo'))
     self.assertEqual(3, anno.getanno(node, 'foo'))
 
+    anno.delanno(node, 'foo')
+    self.assertFalse(anno.hasanno(node, 'foo'))
+    with self.assertRaises(AttributeError):
+      anno.getanno(node, 'foo')
+
 
 if __name__ == '__main__':
   test.main()

@@ -229,7 +229,7 @@ additional information about the multiple input arrays:
     well-formed quantized representation of these graphs. Such graphs should be
     fixed, but as a temporary work-around, setting this
     reorder_across_fake_quant flag allows the converter to perform necessary
-    graph transformaitons on them, at the cost of no longer faithfully matching
+    graph transformations on them, at the cost of no longer faithfully matching
     inference and training arithmetic.
 
 ### Logging flags

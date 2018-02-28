@@ -91,8 +91,8 @@ TEST_F(ExportTest, Export) {
     }
   }
 
-  EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:Sub",
-                                 "custom:MyCrazyOp"));
+  EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D",
+                                 "builtin:SUB", "custom:MyCrazyOp"));
 
   std::vector<uint32_t> indices;
   auto operators = (*model->subgraphs())[0]->operators();

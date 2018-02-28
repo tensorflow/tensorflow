@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
 #define TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
 
-#include <memory>
-
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 

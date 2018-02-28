@@ -116,7 +116,7 @@ def build_fused_conv_bias_relu_graph(device, input_shape, filter_shape, strides,
     for _ in range(1, num_iters):
       with ops.control_dependencies([fused_out]):
         # pylint: disable=g-line-too-long
-        fused_out = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+        fused_out = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(  # pylint: disable=line-too-long
             inp,
             filt,
             bias,
@@ -166,10 +166,10 @@ class FusedConv2DBiasActivationBenchmark(test.Benchmark):
         duration = (time.time() - start_time) / num_iters
 
         print("%s inputshape:%s filtershape:%s strides:%s padding:%s "
-              "%d iters: %.8f sec" %
-              (device, str(input_shape).replace(" ", ""),
-               str(filter_shape).replace(" ", ""),
-               str(strides).replace(" ", ""), padding, num_iters, duration))
+              "%d iters: %.8f sec" % (device, str(input_shape).replace(" ", ""),
+                                      str(filter_shape).replace(" ", ""),
+                                      str(strides).replace(" ", ""), padding,
+                                      num_iters, duration))
     name_template = (
         "conv2d_{device}_input_shape_{inputshape}_filter_shape_{filtershape}_"
         "strides_{strides}_padding_{padding}")

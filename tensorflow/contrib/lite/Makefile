@@ -56,7 +56,7 @@ LIBS := \
 -lz
 
 # If we're on Linux, also link in the dl library.
-ifeq ($(OS),LINUX)
+ifeq ($(HOST_OS),LINUX)
 	LIBS += -ldl -lpthread
 endif
 

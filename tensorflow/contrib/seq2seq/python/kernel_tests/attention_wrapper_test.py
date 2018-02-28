@@ -80,6 +80,28 @@ class AttentionWrapperTest(test.TestCase):
     self.assertEqual(state.time, None)
     self.assertEqual(new_state.time, 1)
 
+  def testAttentionWrapperStateShapePropgation(self):
+    batch_size = 5
+    max_time = 5
+    num_units = 5
+
+    memory = random_ops.random_uniform(
+        [batch_size, max_time, num_units], seed=1)
+    mechanism = wrapper.LuongAttention(num_units, memory)
+    cell = wrapper.AttentionWrapper(rnn_cell.LSTMCell(num_units), mechanism)
+
+    # Create zero state with static batch size.
+    static_state = cell.zero_state(batch_size, dtypes.float32)
+    # Create zero state without static batch size.
+    state = cell.zero_state(array_ops.shape(memory)[0], dtypes.float32)
+
+    state = static_state.clone(
+        cell_state=state.cell_state, attention=state.attention)
+
+    self.assertEqual(state.cell_state.c.shape, static_state.cell_state.c.shape)
+    self.assertEqual(state.cell_state.h.shape, static_state.cell_state.h.shape)
+    self.assertEqual(state.attention.shape, static_state.attention.shape)
+
   def _testWithAttention(self,
                          create_attention_mechanism,
                          expected_final_output,

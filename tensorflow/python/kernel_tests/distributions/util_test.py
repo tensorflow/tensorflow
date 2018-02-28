@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -55,6 +56,7 @@ def _logit(x):
   return np.log(x) - np.log1p(-x)
 
 
+@test_util.with_c_api
 class AssertCloseTest(test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
@@ -145,6 +147,7 @@ class AssertCloseTest(test.TestCase):
           array_ops.identity(w).eval(feed_dict=feed_dict)
 
 
+@test_util.with_c_api
 class GetLogitsAndProbsTest(test.TestCase):
 
   def testImproperArguments(self):
@@ -298,6 +301,7 @@ class GetLogitsAndProbsTest(test.TestCase):
         logit.eval(feed_dict={l: np.ones([int(2**11+1)])})
 
 
+@test_util.with_c_api
 class EmbedCheckCategoricalEventShapeTest(test.TestCase):
 
   def testTooSmall(self):
@@ -335,6 +339,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
         du.embed_check_categorical_event_shape(param)
 
 
+@test_util.with_c_api
 class EmbedCheckIntegerCastingClosedTest(test.TestCase):
 
   def testCorrectlyAssertsNonnegative(self):
@@ -370,6 +375,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, -1], dtype=np.int32)})
 
 
+@test_util.with_c_api
 class LogCombinationsTest(test.TestCase):
 
   def testLogCombinationsBinomial(self):
@@ -400,6 +406,7 @@ class LogCombinationsTest(test.TestCase):
       self.assertEqual([2, 2], log_binom.get_shape())
 
 
+@test_util.with_c_api
 class DynamicShapeTest(test.TestCase):
 
   def testSameDynamicShape(self):
@@ -504,6 +511,7 @@ class DynamicShapeTest(test.TestCase):
               }))
 
 
+@test_util.with_c_api
 class RotateTransposeTest(test.TestCase):
 
   def _np_rotate_transpose(self, x, shift):
@@ -537,6 +545,7 @@ class RotateTransposeTest(test.TestCase):
                                   shift: shift_value}))
 
 
+@test_util.with_c_api
 class PickVectorTest(test.TestCase):
 
   def testCorrectlyPicksVector(self):
@@ -557,6 +566,7 @@ class PickVectorTest(test.TestCase):
                               constant_op.constant(False), x, y))  # No eval.
 
 
+@test_util.with_c_api
 class PreferStaticRankTest(test.TestCase):
 
   def testNonEmptyConstantTensor(self):
@@ -596,6 +606,7 @@ class PreferStaticRankTest(test.TestCase):
       self.assertAllEqual(0, rank.eval(feed_dict={x: 1}))
 
 
+@test_util.with_c_api
 class PreferStaticShapeTest(test.TestCase):
 
   def testNonEmptyConstantTensor(self):
@@ -635,6 +646,7 @@ class PreferStaticShapeTest(test.TestCase):
       self.assertAllEqual(np.array([]), shape.eval(feed_dict={x: 1}))
 
 
+@test_util.with_c_api
 class PreferStaticValueTest(test.TestCase):
 
   def testNonEmptyConstantTensor(self):
@@ -675,6 +687,7 @@ class PreferStaticValueTest(test.TestCase):
       self.assertAllEqual(np.array(1), value.eval(feed_dict={x: 1}))
 
 
+@test_util.with_c_api
 class FillTriangularTest(test.TestCase):
 
   def setUp(self):
@@ -769,6 +782,7 @@ class FillTriangularTest(test.TestCase):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)), upper=True)
 
 
+@test_util.with_c_api
 class ReduceWeightedLogSumExp(test.TestCase):
 
   def _reduce_weighted_logsumexp(self, logx, w, axis, keep_dims=False):
@@ -865,6 +879,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
           du.reduce_weighted_logsumexp(x, w, axis=[0, 1]).eval())
 
 
+@test_util.with_c_api
 class GenNewSeedTest(test.TestCase):
 
   def testOnlyNoneReturnsNone(self):
@@ -875,6 +890,7 @@ class GenNewSeedTest(test.TestCase):
 # TODO(jvdillon): Merge this test back into:
 # tensorflow/python/kernel_tests/softplus_op_test.py
 # once TF core is accepting new ops.
+@test_util.with_c_api
 class SoftplusTest(test.TestCase):
 
   def _npSoftplus(self, np_features):

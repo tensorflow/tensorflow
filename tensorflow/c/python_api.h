@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
-#define THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
+#ifndef TENSORFLOW_C_PYTHON_API_H_
+#define TENSORFLOW_C_PYTHON_API_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -37,6 +37,10 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
 
 void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
 
+// Sets whether ops missing a shape inference function should trigger an
+// error. The default is true.
+void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
+#endif  // TENSORFLOW_C_PYTHON_API_H_

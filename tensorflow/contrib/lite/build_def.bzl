@@ -5,25 +5,25 @@ def tflite_copts():
   copts = [
       "-DFARMHASH_NO_CXX_STRING",
   ] + select({
-          "//tensorflow:android_arm64": [
+          str(Label("//tensorflow:android_arm64")): [
               "-std=c++11",
               "-O3",
           ],
-          "//tensorflow:android_arm": [
+          str(Label("//tensorflow:android_arm")): [
               "-mfpu=neon",
               "-mfloat-abi=softfp",
               "-std=c++11",
               "-O3",
           ],
-          "//tensorflow:android_x86": [
+          str(Label("//tensorflow:android_x86")): [
               "-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK",
           ],
-          "//tensorflow:ios_x86_64": [
+          str(Label("//tensorflow:ios_x86_64")): [
               "-msse4.1",
           ],
           "//conditions:default": [],
   }) + select({
-      "//tensorflow:with_default_optimizations": [],
+      str(Label("//tensorflow:with_default_optimizations")): [],
       "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
   })
 
@@ -93,7 +93,6 @@ def tflite_jni_linkopts():
       ],
       "//conditions:default": [],
   })
-
 
 def tflite_jni_binary(name,
                       copts=tflite_copts(),

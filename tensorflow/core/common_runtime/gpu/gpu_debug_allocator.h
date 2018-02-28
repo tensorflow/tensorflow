@@ -21,7 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/visitable_allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,10 +42,11 @@ class GPUDebugAllocator : public VisitableAllocator {
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
   // For testing.
   bool CheckHeader(void* ptr);
@@ -72,9 +73,10 @@ class GPUNanResetAllocator : public VisitableAllocator {
   void DeallocateRaw(void* ptr) override;
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
  private:
   VisitableAllocator* base_allocator_ = nullptr;  // owned

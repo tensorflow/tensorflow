@@ -16,7 +16,7 @@ This document focuses on checkpoints. For details on SavedModel, see the
 ## Sample code
 
 This document relies on the same
-[https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py](Iris classification example) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
+[Iris classification example](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
 To download and access the example, invoke the following two commands:
 
 ```shell

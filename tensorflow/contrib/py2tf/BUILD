@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -20,6 +22,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/py2tf/impl",
         "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/utils",
+        "@gast_archive//:gast",
+        "@six_archive//:six",
     ],
 )

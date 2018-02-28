@@ -35,7 +35,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 FLAGS = None
 
 
-class Discriminator(tfe.Network):
+class Discriminator(tf.keras.Model):
   """GAN Discriminator.
 
   A network to differentiate between generated and real handwritten digits.
@@ -56,19 +56,15 @@ class Discriminator(tfe.Network):
     else:
       assert data_format == 'channels_last'
       self._input_shape = [-1, 28, 28, 1]
-    self.conv1 = self.track_layer(tf.layers.Conv2D(64, 5, padding='SAME',
-                                                   data_format=data_format,
-                                                   activation=tf.tanh))
-    self.pool1 = self.track_layer(
-        tf.layers.AveragePooling2D(2, 2, data_format=data_format))
-    self.conv2 = self.track_layer(tf.layers.Conv2D(128, 5,
-                                                   data_format=data_format,
-                                                   activation=tf.tanh))
-    self.pool2 = self.track_layer(
-        tf.layers.AveragePooling2D(2, 2, data_format=data_format))
-    self.flatten = self.track_layer(tf.layers.Flatten())
-    self.fc1 = self.track_layer(tf.layers.Dense(1024, activation=tf.tanh))
-    self.fc2 = self.track_layer(tf.layers.Dense(1, activation=None))
+    self.conv1 = tf.layers.Conv2D(
+        64, 5, padding='SAME', data_format=data_format, activation=tf.tanh)
+    self.pool1 = tf.layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.conv2 = tf.layers.Conv2D(
+        128, 5, data_format=data_format, activation=tf.tanh)
+    self.pool2 = tf.layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.flatten = tf.layers.Flatten()
+    self.fc1 = tf.layers.Dense(1024, activation=tf.tanh)
+    self.fc2 = tf.layers.Dense(1, activation=None)
 
   def call(self, inputs):
     """Return two logits per image estimating input authenticity.
@@ -95,7 +91,7 @@ class Discriminator(tfe.Network):
     return x
 
 
-class Generator(tfe.Network):
+class Generator(tf.keras.Model):
   """Generator of handwritten digits similar to the ones in the MNIST dataset.
   """
 
@@ -116,18 +112,17 @@ class Generator(tfe.Network):
     else:
       assert data_format == 'channels_last'
       self._pre_conv_shape = [-1, 6, 6, 128]
-    self.fc1 = self.track_layer(tf.layers.Dense(6 * 6 * 128,
-                                                activation=tf.tanh))
+    self.fc1 = tf.layers.Dense(6 * 6 * 128, activation=tf.tanh)
 
     # In call(), we reshape the output of fc1 to _pre_conv_shape
 
     # Deconvolution layer. Resulting image shape: (batch, 14, 14, 64)
-    self.conv1 = self.track_layer(tf.layers.Conv2DTranspose(
-        64, 4, strides=2, activation=None, data_format=data_format))
+    self.conv1 = tf.layers.Conv2DTranspose(
+        64, 4, strides=2, activation=None, data_format=data_format)
 
     # Deconvolution layer. Resulting image shape: (batch, 28, 28, 1)
-    self.conv2 = self.track_layer(tf.layers.Conv2DTranspose(
-        1, 2, strides=2, activation=tf.nn.sigmoid, data_format=data_format))
+    self.conv2 = tf.layers.Conv2DTranspose(
+        1, 2, strides=2, activation=tf.nn.sigmoid, data_format=data_format)
 
   def call(self, inputs):
     """Return a batch of generated images.
@@ -168,7 +163,8 @@ def discriminator_loss(discriminator_real_outputs, discriminator_gen_outputs):
   """
 
   loss_on_real = tf.losses.sigmoid_cross_entropy(
-      tf.ones_like(discriminator_real_outputs), discriminator_real_outputs,
+      tf.ones_like(discriminator_real_outputs),
+      discriminator_real_outputs,
       label_smoothing=0.25)
   loss_on_generated = tf.losses.sigmoid_cross_entropy(
       tf.zeros_like(discriminator_gen_outputs), discriminator_gen_outputs)
@@ -198,9 +194,8 @@ def generator_loss(discriminator_gen_outputs):
   return loss
 
 
-def train_one_epoch(generator, discriminator,
-                    generator_optimizer, discriminator_optimizer,
-                    dataset, log_interval, noise_dim):
+def train_one_epoch(generator, discriminator, generator_optimizer,
+                    discriminator_optimizer, dataset, log_interval, noise_dim):
   """Trains `generator` and `discriminator` models on `dataset`.
 
   Args:
@@ -222,14 +217,18 @@ def train_one_epoch(generator, discriminator,
 
     with tf.contrib.summary.record_summaries_every_n_global_steps(log_interval):
       current_batch_size = images.shape[0]
-      noise = tf.random_uniform(shape=[current_batch_size, noise_dim],
-                                minval=-1., maxval=1., seed=batch_index)
+      noise = tf.random_uniform(
+          shape=[current_batch_size, noise_dim],
+          minval=-1.,
+          maxval=1.,
+          seed=batch_index)
 
       with tfe.GradientTape(persistent=True) as g:
         generated_images = generator(noise)
-        tf.contrib.summary.image('generated_images',
-                                 tf.reshape(generated_images, [-1, 28, 28, 1]),
-                                 max_images=10)
+        tf.contrib.summary.image(
+            'generated_images',
+            tf.reshape(generated_images, [-1, 28, 28, 1]),
+            max_images=10)
 
         discriminator_gen_outputs = discriminator(generated_images)
         discriminator_real_outputs = discriminator(images)
@@ -245,17 +244,17 @@ def train_one_epoch(generator, discriminator,
                                       discriminator.variables)
 
       with tf.variable_scope('generator'):
-        generator_optimizer.apply_gradients(zip(generator_grad,
-                                                generator.variables))
+        generator_optimizer.apply_gradients(
+            zip(generator_grad, generator.variables))
       with tf.variable_scope('discriminator'):
-        discriminator_optimizer.apply_gradients(zip(discriminator_grad,
-                                                    discriminator.variables))
+        discriminator_optimizer.apply_gradients(
+            zip(discriminator_grad, discriminator.variables))
 
       if log_interval and batch_index > 0 and batch_index % log_interval == 0:
         print('Batch #%d\tAverage Generator Loss: %.6f\t'
-              'Average Discriminator Loss: %.6f' % (
-                  batch_index, total_generator_loss/batch_index,
-                  total_discriminator_loss/batch_index))
+              'Average Discriminator Loss: %.6f' %
+              (batch_index, total_generator_loss / batch_index,
+               total_discriminator_loss / batch_index))
 
 
 def main(_):
@@ -266,10 +265,9 @@ def main(_):
 
   # Load the datasets
   data = input_data.read_data_sets(FLAGS.data_dir)
-  dataset = (tf.data.Dataset
-             .from_tensor_slices(data.train.images)
-             .shuffle(60000)
-             .batch(FLAGS.batch_size))
+  dataset = (
+      tf.data.Dataset.from_tensor_slices(data.train.images).shuffle(60000)
+      .batch(FLAGS.batch_size))
 
   # Create the models and optimizers
   generator = Generator(data_format)
@@ -294,20 +292,17 @@ def main(_):
         start = time.time()
         with summary_writer.as_default():
           train_one_epoch(generator, discriminator, generator_optimizer,
-                          discriminator_optimizer,
-                          dataset, FLAGS.log_interval, FLAGS.noise)
+                          discriminator_optimizer, dataset, FLAGS.log_interval,
+                          FLAGS.noise)
         end = time.time()
-        print('\nTrain time for epoch #%d (global step %d): %f' % (
-            epoch, global_step.numpy(), end - start))
+        print('\nTrain time for epoch #%d (global step %d): %f' %
+              (epoch, global_step.numpy(), end - start))
 
       all_variables = (
-          generator.variables
-          + discriminator.variables
-          + generator_optimizer.variables()
-          + discriminator_optimizer.variables()
-          + [global_step])
-      tfe.Saver(all_variables).save(
-          checkpoint_prefix, global_step=global_step)
+          generator.variables + discriminator.variables +
+          generator_optimizer.variables() +
+          discriminator_optimizer.variables() + [global_step])
+      tfe.Saver(all_variables).save(checkpoint_prefix, global_step=global_step)
 
 
 if __name__ == '__main__':

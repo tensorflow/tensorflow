@@ -95,9 +95,10 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         int64 sample = b * samples_per_batch;
 
         // On GPU, this check will just fill samples with NAN if it fails.
-        OP_REQUIRES(ctx, stddev > T(0) && minval < maxval &&
-                             (Eigen::numext::isfinite(minval) ||
-                              Eigen::numext::isfinite(maxval)),
+        OP_REQUIRES(ctx,
+                    stddev > T(0) && minval < maxval &&
+                        (Eigen::numext::isfinite(minval) ||
+                         Eigen::numext::isfinite(maxval)),
                     errors::InvalidArgument("Invalid parameters"));
 
         int numIterations = 0;
@@ -118,8 +119,9 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         // Determine the method to use.
         const T sqrtFactor = Eigen::numext::sqrt((normMin * normMin) + T(4));
         const T cutoff =
-            T(2) * Eigen::numext::exp(
-                       T(0.5) + (normMin * (normMin - sqrtFactor)) / T(4)) /
+            T(2) *
+            Eigen::numext::exp(T(0.5) +
+                               (normMin * (normMin - sqrtFactor)) / T(4)) /
             (normMin + sqrtFactor);
         const T diff = normMax - normMin;
         if (diff < cutoff) {
@@ -309,30 +311,34 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     } else {
       // Parameters must be broadcastable to the shape [num_batches].
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(means_tensor.shape()) ||
-                   means_tensor.dim_size(0) == 1 ||
-                   means_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(means_tensor.shape()) ||
+              means_tensor.dim_size(0) == 1 ||
+              means_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input means should have length 1 or shape[0], got shape: ",
               means_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
-                   stddevs_tensor.dim_size(0) == 1 ||
-                   stddevs_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
+              stddevs_tensor.dim_size(0) == 1 ||
+              stddevs_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input stddevs should have length 1 or shape[0], got shape: ",
               stddevs_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
-                   minvals_tensor.dim_size(0) == 1 ||
-                   minvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
+              minvals_tensor.dim_size(0) == 1 ||
+              minvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input minvals should have length 1 or shape[0], got shape: ",
               minvals_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
-                   maxvals_tensor.dim_size(0) == 1 ||
-                   maxvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
+              maxvals_tensor.dim_size(0) == 1 ||
+              maxvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input maxvals should have length 1 or shape[0], got shape: ",
               maxvals_tensor.shape().DebugString()));

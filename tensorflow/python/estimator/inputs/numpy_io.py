@@ -19,8 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
+import numpy as np
 from six import string_types
+
 from tensorflow.python.estimator.inputs.queues import feeding_functions
+from tensorflow.python.util.tf_export import tf_export
 
 # Key name to pack the target into dict of `features`. See
 # `_get_unique_target_key` for details.
@@ -36,6 +40,13 @@ def _get_unique_target_key(features):
   temporarily and unpacked after calling the feeding function. Toward this goal,
   this function returns a key not existed in the `features` to pack the
   `target`.
+
+  Args:
+    features: OrderedDict of numpy arrays
+
+  Returns:
+    A unique key that can be used to insert the subsequent target into
+      features dict.
   """
   target_key = _TARGET_KEY
   while target_key in features:
@@ -43,6 +54,40 @@ def _get_unique_target_key(features):
   return target_key
 
 
+def _validate_and_convert_features(x):
+  """Type check input data and make a shadow copy as an ordered dict.
+
+  Args:
+    x: numpy array object or dict of numpy array objects. If an array,
+      the array will be treated as a single feature.
+
+  Returns:
+    OrderedDict copy of x.
+
+  Raises:
+    ValueError: if x is empty
+    TypeError: if x is an unknown type.
+  """
+  if isinstance(x, dict):
+    if not x:
+      raise ValueError('x cannot be an empty dict')
+    # Make a shadow copy and also ensure the order of iteration is consistent.
+    ordered_dict_data = collections.OrderedDict(
+        sorted(x.items(), key=lambda t: t[0]))
+  elif isinstance(x, np.ndarray):
+    if x.size == 0:
+      raise ValueError('x cannot be an empty array')
+
+    # Make a shadow copy and convert to dict to align with dict processing.
+    ordered_dict_data = collections.OrderedDict({'__direct_np_input__': x})
+  else:
+    x_type = type(x).__name__
+    raise TypeError('x must be a dict or array; got {}'.format(x_type))
+
+  return ordered_dict_data
+
+
+@tf_export('estimator.inputs.numpy_input_fn')
 def numpy_input_fn(x,
                    y=None,
                    batch_size=128,
@@ -70,7 +115,8 @@ def numpy_input_fn(x,
   ```
 
   Args:
-    x: dict of numpy array object.
+    x: numpy array object or dict of numpy array objects. If an array,
+      the array will be treated as a single feature.
     y: numpy array object or dict of numpy array object. `None` if absent.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
@@ -90,23 +136,19 @@ def numpy_input_fn(x,
       values in `x` have same shape).
     ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
     ValueError: if x or y is an empty dict.
-    TypeError: `x` is not a dict or `shuffle` is not bool.
+    TypeError: `x` is not a dict or array, or if `shuffle` is not bool.
   """
-
   if not isinstance(shuffle, bool):
     raise TypeError('shuffle must be explicitly set as boolean; '
                     'got {}'.format(shuffle))
 
   def input_fn():
     """Numpy input function."""
-    if not isinstance(x, dict):
-      raise TypeError('x must be dict; got {}'.format(type(x).__name__))
-    if not x:
-      raise ValueError('x cannot be empty')
 
-    # Make a shadow copy and also ensure the order of iteration is consistent.
-    ordered_dict_data = collections.OrderedDict(
-        sorted(x.items(), key=lambda t: t[0]))
+    # Note that `x` should not be used after conversion to ordered_dict_data,
+    # as type could be either dict or array.
+    ordered_dict_data = _validate_and_convert_features(x)
+
     # Deep copy keys which is a view in python 3
     feature_keys = list(ordered_dict_data.keys())
 
@@ -161,7 +203,13 @@ def numpy_input_fn(x,
     if batch:
       batch.pop(0)
 
-    features = dict(zip(feature_keys, batch[:len(feature_keys)]))
+    if isinstance(x, np.ndarray):
+      # Return as the same type as original array.
+      features = batch[0]
+    else:
+      # Return as the original dict type
+      features = dict(zip(feature_keys, batch[:len(feature_keys)]))
+
     if target_keys is None:
       # TODO(martinwicke), return consistent result
       return features

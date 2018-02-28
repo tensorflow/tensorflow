@@ -340,8 +340,11 @@ Status GraphExecutionState::OptimizeGraph(
     std::unordered_map<string, DeviceProperties> device_map;
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
-      device_map[device->name()] =
-          grappler::GetDeviceInfo(device->parsed_name());
+      DeviceProperties props = grappler::GetDeviceInfo(device->parsed_name());
+      if (props.type() == "UNKNOWN") {
+        continue;
+      }
+      device_map[device->name()] = props;
       if (device->parsed_name().id == 0 &&
           StringPiece(device->parsed_name().type) == "CPU" &&
           device->GetAllocator(AllocatorAttributes()) != nullptr) {

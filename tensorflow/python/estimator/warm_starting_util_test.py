@@ -50,9 +50,7 @@ class WarmStartingUtilTest(test.TestCase):
     sess.run(variables.global_variables_initializer())
     saver = saver_lib.Saver()
     ckpt_prefix = os.path.join(self.get_temp_dir(), "model")
-    ckpt_state_name = "checkpoint"
-    saver.save(
-        sess, ckpt_prefix, global_step=0, latest_filename=ckpt_state_name)
+    saver.save(sess, ckpt_prefix, global_step=0)
 
   def _create_prev_run_var(self,
                            var_name,
@@ -106,7 +104,7 @@ class WarmStartingUtilTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warmstart_var(fruit_weights, self.get_temp_dir())
+        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual(prev_val, fruit_weights.eval(sess))
 
@@ -122,7 +120,7 @@ class WarmStartingUtilTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warmstart_var(fruit_weights, self.get_temp_dir())
+        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual(prev_val, fruit_weights.eval(sess))
 
@@ -139,7 +137,7 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warmstart_var(fruit_weights, self.get_temp_dir())
+        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
         sess.run(variables.global_variables_initializer())
         fruit_weights = fruit_weights._get_variable_list()
         new_val = np.concatenate(
@@ -163,7 +161,7 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warmstart_var(
+        ws_util._warm_start_var(
             fruit_weights,
             self.get_temp_dir(),
             prev_tensor_name="old_scope/fruit_weights")
@@ -187,8 +185,8 @@ class WarmStartingUtilTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.], [0.]])
-        ws_util._warmstart_var_with_vocab(fruit_weights, new_vocab_path, 5,
-                                          self.get_temp_dir(), prev_vocab_path)
+        ws_util._warm_start_var_with_vocab(fruit_weights, new_vocab_path, 5,
+                                           self.get_temp_dir(), prev_vocab_path)
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual([[2.], [1.5], [1.], [0.5], [0.]],
                             fruit_weights.eval(sess))
@@ -207,7 +205,7 @@ class WarmStartingUtilTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.], [0.]])
-        ws_util._warmstart_var_with_vocab(
+        ws_util._warm_start_var_with_vocab(
             fruit_weights,
             new_vocab_path,
             5,
@@ -236,8 +234,8 @@ class WarmStartingUtilTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.], [0.]])
-        ws_util._warmstart_var_with_vocab(fruit_weights, new_vocab_path, 5,
-                                          self.get_temp_dir(), prev_vocab_path)
+        ws_util._warm_start_var_with_vocab(fruit_weights, new_vocab_path, 5,
+                                           self.get_temp_dir(), prev_vocab_path)
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual([[2.], [1.5], [1.], [0.5], [0.]],
                             fruit_weights.eval(sess))
@@ -259,7 +257,7 @@ class WarmStartingUtilTest(test.TestCase):
             shape=[6, 1],
             initializer=[[0.], [0.], [0.], [0.], [0.], [0.]],
             partitioner=lambda shape, dtype: [2, 1])
-        ws_util._warmstart_var_with_vocab(
+        ws_util._warm_start_var_with_vocab(
             fruit_weights,
             new_vocab_path,
             5,
@@ -296,8 +294,8 @@ class WarmStartingUtilTest(test.TestCase):
             shape=[6, 1],
             initializer=[[0.], [0.], [0.], [0.], [0.], [0.]],
             partitioner=lambda shape, dtype: [2, 1])
-        ws_util._warmstart_var_with_vocab(fruit_weights, new_vocab_path, 6,
-                                          self.get_temp_dir(), prev_vocab_path)
+        ws_util._warm_start_var_with_vocab(fruit_weights, new_vocab_path, 6,
+                                           self.get_temp_dir(), prev_vocab_path)
         sess.run(variables.global_variables_initializer())
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
@@ -318,25 +316,25 @@ class WarmStartingUtilTest(test.TestCase):
     self.assertAllEqual(np.ones([10, 1]), prev_int_val)
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_int], partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, the weights should be initialized using default
+        # Without warm-starting, the weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars, {sc_int: [np.zeros([10, 1])]},
                                   sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_int], partitioner)
-        ws_util._warmstart(ws_util._WarmStartSettings(
-            self.get_temp_dir(),
-            vars_to_warmstart=".*sc_int.*"))
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
+                self.get_temp_dir(), vars_to_warm_start=".*sc_int.*"))
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.
+        # Verify weights were correctly warm-started.
         self._assert_cols_to_vars(cols_to_vars, {sc_int: [prev_int_val]}, sess)
 
   def testWarmStart_SparseColumnHashed(self):
@@ -349,25 +347,25 @@ class WarmStartingUtilTest(test.TestCase):
         "linear_model/sc_hash/weights", shape=[15, 1], initializer=norms())
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_hash], partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, the weights should be initialized using default
+        # Without warm-starting, the weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars, {sc_hash: [np.zeros([15, 1])]},
                                   sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_hash], partitioner)
-        ws_util._warmstart(ws_util._WarmStartSettings(
-            self.get_temp_dir(),
-            vars_to_warmstart=".*sc_hash.*"))
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
+                self.get_temp_dir(), vars_to_warm_start=".*sc_hash.*"))
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.
+        # Verify weights were correctly warm-started.
         self._assert_cols_to_vars(cols_to_vars, {sc_hash: [prev_hash_val]},
                                   sess)
 
@@ -384,27 +382,66 @@ class WarmStartingUtilTest(test.TestCase):
         "linear_model/sc_vocab/weights", shape=[4, 1], initializer=ones())
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, the weights should be initialized using default
+        # Without warm-starting, the weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [np.zeros([4, 1])]},
                                   sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
         # Since old vocab is not explicitly set in WarmStartSettings, the old
         # vocab is assumed to be same as new vocab.
-        ws_util._warmstart(ws_util._WarmStartSettings(
-            self.get_temp_dir(),
-            vars_to_warmstart=".*sc_vocab.*"))
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
+                self.get_temp_dir(), vars_to_warm_start=".*sc_vocab.*"))
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.
+        # Verify weights were correctly warm-started.
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [prev_vocab_val]},
+                                  sess)
+
+  def testWarmStart_ExplicitCheckpointFile(self):
+    # Create vocab for sparse column "sc_vocab".
+    vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                   "vocab")
+    # Create feature column.
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=vocab_path, vocabulary_size=4)
+
+    # Save checkpoint from which to warm-start.
+    _, prev_vocab_val = self._create_prev_run_var(
+        "linear_model/sc_vocab/weights", shape=[4, 1], initializer=ones())
+
+    partitioner = lambda shape, dtype: [1] * len(shape)
+    # New graph, new session WITHOUT warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        sess.run(variables.global_variables_initializer())
+        # Without warm-starting, the weights should be initialized using default
+        # initializer (which is init_ops.zeros_initializer).
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [np.zeros([4, 1])]},
+                                  sess)
+
+    # New graph, new session with warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        # Since old vocab is not explicitly set in WarmStartSettings, the old
+        # vocab is assumed to be same as new vocab.
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
+                # Explicitly provide the file prefix instead of just the dir.
+                os.path.join(self.get_temp_dir(), "model-0"),
+                vars_to_warm_start=".*sc_vocab.*"))
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warm-started.
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [prev_vocab_val]},
                                   sess)
 
@@ -428,36 +465,35 @@ class WarmStartingUtilTest(test.TestCase):
         "linear_model/sc_vocab/weights", shape=[2, 1], initializer=ones())
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, the weights should be initialized using default
+        # Without warm-starting, the weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [np.zeros([2, 1])]},
                                   sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
             old_vocab=old_vocab_path,
-            old_vocab_size=old_vocab_size
-        )
-        warmstart_settings = ws_util._WarmStartSettings(
+            old_vocab_size=old_vocab_size)
+        warm_start_settings = ws_util.WarmStartSettings(
             ckpt_to_initialize_from=self.get_temp_dir(),
-            vars_to_warmstart=".*sc_vocab.*",
+            vars_to_warm_start=".*sc_vocab.*",
             var_name_to_vocab_info={
                 "linear_model/sc_vocab/weights": vocab_info
             })
-        ws_util._warmstart(warmstart_settings)
+        ws_util._warm_start(warm_start_settings)
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.  'banana' isn't in the
+        # Verify weights were correctly warm-started.  'banana' isn't in the
         # first two entries of the old vocabulary, so it's newly initialized.
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [[[1], [0]]]}, sess)
 
@@ -473,25 +509,25 @@ class WarmStartingUtilTest(test.TestCase):
         initializer=norms())
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([real_bucket], partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, the weights should be initialized using default
+        # Without warm-starting, the weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars,
                                   {real_bucket: [np.zeros([5, 1])]}, sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model([real_bucket], partitioner)
-        ws_util._warmstart(ws_util._WarmStartSettings(
-            self.get_temp_dir(),
-            vars_to_warmstart=".*real_bucketized.*"))
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
+                self.get_temp_dir(), vars_to_warm_start=".*real_bucketized.*"))
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.
+        # Verify weights were correctly warm-started.
         self._assert_cols_to_vars(cols_to_vars,
                                   {real_bucket: [prev_bucket_val]}, sess)
 
@@ -514,7 +550,7 @@ class WarmStartingUtilTest(test.TestCase):
     all_linear_cols = [sc_int, sc_hash, sc_keys, sc_vocab, real_bucket, cross]
 
     # Save checkpoint from which to warm-start.  Also create a bias variable,
-    # so we can check that it's also warmstarted.
+    # so we can check that it's also warm-started.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         sc_int_weights = variable_scope.get_variable(
@@ -545,12 +581,12 @@ class WarmStartingUtilTest(test.TestCase):
          ])
 
     partitioner = lambda shape, dtype: [1] * len(shape)
-    # New graph, new session WITHOUT warmstarting.
+    # New graph, new session WITHOUT warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model(all_linear_cols, partitioner)
         sess.run(variables.global_variables_initializer())
-        # Without warmstarting, all weights should be initialized using default
+        # Without warm-starting, all weights should be initialized using default
         # initializer (which is init_ops.zeros_initializer).
         self._assert_cols_to_vars(cols_to_vars, {
             sc_int: [np.zeros([10, 1])],
@@ -561,24 +597,23 @@ class WarmStartingUtilTest(test.TestCase):
             cross: [np.zeros([20, 1])],
         }, sess)
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model(all_linear_cols, partitioner)
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
-            old_vocab=vocab_path
-        )
-        ws_util._warmstart(
-            ws_util._WarmStartSettings(
+            old_vocab=vocab_path)
+        ws_util._warm_start(
+            ws_util.WarmStartSettings(
                 self.get_temp_dir(),
                 var_name_to_vocab_info={
                     "linear_model/sc_vocab/weights": vocab_info
                 }))
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.
+        # Verify weights were correctly warm-started.
         self._assert_cols_to_vars(cols_to_vars, {
             sc_int: [prev_int_val],
             sc_hash: [prev_hash_val],
@@ -624,19 +659,18 @@ class WarmStartingUtilTest(test.TestCase):
       partitions[0] = min(2, shape[0].value)
       return partitions
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model(all_linear_cols, _partitioner)
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
-            old_vocab=prev_vocab_path
-        )
-        ws_settings = ws_util._WarmStartSettings(
+            old_vocab=prev_vocab_path)
+        ws_settings = ws_util.WarmStartSettings(
             self.get_temp_dir(),
-            vars_to_warmstart=".*(sc_keys|sc_vocab).*",
+            vars_to_warm_start=".*(sc_keys|sc_vocab).*",
             var_name_to_vocab_info={
                 ws_util._infer_var_name(cols_to_vars[sc_vocab]): vocab_info
             },
@@ -644,11 +678,11 @@ class WarmStartingUtilTest(test.TestCase):
                 ws_util._infer_var_name(cols_to_vars[sc_keys]):
                     "some_other_name"
             })
-        ws_util._warmstart(ws_settings)
+        ws_util._warm_start(ws_settings)
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.  Var corresponding to
+        # Verify weights were correctly warm-started.  Var corresponding to
         # sc_hash should not be warm-started.  Var corresponding to sc_vocab
-        # should be correctly warmstarted after vocab remapping.
+        # should be correctly warm-started after vocab remapping.
         self._assert_cols_to_vars(cols_to_vars, {
             sc_keys:
                 np.split(prev_keys_val, 2),
@@ -657,6 +691,66 @@ class WarmStartingUtilTest(test.TestCase):
                 np.array([[3.], [2.], [1.]]),
                 np.array([[0.5], [0.], [0.]])
             ]
+        }, sess)
+
+  def testWarmStartMoreSettingsNoPartitioning(self):
+    # Create old and new vocabs for sparse column "sc_vocab".
+    prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                        "old_vocab")
+    new_vocab_path = self._write_vocab(
+        ["orange", "guava", "banana", "apple", "raspberry",
+         "blueberry"], "new_vocab")
+    # Create feature columns.
+    sc_hash = fc.categorical_column_with_hash_bucket(
+        "sc_hash", hash_bucket_size=15)
+    sc_keys = fc.categorical_column_with_vocabulary_list(
+        "sc_keys", vocabulary_list=["a", "b", "c", "e"])
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=new_vocab_path, vocabulary_size=6)
+    all_linear_cols = [sc_hash, sc_keys, sc_vocab]
+
+    # Save checkpoint from which to warm-start.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        variable_scope.get_variable(
+            "linear_model/sc_hash/weights", shape=[15, 1], initializer=norms())
+        sc_keys_weights = variable_scope.get_variable(
+            "some_other_name", shape=[4, 1], initializer=rand())
+        variable_scope.get_variable(
+            "linear_model/sc_vocab/weights",
+            initializer=[[0.5], [1.], [2.], [3.]])
+        self._write_checkpoint(sess)
+        prev_keys_val = sess.run(sc_keys_weights)
+
+    # New graph, new session with warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model(all_linear_cols,
+                                                 partitioner=None)
+        vocab_info = ws_util.VocabInfo(
+            new_vocab=sc_vocab.vocabulary_file,
+            new_vocab_size=sc_vocab.vocabulary_size,
+            num_oov_buckets=sc_vocab.num_oov_buckets,
+            old_vocab=prev_vocab_path)
+        ws_settings = ws_util.WarmStartSettings(
+            self.get_temp_dir(),
+            vars_to_warm_start=".*(sc_keys|sc_vocab).*",
+            var_name_to_vocab_info={
+                ws_util._infer_var_name(cols_to_vars[sc_vocab]): vocab_info
+            },
+            var_name_to_prev_var_name={
+                ws_util._infer_var_name(cols_to_vars[sc_keys]):
+                    "some_other_name"
+            })
+        ws_util._warm_start(ws_settings)
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warm-started.  Var corresponding to
+        # sc_hash should not be warm-started.  Var corresponding to sc_vocab
+        # should be correctly warm-started after vocab remapping.
+        self._assert_cols_to_vars(cols_to_vars, {
+            sc_keys: [prev_keys_val],
+            sc_hash: [np.zeros([15, 1])],
+            sc_vocab: [np.array([[3.], [2.], [1.], [0.5], [0.], [0.]])]
         }, sess)
 
   def testWarmStartVarsToWarmstartIsNone(self):
@@ -693,36 +787,36 @@ class WarmStartingUtilTest(test.TestCase):
       partitions[0] = min(2, shape[0].value)
       return partitions
 
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = self._create_linear_model(all_linear_cols, _partitioner)
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
-            old_vocab=prev_vocab_path
-        )
-        ws_settings = ws_util._WarmStartSettings(
+            old_vocab=prev_vocab_path)
+        ws_settings = ws_util.WarmStartSettings(
             self.get_temp_dir(),
             # The special value of None here will ensure that only the variable
             # specified in var_name_to_vocab_info (sc_vocab embedding) is
-            # warmstarted.
-            vars_to_warmstart=None,
+            # warm-started.
+            vars_to_warm_start=None,
             var_name_to_vocab_info={
                 ws_util._infer_var_name(cols_to_vars[sc_vocab]): vocab_info
             },
-            # Even though this is provided, the None value for vars_to_warmstart
-            # overrides the logic, and this will not be warmstarted.
+            # Even though this is provided, the None value for
+            # vars_to_warm_start overrides the logic, and this will not be
+            # warm-started.
             var_name_to_prev_var_name={
                 ws_util._infer_var_name(cols_to_vars[sc_keys]):
                     "some_other_name"
             })
-        ws_util._warmstart(ws_settings)
+        ws_util._warm_start(ws_settings)
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted.  Var corresponding to
-        # sc_vocab should be correctly warmstarted after vocab remapping,
-        # and neither of the other two should be warmstarted..
+        # Verify weights were correctly warm-started.  Var corresponding to
+        # sc_vocab should be correctly warm-started after vocab remapping,
+        # and neither of the other two should be warm-started..
         self._assert_cols_to_vars(cols_to_vars, {
             sc_keys: [np.zeros([2, 1]), np.zeros([2, 1])],
             sc_hash: [np.zeros([8, 1]), np.zeros([7, 1])],
@@ -761,7 +855,7 @@ class WarmStartingUtilTest(test.TestCase):
         categorical_column=sc_vocab,
         dimension=2)
     all_deep_cols = [emb_vocab_column]
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = {}
@@ -771,7 +865,7 @@ class WarmStartingUtilTest(test.TestCase):
               features=self._create_dummy_inputs(),
               feature_columns=all_deep_cols,
               cols_to_vars=cols_to_vars)
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
@@ -779,18 +873,17 @@ class WarmStartingUtilTest(test.TestCase):
             # Can't use constant_initializer with load_and_remap.  In practice,
             # use a truncated normal initializer.
             backup_initializer=init_ops.random_uniform_initializer(
-                minval=0.42, maxval=0.42)
-        )
-        ws_settings = ws_util._WarmStartSettings(
+                minval=0.42, maxval=0.42))
+        ws_settings = ws_util.WarmStartSettings(
             self.get_temp_dir(),
             var_name_to_vocab_info={
-                ws_util._infer_var_name(
-                    cols_to_vars[emb_vocab_column]): vocab_info
+                ws_util._infer_var_name(cols_to_vars[emb_vocab_column]):
+                    vocab_info
             })
-        ws_util._warmstart(ws_settings)
+        ws_util._warm_start(ws_settings)
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted. Var corresponding to
-        # emb_vocab_column should be correctly warmstarted after vocab
+        # Verify weights were correctly warm-started. Var corresponding to
+        # emb_vocab_column should be correctly warm-started after vocab
         # remapping. Missing values are filled in with the EmbeddingColumn's
         # initializer.
         self._assert_cols_to_vars(
@@ -833,7 +926,7 @@ class WarmStartingUtilTest(test.TestCase):
         categorical_column=sc_vocab,
         dimension=2)
     all_deep_cols = [emb_vocab]
-    # New graph, new session with warmstarting.
+    # New graph, new session with warm-starting.
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
         cols_to_vars = {}
@@ -845,7 +938,7 @@ class WarmStartingUtilTest(test.TestCase):
               cols_to_vars=cols_to_vars)
 
         # Construct the vocab_info for the embedding weight.
-        vocab_info = ws_util._VocabInfo(
+        vocab_info = ws_util.VocabInfo(
             new_vocab=sc_vocab.vocabulary_file,
             new_vocab_size=sc_vocab.vocabulary_size,
             num_oov_buckets=sc_vocab.num_oov_buckets,
@@ -853,18 +946,17 @@ class WarmStartingUtilTest(test.TestCase):
             # Can't use constant_initializer with load_and_remap.  In practice,
             # use a truncated normal initializer.
             backup_initializer=init_ops.random_uniform_initializer(
-                minval=0.42, maxval=0.42)
-        )
-        ws_settings = ws_util._WarmStartSettings(
+                minval=0.42, maxval=0.42))
+        ws_settings = ws_util.WarmStartSettings(
             self.get_temp_dir(),
-            vars_to_warmstart=".*sc_vocab.*",
+            vars_to_warm_start=".*sc_vocab.*",
             var_name_to_vocab_info={
                 "linear_model/sc_vocab_embedding/embedding_weights": vocab_info
             })
-        ws_util._warmstart(ws_settings)
+        ws_util._warm_start(ws_settings)
         sess.run(variables.global_variables_initializer())
-        # Verify weights were correctly warmstarted. Var corresponding to
-        # emb_vocab should be correctly warmstarted after vocab remapping.
+        # Verify weights were correctly warm-started. Var corresponding to
+        # emb_vocab should be correctly warm-started after vocab remapping.
         # Missing values are filled in with the EmbeddingColumn's initializer.
         self._assert_cols_to_vars(
             cols_to_vars, {
@@ -881,19 +973,42 @@ class WarmStartingUtilTest(test.TestCase):
             }, sess)
 
   def testErrorConditions(self):
-    self.assertRaises(ValueError, ws_util._WarmStartSettings, None)
+    self.assertRaises(ValueError, ws_util.WarmStartSettings, None)
     x = variable_scope.get_variable(
         "x",
         shape=[4, 1],
         initializer=ones(),
         partitioner=lambda shape, dtype: [2, 1])
 
-    # List of PartitionedVariable is invalid type when warmstarting with vocab.
-    self.assertRaises(TypeError, ws_util._warmstart_var_with_vocab, [x], "/tmp",
-                      5, "/tmp", "/tmp")
+    # List of PartitionedVariable is invalid type when warm-starting with vocab.
+    self.assertRaises(TypeError, ws_util._warm_start_var_with_vocab, [x],
+                      "/tmp", 5, "/tmp", "/tmp")
     # Keys of type other than FeatureColumn.
-    self.assertRaises(TypeError, ws_util._warmstart,
-                      {"StringType": x}, ws_util._WarmStartSettings("/tmp"))
+    self.assertRaises(TypeError, ws_util._warm_start, {"StringType": x},
+                      ws_util.WarmStartSettings("/tmp"))
+
+    # Unused variable names raises ValueError.
+    with ops.Graph().as_default():
+      with self.test_session() as sess:
+        x = variable_scope.get_variable(
+            "x",
+            shape=[4, 1],
+            initializer=ones(),
+            partitioner=lambda shape, dtype: [2, 1])
+        self._write_checkpoint(sess)
+
+    self.assertRaises(ValueError, ws_util._warm_start,
+                      ws_util.WarmStartSettings(
+                          self.get_temp_dir(),
+                          var_name_to_vocab_info={
+                              "y": ws_util.VocabInfo("", 1, 0, "")
+                          }))
+    self.assertRaises(ValueError, ws_util._warm_start,
+                      ws_util.WarmStartSettings(
+                          self.get_temp_dir(),
+                          var_name_to_prev_var_name={
+                              "y": "y2"
+                          }))
 
 
 if __name__ == "__main__":

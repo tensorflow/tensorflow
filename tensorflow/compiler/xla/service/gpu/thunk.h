@@ -41,6 +41,7 @@ class GpuExecutable;
 class Thunk {
  public:
   enum class Kind {
+    kConditional,
     kConvolution,
     kCopy,
     kCudnnBatchNormBackward,
