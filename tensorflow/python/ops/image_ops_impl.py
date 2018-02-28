@@ -1115,10 +1115,8 @@ def adjust_contrast(images, contrast_factor):
     orig_dtype = images.dtype
     flt_images = convert_image_dtype(images, dtypes.float32)
 
-    # pylint: disable=protected-access
-    adjusted = gen_image_ops._adjust_contrastv2(
+    adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
-    # pylint: enable=protected-access
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1732,7 +1730,7 @@ def sample_distorted_bounding_box(image_size,
       Provide as input to `tf.image.draw_bounding_boxes`.
   """
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
-    return gen_image_ops._sample_distorted_bounding_box_v2(  # pylint: disable=protected-access
+    return gen_image_ops.sample_distorted_bounding_box_v2(
         image_size,
         bounding_boxes,
         seed=seed,
@@ -1786,10 +1784,8 @@ def non_max_suppression(boxes,
   """
   with ops.name_scope(name, 'non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
-    # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v2(boxes, scores, max_output_size,
-                                                 iou_threshold)
-    # pylint: enable=protected-access
+    return gen_image_ops.non_max_suppression_v2(boxes, scores, max_output_size,
+                                                iou_threshold)
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

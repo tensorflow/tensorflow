@@ -198,7 +198,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
     if axis is not None:
       raise ValueError("can't specify both 'dim' and 'axis'")
     axis = dim
-  return gen_array_ops._expand_dims(input, axis, name)
+  return gen_array_ops.expand_dims(input, axis, name)
 
 
 # pylint: enable=redefined-builtin,protected-access
@@ -211,28 +211,25 @@ def expand_dims(input, axis=None, name=None, dim=None):
     "This op will be removed after the deprecation date. "
     "Please switch to tf.setdiff1d().")
 def listdiff(x, y, out_idx=None, name=None):
-  return gen_array_ops._list_diff(x, y, out_idx, name)
+  return gen_array_ops.list_diff(x, y, out_idx, name)
 
 
-listdiff.__doc__ = gen_array_ops._list_diff.__doc__ + "\n" + listdiff.__doc__
+listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
 
 # pylint: enable=protected-access
 
 
-# pylint: disable=undefined-variable,protected-access
+# pylint: disable=undefined-variable
 @tf_export("setdiff1d")
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
-  return gen_array_ops._list_diff(x, y, index_dtype, name)
+  return gen_array_ops.list_diff(x, y, index_dtype, name)
 
 
-setdiff1d.__doc__ = gen_array_ops._list_diff.__doc__
-
-# pylint: enable=protected-access
+setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 
 
 @tf_export("broadcast_dynamic_shape")
 def broadcast_dynamic_shape(shape_x, shape_y):
-  # pylint: disable=protected-access
   """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
 
   Args:
@@ -242,8 +239,7 @@ def broadcast_dynamic_shape(shape_x, shape_y):
   Returns:
     A rank 1 integer `Tensor` representing the broadcasted shape.
   """
-  return gen_array_ops._broadcast_args(shape_x, shape_y)
-  # pylint: enable=protected-access
+  return gen_array_ops.broadcast_args(shape_x, shape_y)
 
 
 @tf_export("broadcast_static_shape")
@@ -399,7 +395,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
-      return gen_math_ops._prod(
+      return gen_math_ops.prod(
           gen_math_ops.cast(input.dense_shape, out_type), 0, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -892,7 +888,7 @@ def parallel_stack(values, name="parallel_stack"):
     output_shape = tensor_shape.TensorShape([len(values)])
     output_shape = output_shape.concatenate(value_shape)
     # expand_dims converts concat to stack.
-    return gen_array_ops._parallel_concat(
+    return gen_array_ops.parallel_concat(
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
 
@@ -950,7 +946,7 @@ def stack(values, axis=0, name="stack"):
       raise ValueError("axis = %d not in [%d, %d)" % (axis, -expanded_num_dims,
                                                       expanded_num_dims))
 
-  return gen_array_ops._pack(values, axis=axis, name=name)
+  return gen_array_ops.pack(values, axis=axis, name=name)
 
 
 # pylint: disable=invalid-name
@@ -994,7 +990,7 @@ def _autopacking_helper(list_or_tuple, dtype, name):
           # convertible-to-tensor types, such as numpy arrays.
           elems_as_tensors.append(
               constant_op.constant(elem, dtype=dtype, name=str(i)))
-      return gen_array_ops._pack(elems_as_tensors, name=scope)
+      return gen_array_ops.pack(elems_as_tensors, name=scope)
     else:
       return converted_elems
 
@@ -1089,7 +1085,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
       num = value_shape[axis].value
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
-  return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
+  return gen_array_ops.unpack(value, num=num, axis=axis, name=name)
 
 
 @tf_export("concat")
@@ -1186,7 +1182,7 @@ def concat(values, axis, name="concat"):
           dtype=dtypes.int32).get_shape().assert_is_compatible_with(
               tensor_shape.scalar())
       return identity(values[0], name=scope)
-  return gen_array_ops._concat_v2(values=values, axis=axis, name=name)
+  return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 
 
 @tf_export("boolean_mask")
@@ -1254,8 +1250,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     axis = 0 if axis is None else axis
     shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops._prod(
-        shape(tensor)[axis:axis + ndims_mask], [0])
+    leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(tensor,
                      concat([
                          shape(tensor)[:axis], [leading_size],
@@ -1319,10 +1314,10 @@ def unique(x, out_idx=dtypes.int32, name=None):
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
-  return gen_array_ops._unique(x, out_idx, name)
+  return gen_array_ops.unique(x, out_idx, name)
 
 
-unique.__doc__ = gen_array_ops._unique.__doc__
+unique.__doc__ = gen_array_ops.unique.__doc__
 
 
 @tf_export("split")
@@ -1376,7 +1371,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
   if size_splits._rank() == 0 and size_splits.dtype.is_integer:
-    return gen_array_ops._split(
+    return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
   if num is None:
@@ -1386,12 +1381,8 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     if num is None:
       raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
 
-  return gen_array_ops._split_v(
-      value=value,
-      size_splits=size_splits,
-      axis=axis,
-      num_split=num,
-      name=name)
+  return gen_array_ops.split_v(
+      value=value, size_splits=size_splits, axis=axis, num_split=num, name=name)
 
 
 @tf_export("transpose")
@@ -1461,7 +1452,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   """
   with ops.name_scope(name, "transpose", [a]) as name:
     transpose_fn = (
-        gen_array_ops._conjugate_transpose
+        gen_array_ops.conjugate_transpose
         if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
       rank = gen_array_ops.rank(a)
@@ -1639,7 +1630,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
         return zeros(
             shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
       with ops.device(tensor.device):
-        return gen_array_ops._zeros_like(tensor, name=name)
+        return gen_array_ops.zeros_like(tensor, name=name)
 
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.
@@ -1654,7 +1645,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
       return zeros(
           shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
     else:
-      return gen_array_ops._zeros_like(tensor, name=name)
+      return gen_array_ops.zeros_like(tensor, name=name)
 
 
 @tf_export("ones_like")
@@ -1775,7 +1766,7 @@ def placeholder(dtype, shape=None, name=None):
     raise RuntimeError("tf.placeholder() is not compatible with "
                        "eager execution.")
 
-  return gen_array_ops._placeholder(dtype=dtype, shape=shape, name=name)
+  return gen_array_ops.placeholder(dtype=dtype, shape=shape, name=name)
 
 
 # pylint: disable=redefined-outer-name
@@ -1919,15 +1910,15 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
     if constant_values != 0:
-      result = gen_array_ops._pad_v2(
+      result = gen_array_ops.pad_v2(
           tensor, paddings, constant_values, name=name)
     else:
-      result = gen_array_ops._pad(tensor, paddings, name=name)
+      result = gen_array_ops.pad(tensor, paddings, name=name)
   elif mode == "REFLECT":
-    result = gen_array_ops._mirror_pad(
+    result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="REFLECT", name=name)
   elif mode == "SYMMETRIC":
-    result = gen_array_ops._mirror_pad(
+    result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="SYMMETRIC", name=name)
   else:
     raise ValueError("Unknown padding mode: %s" % mode)
@@ -2157,7 +2148,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
                             sparse_tensor.SparseTensorValue)):
     raise TypeError("Truth must be a SparseTensor.")
 
-  return gen_array_ops._edit_distance(
+  return gen_array_ops.edit_distance(
       hypothesis.indices,
       hypothesis.values,
       hypothesis.dense_shape,
@@ -2294,7 +2285,7 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
   return result
 
 
-space_to_batch.__doc__ = gen_array_ops._space_to_batch.__doc__
+space_to_batch.__doc__ = gen_array_ops.space_to_batch.__doc__
 
 
 @tf_export("space_to_depth")
@@ -2324,7 +2315,7 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
   return result
 
 
-batch_to_space.__doc__ = gen_array_ops._batch_to_space.__doc__
+batch_to_space.__doc__ = gen_array_ops.batch_to_space.__doc__
 
 
 @tf_export("one_hot")
@@ -2468,8 +2459,8 @@ def one_hot(indices,
       raise TypeError("dtype {0} of on_value does not match "
                       "dtype {1} of off_value".format(on_dtype, off_dtype))
 
-    return gen_array_ops._one_hot(indices, depth, on_value, off_value, axis,
-                                  name)
+    return gen_array_ops.one_hot(indices, depth, on_value, off_value, axis,
+                                 name)
 
 
 def _all_dimensions(x):
@@ -2597,7 +2588,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
     axis = squeeze_dims
   if np.isscalar(axis):
     axis = [axis]
-  return gen_array_ops._squeeze(input, axis, name)
+  return gen_array_ops.squeeze(input, axis, name)
 
 
 @tf_export("where")
@@ -2648,7 +2639,7 @@ def where(condition, x=None, y=None, name=None):
           condition, preferred_dtype=dtypes.bool, name="condition")
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
-    return gen_math_ops._select(condition=condition, x=x, y=y, name=name)
+    return gen_math_ops.select(condition=condition, x=x, y=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 

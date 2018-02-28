@@ -243,7 +243,8 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_gen_math_ops_matmul(self, m, transpose_b, num_iters):
     def func():
-      gen_math_ops._mat_mul(m, m, transpose_b=transpose_b)
+      gen_math_ops.mat_mul(m, m, transpose_b=transpose_b)
+
     self._run(func, num_iters)
 
   def _benchmark_tfe_py_fastpath_execute_matmul(self, m, transpose_b,

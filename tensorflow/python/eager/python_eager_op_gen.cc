@@ -955,10 +955,10 @@ from tensorflow.python.util.tf_export import tf_export
     if (api_def->visibility() == ApiDef::SKIP) {
       continue;
     }
-
     // An op is hidden if either its ApiDef visibility is HIDDEN
     // or it is in the hidden_ops list.
     bool is_hidden = api_def->visibility() == ApiDef::HIDDEN;
+    bool hidden_by_api_def = is_hidden;
     if (!is_hidden) {
       for (const string& hidden : hidden_ops) {
         if (op_def.name() == hidden) {
@@ -971,13 +971,22 @@ from tensorflow.python.util.tf_export import tf_export
     string function_name;
     python_op_gen_internal::GenerateLowerCaseOpName(op_def.name(),
                                                     &function_name);
-    if (is_hidden) function_name = strings::StrCat("_", function_name);
+    bool is_reserved = python_op_gen_internal::IsPythonReserved(function_name);
 
-    // When users create custom python wrappers, they may link in the
-    // default op registry by accident, and because they can't
-    // enumerate all 'hidden' symbols, this guard is to prevent
-    // instantiating a python reserved word in their wrapper.
-    if (python_op_gen_internal::IsPythonReserved(function_name)) {
+    // Prefix an op with underscore if the op is listed in hidden_ops or
+    // name is reserved or it is of the exceptions in IsOpWithUnderscorePrefix.
+    // Do not add underscores to ops set to HIDDEN in ApiDef otherwise.
+    // TODO(annarev): don't prefix with underscores even if op is in hidden_ops.
+    if (is_hidden) {
+      if (!hidden_by_api_def || is_reserved ||
+          python_op_gen_internal::IsOpWithUnderscorePrefix(function_name)) {
+        function_name = strings::StrCat("_", function_name);
+      }
+    } else if (is_reserved) {
+      // When users create custom python wrappers, they may link in the
+      // default op registry by accident, and because they can't
+      // enumerate all 'hidden' symbols, this guard is to prevent
+      // instantiating a python reserved word in their wrapper.
       continue;
     }
 

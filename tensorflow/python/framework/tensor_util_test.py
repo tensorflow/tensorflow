@@ -768,7 +768,7 @@ class ConstantValueTest(test.TestCase):
     self.assertAllClose(np_val, tensor_util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = gen_state_ops._variable(
+    tf_val = gen_state_ops.variable(
         shape=[3, 4, 7],
         dtype=dtypes.float32,
         name="tf_val",

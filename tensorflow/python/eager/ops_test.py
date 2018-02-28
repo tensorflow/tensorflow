@@ -131,8 +131,12 @@ class OpsTest(test_util.TensorFlowTestCase):
                                    dtype=dtypes.int64)
     values = constant_op.constant([2, 3, 5, 7, 11])
     shape = constant_op.constant([2, 7], dtype=dtypes.int64)
-    result = sparse_ops.gen_sparse_ops._sparse_split(  # pylint: disable=protected-access
-        split_dim, indices, values, shape, num_split=2)
+    result = sparse_ops.gen_sparse_ops.sparse_split(
+        split_dim,
+        indices,
+        values,
+        shape,
+        num_split=2)
     output_indices, output_values, output_shape = result
     self.assertEqual(2, len(output_indices))
     self.assertEqual(2, len(output_values))
