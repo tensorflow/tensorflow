@@ -712,9 +712,9 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 }
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
-  string fastpath_execute_params = strings::StrCat(
-      "_ctx._handle, _ctx.device_name, \"", op_def_.name(), "\", ",
-      "_execute.record_gradient, name, _ctx._post_execution_callbacks");
+  string fastpath_execute_params =
+      strings::StrCat("_ctx._handle, _ctx.device_name, \"", op_def_.name(),
+                      "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
