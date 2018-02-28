@@ -321,6 +321,15 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  // Creates a Shape with element type corresponding to T and the given
+  // dimensions
+  template <typename T>
+  static Shape MakeShapeWithType(
+      tensorflow::gtl::ArraySlice<int64> dimensions) {
+    return ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(),
+                                dimensions);
+  }
+
   // Constructs a new shape with the given minor_to_major order in its Layout.
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(

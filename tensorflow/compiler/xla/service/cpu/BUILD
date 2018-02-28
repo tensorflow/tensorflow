@@ -514,7 +514,6 @@ cc_library(
 
 cc_library(
     name = "runtime_matvec",
-    srcs = ["runtime_matvec.cc"],
     hdrs = ["runtime_matvec.h"],
     copts = runtime_copts(),
     deps = [
