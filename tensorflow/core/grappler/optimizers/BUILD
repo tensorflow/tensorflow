@@ -196,6 +196,46 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "loop_optimizer",
+    srcs = ["loop_optimizer.cc"],
+    hdrs = [
+        "loop_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constant_folding",
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+    ],
+)
+
+tf_cc_test(
+    name = "loop_optimizer_test",
+    size = "small",
+    srcs = ["loop_optimizer_test.cc"],
+    deps = [
+        ":loop_optimizer",
+        ":constant_folding",
+        ":model_pruner",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
     name = "dependency_optimizer",
     srcs = ["dependency_optimizer.cc"],
     hdrs = [
@@ -360,6 +400,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",
+        ":loop_optimizer",
         ":auto_parallel",
         ":constant_folding",
         ":dependency_optimizer",
