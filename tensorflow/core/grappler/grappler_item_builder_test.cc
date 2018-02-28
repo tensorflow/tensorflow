@@ -280,6 +280,59 @@ TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
   ASSERT_TRUE(item != nullptr);
 }
 
+TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  output.set_name("z");
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item != nullptr);
+
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->fetch[0], "z");
+}
+
+TEST_F(GrapplerItemBuilderTest, FromGraphWithIncompleteSignatureDef) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  // Its coo_sparse proto is incomplete.
+  output.mutable_coo_sparse()->set_values_tensor_name("z");
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item == nullptr);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
