@@ -35,6 +35,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
