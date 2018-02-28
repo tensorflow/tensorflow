@@ -236,8 +236,9 @@ class SplitVOpCPUImpl {
     };
     if (use_parallelism_between_outputs) {
       // Run in parallel, disabling parallelism in functor.
-      context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
-          num_split, input_element_count / num_split, range_output_func);
+      Shard(num_split,
+            context->device()->tensorflow_cpu_worker_threads()->workers,
+            num_split, input_element_count / num_split, range_output_func);
     } else {
       // Run sequentially, but allow internal parallelism in functor.
       range_output_func(0, num_split);
