@@ -1790,7 +1790,7 @@ class CondContext(ControlFlowContext):
 
     ret.Enter()
     for nested_def in context_def.nested_contexts:
-      from_control_flow_context_def(nested_def)
+      from_control_flow_context_def(nested_def, import_scope=import_scope)
     ret.Exit()
     return ret
 
