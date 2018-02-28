@@ -38,7 +38,7 @@ example:
 
 ``` python
 my_int_variable = tf.get_variable("my_int_variable", [1, 2, 3], dtype=tf.int32,
-  initializer=tf.zeros_initializer)
+  initializer=tf.zeros_initializer())
 ```
 
 TensorFlow provides many convenient initializers. Alternatively, you may
