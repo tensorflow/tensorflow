@@ -334,6 +334,9 @@ xla_test(
 xla_test(
     name = "while_test",
     srcs = ["while_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

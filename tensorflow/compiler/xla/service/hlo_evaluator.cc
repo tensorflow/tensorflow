@@ -1372,7 +1372,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(map->shape());
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     TF_RETURN_IF_ERROR(
         result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           std::vector<std::unique_ptr<Literal>> arg_literals;
@@ -1507,7 +1507,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(
         result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
@@ -1581,7 +1581,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     int64 rank = ShapeUtil::Rank(operand_literal.shape());
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     DimensionVector source_index(rank);
 
     std::fill(source_index.begin(), source_index.end(), 0);
@@ -1692,7 +1692,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector window_index(window.dimensions_size());
     DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(
         result->Populate<ReturnT>([&](ArraySlice<int64> output_index) {
@@ -2069,7 +2069,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   HloEvaluator* parent_;
 };  // class HloEvaluator::TypedVisitor
 
-HloEvaluator::HloEvaluator() {
+HloEvaluator::HloEvaluator(int64 max_loop_iterations)
+    : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
@@ -2508,6 +2509,36 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   }
 
   evaluated_[conditional] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
+  HloComputation* cond_comp = while_hlo->while_condition();
+  HloComputation* body_comp = while_hlo->while_body();
+  // Initialize the loop carried valued with the input to the While instruction.
+  auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).CloneToUnique();
+  bool keep_going = true;
+  int64 iteration_count = 0;
+  HloEvaluator cond_evaluator(max_loop_iterations_);
+  HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  while (keep_going) {
+    if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%lld).",
+                             while_hlo->name().c_str(), max_loop_iterations_);
+    }
+    TF_ASSIGN_OR_RETURN(auto cond_val, cond_evaluator.Evaluate<Literal*>(
+                                           *cond_comp, {lcv.get()}));
+    keep_going = cond_val->GetFirstElement<bool>();
+    if (keep_going) {
+      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
+                                             *body_comp, {lcv.get()}));
+      VLOG(3) << "Loop iteration result: " << body_val->ToString();
+      lcv = std::move(body_val);
+      cond_evaluator.ResetVisitStates();
+      loop_body_evaluator.ResetVisitStates();
+    }
+  }
+  evaluated_[while_hlo] = std::move(lcv);
   return Status::OK();
 }
 
