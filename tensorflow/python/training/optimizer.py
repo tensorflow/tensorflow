@@ -98,6 +98,9 @@ class _RefVariableProcessor(_OptimizableVariable):
   def __init__(self, v):
     self._v = v
 
+  def __str__(self):
+    return "<_RefVariableProcessor(%s)>" % self._v
+
   def target(self):
     return self._v._ref()  # pylint: disable=protected-access
 

@@ -719,6 +719,8 @@ def TF_Reset(target, containers=None, config=None):
   $1 = &types_local;
 }
 
+%unignore SetRequireShapeInferenceFns;
+
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall

@@ -197,6 +197,15 @@ class HloTestBase : public ::testing::Test {
         ->Clear();
   }
 
+  // Gets the computation/instruction from the given module with the given name.
+  //
+  // This is useful for tests which create HLOs from a string and then want to
+  // inspect a particular computation or instruction.
+  HloComputation* FindComputation(HloModule* module,
+                                  tensorflow::StringPiece name);
+  HloInstruction* FindInstruction(HloModule* module,
+                                  tensorflow::StringPiece name);
+
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
 

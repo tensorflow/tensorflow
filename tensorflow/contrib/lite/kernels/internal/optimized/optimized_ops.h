@@ -758,14 +758,89 @@ void Im2col(const T* input_data, const Dims<4>& input_dims, int stride,
          kwidth, byte_zero, output_data, output_dims);
 }
 
+inline void DilatedConv(const float* input_data, const Dims<4>& input_dims,
+                        const float* filter_data, const Dims<4>& filter_dims,
+                        const float* bias_data, const Dims<4>& bias_dims,
+                        int stride_width, int stride_height,
+                        int dilation_width_factor, int dilation_height_factor,
+                        int pad_width, int pad_height,
+                        float output_activation_min,
+                        float output_activation_max, float* output_data,
+                        const Dims<4>& output_dims, float* im2col_data,
+                        const Dims<4>& im2col_dims) {
+  // This is a copy of the reference Conv implementation. We do not currently
+  // have an optimized path for dilation.
+  (void)im2col_data;  // only used in optimized code.
+  (void)im2col_dims;  // only used in optimized code.
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(ArraySize(filter_dims, 3), ArraySize(bias_dims, 0));
+  }
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          const int in_x_origin = (out_x * stride_width) - pad_width;
+          const int in_y_origin = (out_y * stride_height) - pad_height;
+          float total = 0.f;
+          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
+                // If the location is outside the bounds of the input image,
+                // use zero as a default value.
+                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                    (in_y < input_height)) {
+                  float input_value = input_data[Offset(input_dims, in_channel,
+                                                        in_x, in_y, batch)];
+                  float filter_value =
+                      filter_data[Offset(filter_dims, in_channel, filter_x,
+                                         filter_y, out_channel)];
+                  total += (input_value * filter_value);
+                }
+              }
+            }
+          }
+          float bias_value = 0.0f;
+          if (bias_data) {
+            bias_value = bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
+          }
+          output_data[Offset(output_dims, out_channel, out_x, out_y, batch)] =
+              ActivationFunctionWithMinMax(total + bias_value,
+                                           output_activation_min,
+                                           output_activation_max);
+        }
+      }
+    }
+  }
+}
+
 inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  const float* filter_data, const Dims<4>& filter_dims,
                  const float* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, float output_activation_min,
-                 float output_activation_max, float* output_data,
-                 const Dims<4>& output_dims, float* im2col_data,
-                 const Dims<4>& im2col_dims) {
+                 int stride_width, int stride_height, int dilation_width_factor,
+                 int dilation_height_factor, int pad_width, int pad_height,
+                 float output_activation_min, float output_activation_max,
+                 float* output_data, const Dims<4>& output_dims,
+                 float* im2col_data, const Dims<4>& im2col_dims) {
+  if ((dilation_width_factor != 1) || (dilation_height_factor != 1)) {
+    return DilatedConv(input_data, input_dims, filter_data, filter_dims,
+                       bias_data, bias_dims, stride_width, stride_height,
+                       dilation_width_factor, dilation_height_factor, pad_width,
+                       pad_height, output_activation_min, output_activation_max,
+                       output_data, output_dims, im2col_data, im2col_dims);
+  }
+
   (void)im2col_data;
   (void)im2col_dims;
   gemmlowp::ScopedProfilingLabel label("Conv");
@@ -805,6 +880,23 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
                                    output_activation_max);
 }
 
+template <FusedActivationFunctionType Ac>
+void Conv(const float* input_data, const Dims<4>& input_dims,
+          const float* filter_data, const Dims<4>& filter_dims,
+          const float* bias_data, const Dims<4>& bias_dims, int stride_width,
+          int stride_height, int dilation_width_factor,
+          int dilation_height_factor, int pad_width, int pad_height,
+          float* output_data, const Dims<4>& output_dims, float* im2col_data,
+          const Dims<4>& im2col_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+  Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
+       stride_width, stride_height, dilation_width_factor,
+       dilation_height_factor, pad_width, pad_height, output_activation_min,
+       output_activation_max, output_data, output_dims, im2col_data,
+       im2col_dims);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void Conv(const float* input_data, const Dims<4>& input_dims,
@@ -816,7 +908,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
   float output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
   Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
-       stride_width, stride_height, pad_width, pad_height,
+       stride_width, stride_height, 1, 1, pad_width, pad_height,
        output_activation_min, output_activation_max, output_data, output_dims,
        im2col_data, im2col_dims);
 }
@@ -830,7 +922,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
           const Dims<4>& output_dims, float* im2col_data,
           const Dims<4>& im2col_dims) {
   Conv<Ac>(input_data, input_dims, filter_data, filter_dims, bias_data,
-           bias_dims, stride, stride, pad_width, pad_height, output_data,
+           bias_dims, stride, stride, 1, 1, pad_width, pad_height, output_data,
            output_dims, im2col_data, im2col_dims);
 }
 
@@ -2435,9 +2527,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       FS new_state = gemmlowp::SaturatingAdd(
           gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
           prev_state_times_forget_state);
-      // Implementation of last internal tanh node, still in fixed-point.
-      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Implementation of last internal Tanh node, still in fixed-point.
+      // Since a Tanh fixed-point implementation is specialized for a given
+      // number or integer bits, and each specialization can have a substantial
+      // code size, and we already used above a Tanh on an input with 3 integer
+      // bits, and per the table in the above function comment there is no
+      // significant accuracy to be lost by clamping to [-8, +8] for a
+      // 3-integer-bits representation, let us just do that. This helps people
+      // porting this to targets where code footprint must be minimized.
+      F3 new_state_f3 = gemmlowp::Rescale<3>(new_state);
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state_f3);
       // Store the new internal state back to memory, as 16-bit integers.
+      // Note: here we store the original value with StateIntegerBits, not
+      // the rescaled 3-integer-bits value fed to tanh.
       vst1q_s16(output_state_data_ptr, new_state.raw());
       output_state_data_ptr += 8;
       // Down-scale the output activations to 8-bit integers, saturating,
@@ -2494,9 +2596,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       FS new_state = gemmlowp::SaturatingAdd(
           gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
           prev_state_times_forget_state);
-      // Implementation of last internal tanh node, still in fixed-point.
-      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Implementation of last internal Tanh node, still in fixed-point.
+      // Since a Tanh fixed-point implementation is specialized for a given
+      // number or integer bits, and each specialization can have a substantial
+      // code size, and we already used above a Tanh on an input with 3 integer
+      // bits, and per the table in the above function comment there is no
+      // significant accuracy to be lost by clamping to [-8, +8] for a
+      // 3-integer-bits representation, let us just do that. This helps people
+      // porting this to targets where code footprint must be minimized.
+      F3 new_state_f3 = gemmlowp::Rescale<3>(new_state);
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state_f3);
       // Store the new internal state back to memory, as 16-bit integers.
+      // Note: here we store the original value with StateIntegerBits, not
+      // the rescaled 3-integer-bits value fed to tanh.
       *output_state_data_ptr++ = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.
@@ -3326,6 +3438,43 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
 
         } else {
           output_data_ptr[c] = 0;
+        }
+      }
+    }
+  }
+}
+
+// TODO(myenik): This is the same as the reference implementation, not actually
+// optimized yet.
+inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
+                       float* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        // Find max element value which we'll use to ensure numerical stability
+        // taking advantage of the following equality:
+        // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
+        float max = std::numeric_limits<float>::lowest();
+        for (int c = 0; c < depth; ++c) {
+          max = std::max(max, input_data[Offset(input_dims, c, x, y, b)]);
+        }
+
+        // Compute sum.
+        float sum = 0.f;
+        for (int c = 0; c < depth; ++c) {
+          sum += std::exp(input_data[Offset(input_dims, c, x, y, b)] - max);
+        }
+
+        // Compute result.
+        const float log_sum = std::log(sum);
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              input_data[Offset(input_dims, c, x, y, b)] - max - log_sum;
         }
       }
     }
@@ -4542,6 +4691,35 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
           }
         }
         output_data[Offset(output_dims, 0, x, y, b)] = max_index;
+      }
+    }
+  }
+}
+
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, const int* permuted_axes) {
+  int out_sizes[4];
+  // Compute the inverse permutation array so we can do an output centered
+  // transpose. Also, check to make sure output_dims is matching input_dims.
+  for (int k = 0; k < 4; k++) {
+    out_sizes[k] =
+        MatchingArraySize(input_dims, permuted_axes[k], output_dims, k);
+  }
+
+  // Naive transpose loop (iterate on output index and compute input index).
+  int o[4];  // loop index (on output).
+  int i[4];
+  for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
+    i[permuted_axes[3]] = o[3];
+    for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
+      i[permuted_axes[2]] = o[2];
+      for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
+        i[permuted_axes[1]] = o[1];
+        for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
+          i[permuted_axes[0]] = o[0];
+          output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
+        }
       }
     }
   }

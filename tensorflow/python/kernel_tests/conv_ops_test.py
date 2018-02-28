@@ -1516,7 +1516,7 @@ class Conv2DTest(test.TestCase):
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
 
-        
+
 class DepthwiseConv2DTest(test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,

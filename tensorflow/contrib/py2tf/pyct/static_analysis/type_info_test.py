@@ -65,6 +65,7 @@ class TypeInfoResolverTest(test.TestCase):
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
+        owner_type=None,
         recursive=True)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)

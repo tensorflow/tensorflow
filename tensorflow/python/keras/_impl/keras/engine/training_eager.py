@@ -29,6 +29,7 @@ from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _get_metrics_info(metric, internal_output_shapes=None, loss_func=None):
@@ -138,6 +139,8 @@ def _model_loss(model, inputs, targets, training=False):
                                    model.output_names[i])
       loss_metrics.append(K.mean(output_loss))
 
+      # TODO(fchollet): support masking; in practice `_keras_mask` is never
+      # set in this context currently.
       mask = outs[i]._keras_mask
       # adapted from weighted_loss_fn
       if mask is not None:
@@ -147,17 +150,7 @@ def _model_loss(model, inputs, targets, training=False):
         #  to the number of unmasked samples.
         output_loss /= K.mean(mask)
 
-      # adapted from weighted_loss_fn
-      # apply sample weighting
-      if model.sample_weights:
-        # reduce score_array to same ndim as weight array
-        ndim = K.ndim(output_loss)
-        weight_ndim = K.ndim(model.sample_weights)
-        output_loss = K.mean(output_loss, axis=list(range(weight_ndim, ndim)))
-        output_loss *= model.sample_weights
-        output_loss /= K.mean(K.cast(K.not_equal(model.sample_weights, 0),
-                                     K.floatx()))
-        output_loss = K.mean(output_loss)
+      # TODO(fchollet): support sample weighting
 
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
@@ -196,8 +189,7 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
       output of the model, total loss and the loss associated with each output.
 
   Raises:
-      ValueError: If the model loss is 0 or if the trainable weights list is
-                  empty when the trainable parameter is set to True.
+      ValueError: If the model has no loss to optimize.
   """
   K.set_learning_phase(training)
   with GradientTape() as tape:
@@ -209,12 +201,13 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
                        'because it has no loss to optimize.')
   if training:
     if not model._collected_trainable_weights:
-      raise ValueError('The list of trainable weights is empty. Make sure that '
-                       'you are not setting model.trainable to False before '
-                       'compiling the model.')
-    grads = tape.gradient(loss, model._collected_trainable_weights)
-    model.optimizer.apply_gradients(zip(grads,
-                                        model._collected_trainable_weights))
+      logging.warning('The list of trainable weights is empty. Make sure that '
+                      'you are not setting model.trainable to False before '
+                      'compiling the model.')
+    else:
+      grads = tape.gradient(loss, model._collected_trainable_weights)
+      model.optimizer.apply_gradients(zip(grads,
+                                          model._collected_trainable_weights))
   return outs, loss, loss_metrics
 
 
@@ -230,7 +223,8 @@ def train_on_batch(model, ins):
   """
   ins_batch_converted = []
   for ib in ins:
-    ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
+    if ib is not None:
+      ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
   eager_model_inputs = []
   eager_model_outputs = []
   for i in range(len(model.inputs)):

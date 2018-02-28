@@ -119,6 +119,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "bfloat16_propagation",
+    srcs = ["bfloat16_propagation.cc"],
+    hdrs = ["bfloat16_propagation.h"],
+    deps = [
+        ":bfloat16_support",
+        ":hlo",
+        ":hlo_dataflow_analysis",
+        ":hlo_dce",
+        ":hlo_pass",
+        ":tuple_simplifier",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "bfloat16_propagation_test",
+    srcs = ["bfloat16_propagation_test.cc"],
+    deps = [
+        ":bfloat16_propagation",
+        ":bfloat16_support",
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
     name = "shape_inference",
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],

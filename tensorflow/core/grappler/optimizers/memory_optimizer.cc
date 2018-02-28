@@ -720,18 +720,19 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   // Force the tensor to be copied to cpu.
   NodeDef* swap_out_node = graph->add_node();
   swap_out_node->set_name(swap_out_name);
-  swap_out_node->set_op("Identity");
-  swap_out_node->set_device("/device:CPU:0");
+  swap_out_node->set_op("_CopyFromGpuToHost");
 
   // Force the tensor to be restored to the device.
   NodeDef* swap_in_node = graph->add_node();
   swap_in_node->set_name(swap_in_name);
-  swap_in_node->set_op("Identity");
+  swap_in_node->set_op("_CopyFromHostToGpu");
   *swap_in_node->add_input() = swap_out_node->name();
 
-  // Colocate the swap_in_ node with the node itself.
+  // Colocate the swap_out_ and swap_in_ nodes with the node itself.
+  swap_out_node->set_device(node->device());
   swap_in_node->set_device(node->device());
   string coloc_group = strings::StrCat("loc@", tensor_to_swap);
+  (*swap_out_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
 
@@ -1104,7 +1105,8 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
                   Cluster* cluster, GrapplerItem* item,
                   std::unordered_set<string>* skip_list) {
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
-  if (optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
+  if (optimization_level == RewriterConfig::DEFAULT_MEM_OPT ||
+      optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
     // Use heuristics to figure out what needs to be swapped;
     IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap);
@@ -1240,7 +1242,8 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
-    if ((optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
+    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+         optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||
          optimization_level_ == RewriterConfig::MANUAL) &&
         cluster != nullptr) {

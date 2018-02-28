@@ -77,13 +77,14 @@ class StridedSliceOp : public XlaOpKernel {
     for (int i = 0; i < begin.size(); ++i) {
       if (strides[i] > 0) {
         slice_begin.push_back(begin[i]);
-        slice_end.push_back(end[i]);
+        slice_end.push_back(std::max(end[i], begin[i]));
         slice_strides.push_back(strides[i]);
       } else {
         // Negative stride: swap begin and end, add 1 because the interval
         // is semi-open, and mark the dimension to be reversed.
         slice_begin.push_back(input_shape.dim_size(i) - begin[i] - 1);
-        slice_end.push_back(input_shape.dim_size(i) - end[i] - 1);
+        slice_end.push_back(std::max(input_shape.dim_size(i) - end[i] - 1,
+                                     input_shape.dim_size(i) - begin[i] - 1));
         slice_strides.push_back(-strides[i]);
         dimensions_to_reverse.push_back(i);
       }

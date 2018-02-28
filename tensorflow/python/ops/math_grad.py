@@ -35,6 +35,12 @@ def _safe_shape_div(x, y):
   return x // math_ops.maximum(y, 1)
 
 
+@ops.RegisterGradient("ArgMax")
+def _ArgMaxGrad(op, grad):
+  del op, grad
+  return [None, None]
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""

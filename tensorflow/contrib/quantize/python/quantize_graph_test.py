@@ -211,6 +211,19 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertFalse(any(s in op.name for s in update_names))
     self.assertTrue(quant_found)
 
+  def testIdempotent(self):
+    self._RunTestOverAllRewrites(self._TestIdempotent)
+
+  def _TestIdempotent(self, rewrite_fn):
+    with ops.Graph().as_default() as g:
+      self._ConvLayer()
+      rewrite_fn()
+      graph_def_before = str(g.as_graph_def())
+      # Ensuring that calling the rewrite again doesn't add more nodes.
+      rewrite_fn()
+      graph_def_after = str(g.as_graph_def())
+      self.assertEqual(graph_def_before, graph_def_after)
+
   def _ConvLayer(self):
     """Add a basic convolution layer to the default graph."""
     batch_size, height, width, depth = 5, 128, 128, 3

@@ -451,6 +451,9 @@ class Literal {
   template <typename NativeT>
   NativeT GetFirstElement() const;
 
+  // Returns a literal scalar representing the first element.
+  Literal GetFirstScalarLiteral() const;
+
   // As Get(), but determines the correct type and converts the value
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
@@ -601,6 +604,9 @@ class Literal {
   //
   // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
+
+  // Literal consists entirely of the first element of the literal.
+  bool IsAllFirst() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.

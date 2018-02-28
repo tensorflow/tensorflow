@@ -289,10 +289,16 @@ def _set_checkpoint_initializer(variable,
     name: Name of the operation.
   """
   base_type = variable.dtype.base_dtype
-  with ops.colocate_with(variable):
+  # Do not colocate with variable since RestoreV2 op only runs on CPU and
+  # colocation will force variable (and other ops that colocate with variable)
+  # to be on CPU as well. It is okay to place the variable's initializer op on
+  # CPU since it will only be run once at the start.
+  with ops.device(variable.device), ops.device("/cpu:0"):
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
     variable._initializer_op = state_ops.assign(variable, restore_op)  # pylint:disable=protected-access
+    restore_op.set_shape(variable.shape)
+    variable._initial_value = restore_op  # pylint:disable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

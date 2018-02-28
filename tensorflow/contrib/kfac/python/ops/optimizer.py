@@ -23,11 +23,14 @@ from tensorflow.contrib.kfac.python.ops import curvature_matrix_vector_products 
 from tensorflow.contrib.kfac.python.ops import estimator as est
 # pylint enable=long-line
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import gradient_descent
 
@@ -61,6 +64,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       damping: The damping factor used to stabilize training due to errors in
           the local approximation with the Fisher information matrix, and to
           regularize the update direction by making it closer to the gradient.
+          If damping is adapted during training then this value is used for
+          initializing damping varaible.
           (Higher damping means the update looks more like a standard gradient
           update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
@@ -105,10 +110,31 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     if variables is None:
       variables = tf_variables.trainable_variables()
 
+    # The below paramaters are required only if damping needs to be adapated.
+    # These parameters can be set by calling
+    # set_damping_adaptation_params() explicitly.
+    self._damping_adaptation_decay = 0.95
+    self._damping_adaptation_interval = 5
+    # Check section 6.5 KFAC paper. omega(1) = pow(damping decay, interval)
+    self._omega = (
+        self._damping_adaptation_decay**self._damping_adaptation_interval)
+    self._adapt_damping = False
+    self._min_damping = 1e-5
+    self._prev_train_batch = None
+    self._is_chief = False
+    self._loss_fn = None
+    self._damping_constant = damping
+    self._damping = None
+    self._rho = None
+    self._prev_loss = None
+    self._q_model_change = None
+    self._update_damping_op = None
+
+    self._layers = layer_collection
     self._fisher_est = est.FisherEstimator(
+        lambda: self.damping,
         variables,
         cov_ema_decay,
-        damping,
         layer_collection,
         estimation_mode=estimation_mode,
         colocate_gradients_with_ops=colocate_gradients_with_ops,
@@ -138,6 +164,60 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._losses = layer_collection.losses
 
     super(KfacOptimizer, self).__init__(learning_rate, name=name)
+
+  def set_damping_adaptation_params(self,
+                                    is_chief,
+                                    prev_train_batch,
+                                    loss_fn,
+                                    min_damping=1e-5,
+                                    damping_adaptation_decay=0.99,
+                                    damping_adaptation_interval=5):
+    """Sets parameters required to adapt damping during training.
+
+    When called, enables damping adaptation according to the Levenberg-Marquardt
+    style rule described in Section 6.5 of "Optimizing Neural Networks with
+    Kronecker-factored Approximate Curvature".
+
+    Args:
+      is_chief: `Boolean`, `True` if the worker is chief.
+      prev_train_batch: Training data used to minimize loss in the previous
+        step. This will be used to evaluate loss by calling
+        `loss_fn(prev_train_batch)`.
+      loss_fn: `function` that takes as input training data tensor and returns
+        a scalar loss.
+      min_damping: `float`(Optional), Minimum value the damping parameter
+        can take. Default value 1e-5.
+      damping_adaptation_decay: `float`(Optional), The `damping` parameter is
+        multipled by the `damping_adaptation_decay` every
+        `damping_adaptation_interval` number of iterations. Default value 0.99.
+      damping_adaptation_interval: `int`(Optional), Number of steps in between
+        updating the `damping` parameter. Default value 5.
+
+    Raises:
+      ValueError: If `set_damping_adaptation_params` is already called and the
+        the `adapt_damping` is `True`.
+    """
+    if self._adapt_damping:
+      raise ValueError("Damping adaptation parameters already set.")
+    with variable_scope.variable_scope(self.get_name()):
+      self._adapt_damping = True
+      self._is_chief = is_chief
+      self._prev_train_batch = prev_train_batch
+      self._loss_fn = loss_fn
+      self._damping_adaptation_decay = damping_adaptation_decay
+      self._damping_adaptation_interval = damping_adaptation_interval
+      self._omega = (
+          self._damping_adaptation_decay**self._damping_adaptation_interval)
+      self._min_damping = min_damping
+
+      self._rho = variable_scope.get_variable(
+          "rho", shape=(), dtype=dtypes.float32, trainable=False)  # LM ratio.
+      self._prev_loss = variable_scope.get_variable(
+          "prev_loss", shape=(), dtype=dtypes.float32, trainable=False)
+      self._q_model_change = variable_scope.get_variable(
+          "q_model_change", shape=(), dtype=dtypes.float32, trainable=False)
+      self._damping = variable_scope.get_variable(
+          "damping", initializer=self._damping_constant, trainable=False)
 
   @property
   def cov_update_thunks(self):
@@ -169,14 +249,34 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
 
   @property
   def damping(self):
-    return self._fisher_est.damping
+    if self._damping:
+      return self._damping
+    else:
+      return self._damping_constant
+
+  @property
+  def damping_adaptation_interval(self):
+    return self._damping_adaptation_interval
 
   def minimize(self, *args, **kwargs):
     kwargs["var_list"] = kwargs.get("var_list") or self.variables
     if set(kwargs["var_list"]) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
-    return super(KfacOptimizer, self).minimize(*args, **kwargs)
+    if self._adapt_damping and self._is_chief:
+      global_step = kwargs.get("global_step", None)
+      if not global_step:
+        raise KeyError("global_step needs to be passed to optimizer.minimize "
+                       "if damping parameter is adapted.")
+      update_damping_op = self._update_damping(self._prev_train_batch,
+                                               global_step)
+      with ops.control_dependencies([update_damping_op]):
+        loss = args[0]
+        loss_assign_op = state_ops.assign(self._prev_loss, loss)
+        train_op = super(KfacOptimizer, self).minimize(*args, **kwargs)
+        return control_flow_ops.group(loss_assign_op, train_op)
+    else:
+      return super(KfacOptimizer, self).minimize(*args, **kwargs)
 
   def compute_gradients(self, *args, **kwargs):
     # args[1] could be our var_list
@@ -296,6 +396,20 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     coeff = self._update_clip_coeff(grads_and_vars, precon_grads_and_vars)
     return [(pgrad * coeff, var) for pgrad, var in precon_grads_and_vars]
 
+  def _compute_prev_updates(self, variables):
+    """Computes previous updates as negative velocities scaled by learning rate.
+
+    Args:
+      variables: List of variables in the graph that the update will be
+          applied to.
+
+    Returns:
+      List of previous updates applied to the `variables`.
+    """
+    return list(
+        -1 * self._learning_rate * self._zeros_slot(var, "velocity", self._name)
+        for var in variables)
+
   def _compute_qmodel_hyperparams(self, precon_grads, prev_updates, grads,
                                   variables):
     """Compute optimal update hyperparameters from the quadratic model.
@@ -374,9 +488,9 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       c = ops.convert_to_tensor([[_inner_product_list(grads, precon_grads)],
                                  [_inner_product_list(grads, prev_updates)]])
 
-      sol = _two_by_two_solve(m, c)
-      alpha = -sol[0]
-      mu = -sol[1]
+      sol = -1. * _two_by_two_solve(m, c)
+      alpha = sol[0]
+      mu = sol[1]
       qmodel_change = 0.5 * math_ops.reduce_sum(sol * c)
 
       return alpha, mu, qmodel_change
@@ -404,6 +518,52 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     return control_flow_ops.cond(
         math_ops.equal(m_22, 0.0), zero_prevupd_case, non_zero_prevupd_case)
 
+  def _assign_q_model_change(self, q_model_change):
+    """Assigns `q_model_change` to `self._q_model_change` if damping is adapted.
+
+    Note only the chief worker does the assignment.
+
+    Args:
+      q_model_change: Scalar tensor of type `float32`.
+
+    Returns:
+      If `adapt_damping` is `True` then returns an assign op, Otherwise returns
+      a no_op().
+    """
+    if self._adapt_damping and self._is_chief:
+      q_model_assign_op = state_ops.assign(self._q_model_change, q_model_change)
+    else:
+      q_model_assign_op = control_flow_ops.no_op()
+    return q_model_assign_op
+
+  def _compute_qmodel_hyperparams_wrapper(self, grads_and_vars,
+                                          precon_grads_and_vars):
+    """Wrapper function for `self._compute_qmodel_hyperparams`.
+
+    Constructs a list of preconditioned gradients and variables. Also creates a
+    op to asssign the computed q model change to `self._q_model_change`.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+      precon_grads_and_vars: List of (preconditioned gradients, variable)
+        pairs.
+
+    Returns:
+      (alpha, mu, q_model_assign_op), where alpha and mu are chosen to optimize
+      the quadratic model, `q_model_assign_op` assigns the computed q model
+      change to `self._q_model_change`.
+    """
+    precon_grads = list(
+        precon_grad for (precon_grad, _) in precon_grads_and_vars)
+    grads = list(grad for (grad, _) in grads_and_vars)
+    variables = list(var for (_, var) in grads_and_vars)
+    prev_updates = self._compute_prev_updates(variables)
+    # Compute optimal velocity update parameters according to quadratic model
+    alpha, mu, q_model_change = self._compute_qmodel_hyperparams(
+        precon_grads, prev_updates, grads, variables)
+
+    return alpha, mu, self._assign_q_model_change(q_model_change)
+
   def _compute_update_steps(self, grads_and_vars):
     """Computes the update steps for the variables given the gradients.
 
@@ -411,8 +571,10 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       grads_and_vars: List of (gradient, variable) pairs.
 
     Returns:
-      An 'Operation that computes the update steps for the given variables.
+      A list of tuple (assign_op ,var) where `assign_op` assigns the update
+      steps to `var`.
     """
+
     if self._momentum_type == "regular":
       # Compute "preconditioned" gradient.
       precon_grads_and_vars = self._fisher_est.multiply_inverse(grads_and_vars)
@@ -423,8 +585,13 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                                                    precon_grads_and_vars)
 
       # Update the velocity with this and return it as the step.
-      return self._update_velocities(precon_grads_and_vars, self._momentum)
-
+      if self._adapt_damping and self._is_chief:
+        _, _, q_model_assign_op = self._compute_qmodel_hyperparams_wrapper(
+            grads_and_vars, precon_grads_and_vars)
+        with ops.control_dependencies([q_model_assign_op]):
+          return self._update_velocities(precon_grads_and_vars, self._momentum)
+      else:
+        return self._update_velocities(precon_grads_and_vars, self._momentum)
     elif self._momentum_type == "adam":
       # Update velocity.
       velocities_and_vars = self._update_velocities(grads_and_vars,
@@ -436,23 +603,13 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       # Compute "preconditioned" gradient.
       precon_grads_and_vars = self._fisher_est.multiply_inverse(grads_and_vars)
 
-      # Extract out singleton lists from the tuple-lists
-      precon_grads = list(
-          precon_grad for (precon_grad, _) in precon_grads_and_vars)
-      grads = list(grad for (grad, _) in grads_and_vars)
-      variables = list(var for (_, var) in grads_and_vars)
-      # previous updates are the negative velocities (up to scaling by LR)
-      prev_updates = list(
-          -self._zeros_slot(var, "velocity", self._name) for var in variables)
-
       # Compute optimal velocity update parameters according to quadratic model
-      alpha, mu, _ = self._compute_qmodel_hyperparams(
-          precon_grads, prev_updates, grads, variables)
+      alpha, mu, q_model_assign_op = self._compute_qmodel_hyperparams_wrapper(
+          grads_and_vars, precon_grads_and_vars)
 
-      # Update the velocity with precon_grads according to these params
-      # and return it as the step.
-      return self._update_velocities(
-          precon_grads_and_vars, mu, vec_coeff=-alpha)
+      with ops.control_dependencies([q_model_assign_op]):
+        return self._update_velocities(
+            precon_grads_and_vars, mu, vec_coeff=-alpha)
 
   def _update_velocities(self, vecs_and_vars, decay, vec_coeff=1.0):
     """Updates the velocities of the variables with the given vectors.
@@ -481,6 +638,51 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
 
     # Go through variable and update its associated part of the velocity vector.
     return [_update_velocity(vec, var) for vec, var in vecs_and_vars]
+
+  # TODO(b/73448937): Move all update damping code to a separate class/function.
+  def _update_damping(self, prev_batch, global_step):
+    """Adapts damping parameter. Check KFAC (Section 6.5) for the details.
+
+    The damping parameter is updated according to the Levenberg-Marquardt rule
+    every `self._damping_adaptation_interval` iterations.
+
+    Args:
+      prev_batch: Tensor or tuple of tensors which can be passed to
+        `self._loss_fn` to evaluate loss.
+      global_step: `Variable` which keeps track of number of times the training
+        variables have been updated.
+    Returns:
+      A `tf.cond` op which updates the damping parameter.
+    """
+    def compute_damping():
+      """"Adapts damping parameter based on "reduction ratio".
+
+      Reduction ratio captures how closely the quadratic approximation to the
+      loss function approximates the actual loss within a trust region. The
+      damping update tries to make the damping as small as possible while
+      maintaining the property that the quadratic model remains a good local
+      approximation to the loss function.
+
+      Returns:
+        An Op to assign newly computed damping value to `self._damping`.
+      """
+      prev_batch_loss = self._loss_fn(prev_batch)
+      with ops.control_dependencies([prev_batch_loss]):
+        rho_assign = self._rho.assign(
+            (prev_batch_loss - self._prev_loss) / self._q_model_change)
+        with ops.control_dependencies([rho_assign]):
+          new_damping = control_flow_ops.case(
+              [(self._rho < 0.25, lambda: self.damping / self._omega),
+               (self._rho > 0.75, lambda: self.damping * self._omega)],
+              lambda: self.damping)
+          with ops.control_dependencies([new_damping]):
+            new_damping_min = math_ops.maximum(new_damping, self._min_damping)
+            return control_flow_ops.group(self._damping.assign(new_damping_min))
+
+    return control_flow_ops.cond(
+        math_ops.equal(
+            math_ops.mod(global_step + 1, self._damping_adaptation_interval),
+            0), compute_damping, control_flow_ops.no_op)
 
 
 def _inner_product_list(list1, list2):

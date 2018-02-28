@@ -31,17 +31,22 @@ namespace {
 
 void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
                       int kheight, int stride_width, int stride_height,
+                      int dilation_width_factor, int dilation_height_factor,
                       PaddingType padding_type, Shape* output_shape,
                       FixedPadding* fixed_padding) {
   const int input_width = input_shape.dims(2);
   const int input_height = input_shape.dims(1);
   const int batch = input_shape.dims(0);
 
+  int dilated_kwidth = dilation_width_factor * (kwidth - 1) + 1;
+  int dilated_kheight = dilation_height_factor * (kheight - 1) + 1;
+
   int output_height = 0;
   int output_width = 0;
   if (padding_type == PaddingType::kValid) {
-    output_height = (input_height + stride_height - kheight) / stride_height;
-    output_width = (input_width + stride_width - kwidth) / stride_width;
+    output_height =
+        (input_height + stride_height - dilated_kheight) / stride_height;
+    output_width = (input_width + stride_width - dilated_kwidth) / stride_width;
   } else if (padding_type == PaddingType::kSame) {
     output_height = (input_height + stride_height - 1) / stride_height;
     output_width = (input_width + stride_width - 1) / stride_width;
@@ -49,10 +54,12 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
     LOG(FATAL) << "Only supporting SAME or VALID padding";
   }
 
-  fixed_padding->height = std::max(
-      0, ((output_height - 1) * stride_height + kheight - input_height) / 2);
+  fixed_padding->height = std::max(0, ((output_height - 1) * stride_height +
+                                       dilated_kheight - input_height) /
+                                          2);
   fixed_padding->width = std::max(
-      0, ((output_width - 1) * stride_width + kwidth - input_width) / 2);
+      0,
+      ((output_width - 1) * stride_width + dilated_kwidth - input_width) / 2);
 
   // Actually had to debug a situation where those were negative due to bad
   // propagation of placeholder -1 sizes in TensorFlowReshape.
@@ -166,7 +173,8 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, op->dilation_width_factor,
+                   op->dilation_height_factor, op->padding.type,
                    output_array.mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
   CHECK_EQ(output_array.shape().dimensions_count(), 4);
@@ -222,7 +230,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -697,7 +705,7 @@ void ProcessAveragePoolOperator(Model* model, AveragePoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -714,7 +722,7 @@ void ProcessMaxPoolOperator(Model* model, MaxPoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -733,7 +741,7 @@ void ProcessL2PoolOperator(Model* model, L2PoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }

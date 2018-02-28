@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/kernels/ops_util.h"
@@ -111,7 +111,7 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, class T>
 struct LaunchXsmmBackwardInputConvolution {
   bool operator()(OpKernelContext* context, const Device& d,
@@ -246,7 +246,8 @@ class Conv2DFastBackpropInputOp : public OpKernel {
       return;
     }
 
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(
@@ -363,7 +364,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
 // TODO(andydavis) Consider moving code shared with
 // Conv2DCustomBackpropFilterOp into a shared helper function.
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(

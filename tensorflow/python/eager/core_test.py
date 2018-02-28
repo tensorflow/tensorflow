@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 
 
@@ -65,8 +66,7 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
 
-    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
-                     ctx.device_name)
+    self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
     with ctx.device('GPU:0'):
       self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',
@@ -99,6 +99,18 @@ class TFETest(test_util.TensorFlowTestCase):
                      cpu_stats.device)
     self.assertEqual(len(cpu_stats.node_stats), 1)
     self.assertEqual(cpu_stats.node_stats[0].node_name, 'Add')
+
+  def testShouldCopy(self):
+    if not context.context().num_gpus():
+      self.skipTest('No devices other than CPUs found')
+    with ops.device('gpu:0'):
+      x = constant_op.constant(1.0)
+    y = array_ops.identity(x)
+    # The value we're testing y.device against will depend on what the behavior
+    # of not explicitly specifying a device in the context is.  This behavior is
+    # subject to change (for example, in the future we may want to use GPUs, if
+    # available, when no device is explicitly provided)
+    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   def testContextStackContainsEagerMode(self):
     # Eager execution has been enabled, and no other context

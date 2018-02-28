@@ -1556,8 +1556,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kSendRequest: {
       TF_RETURN_IF_ERROR(
           channel_tracker_.RegisterSend(arg->send_request().channel_handle()));
-      TF_RETURN_IF_ERROR(computation->AddSendInstruction(arg->send_request()));
-      return tensorflow::Status::OK();
+      // Send does not return a value, but we need a handle to be able to
+      // set OpMetadata and OpSharding (device assignment).
+      handle_status = computation->AddSendInstruction(arg->send_request());
+      break;
     }
     case OpRequest::kRecvRequest: {
       TF_RETURN_IF_ERROR(

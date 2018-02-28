@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 from math import log10
 import os
 import tempfile
@@ -62,7 +63,7 @@ def simple_functional_model():
   return model
 
 
-def get_resource_for_simple_model(is_sequential, is_evaluate):
+def get_resource_for_simple_model(is_sequential=True, is_evaluate=False):
   model = simple_sequential_model(
   ) if is_sequential else simple_functional_model()
   if is_sequential:
@@ -351,6 +352,30 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           keras_model=keras_mobile,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
           custom_objects=custom_objects)
+
+  def test_tf_config(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    tf_config = json.dumps({
+        'cluster': {
+            run_config_lib.TaskType.PS: ['localhost:1234'],
+            run_config_lib.TaskType.WORKER: ['localhost:1236'],
+            run_config_lib.TaskType.MASTER: ['localhost:1238']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      with self.test_session():
+        keras.estimator.model_to_estimator(
+            keras_model=keras_model,
+            model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
 
 if __name__ == '__main__':

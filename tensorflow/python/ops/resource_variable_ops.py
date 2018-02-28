@@ -117,8 +117,7 @@ class EagerResourceDeleter(object):
 
   def __del__(self):
     # Resources follow object-identity when executing eagerly, so it is safe to
-    # delete the resource we have a handle to. Each Graph has a unique container
-    # name, which prevents resource sharing.
+    # delete the resource we have a handle to.
     try:
       # This resource was created in eager mode. However, this destructor may be
       # running in graph mode (especially during unit tests). To clean up

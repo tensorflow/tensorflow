@@ -590,6 +590,85 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
                                             transpose->shape(), {2, 3, 0, 1}));
 }
 
+// TransposeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, TransposeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo = builder.AddInstruction(
+      HloInstruction::CreateTranspose(input_shape, param, {0, 2, 1}));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(ShapeUtil::TransposeIsBitcast(hlo->operand(0)->shape(),
+                                             hlo->shape(), hlo->dimensions()),
+               "LayoutUtil::HasLayout");
+}
+
+// ReshapeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, ReshapeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo =
+      builder.AddInstruction(HloInstruction::CreateReshape(input_shape, param));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(
+      ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()),
+      "LayoutUtil::HasLayout");
+}
+
+// Check that the computation below doesn't crash the compiler.
+//
+// Within a fusion computation, only the parameters and result get assigned a
+// layout.  When we run the algebraic simplifier on this computation post layout
+// assignment, it should not call TransposeIsBitcast on the `transpose` node
+// inside the fusion computation as TransposeIsBitcast checks both input_shape
+// and output_shape have layouts.
+TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    fused_computation {
+      param_1 = f32[2,2,2]{2,1,0} parameter(1)
+      transpose = f32[2,2,2]{2,1,0} transpose(param_1), dimensions={0,2,1}
+      reduce_1 = f32[] parameter(0)
+      broadcast_1 = f32[2,2,2]{2,1,0} broadcast(reduce_1), dimensions={}
+      ROOT divide_1 = f32[2,2,2]{2,1,0} divide(transpose, broadcast_1)
+    }
+
+    ENTRY entry_computation {
+      fusion.1 = f32[2,2,2]{2,1,0} parameter(1)
+      reduce.1 = f32[] parameter(0)
+      fusion.2 = f32[2,2,2]{2,1,0} fusion(reduce.1, fusion.1), kind=kLoop, calls=fused_computation
+     ROOT tuple.1 = (f32[2,2,2]{2,1,0}) tuple(fusion.2)
+    }
+  )";
+
+  auto module = tools::Parse(module_str).ValueOrDie();
+
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  EXPECT_EQ(
+      ::tensorflow::Status::OK(),
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       /*device_allocator=*/nullptr)
+          .status());
+}
+
 // A GTE inside of a fusion node inherits the layout of its operand (which
 // should, if we keep following operands, eventually be a parameter).
 TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
@@ -629,33 +708,29 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  HloComputation* fused_computation = *std::find_if(
-      module->computations().begin(), module->computations().end(),
-      [](const HloComputation* c) { return c->name() == "fused_computation"; });
-
-  auto fused_instr = [&](const string& name) {
-    auto it = std::find_if(
-        fused_computation->instructions().begin(),
-        fused_computation->instructions().end(),
-        [&](const HloInstruction* i) { return i->name() == name; });
-    CHECK(it != fused_computation->instructions().end());
-    return *it;
+  auto layout_of = [&](tensorflow::StringPiece name) {
+    return FindInstruction(module.get(), name)
+        ->shape()
+        .layout()
+        .minor_to_major();
   };
 
-  EXPECT_THAT(fused_instr("gte0")->shape().layout().minor_to_major(),
-              ElementsAre(0, 1, 2));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(0).layout().minor_to_major(),
-      ElementsAre(1, 2, 0));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(1).layout().minor_to_major(),
-      ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("gte1a")->shape().layout().minor_to_major(),
+  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(1, 2, 0));
-  EXPECT_THAT(fused_instr("gte1b")->shape().layout().minor_to_major(),
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("fresult")->shape().layout().minor_to_major(),
-              ElementsAre(2, 1, 0));
 }
 
 TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {

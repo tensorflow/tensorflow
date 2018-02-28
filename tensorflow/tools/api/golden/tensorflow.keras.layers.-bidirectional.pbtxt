@@ -2,7 +2,7 @@ path: "tensorflow.keras.layers.Bidirectional"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.Bidirectional\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.Wrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
   member {

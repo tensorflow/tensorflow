@@ -46,9 +46,7 @@ namespace cpu {
 class SimpleOrcJIT {
  public:
   using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer;
-  using CompileFtor =
-      std::function<llvm::object::OwningBinary<llvm::object::ObjectFile>(
-          llvm::Module&)>;
+  using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
   using VModuleKeyT = llvm::orc::VModuleKey;
 

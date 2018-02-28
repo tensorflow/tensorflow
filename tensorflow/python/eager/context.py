@@ -60,8 +60,7 @@ class _EagerContext(threading.local):
 
   def __init__(self):
     super(_EagerContext, self).__init__()
-    self.device_spec = pydev.DeviceSpec.from_string(
-        "/job:localhost/replica:0/task:0/device:CPU:0")
+    self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
     self.mode = _default_mode
     self.scope_name = ""

@@ -20,44 +20,43 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.platform import test
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class TimeDistributedTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_timedistributed_dense(self):
-    # first, test with Dense layer
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(2), input_shape=(3, 4)))
-      model.compile(optimizer='rmsprop', loss='mse')
-      model.fit(
-          np.random.random((10, 3, 4)),
-          np.random.random((10, 3, 2)),
-          epochs=1,
-          batch_size=10)
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(2), input_shape=(3, 4)))
+    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.fit(
+        np.random.random((10, 3, 4)),
+        np.random.random((10, 3, 2)),
+        epochs=1,
+        batch_size=10)
 
-      # test config
-      model.get_config()
+    # test config
+    model.get_config()
 
   def test_timedistributed_static_batch_size(self):
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
-      model.compile(optimizer='rmsprop', loss='mse')
-      model.fit(
-          np.random.random((10, 3, 4)),
-          np.random.random((10, 3, 2)),
-          epochs=1,
-          batch_size=10)
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
+    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.fit(
+        np.random.random((10, 3, 4)),
+        np.random.random((10, 3, 2)),
+        epochs=1,
+        batch_size=10)
 
   def test_timedistributed_conv2d(self):
-    # test with Conv2D
     with self.test_session():
       model = keras.models.Sequential()
       model.add(
@@ -73,7 +72,6 @@ class TimeDistributedTest(test.TestCase):
       model.summary()
 
   def test_timedistributed_stacked(self):
-    # test stacked layers
     with self.test_session():
       model = keras.models.Sequential()
       model.add(
@@ -167,7 +165,7 @@ class BidirectionalTest(test.TestCase):
         model.add(
             keras.layers.Bidirectional(
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(loss='mse', optimizer='sgd')
+        model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
         # test compute output shape

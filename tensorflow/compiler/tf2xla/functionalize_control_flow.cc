@@ -583,13 +583,15 @@ class FunctionalizeCond {
   // CondArgNode represents a input to the conditional and its corresponding
   // switch nodes.
   struct CondArgNode {
-    explicit CondArgNode(Node* input) : input(input) {}
+    explicit CondArgNode(Node* src, int src_output)
+        : src(src), src_output(src_output) {}
     string ToString() const {
-      return strings::StrCat("input=", input->name(),
+      return strings::StrCat("src=", src->name(), ":", src_output,
                              " switches=", NodesToString(switches));
     }
 
-    Node* input;
+    Node* src;
+    int src_output;
     std::vector<Node*> switches;
   };
   using CondArgNodes = std::vector<CondArgNode>;
@@ -606,14 +608,15 @@ class FunctionalizeCond {
 
   // Group of switch nodes that will be part of the same XlaIf.
   struct SwitchCluster {
-    explicit SwitchCluster(Node* predicate) : predicate(predicate) {}
+    explicit SwitchCluster(const Edge* predicate_edge)
+        : predicate_edge(predicate_edge) {}
     string ToString() const {
-      return strings::StrCat(name, " predicate=", predicate->name(),
+      return strings::StrCat(name, " predicate=", predicate_edge->src()->name(),
                              " switches=", NodesToString(switches));
     }
 
     string name;
-    Node* predicate;
+    const Edge* predicate_edge;
     std::vector<Node*> switches;
   };
 
@@ -653,8 +656,8 @@ class FunctionalizeCond {
                      Graph* body);
 
   // Adds all the input edges to `if_node` corresponding to the arguments.
-  Status AddInputEdges(const CondArgNodes& cond_arg_nodes, Node* predicate,
-                       Node* if_node);
+  Status AddInputEdges(const CondArgNodes& cond_arg_nodes,
+                       const Edge* predicate_edge, Node* if_node);
 
   // Adds all output edges from the `if_node`.
   Status AddOutputEdges(const std::vector<Node*>& outputs, Node* if_node);
@@ -756,8 +759,8 @@ Status FunctionalizeCond::Join(const ForwardFlowNode& src_state,
     if (IsMerge(dst)) {
       dst_state->branch = Branch::kBoth;
     } else {
-      return errors::Internal("Illegal merge: ", src_state.ToString(), " with ",
-                              dst_state->ToString(), " for ",
+      return errors::Internal("Illegal merge:\n", src_state.ToString(),
+                              " with ", dst_state->ToString(), " for\n",
                               dst->DebugString());
     }
   }
@@ -861,8 +864,8 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
     if (IsSwitch(n)) {
       Node* input;
       TF_CHECK_OK(n->input_node(0, &input));
-      entry_cluster[n->id()] = &clusters[input->id()];
-      UnionFind<Cluster>* cluster = find_output_cluster(input);
+      entry_cluster[n->id()] = find_output_cluster(input);
+      UnionFind<Cluster>* cluster = entry_cluster[n->id()];
       int cluster_depth = switch_depth[cluster->Get().representative];
       // Merge the inputs of the switch node with one another. This results in
       // predicates and control input residing in the same cluster.
@@ -956,16 +959,21 @@ FunctionalizeCond::DeterminePredicateSwitchOrder() {
   // node whose cluster is later in the topological order of clustered
   // switches).
   for (auto it = switch_order.rbegin(); it != switch_order.rend(); ++it) {
-    Node* pred;
-    TF_CHECK_OK((*it)->input_node(1, &pred));
-    auto repr = std::make_pair(pred, clusters[(*it)->id()].Get());
+    const Edge* pred_edge;
+    TF_CHECK_OK((*it)->input_edge(1, &pred_edge));
+    // The predicate can be preceded by a identity node. Look through identity
+    // nodes to predicate.
+    while (pred_edge->src()->IsIdentity()) {
+      TF_CHECK_OK(pred_edge->src()->input_edge(0, &pred_edge));
+    }
+    auto repr = std::make_pair(pred_edge->src(), clusters[(*it)->id()].Get());
     if (predicate_index.find(repr) == predicate_index.end()) {
       predicate_index[repr] = switch_clusters.size();
-      switch_clusters.emplace_back(pred);
+      switch_clusters.emplace_back(pred_edge);
       // Generate a name by concatenating with the cluster representative as
       // there could be multiple switch clusters with the same predicate.
-      switch_clusters[predicate_index[repr]].name =
-          strings::StrCat(pred->name(), "_", repr.second.representative, "_If");
+      switch_clusters[predicate_index[repr]].name = strings::StrCat(
+          pred_edge->src()->name(), "_", repr.second.representative, "_If");
     }
     switch_clusters[predicate_index[repr]].switches.push_back(*it);
   }
@@ -1044,9 +1052,12 @@ FunctionalizeCond::DetermineBranchMapAndFrontier(
       ForwardFlowNode& ffn = branch_map[out];
       if (IsSwitch(n)) {
         int index = e->IsControlEdge() ? Branch::kNeither : e->src_output();
-        TF_RETURN_IF_ERROR(Join(ForwardFlowNode(Branch(index)), out, &ffn));
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            Join(ForwardFlowNode(Branch(index)), out, &ffn), " when joining ",
+            e->DebugString());
       } else {
-        TF_RETURN_IF_ERROR(Join(branch_map[n], out, &ffn));
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(Join(branch_map[n], out, &ffn),
+                                        " when joining ", e->DebugString());
       }
       if (IsMerge(out)) {
         if (out->in_edges().size() == ffn.count) {
@@ -1083,8 +1094,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   for (auto it = predicate_switch_order.rbegin();
        it != predicate_switch_order.rend(); ++it) {
     auto& ps = *it;
-    VLOG(3) << "Flow down from: " << NodesToString(ps.switches) << " ("
-            << ps.predicate->name() << ")";
+    VLOG(3) << "Flow down from: " << ps.ToString();
 
     std::unordered_map<Node*, ForwardFlowNode> branch_map;
     std::unordered_set<Node*> frontier;
@@ -1097,21 +1107,29 @@ Status FunctionalizeCond::FunctionalizeInternal() {
                                                library_);
     TF_RETURN_IF_ERROR(ValidateFrontier(branch_map, frontier));
 
+    struct Hash {
+      size_t operator()(const std::pair<Node*, int>& item) const {
+        return Hash64Combine(hash<Node*>()(item.first),
+                             std::hash<int>()(item.second));
+      }
+    };
+
     // Sort the merge and switch nodes using NodeCmp. The switch-nodes are
     // further grouped (post sorting) by input to the switch node as in the
     // functionalized form each input will be passed in only once. This grouping
     // should retain the sorted order.
     CondArgNodes cond_arg_nodes;
-    std::unordered_map<Node*, int> input_index;
     std::sort(ps.switches.begin(), ps.switches.end(), NodeCmp());
+    std::unordered_map<std::pair<Node*, int>, int, Hash> input_index;
     for (Node* switch_node : ps.switches) {
-      Node* in;
-      TF_RETURN_IF_ERROR(switch_node->input_node(0, &in));
-      if (input_index.find(in) == input_index.end()) {
-        input_index[in] = cond_arg_nodes.size();
-        cond_arg_nodes.emplace_back(in);
+      const Edge* e;
+      TF_RETURN_IF_ERROR(switch_node->input_edge(0, &e));
+      std::pair<Node*, int> key = std::make_pair(e->src(), e->src_output());
+      if (input_index.find(key) == input_index.end()) {
+        input_index[key] = cond_arg_nodes.size();
+        cond_arg_nodes.emplace_back(key.first, key.second);
       }
-      cond_arg_nodes.at(input_index.at(in)).switches.push_back(switch_node);
+      cond_arg_nodes.at(input_index.at(key)).switches.push_back(switch_node);
     }
     std::vector<Node*> merge_nodes(frontier.begin(), frontier.end());
     std::sort(merge_nodes.begin(), merge_nodes.end(), NodeCmp());
@@ -1200,11 +1218,12 @@ StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
   builder.Attr("Tout", out_type);
 
   builder.Attr("Tcond", DT_BOOL);
-  builder.Device(switch_cluster.predicate->assigned_device_name());
+  builder.Device(switch_cluster.predicate_edge->src()->assigned_device_name());
   // Conditional should be the first input ...
-  builder.Input(
-      NodeDefBuilder::NodeOut(switch_cluster.predicate->name(), 0,
-                              switch_cluster.predicate->output_type(0)));
+  builder.Input(NodeDefBuilder::NodeOut(
+      switch_cluster.predicate_edge->src()->name(),
+      switch_cluster.predicate_edge->src_output(),
+      switch_cluster.predicate_edge->src()->output_type(0)));
   // ... followed by the other inputs.
   builder.Input(inputs);
 
@@ -1264,24 +1283,17 @@ Status FunctionalizeCond::ExtractBody(const CondArgNodes& cond_arg_nodes,
 }
 
 Status FunctionalizeCond::AddInputEdges(const CondArgNodes& cond_arg_nodes,
-                                        Node* predicate, Node* if_node) {
+                                        const Edge* predicate_edge,
+                                        Node* if_node) {
   VLOG(3) << "AddInputEdges for " << if_node->name();
   int index = 0;
-  graph_->AddEdge(predicate, 0, if_node, index++);
-  for (auto& kv : cond_arg_nodes) {
-    bool inserted = false;
-    for (const Node* arg : kv.switches) {
-      const Edge* in_edge;
-      TF_RETURN_IF_ERROR(arg->input_edge(0, &in_edge));
-      if (in_edge->IsControlEdge()) {
-        graph_->AddControlEdge(in_edge->src(), if_node);
-      } else {
-        if (!inserted) {
-          graph_->AddEdge(in_edge->src(), in_edge->src_output(), if_node,
-                          index++);
-          inserted = true;
-        }
-      }
+  graph_->AddEdge(predicate_edge->src(), predicate_edge->src_output(), if_node,
+                  index++);
+  for (auto& arg : cond_arg_nodes) {
+    if (arg.src_output == Graph::kControlSlot) {
+      graph_->AddControlEdge(arg.src, if_node);
+    } else {
+      graph_->AddEdge(arg.src, arg.src_output, if_node, index++);
     }
   }
   return Status::OK();
@@ -1302,10 +1314,10 @@ Status FunctionalizeCond::AddOutputEdges(const std::vector<Node*>& outputs,
         return errors::Unimplemented("Output of index (", edge->src_output(),
                                      ") of merge node ", node->name());
       }
-      graph_->RemoveEdge(edge);
 
       int src_output =
           dst_input == Graph::kControlSlot ? Graph::kControlSlot : i;
+      graph_->RemoveEdge(edge);
       graph_->AddEdge(if_node, src_output, dst, dst_input);
     }
   }
@@ -1323,7 +1335,7 @@ StatusOr<Node*> FunctionalizeCond::ConvertToXlaIf(
       Node * if_node,
       BuildAndAddXlaIfOp(cond_arg_nodes, switch_cluster, merge_nodes));
   TF_RETURN_IF_ERROR(
-      AddInputEdges(cond_arg_nodes, switch_cluster.predicate, if_node));
+      AddInputEdges(cond_arg_nodes, switch_cluster.predicate_edge, if_node));
   TF_RETURN_IF_ERROR(AddOutputEdges(merge_nodes, if_node));
 
   return if_node;
@@ -1345,6 +1357,7 @@ Status FunctionalizeControlFlow(Graph* graph,
   VLOG(2) << "FunctionalizeControlFlow (initial): "
           << dump_graph::DumpGraphToFile("functionalize_initial", *graph,
                                          library);
+
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.

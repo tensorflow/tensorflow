@@ -24,6 +24,7 @@ py_library(
         "ast_util.py",
         "compiler.py",
         "context.py",
+        "inspect_utils.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",
@@ -64,6 +65,17 @@ py_test(
 py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "inspect_utils_test",
+    srcs = ["inspect_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",

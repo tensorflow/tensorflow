@@ -88,8 +88,11 @@ public abstract class ImageClassifier {
     labelList = loadLabelList(activity);
     imgData =
         ByteBuffer.allocateDirect(
-                DIM_BATCH_SIZE * getImageSizeX() * getImageSizeY() * DIM_PIXEL_SIZE *
-                        getNumBytesPerChannel());
+            DIM_BATCH_SIZE
+                * getImageSizeX()
+                * getImageSizeY()
+                * DIM_PIXEL_SIZE
+                * getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
     filterLabelProbArray = new float[FILTER_STAGES][getNumLabels()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
@@ -208,44 +211,50 @@ public abstract class ImageClassifier {
 
   /**
    * Get the name of the model file stored in Assets.
+   *
    * @return
    */
   protected abstract String getModelPath();
 
   /**
    * Get the name of the label file stored in Assets.
+   *
    * @return
    */
   protected abstract String getLabelPath();
 
   /**
    * Get the image size along the x axis.
+   *
    * @return
    */
   protected abstract int getImageSizeX();
 
   /**
    * Get the image size along the y axis.
+   *
    * @return
    */
   protected abstract int getImageSizeY();
 
   /**
    * Get the number of bytes that is used to store a single color channel value.
+   *
    * @return
    */
   protected abstract int getNumBytesPerChannel();
 
   /**
    * Add pixelValue to byteBuffer.
+   *
    * @param pixelValue
    */
   protected abstract void addPixelValue(int pixelValue);
 
   /**
-   * Read the probability value for the specified label
-   * This is either the original value as it was read from the net's output or the updated value
-   * after the filter was applied.
+   * Read the probability value for the specified label This is either the original value as it was
+   * read from the net's output or the updated value after the filter was applied.
+   *
    * @param labelIndex
    * @return
    */
@@ -253,29 +262,32 @@ public abstract class ImageClassifier {
 
   /**
    * Set the probability value for the specified label.
+   *
    * @param labelIndex
    * @param value
    */
   protected abstract void setProbability(int labelIndex, Number value);
 
   /**
-   * Get the normalized probability value for the specified label.
-   * This is the final value as it will be shown to the user.
+   * Get the normalized probability value for the specified label. This is the final value as it
+   * will be shown to the user.
+   *
    * @return
    */
   protected abstract float getNormalizedProbability(int labelIndex);
 
   /**
-   * Run inference using the prepared input in {@link #imgData}.
-   * Afterwards, the result will be provided by getProbability().
+   * Run inference using the prepared input in {@link #imgData}. Afterwards, the result will be
+   * provided by getProbability().
    *
-   * This additional method is necessary, because we don't have a common base for different
+   * <p>This additional method is necessary, because we don't have a common base for different
    * primitive data types.
    */
   protected abstract void runInference();
 
   /**
    * Get the total number of labels.
+   *
    * @return
    */
   protected int getNumLabels() {
