@@ -5,6 +5,7 @@ This section contains the following documents:
   * @{$welcome$Welcome to the TensorFlow Community}, which explains how
     you can get involved, where to report issues, and where to join
     like-minded TensorFlow enthusiasts online.
+  * @{$roadmap$Roadmap}, which summarizes upcoming additions to TensorFlow.
   * @{$documentation$Writing TensorFlow Documentation}, which explains
     TensorFlow's documentation conventions.  If you are modifying
     TensorFlow source code or documentation, please read this guide.
