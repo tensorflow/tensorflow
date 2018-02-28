@@ -70,28 +70,29 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
     ctx->SetStatus(status);
     return;
   }
-  int numInputs = ctx->num_inputs();
-  if (calib_res->calibrator_ == nullptr) {  // first run instantiate calibrator
-    dev_tensors_.resize(numInputs);
-    int batchSize = ctx->input(0).dim_size(0);
+  int num_inputs = ctx->num_inputs();
+  // first run instantiate calibrator
+  if (calib_res->calibrator_ == nullptr) {
+    dev_tensors_.resize(num_inputs);
+    int batch_size = ctx->input(0).dim_size(0);
     VLOG(1) << " Constructing calibrator";
-    for (int i = 0; i < numInputs; i++) {
+    for (int i = 0; i < num_inputs; i++) {
       // allocate workspace on device for inputs
       const tensorflow::Tensor& t = ctx->input(i);
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_persistent(t.dtype(), t.shape(),
                                               &dev_tensors_.at(i), nullptr));
-      const auto dTensor = dev_tensors_.at(i).AccessTensor(ctx);
-      CHECK_EQ(t.TotalBytes(), dTensor->TotalBytes());
-      void* devAddr = nullptr;
-      GET_TENSOR_ADDRESS(dTensor, devAddr);
-      device_buffers_.emplace(
-          input_names_.at(i),
-          std::pair<void*, size_t>(devAddr, dTensor->TotalBytes()));
+      const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
+      CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
+      void* device_address = nullptr;
+      GET_TENSOR_ADDRESS(device_tensor, device_address);
+      device_buffers_.emplace(input_names_.at(i),
+                              std::pair<void*, size_t>(
+                                  device_address, device_tensor->TotalBytes()));
     }
 
     calib_res->calibrator_ =
-        new TRTInt8Calibrator(device_buffers_, batchSize, resource_name_);
+        new TRTInt8Calibrator(device_buffers_, batch_size, resource_name_);
     string label(resource_name_);
     calib_res->thr_ = new std::thread([calib_res, label]() {
       VLOG(1) << "Starting calibration thread, Calibration Resource @ "
@@ -107,14 +108,14 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
 
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
-  for (int i = 0; i < numInputs; i++) {
+  for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = nullptr;
     const Tensor* t_ptr = &t;
     GET_TENSOR_ADDRESS(t_ptr, data_address);
-    const auto dTensor = dev_tensors_.at(i).AccessTensor(ctx);
+    const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(),
-             dTensor->TotalBytes());  // use the tensor so FW keeps it
+             device_tensor->TotalBytes());  // use the tensor so FW keeps it
     input_data.emplace(input_names_.at(i), data_address);
     ctx->set_output(i, t);
   }
