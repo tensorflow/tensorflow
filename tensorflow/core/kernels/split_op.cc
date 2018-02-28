@@ -231,10 +231,10 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     if (prefix_dim_size == 1) {
       auto input_reshaped =
           input.shaped<T, 2>({split_dim_size, suffix_dim_size});
-      auto make_sizes = [&](int64 split_size) {
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
         return Eigen::DSizes<Eigen::DenseIndex, 2>{split_size, suffix_dim_size};
       };
-      auto reshape_result = [&](Tensor* result, int64 split_size) {
+      auto reshape_result = [&](Tensor* result, Eigen::DenseIndex split_size) {
         return result->shaped<T, 2>({split_size, suffix_dim_size});
       };
       SplitOpCPUImpl<T, decltype(input_reshaped), 2>{}(
@@ -244,11 +244,11 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     } else {
       auto input_reshaped = input.shaped<T, 3>(
           {prefix_dim_size, split_dim_size, suffix_dim_size});
-      auto make_sizes = [&](int64 split_size) {
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
         return Eigen::DSizes<Eigen::DenseIndex, 3>{prefix_dim_size, split_size,
                                                    suffix_dim_size};
       };
-      auto reshape_result = [&](Tensor* result, int64 split_size) {
+      auto reshape_result = [&](Tensor* result, Eigen::DenseIndex split_size) {
         return result->shaped<T, 3>(
             {prefix_dim_size, split_size, suffix_dim_size});
       };

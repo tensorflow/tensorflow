@@ -90,16 +90,16 @@ class UnpackOp : public OpKernel {
     }
 #endif  // TENSORFLOW_USE_SYCL
 
-    int64 before_dim = 1;
+    Eigen::DenseIndex before_dim = 1;
     for (int i = 0; i < axis; ++i) {
       before_dim *= input_shape.dim_size(i);
     }
 
-    int64 after_dim = 1;
+    Eigen::DenseIndex after_dim = 1;
     for (int i = axis + 1; i < input_shape.dims(); ++i) {
       after_dim *= input_shape.dim_size(i);
     }
-    const int64 axis_dim = input_shape.dim_size(axis);
+    const Eigen::DenseIndex axis_dim = input_shape.dim_size(axis);
 
     // Except for shape, unpack is a special case of split, so we reuse the
     // same computational kernels.

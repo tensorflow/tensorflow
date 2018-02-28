@@ -293,7 +293,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     if (prefix_dim_size == 1) {
       auto input_reshaped =
           input.shaped<T, 2>({split_dim_size, suffix_dim_size});
-      auto make_sizes = [&](Tlen split_size) {
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
         return Eigen::DSizes<Eigen::DenseIndex, 2>{split_size, suffix_dim_size};
       };
       auto reshape_result = [&](Tensor* result, Tlen split_size) {
@@ -306,7 +306,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     } else {
       auto input_reshaped = input.shaped<T, 3>(
           {prefix_dim_size, split_dim_size, suffix_dim_size});
-      auto make_sizes = [&](Tlen split_size) {
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
         return Eigen::DSizes<Eigen::DenseIndex, 3>{prefix_dim_size, split_size,
                                                    suffix_dim_size};
       };
