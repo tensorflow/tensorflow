@@ -248,8 +248,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
           HloInstruction::CreateCall(root->shape(), arguments,
                                      nested_computation));
 
-  LOG(INFO) << "==== " << instructions_to_outline[metadata_index]->name();
-  LOG(INFO) << "===== " << instructions_to_outline[metadata_index]->metadata().op_name();
   call->set_metadata(instructions_to_outline[metadata_index]->metadata());
 
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));

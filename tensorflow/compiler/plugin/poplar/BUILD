@@ -243,17 +243,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "fuse_ops_test",
-    srcs = ["tests/fuse_ops_test.cc"],
-    deps = [
-        ":optimizers",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "wide_const_finder_test",
     srcs = ["tests/wide_const_finder_test.cc"],
     deps = [
@@ -375,6 +364,16 @@ py_test(
 )
 
 py_test(
+    name = "fuse_ops_test",
+    size = "small",
+    srcs = ["tests/fuse_ops_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "tensor_array_test",
     size = "small",
     srcs = ["tests/tensor_array_test.py"],
@@ -422,9 +421,9 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "tensor_array_test",
-        "fuse_ops_test",
         "outliner_test",
         "hlo_matcher_test",
+        "fuse_ops_test",
         "wide_const_finder_test",
         "monitored_session_test",
         "conditional_test",
@@ -446,8 +445,8 @@ test_suite(
         "64_bit_test",
         "allocation_finder_test",
         "batch_norm_test",
-        "fuse_ops_test",
         "hlo_matcher_test",
+        "fuse_ops_test",
         "wide_const_finder_test",
         "monitored_session_test",
         "conditional_test",

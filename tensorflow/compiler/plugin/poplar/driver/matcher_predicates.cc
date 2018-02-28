@@ -162,6 +162,11 @@ bool IsWeightUpdateMatMul(const HloInstruction* inst) {
           rh->opcode() != HloOpcode::kTranspose);
 }
 
+bool IsTfReluGradOp(const HloInstruction* inst) {
+  const std::string& tf_core_op = inst->metadata().op_type();
+  return tf_core_op == "ReluGrad";
+}
+
 }
 }
 

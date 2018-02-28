@@ -100,7 +100,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 
   // ReluGrad
   {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
-   {HloOpcode::kGt, true, nullptr, {-1, 2}},
+   {HloOpcode::kGt, true, IsTfReluGradOp, {-2, 2}},
    {HloOpcode::kBroadcast, true, nullptr, {3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
