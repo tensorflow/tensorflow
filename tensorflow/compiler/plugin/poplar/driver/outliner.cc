@@ -22,10 +22,10 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const char* names[] = {
-  "pop_backprop_conv",
-  "pop_depth_conv",
-  "pop_convolution",
+static const FusedGraphInfo fuse_info[] = {
+  {"pop_backprop_conv", 0},
+  {"pop_depth_conv", 0},
+  {"pop_convolution", 0},
 };
 
 static bool
@@ -64,7 +64,8 @@ Outliner::Outliner() : HloMatcher(patterns, true) {}
 
 ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {
-  return OutlineExpressionFromComputation(match, names[pattern]);
+  auto& fuse = fuse_info[pattern];
+  return OutlineExpressionFromComputation(match, fuse.name, fuse.op_index);
 }
 
 }

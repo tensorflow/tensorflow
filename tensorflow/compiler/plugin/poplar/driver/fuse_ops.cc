@@ -22,33 +22,33 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const char* names[] = {
-  "const_slice_update",
-  "const_slice",
-  "relu",
-  "relu",
-  "sigmoid",
-  "sigmoid",
-  "relugrad",
-  "biasadd_broadcast",
-  "biasadd_broadcast",
-  "biasadd",
-  "biasadd",
-  "zero_pad",
-  "trunc_norm_scale_add",
-  "trunc_norm",
-  "norm_scale_add",
-  "uniform_scale_add",
-  "norm",
-  "uniform",
-  "avgpool",
-  "avgpool",
-  "avgpool",
-  "depthwise_conv",
-  "depthwise_conv",
-  "conv_with_reverse",
-  "bias_apply",
-  "wide_const",
+static FusedGraphInfo fuse_info[] = {
+  {"const_slice_update", 0},
+  {"const_slice", 0},
+  {"relu", 0},
+  {"relu", 0},
+  {"sigmoid", 0},
+  {"sigmoid", 0},
+  {"relugrad", 0},
+  {"biasadd_broadcast", 0},
+  {"biasadd_broadcast", 0},
+  {"biasadd", 0},
+  {"biasadd", 0},
+  {"zero_pad", 0},
+  {"trunc_norm_scale_add", 5},
+  {"trunc_norm", 1},
+  {"norm_scale_add", 4},
+  {"uniform_scale_add", 4},
+  {"norm", 0},
+  {"uniform", 0},
+  {"avgpool", 1},
+  {"avgpool", 1},
+  {"avgpool", 1},
+  {"depthwise_conv", 0},
+  {"depthwise_conv", 0},
+  {"conv_with_reverse", 0},
+  {"bias_apply", 0},
+  {"wide_const", 1},
 };
 
 /*
@@ -56,9 +56,9 @@ static const char* names[] = {
  * there must be no backward references.  All nodes should appear after any
  * other nodes that refer to them.
  *
- * The parameters of the post-fused call are in the reverse order that '-1'
+ * The parameters of the post-fused call are in the reverse order that negative
  * entries appear in the list.  An op marked include_in_replacement=false
- * counts as a '-1' on other instructions on which it appears.
+ * counts as negative on other instructions on which it appears.
  *
  * NOTE: Highest match priority is nearer the top of the list
  */
@@ -248,9 +248,11 @@ ReplacedInstructions FuseOps::ReplaceNodes(int pattern,
                                            const HloMatcherMatched& match) {
 
   std::string name("_pop_op_");
-  name += names[pattern];
+  name += fuse_info[pattern].name;
 
-  return OutlineExpressionFromComputation(match, name);
+  char index = fuse_info[pattern].op_index;
+
+  return OutlineExpressionFromComputation(match, name, index);
 }
 
 }

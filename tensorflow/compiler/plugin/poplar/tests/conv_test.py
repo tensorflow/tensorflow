@@ -199,8 +199,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(result) == 1)
       cs_list = get_compute_sets_from_report(result[0])
 
-      print(cs_list)
-
       ok = ['call.1.clone/Conv_1x1',
             'Copy_partials_to_call',
             'call/addToChannel']

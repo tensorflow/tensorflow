@@ -27,8 +27,12 @@ using HloMatcherTest = HloTestBase;
 class TestMatcher : public HloMatcher {
 public:
   TestMatcher(const std::vector<HloMatcherPattern>& patterns,
+              const char* name,
+              const char index,
               bool root_only)
-          : HloMatcher(patterns, root_only) {}
+          : HloMatcher(patterns, root_only),
+            match_index(index),
+            match_name(name) {}
 
 private:
   ReplacedInstructions ReplaceNodes(int pattern,
@@ -38,13 +42,15 @@ private:
     match_count.push_back(match.instructions.size());
 
     ReplacedInstructions replaced =
-            OutlineExpressionFromComputation(match,"test");
+            OutlineExpressionFromComputation(match, match_name, match_index);
 
     return replaced;
   }
 
 public:
   int replace_count=0;
+  char match_index=0;
+  const char* match_name = nullptr;
   std::vector<unsigned int> match_pattern;
   std::vector<unsigned int> match_count;
 };
@@ -79,7 +85,7 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -112,7 +118,7 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
   std::vector<HloMatcherPattern> patterns = {
           {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -141,6 +147,16 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   builder.AddInstruction(
           HloInstruction::CreateTuple({add2}));
 
+  OpMetadata add1_md;
+  add1_md.set_op_type("Add");
+  add1_md.set_op_name("long/add1");
+  add1->set_metadata(add1_md);
+
+  OpMetadata add2_md;
+  add2_md.set_op_type("Add");
+  add2_md.set_op_name("long/add2");
+  add2->set_metadata(add2_md);
+
   auto computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
@@ -153,11 +169,18 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 
     {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "test2", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
+
+  auto* comp = hlo_module->entry_computation();
+  auto* call_inst = comp->root_instruction()->operand(0);
+  EXPECT_EQ("test2", call_inst->to_apply()->name());
+
+  EXPECT_EQ("long/add2", call_inst->metadata().op_name());
+  EXPECT_EQ("long/add1", call_inst->operand(1)->metadata().op_name());
 }
 
 
@@ -187,6 +210,11 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   builder.AddInstruction(
           HloInstruction::CreateTuple({sub2}));
 
+  OpMetadata md;
+  md.set_op_type("Broadcast");
+  md.set_op_name("long/bc");
+  b1->set_metadata(md);
+
   auto computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
@@ -197,11 +225,17 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
      {HloOpcode::kBroadcast, true, nullptr, {-2}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "fuse", 1, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
   EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
+
+  auto* comp = hlo_module->entry_computation();
+  auto* call_inst = comp->root_instruction()->operand(0)->operand(0);
+  EXPECT_EQ("fuse", call_inst->to_apply()->name());
+
+  EXPECT_EQ("long/bc", call_inst->metadata().op_name());
 }
 
 
@@ -242,7 +276,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
      {HloOpcode::kBroadcast, true, nullptr, {-2}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -288,7 +322,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
      {HloOpcode::kAdd, true, nullptr, {-2, 2}},
      {HloOpcode::kBroadcast, false, nullptr, {-3}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -325,11 +359,15 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
     {{HloOpcode::kSubtract, true, nullptr, {-1, 1}},
      {HloOpcode::kConstant, true, nullptr, {}}}
   };
-  TestMatcher matcher(patterns, false);
+  TestMatcher matcher(patterns, "abc", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
+
+  auto* comp = hlo_module->entry_computation();
+  auto* call_inst = comp->root_instruction()->operand(0)->operand(1);
+  EXPECT_EQ("abc", call_inst->to_apply()->name());
 }
 
 

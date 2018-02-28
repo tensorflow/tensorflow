@@ -37,6 +37,15 @@ struct HloMatcherMatched {
   std::vector<HloInstruction*> instructions;
 };
 
+struct FusedGraphInfo {
+  // The names to give the extracted fused graphs
+  const char* name;
+
+  // The index of the op within each fusion which should have its op_metadata
+  // copied to the kCall instruction.
+  const char op_index;
+};
+
 using HloMatcherPattern = std::vector<HloMatcherNode>;
 using ReplacedInstructions = std::vector<HloInstruction*>;
 
@@ -53,7 +62,8 @@ public:
 protected:
   ReplacedInstructions OutlineExpressionFromComputation(
           const HloMatcherMatched& matched,
-          const std::string& outlined_computation_name);
+          const std::string& outlined_computation_name,
+          const char metadata_index);
 
 private:
   virtual ReplacedInstructions ReplaceNodes(int pattern,

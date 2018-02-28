@@ -187,7 +187,8 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
 
 ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         const HloMatcherMatched& matched,
-        const std::string& outlined_computation_name) {
+        const std::string& outlined_computation_name,
+        const char metadata_index) {
 
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
@@ -246,6 +247,10 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
           HloInstruction::CreateCall(root->shape(), arguments,
                                      nested_computation));
+
+  LOG(INFO) << "==== " << instructions_to_outline[metadata_index]->name();
+  LOG(INFO) << "===== " << instructions_to_outline[metadata_index]->metadata().op_name();
+  call->set_metadata(instructions_to_outline[metadata_index]->metadata());
 
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
