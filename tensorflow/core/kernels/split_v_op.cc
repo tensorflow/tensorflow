@@ -55,8 +55,13 @@ class SplitVOpBase : public OpKernel {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
     const Tensor& split_tensor = context->input(1);
+    const Tensor& split_dim_tensor = context->input(2);
 
-    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    OP_REQUIRES(context, split_dim_tensor.NumElements() == 1,
+                errors::InvalidArgument("split_dim_tensor must have "
+                                        "exactly one element."));
+
+    const int32 split_dim_orig = split_dim_tensor.flat<int32>()(0);
     const int32 split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 

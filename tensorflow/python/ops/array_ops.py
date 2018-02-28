@@ -1380,7 +1380,9 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
   if num is None:
-    num = size_splits._shape_tuple()[0]
+    size_splits_shape = size_splits._shape_tuple()
+    if size_splits_shape:
+      num = size_splits_shape[0]
     if num is None:
       raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
 
