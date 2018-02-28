@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -564,16 +565,16 @@ class ShapeUtil {
   // The visitor_function visitor function should return true if it wants to
   // continue, or false otherwise.
   //
-  // visitor_function must be a callable of type bool(const std::vector<int64>&)
-  // or compatible.
+  // visitor_function must be a callable of type
+  // StatusOr<bool>(ArraySlice<int64>) or compatible.
   template <typename FnType>
-  static void ForEachIndex(const Shape& shape,
-                           tensorflow::gtl::ArraySlice<int64> base,
-                           tensorflow::gtl::ArraySlice<int64> count,
-                           tensorflow::gtl::ArraySlice<int64> incr,
-                           const FnType& visitor_function) {
+  static Status ForEachIndexWithStatus(const Shape& shape,
+                                       tensorflow::gtl::ArraySlice<int64> base,
+                                       tensorflow::gtl::ArraySlice<int64> count,
+                                       tensorflow::gtl::ArraySlice<int64> incr,
+                                       const FnType& visitor_function) {
     if (ShapeUtil::HasZeroElements(shape)) {
-      return;
+      return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());
     CHECK_EQ(incr.size(), base.size());
@@ -583,7 +584,11 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    while (n < rank && visitor_function(indexes)) {
+    while (n < rank) {
+      TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
+      if (!should_continue) {
+        break;
+      }
       // Increments dimensions in minor to major order.
       for (n = 0; n < rank; ++n) {
         int64 dim = LayoutUtil::Minor(shape.layout(), n);
@@ -594,6 +599,21 @@ class ShapeUtil {
         indexes[dim] = base[dim];
       }
     }
+
+    return Status::OK();
+  }
+
+  template <typename FnType>
+  static void ForEachIndex(const Shape& shape,
+                           tensorflow::gtl::ArraySlice<int64> base,
+                           tensorflow::gtl::ArraySlice<int64> count,
+                           tensorflow::gtl::ArraySlice<int64> incr,
+                           const FnType& visitor_function) {
+    ForEachIndexWithStatus(shape, base, count, incr,
+                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                             return StatusOr<bool>(visitor_function(indices));
+                           })
+        .IgnoreError();
   }
 
  private:

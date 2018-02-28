@@ -223,7 +223,7 @@ Status Literal::CopySliceFromInternal(
     Literal::StrideConfig stride_config(src_literal.shape(), shape(),
                                         copy_size);
 
-    auto copy_proc = [&](const std::vector<int64>& indexes) {
+    auto copy_proc = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       // Map from multi-dimensional index, to source index.
       std::transform(indexes.begin(), indexes.end(), src_base.begin(),
                      src_indexes.begin(), std::plus<int64>());

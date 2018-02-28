@@ -1222,7 +1222,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     // corresponding index of the resulting padded literal.
     const PaddingConfig& pad_config = pad->padding_config();
 
-    auto func = [&](const std::vector<int64>& input_index) {
+    auto func = [&](ArraySlice<int64> input_index) {
       for (auto i = 0; i < input_index.size(); ++i) {
         // Interior padding occurs logically before edge padding, so in the case
         // of negative edge padding elements are removed from the
@@ -1518,7 +1518,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             base[result_to_arg_index[i]] = multi_index[i];
           }
 
-          auto func = [&](const std::vector<int64>& input_index) {
+          auto func = [&](ArraySlice<int64> input_index) {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
             // Evaluate computation with specified literal operands.
@@ -1954,7 +1954,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     auto result = operand_literal.CloneToUnique();
     std::vector<int64> result_index(ShapeUtil::Rank(result->shape()), 0);
 
-    auto func = [&](const std::vector<int64>& update_index) {
+    auto func = [&](ArraySlice<int64> update_index) {
       std::transform(update_index.begin(), update_index.end(), start.begin(),
                      result_index.begin(), std::plus<int64>());
 
