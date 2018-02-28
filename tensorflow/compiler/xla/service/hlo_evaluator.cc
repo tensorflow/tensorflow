@@ -613,14 +613,25 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleMaximum(HloInstruction* maximum) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[maximum],
         ElementWiseBinaryOp(maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
-          return std::fmax(lhs, rhs);
+          return std::max(lhs, rhs);
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleMaximum(HloInstruction* maximum) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[maximum],
+        ElementWiseBinaryOp(maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
+          return ((lhs >= rhs) || std::isnan(lhs)) ? lhs : rhs;
         }));
     return Status::OK();
   }
@@ -636,15 +647,27 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleMaximum<ElementwiseT>(maximum);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleMinimum(HloInstruction* minimum) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[minimum],
                         ElementWiseBinaryOp(minimum, [](ElementwiseT lhs_el,
                                                         ElementwiseT rhs_el) {
-                          return std::fmin(lhs_el, rhs_el);
+                          return std::min(lhs_el, rhs_el);
                         }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleMinimum(HloInstruction* minimum) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[minimum],
+        ElementWiseBinaryOp(minimum, [](ElementwiseT lhs_el,
+                                        ElementwiseT rhs_el) {
+          return ((lhs_el <= rhs_el) || std::isnan(lhs_el)) ? lhs_el : rhs_el;
+        }));
     return Status::OK();
   }
 
