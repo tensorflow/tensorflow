@@ -246,8 +246,6 @@ class MklDnnConvUtil {
     // Stride is vector of 2 elements: {s_r, s_c}
     int stride_rows = strides[0];
     int stride_cols = strides[1];
-
-    // Dilation is vector of 2 elements: {d_r, d_c}
     int dilation_rows = dilations[0];
     int dilation_cols = dilations[1];
 
@@ -369,7 +367,6 @@ class MklConv2DBackpropCommonOp : public OpKernel {
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "

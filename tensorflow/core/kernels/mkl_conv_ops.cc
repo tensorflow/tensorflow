@@ -568,6 +568,7 @@ class MklConv2DOp : public OpKernel {
         //               Need semantics for Null MKL tensor
         MklDnnShape output_mkl_shape;
         output_mkl_shape.SetMklTensor(false);
+
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, &output_tensor,
                                   src_tf_shape, output_mkl_shape);
 
@@ -697,7 +698,7 @@ class MklConv2DOp : public OpKernel {
 
  private:
   std::vector<int32> strides_;
-    std::vector<int32> dilations_;
+  std::vector<int32> dilations_;
   Padding padding_;
   TensorFormat data_format_;
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
