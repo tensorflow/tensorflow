@@ -343,7 +343,7 @@ Status Literal::Piece::CopyFrom(const Literal::Piece& src) {
 #undef COPY_ELEMENTS
       default:
         return Unimplemented(
-            "Unhandled primitive type %s",
+            "Copying a Literal object with element type %s is not implemented.",
             PrimitiveType_Name(subshape().element_type()).c_str());
     }
   }
@@ -491,7 +491,10 @@ Status Literal::CopySliceFrom(const Literal& src_literal,
     default:
       break;
   }
-  return Unimplemented("Unhandled primitive type %d", shape().element_type());
+  return Unimplemented(
+      "Copying a slice from a Literal object with element type %d is not "
+      "implemented.",
+      shape().element_type());
 }
 
 /* static */ Literal Literal::Zero(PrimitiveType primitive_type) {
@@ -1394,8 +1397,8 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
       return ConvertToC64<primitive_src_type>(src_literal);
     // Other types are not yet supported.
     default:
-      return InvalidArgument(
-          "Unimplemented: Convert from type %s to type %s",
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
           PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
           PrimitiveType_Name(primitive_dest_type).c_str());
   }
@@ -1424,9 +1427,10 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
-      return InvalidArgument("Unimplemented: Convert from type %s to type %s",
-                             PrimitiveType_Name(shape().element_type()).c_str(),
-                             PrimitiveType_Name(primitive_dest_type).c_str());
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
+          PrimitiveType_Name(shape().element_type()).c_str(),
+          PrimitiveType_Name(primitive_dest_type).c_str());
   }
 }
 

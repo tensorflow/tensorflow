@@ -1232,15 +1232,15 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   EXPECT_EQ(*conv, *c64);
 
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(S16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(U16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(F32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(S32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
