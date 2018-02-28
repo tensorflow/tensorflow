@@ -1045,6 +1045,20 @@ class BinaryOpsTest(XLATestCase):
             ],
             equality_test=self.ListsAreClose)
 
+      def splitvOp(x, y):  # pylint: disable=invalid-name
+        return array_ops.split(value=y, num_or_size_splits=[2, 3], axis=x)
+      for axis in [1, -1]:
+        self._testBinary(
+            splitvOp,
+            np.int32(axis),
+            np.array([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+                     dtype=dtype),
+            expected=[
+                np.array([[0, 1], [5, 6]], dtype=dtype),
+                np.array([[2, 3, 4], [7, 8, 9]], dtype=dtype),
+            ],
+            equality_test=self.ListsAreClose)
+
   def testTile(self):
     for dtype in self.numeric_types:
       self._testBinary(
