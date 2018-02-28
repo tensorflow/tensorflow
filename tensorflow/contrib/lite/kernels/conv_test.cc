@@ -374,6 +374,106 @@ TEST_P(ConvolutionOpTest, HandCalculatedValidFloat32) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({312, 357}));
 }
 
+TEST_P(ConvolutionOpTest, HandCalculatedFilterSize1x1Float32) {
+  const int depth = 2;
+  const int image_width = 2;
+  const int image_height = 2;
+  const int image_batch_count = 2;
+  const int filter_size = 1;
+  const int filter_count = 3;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const Padding padding = Padding_SAME;
+  ConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {filter_count, filter_size, filter_size, depth}},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding);
+
+  // The first image with 2 channels:
+  // |  1,2 |  3,4 |
+  // |  5,6 |  7,8 |
+  // The second image with 2 channels:
+  // |  1,1 |  2,2 |
+  // |  3,3 |  4,4 |
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 1, 1, 2, 2, 3, 3, 4, 4});
+  // The 1x1 filters are:
+  // | 1,2 |  | 3,4 |  | 5,6 |
+  m.SetFilter({1, 2, 3, 4, 5, 6});
+  // The bias are:
+  m.SetBias({10, 20, 30});
+
+  m.Invoke();
+  // We're sliding 3 1x1 filters across the 2x2 image, giving a 2x2X3 output.
+  // The calculations behind the expected output are:
+  // first output:
+  // (1*1)+(2*2)+10=15 | (1*3)+(2*4)+10=21
+  // (3*1)+(4*2)+20=31 | (3*3)+(4*4)+20=45
+  // (5*1)+(6*2)+30=47 | (5*3)+(6*4)+30=69
+  // -------------------------------------
+  // (1*5)+(2*6)+10=27 | (1*7)+(2*8)+10=33
+  // (3*5)+(4*6)+20=59 | (3*7)+(4*8)+20=73
+  // (5*5)+(6*6)+30=91 | (5*7)+(6*8)+30=113
+  // second output:
+  // (1*1)+(2*1)+10=13 | (1*2)+(2*2)+10=16
+  // (3*1)+(4*1)+20=27 | (3*2)+(4*2)+20=34
+  // (5*1)+(6*1)+30=41 | (5*2)+(6*2)+30=52
+  // -------------------------------------
+  // (1*3)+(2*3)+10=19 | (1*4)+(2*4)+10=22
+  // (3*3)+(4*3)+20=41 | (3*4)+(4*4)+20=48
+  // (5*3)+(6*3)+30=63 | (5*4)+(6*4)+30=74
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({15, 31, 47, 21, 45, 69, 27, 59, 91, 33, 73, 113,
+                        13, 27, 41, 16, 34, 52, 19, 41, 63, 22, 48, 74}));
+}
+
+TEST_P(ConvolutionOpTest, HandCalculatedFilterAndInputHaveTheSameSizeFloat32) {
+  const int depth = 1;
+  const int image_width = 3;
+  const int image_height = 3;
+  const int image_batch_count = 2;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const Padding padding = Padding_VALID;
+  ConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {filter_count, filter_size, filter_size, depth}},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding);
+
+  // The first image matrix:
+  // |  1  |  2  |  3  |
+  // |  4  |  5  |  6  |
+  // |  7  |  8  |  9  |
+  // The second image matrix:
+  // |  1  |  1  |  1  |
+  // |  2  |  2  |  2  |
+  // |  3  |  3  |  3  |
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 1, 1, 2, 2, 2, 3, 3, 3});
+  // The filter matrix:
+  // |  1  |  2  |  3  |
+  // |  1  |  2  |  3  |
+  // |  1  |  2  |  3  |
+  m.SetFilter({1, 2, 3, 1, 2, 3, 1, 2, 3});
+  // The bias are:
+  m.SetBias({0});
+
+  m.Invoke();
+  // Filter and input have the same size, and padding type is VALID.
+  // The size of output is 1x1.
+  // The calculations behind the expected output are:
+  // first output:
+  // (1*1)+(2*2)+(3*3)+(4*1)+(5*2)+(6*3)+(7*1)+(8*2)+(9*3)=96
+  // second output:
+  // (1*1)+(1*2)+(1*3)+(2*1)+(2*2)+(2*3)+(3*1)+(3*2)+(3*3)=36
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({96, 36}));
+}
+
 class QuantizedConvolutionOpModel : public BaseConvolutionOpModel {
  public:
   using BaseConvolutionOpModel::BaseConvolutionOpModel;
