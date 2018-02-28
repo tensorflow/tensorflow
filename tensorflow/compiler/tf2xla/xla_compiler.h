@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class XlaContext;
+
 // The XlaCompiler class is responsible for compilation of a self-contained
 // subgraph of a TensorFlow computation using the XLA linear algebra runtime.
 // It does a symbolic execution of the graph starting from specific input
@@ -239,6 +242,12 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
+    // If set, the XLA representation of variables represented to XLA as the
+    // shape given by this shape function. Variables are reshaped to this shape
+    // on write, and reshaped to their original shape on read.
+    std::function<TensorShape(const TensorShape&, DataType)>
+        variable_representation_shape_fn;
+
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
@@ -278,7 +287,7 @@ class XlaCompiler {
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  static Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
+  Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -298,6 +307,17 @@ class XlaCompiler {
 
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
+
+  // Builds XLA computations for each of the arguments to the computation.
+  // `args` are the arguments to the computation.
+  Status BuildArguments(const Graph& graph,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        bool use_tuple_arg, xla::ComputationBuilder* builder,
+                        XlaContext* context, std::vector<int>* arg_cores,
+                        std::vector<XlaExpression>* arg_expressions,
+                        std::vector<int>* input_mapping,
+                        std::vector<xla::Shape>* input_shapes,
+                        bool is_entry_computation);
 
   // Graph compiler needs to know how to get an optimized graph from a function
   // body.

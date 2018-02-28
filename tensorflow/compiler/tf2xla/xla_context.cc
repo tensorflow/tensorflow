@@ -62,13 +62,16 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
-XlaContext::XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
-                       bool allow_cpu_custom_calls,
-                       bool resolve_compile_time_constants)
+XlaContext::XlaContext(
+    XlaCompiler* compiler, xla::ComputationBuilder* builder,
+    bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+    const std::function<TensorShape(const TensorShape&, DataType)>*
+        variable_representation_shape_fn)
     : compiler_(compiler),
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
-      resolve_compile_time_constants_(resolve_compile_time_constants) {}
+      resolve_compile_time_constants_(resolve_compile_time_constants),
+      variable_representation_shape_fn_(variable_representation_shape_fn) {}
 
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
@@ -113,6 +116,11 @@ Status XlaContext::CreateResource(
                       handle, tensor_array_size, tensor_array_gradients));
   *resource = resources_.back().get();
   return Status::OK();
+}
+
+TensorShape XlaContext::VariableRepresentationShape(const TensorShape& shape,
+                                                    DataType type) const {
+  return (*variable_representation_shape_fn_)(shape, type);
 }
 
 const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {

@@ -46,45 +46,6 @@ namespace grappler {
 namespace {
 
 template <typename T>
-bool SafeSetTensorValue(double value, Tensor* tensor) {
-  using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
-    return false;
-  }
-  tensor->flat<T>()(0) = static_cast<T>(value);
-  return true;
-}
-
-#define HANDLE_CASE(DTYPE)                                          \
-  case DTYPE:                                                       \
-    if (!SafeSetTensorValue<EnumToDataType<DTYPE>::Type>(           \
-            static_cast<double>(value), tensor)) {                  \
-      return errors::InvalidArgument("Cannot store value ", value,  \
-                                     " in tensor of type " #DTYPE); \
-    }                                                               \
-    break
-
-Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
-  switch (dtype) {
-    //    HANDLE_CASE(DT_HALF);
-    HANDLE_CASE(DT_FLOAT);
-    HANDLE_CASE(DT_DOUBLE);
-    HANDLE_CASE(DT_UINT8);
-    HANDLE_CASE(DT_INT8);
-    HANDLE_CASE(DT_UINT16);
-    HANDLE_CASE(DT_INT16);
-    HANDLE_CASE(DT_INT32);
-    HANDLE_CASE(DT_INT64);
-    HANDLE_CASE(DT_COMPLEX64);
-    HANDLE_CASE(DT_COMPLEX128);
-    default:
-      return errors::InvalidArgument("Unexpected type ", DataTypeString(dtype));
-  }
-  return Status::OK();
-}
-
-template <typename T>
 bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
   if (a.size() != b.size()) {
     return false;
@@ -870,8 +831,13 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       }
       TensorValue value(&t);
       NodeDef* new_const_node = AddNode(*node, "const", /*copy_node=*/false);
-      *new_const_node =
-          ConstantFolding::CreateNodeDef(new_const_node->name(), value);
+      status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
+                                              new_const_node);
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to create const node: "
+                     << status.error_message();
+        return "";
+      }
       new_const_node->set_device(node->device());
       nodes_to_simplify->PushBack(new_const_node);
 
@@ -1077,7 +1043,12 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further
       // optimizations.
-      std::set<NodeDef*> consumers = node_map_->GetOutputs(node->name());
+      const std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
+      std::vector<NodeDef*> consumers(outputs.begin(), outputs.end());
+      std::sort(consumers.begin(), consumers.end(),
+                [](const NodeDef* n1, const NodeDef* n2) {
+                  return n1->name() < n2->name();
+                });
       for (NodeDef* consumer : consumers) {
         // Update `consumer`'s use of `node` to `input`'s operand.
         for (int i = 0; i < consumer->input_size(); ++i) {

@@ -44,6 +44,7 @@ enum class OperatorType {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kExp,
   kExpandDims,
   kFill,
   kFloorDiv,
@@ -113,6 +114,7 @@ enum class OperatorType {
   kTensorFlowSwitch,
   kTensorFlowTile,
   kTranspose,
+  kTopK_V2,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -158,17 +160,17 @@ enum class AxesOrder {
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
 enum class ArrayDataType {
-  kNone,
+  kNone,  // 0
   kBool,
   kFloat,
   kInt8,
   kUint8,
-  kInt16,
+  kInt16,  // 5
   kUint16,
   kInt32,
   kUint32,
   kInt64,
-  kUint64,
+  kUint64,  // 10
   kString
 };
 
@@ -357,7 +359,8 @@ struct ConvOperator : Operator {
   // A dilation_rate of 0 is invalid and this field is an optional attribute.
   // Thus initializing it to 1 to allow default conv behavior when the
   // attribute is not present.
-  int dilation_rate = 1;
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depthwise-separable convolution operator.
@@ -850,6 +853,17 @@ struct TransposeConvOperator : Operator {
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = e^x).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Exp
+struct ExpOperator : Operator {
+  ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the
@@ -1386,6 +1400,14 @@ struct MeanOperator : Operator {
 struct SvdfOperator : Operator {
   SvdfOperator() : Operator(OperatorType::kSvdf) {}
   int rank;
+};
+
+// TopKV2 operator.
+//
+// Inputs:
+//    input tensor and top_k scalar.
+struct TopKV2Operator : Operator {
+  TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

@@ -425,7 +425,7 @@ class MicroBenchmarks(test.Benchmark):
     if not context.num_gpus():
       return
     with context.device(GPU):
-      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2.gpu())
       self._benchmark_read_variable(m, num_iters=self._num_iters_2_by_2)
 
   def benchmark_read_variable_op_with_tape_2_by_2_CPU(self):
@@ -438,7 +438,7 @@ class MicroBenchmarks(test.Benchmark):
     if not context.num_gpus():
       return
     with context.device(GPU):
-      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2.gpu())
       self._benchmark_read_variable_with_tape(
           m, num_iters=self._num_iters_2_by_2)
 

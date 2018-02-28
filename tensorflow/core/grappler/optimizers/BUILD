@@ -1,6 +1,9 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 filegroup(
     name = "all_files",
@@ -158,6 +161,18 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_graph_optimizer",
+    hdrs = [
+        "custom_graph_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "arithmetic_optimizer",
     srcs = ["arithmetic_optimizer.cc"],
     hdrs = [
@@ -270,9 +285,36 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "gpu_swapping_kernels",
+    srcs = [
+        "gpu_swapping_kernels.cc",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "gpu_swapping_ops",
+    srcs = [
+        "gpu_swapping_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "memory_optimizer",
-    srcs = ["memory_optimizer.cc"],
+    srcs = [
+        "memory_optimizer.cc",
+    ],
     hdrs = [
         "memory_optimizer.h",
     ],
@@ -282,6 +324,7 @@ cc_library(
         ":graph_rewriter",
         ":static_schedule",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -292,10 +335,13 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
-    ],
+    ] + if_cuda([
+        ":gpu_swapping_kernels",
+        ":gpu_swapping_ops",
+    ]),
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     deps = [
@@ -368,9 +414,12 @@ cc_library(
         ":arithmetic_optimizer",
         ":auto_parallel",
         ":constant_folding",
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
         ":dependency_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",
+        ":loop_optimizer",
         ":memory_optimizer",
         ":model_pruner",
         "//tensorflow/core:framework",
@@ -378,5 +427,83 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:topological_sort",
+    ],
+)
+
+tf_cc_test(
+    name = "meta_optimizer_test",
+    srcs = ["meta_optimizer_test.cc"],
+    deps = [
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
+        ":meta_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
+    name = "custom_graph_optimizer_registry",
+    srcs = ["custom_graph_optimizer_registry.cc"],
+    hdrs = ["custom_graph_optimizer_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "custom_graph_optimizer_registry_test",
+    size = "small",
+    srcs = ["custom_graph_optimizer_registry_test.cc"],
+    deps = [
+        ":custom_graph_optimizer",
+        ":custom_graph_optimizer_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "loop_optimizer",
+    srcs = ["loop_optimizer.cc"],
+    hdrs = [
+        "loop_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+    ],
+)
+
+tf_cc_test(
+    name = "loop_optimizer_test",
+    size = "small",
+    srcs = ["loop_optimizer_test.cc"],
+    deps = [
+        ":loop_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

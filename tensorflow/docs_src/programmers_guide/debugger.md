@@ -1,4 +1,4 @@
-# Debugging TensorFlow Programs
+# TensorFlow Debugger
 
 <!-- [comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning". -->
 

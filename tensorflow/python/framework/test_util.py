@@ -419,6 +419,11 @@ def with_c_api(cls):
   Returns:
     cls with new test methods added
   """
+  # If the C API is already enabled, don't do anything. Some tests break if the
+  # same test is run twice, so this allows us to turn on the C API by default
+  # without breaking these tests.
+  if ops._USE_C_API: return cls
+
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCApi", enable_c_api(value))
@@ -463,8 +468,7 @@ def assert_no_new_tensors(f):
       f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._last_zero = [None]
-    backprop._shape_dtype = [None, None]
+    backprop._zeros_cache.flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [
@@ -502,6 +506,30 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
+    if len(gc.garbage) > previous_garbage:
+      logging.error(
+          "The decorated test created work for Python's garbage collector, "
+          "likely due to a reference cycle. New objects in cycle(s):")
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        try:
+          logging.error(
+              "Object %d of %d" % (i, len(gc.garbage) - previous_garbage))
+          def _safe_object_str(obj):
+            return "<%s %d>" % (obj.__class__.__name__, id(obj))
+          logging.error("  Object type: %s" % (_safe_object_str(obj),))
+          logging.error("  Referrer types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referrers(obj)]),))
+          logging.error("  Referent types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referents(obj)]),))
+          logging.error("  Object attribute names: %s" % (dir(obj),))
+          logging.error("  Object __str__:")
+          logging.error(obj)
+          logging.error("  Object __repr__:")
+          logging.error(repr(obj))
+        except Exception:
+          logging.error("(Exception while printing object)")
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
     self.assertEqual(previous_garbage, len(gc.garbage))
@@ -560,6 +588,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
         # This decorator runs the wrapped test twice.
         # Reset the test environment between runs.
         self.tearDown()
+        self._tempdir = None
         self.setUp()
 
       def run_eager_mode(self, **kwargs):
@@ -1102,7 +1131,12 @@ class TensorFlowTestCase(googletest.TestCase):
       np.testing.assert_allclose(
           a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
-  def _assertAllCloseRecursive(self, a, b, rtol=1e-6, atol=1e-6, path=None,
+  def _assertAllCloseRecursive(self,
+                               a,
+                               b,
+                               rtol=1e-6,
+                               atol=1e-6,
+                               path=None,
                                msg=None):
     path = path or []
     path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
@@ -1249,7 +1283,7 @@ class TensorFlowTestCase(googletest.TestCase):
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-                                       " %s" % (a.shape, b.shape, msg))
+                     " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
     if a.dtype == np.float32 or a.dtype == np.float64:
@@ -1331,8 +1365,8 @@ class TensorFlowTestCase(googletest.TestCase):
       raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list(),
-                        msg=msg)
+    self.assertAllEqual(
+        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.

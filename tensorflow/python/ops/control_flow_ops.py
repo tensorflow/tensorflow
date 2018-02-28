@@ -44,6 +44,7 @@ See the @{$python/control_flow_ops} guide.
 @@add_check_numerics_ops
 @@Assert
 @@Print
+@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -177,8 +178,6 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
 
       guarded_assert = cond(condition, no_op, true_assert, name="AssertGuard")
-      if context.in_eager_mode():
-        return
       return guarded_assert.op
 
 
@@ -313,7 +312,7 @@ def _Enter(data,
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
-def exit(data, name=None):
+def exit(data, name=None):  # pylint: disable=redefined-builtin
   """Exits the current frame to its parent frame.
 
   Exit makes its input `data` available to the parent frame.
@@ -1717,8 +1716,15 @@ class CondContext(ControlFlowContext):
     self._pivot = g.as_graph_element(
         ops.prepend_name_scope(context_def.pivot_name, import_scope))
     self._branch = context_def.branch
-    super(CondContext, self).__init__(
-        values_def=context_def.values_def, import_scope=import_scope)
+    super(CondContext, self).__init__(values_def=context_def.values_def,
+                                      import_scope=import_scope)
+    # The predicate and pivot ops appear in self._values, but don't have self
+    # set as their control context. The __init__ call above will set self for
+    # all values, so manually override the predicate and pivot contexts here.
+    # pylint: disable=protected-access
+    self._pred.op._set_control_flow_context(self.outer_context)
+    self._pivot.op._set_control_flow_context(self.outer_context)
+    # pylint: enable=protected-access
 
   @property
   def pred(self):
@@ -1766,13 +1772,9 @@ class CondContext(ControlFlowContext):
       context_def.branch = self._branch
       context_def.values_def.MergeFrom(super(CondContext, self)._to_values_def(
           export_scope))
-      # TODO(b/72868227): enable this once the corresponding control_flow.proto
-      # changes have been checked in (they aren't checked in and this is
-      # disabled for now to ensure forwards compatibility).
-      if False:  # pylint: disable=using-constant-test
-        for nested in self._nested_contexts:
-          nested_def = context_def.nested_contexts.add()
-          nested.to_control_flow_context_def(nested_def)
+      for nested in self._nested_contexts:
+        nested_def = context_def.nested_contexts.add()
+        nested.to_control_flow_context_def(nested_def)
 
       return context_def
     else:
@@ -1784,14 +1786,10 @@ class CondContext(ControlFlowContext):
     ret = CondContext(context_def=context_def,
                       import_scope=import_scope)
 
-    # TODO(b/72868227): remove "if hasattr(...)" once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is here for now to ensure forwards compatibility).
-    if hasattr(context_def, "nested_contexts"):
-      ret.Enter()
-      for nested_def in context_def.nested_contexts:
-        from_control_flow_context_def(nested_def)
-      ret.Exit()
+    ret.Enter()
+    for nested_def in context_def.nested_contexts:
+      from_control_flow_context_def(nested_def)
+    ret.Exit()
     return ret
 
   def to_control_flow_context_def(self, context_def, export_scope=None):
@@ -1835,8 +1833,6 @@ class CondContext(ControlFlowContext):
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
-      for x in op.outputs:
-        self._values.add(x.name)
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
@@ -1847,11 +1843,18 @@ class CondContext(ControlFlowContext):
           # pylint: enable=protected-access
       # Remove any external control dependency on this op.
       self._RemoveExternalControlEdges(op)
-      for x in op.outputs:
-        self._values.add(x.name)
       # pylint: disable=protected-access
       if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
         op._add_control_input(self._pivot.op)
+      # pylint: enable=protected-access
+
+    # Mark op's outputs as seen by this context and any outer contexts.
+    output_names = [x.name for x in op.outputs]
+    ctxt = self
+    while ctxt is not None:
+      # pylint: disable=protected-access
+      ctxt._values.update(output_names)
+      ctxt = ctxt._outer_context
       # pylint: enable=protected-access
 
     if self._outer_context or not util.IsLoopExit(op):
@@ -2104,10 +2107,7 @@ def cond(pred,
     # Only add non-nested conds to the collection. Any nested control flow will
     # be encapsulated in the root context.
     assert context_t.outer_context == context_f.outer_context
-    # TODO(b/72868227): remove "if True..." once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if True or context_t.outer_context is None:
+    if context_t.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
@@ -2330,13 +2330,9 @@ class WhileContext(ControlFlowContext):
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_values_def(
               export_scope=export_scope))
-      # TODO(b/72868227): remove "if True..." once the corresponding
-      # control_flow.proto changes have been checked in (they aren't checked in
-      # and this is disabled for now to ensure forwards compatibility).
-      if False:  # pylint: disable=using-constant-test
-        for nested in self._nested_contexts:
-          nested_def = context_def.nested_contexts.add()
-          nested.to_control_flow_context_def(nested_def)
+      for nested in self._nested_contexts:
+        nested_def = context_def.nested_contexts.add()
+        nested.to_control_flow_context_def(nested_def)
 
       return context_def
     else:
@@ -2358,14 +2354,10 @@ class WhileContext(ControlFlowContext):
     """
     ret = WhileContext(context_def=context_def,
                        import_scope=import_scope)
-    # TODO(b/72868227): remove "if hasattr(...)" once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if hasattr(context_def, "nested_contexts"):
-      ret.Enter()
-      for nested_def in context_def.nested_contexts:
-        from_control_flow_context_def(nested_def, import_scope=import_scope)
-      ret.Exit()
+    ret.Enter()
+    for nested_def in context_def.nested_contexts:
+      from_control_flow_context_def(nested_def, import_scope=import_scope)
+    ret.Exit()
     return ret
 
   def GetWhileContext(self):
@@ -3120,6 +3112,43 @@ def while_loop(cond,
       shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
   ```
 
+  Example which demonstrates non-strict semantics: In the following
+  example, the final value of the counter `i` does not depend on `x`. So
+  the `while_loop` can increment the counter parallel to updates of `x`.
+  However, because the loop counter at one loop iteration depends
+  on the value at the previous iteration, the loop counter itself cannot
+  be incremented in parallel. Hence if we just want the final value of the
+  counter (which we print on the line `print(sess.run(i))`), then
+  `x` will never be incremented, but the counter will be updated on a
+  single thread. Conversely, if we want the value of the output (which we
+  print on the line `print(sess.run(out).shape)`), then the counter may be
+  incremented on its own thread, while `x` can be incremented in
+  parallel on a separate thread. In the extreme case, it is conceivable
+  that the thread incrementing the counter runs until completion before
+  `x` is incremented even a single time. The only thing that can never
+  happen is that the thread updating `x` can never get ahead of the
+  counter thread because the thread incrementing `x` depends on the value
+  of the counter.
+  ```python
+  import tensorflow as tf
+
+  n = 10000
+  x = tf.constant(list(range(n)))
+  c = lambda i, x: i < n
+  b = lambda i, x: (tf.Print(i + 1, [i]), tf.Print(x + 1, [i], "x:"))
+  i, out = tf.while_loop(c, b, (0, x))
+  with tf.Session() as sess:
+      print(sess.run(i))  # prints [0] ... [9999]
+
+      # The following line may increment the counter and x in parallel.
+      # The counter thread may get ahead of the other thread, but not the
+      # other way around. So you may see things like
+      # [9996] x:[9987]
+      # meaning that the counter thread is on iteration 9996,
+      # while the other thread is on iteration 9987
+      print(sess.run(out).shape)
+  ```
+
   """
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
@@ -3173,10 +3202,7 @@ def while_loop(cond,
         swap_memory=swap_memory)
     # Only add non-nested loops to the collection. Any nested control flow will
     # be encapsulated in the root context.
-    # TODO(b/72868227): enable condition once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if True or loop_context.outer_context is None:
+    if loop_context.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     if maximum_iterations is not None:
@@ -3343,7 +3369,7 @@ def group(*inputs, **kwargs):
 
 
 @tf_export("tuple")
-def tuple(tensors, name=None, control_inputs=None):
+def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 
   This creates a tuple of tensors with the same values as the `tensors`
@@ -3378,7 +3404,12 @@ def tuple(tensors, name=None, control_inputs=None):
   if context.in_eager_mode():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
-    gating_ops = [t.op for t in tensors if t is not None]
+    tensors = [t if (isinstance(t, ops.Operation)
+                     or tensor_util.is_tensor(t)
+                     or t is None)
+               else ops.convert_to_tensor(t) for t in tensors]
+    gating_ops = [t if isinstance(t, ops.Operation) else t.op for t in tensors
+                  if t is not None]
     if control_inputs:
       for c in control_inputs:
         if isinstance(c, ops.Tensor):
@@ -3394,8 +3425,11 @@ def tuple(tensors, name=None, control_inputs=None):
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if t is not None:
+      if tensor_util.is_tensor(t):
         tpl.append(with_dependencies([gate], t))
+      elif isinstance(t, ops.Operation):
+        with ops.control_dependencies([gate]):
+          tpl.append(group(t))
       else:
         tpl.append(None)
     return tpl

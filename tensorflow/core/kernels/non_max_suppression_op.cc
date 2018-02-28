@@ -105,7 +105,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
   }
 
   const int output_size = std::min(max_output_size.scalar<int>()(), num_boxes);
-  typename TTypes<float, 2>::ConstTensor boxes_data = boxes.tensor<float, 2>();
+  TTypes<float, 2>::ConstTensor boxes_data = boxes.tensor<float, 2>();
 
   std::vector<float> scores_data(num_boxes);
   std::copy_n(scores.flat<float>().data(), num_boxes, scores_data.begin());
@@ -138,8 +138,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
   Tensor* output = nullptr;
   TensorShape output_shape({static_cast<int>(selected.size())});
   OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-  typename TTypes<int, 1>::Tensor selected_indices_data =
-      output->tensor<int, 1>();
+  TTypes<int, 1>::Tensor selected_indices_data = output->tensor<int, 1>();
   std::copy_n(selected.begin(), selected.size(), selected_indices_data.data());
 }
 

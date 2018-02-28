@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.conv_utils import convert_kernel
+from tensorflow.python.util.tf_export import tf_export
 
 
 def count_params(weights):
@@ -57,6 +58,10 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     print_fn = print
 
   if model.__class__.__name__ == 'Sequential':
+    sequential_like = True
+  elif not model._is_graph_network:
+    # We treat subclassed models as a simple sequence of layers, for logging
+    # purposes.
     sequential_like = True
   else:
     sequential_like = True
@@ -117,17 +122,24 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('=' * line_length)
 
   def print_layer_summary(layer):
+    """Prints a summary for a single layer.
+
+    Arguments:
+        layer: target layer.
+    """
     try:
       output_shape = layer.output_shape
     except AttributeError:
       output_shape = 'multiple'
+    except RuntimeError:  # output_shape unknown in Eager mode.
+      output_shape = '?'
     name = layer.name
     cls_name = layer.__class__.__name__
     fields = [name + ' (' + cls_name + ')', output_shape, layer.count_params()]
     print_row(fields, positions)
 
   def print_layer_summary_with_connections(layer):
-    """Prints a summary for a single layer.
+    """Prints a summary for a single layer (including topological connections).
 
     Arguments:
         layer: target layer.
@@ -190,6 +202,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('_' * line_length)
 
 
+@tf_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 

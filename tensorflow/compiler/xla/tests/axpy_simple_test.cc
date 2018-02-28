@@ -62,6 +62,10 @@ TEST_F(AxpySimpleTest, AxpyTenValues) {
   auto ax = builder.Mul(alpha, x);
   auto axpy = builder.Add(ax, y);
 
+  TF_ASSERT_OK_AND_ASSIGN(ProgramShape shape, builder.GetProgramShape());
+
+  EXPECT_EQ("() -> f32[10]", ShapeUtil::HumanString(shape));
+
   std::vector<float> expected = {
       1.85840735, -1.85840735, 2.28318531,   -2.28318531,  -6.42477796,
       6.42477796, 10.56637061, -10.56637061, -14.70796327, 14.70796327};

@@ -109,7 +109,7 @@ def freeze_graph_with_def_protos(input_graph_def,
           input_meta_graph_def, clear_devices=True)
       restorer.restore(sess, input_checkpoint)
       if initializer_nodes:
-        sess.run(initializer_nodes.split(","))
+        sess.run(initializer_nodes.replace(" ", "").split(","))
     elif input_saved_model_dir:
       if saved_model_tags is None:
         saved_model_tags = []
@@ -130,25 +130,27 @@ def freeze_graph_with_def_protos(input_graph_def,
           var_list=var_list, write_version=checkpoint_version)
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
-        sess.run(initializer_nodes.split(","))
+        sess.run(initializer_nodes.replace(" ", "").split(","))
 
-    variable_names_whitelist = (variable_names_whitelist.split(",")
-                                if variable_names_whitelist else None)
-    variable_names_blacklist = (variable_names_blacklist.split(",")
-                                if variable_names_blacklist else None)
+    variable_names_whitelist = (
+        variable_names_whitelist.replace(" ", "").split(",")
+        if variable_names_whitelist else None)
+    variable_names_blacklist = (
+        variable_names_blacklist.replace(" ", "").split(",")
+        if variable_names_blacklist else None)
 
     if input_meta_graph_def:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_meta_graph_def.graph_def,
-          output_node_names.split(","),
+          output_node_names.replace(" ", "").split(","),
           variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
     else:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_graph_def,
-          output_node_names.split(","),
+          output_node_names.replace(" ", "").split(","),
           variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
 
@@ -250,18 +252,26 @@ def freeze_graph(input_graph,
       variable_names_blacklist,
       input_meta_graph_def,
       input_saved_model_dir,
-      saved_model_tags.split(","),
+      saved_model_tags.replace(" ", "").split(","),
       checkpoint_version=checkpoint_version)
 
 
 def main(unused_args):
+  if FLAGS.checkpoint_version == 1:
+    checkpoint_version = saver_pb2.SaverDef.V1
+  elif FLAGS.checkpoint_version == 2:
+    checkpoint_version = saver_pb2.SaverDef.V2
+  else:
+    print("Invalid checkpoint version (must be '1' or '2'): %d" %
+          FLAGS.checkpoint_version)
+    return -1
   freeze_graph(FLAGS.input_graph, FLAGS.input_saver, FLAGS.input_binary,
                FLAGS.input_checkpoint, FLAGS.output_node_names,
                FLAGS.restore_op_name, FLAGS.filename_tensor_name,
                FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
                FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
                FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
-               FLAGS.saved_model_tags, FLAGS.checkpoint_version)
+               FLAGS.saved_model_tags, checkpoint_version)
 
 
 if __name__ == "__main__":
@@ -285,7 +295,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--checkpoint_version",
       type=int,
-      default=saver_pb2.SaverDef.V2,
+      default=2,
       help="Tensorflow variable file format")
   parser.add_argument(
       "--output_graph",

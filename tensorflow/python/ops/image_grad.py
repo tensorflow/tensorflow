@@ -61,15 +61,10 @@ def _ResizeBilinearGrad(op, grad):
   Returns:
     The gradients w.r.t. the input.
   """
-  allowed_types = [dtypes.float32, dtypes.float64]
-  grad0 = None
-  if op.inputs[0].dtype in allowed_types:
-    # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bilinear_grad(
-        grad,
-        op.inputs[0],
-        align_corners=op.get_attr("align_corners"))
-    # pylint: enable=protected-access
+  # pylint: disable=protected-access
+  grad0 = gen_image_ops._resize_bilinear_grad(
+      grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
+  # pylint: enable=protected-access
   return [grad0, None]
 
 

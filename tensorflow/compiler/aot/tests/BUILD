@@ -76,7 +76,6 @@ tf_library(
     include_standard_runtime_deps = False,
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -89,7 +88,6 @@ tf_library(
     graph = "test_graph_tfadd_with_ckpt.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -103,7 +101,6 @@ tf_library(
     graph = "test_graph_tfadd_with_ckpt_saver.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -115,7 +112,6 @@ tf_library(
     graph = "test_graph_tffunction.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -127,7 +123,6 @@ tf_library(
     graph = "test_graph_tfgather.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -139,7 +134,6 @@ tf_library(
     graph = "test_graph_tfmatmul.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -151,7 +145,6 @@ tf_library(
     graph = "test_graph_tfmatmulandadd.pb",
     tags = [
         "manual",
-        "notap",
     ],
     tfcompile_flags = "--gen_name_to_index --gen_program_shape",
 )
@@ -164,7 +157,6 @@ tf_library(
     graph = "test_graph_tfsplits.pb",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -173,7 +165,6 @@ tf_cc_test(
     srcs = ["tfcompile_test.cc"],
     tags = [
         "manual",
-        "notap",
     ],
     deps = [
         ":test_graph_tfadd",

@@ -255,7 +255,7 @@ class RNNCell(base_layer.Layer):
     return output
 
 
-class _LayerRNNCell(RNNCell):
+class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
   For backwards compatibility purposes, most `RNNCell` instances allow their
@@ -297,7 +297,7 @@ class _LayerRNNCell(RNNCell):
 
 
 @tf_export("nn.rnn_cell.BasicRNNCell")
-class BasicRNNCell(_LayerRNNCell):
+class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
   Args:
@@ -355,7 +355,7 @@ class BasicRNNCell(_LayerRNNCell):
 
 
 @tf_export("nn.rnn_cell.GRUCell")
-class GRUCell(_LayerRNNCell):
+class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
   Args:
@@ -473,7 +473,7 @@ class LSTMStateTuple(_LSTMStateTuple):
 
 
 @tf_export("nn.rnn_cell.BasicLSTMCell")
-class BasicLSTMCell(_LayerRNNCell):
+class BasicLSTMCell(LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -598,7 +598,7 @@ class BasicLSTMCell(_LayerRNNCell):
 
 
 @tf_export("nn.rnn_cell.LSTMCell")
-class LSTMCell(_LayerRNNCell):
+class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:

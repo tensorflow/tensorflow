@@ -13,7 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Ops to work with embeddings.
+"""TensorFlow Ops to work with embeddings (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Note: categorical variables are handled via embeddings in many cases.
 For example, in case of words.

@@ -353,11 +353,9 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.scatter_update(ref, indices, updates,
                                         use_locking=use_locking, name=name)
-  with ops.control_dependencies(
-      [gen_resource_variable_ops.resource_scatter_update(
-          ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
-          name=name)]):
-    return ref.read_value()
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_update(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export("scatter_nd_update")

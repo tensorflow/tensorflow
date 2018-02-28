@@ -19,21 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
-import six
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import asserts
-from tensorflow.contrib.py2tf.converters import break_canonicalization
+from tensorflow.contrib.py2tf.converters import break_statements
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import call_trees
-from tensorflow.contrib.py2tf.converters import continue_canonicalization
+from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
-from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.contrib.py2tf.converters import logical_expressions
+from tensorflow.contrib.py2tf.converters import name_scopes
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
+from tensorflow.contrib.py2tf.pyct import inspect_utils
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct.static_analysis import activity
@@ -55,18 +57,26 @@ class ConversionMap(object):
         off.
     dependency_cache: dict[object]: ast; maps original entities to their
         converted AST
+    additional_imports: set(object); additional entities which for any reason
+        cannot be attached after loading and need to be explicitly imported
+        in the generated code
     name_map: dict[string]: string; maps original entities to the name of
         their converted counterparts
+    api_module: A reference to the api module. The reference needs to be passed
+        to avoid circular dependencies.
   """
 
   # TODO(mdan): Rename to ConversionContext, and pull in additional flags.
 
-  def __init__(self, recursive, nocompile_decorators, partial_types):
+  def __init__(self, recursive, nocompile_decorators, partial_types,
+               api_module):
     self.recursive = recursive
     self.nocompile_decorators = nocompile_decorators
     self.partial_types = partial_types if partial_types else ()
     self.dependency_cache = {}
+    self.additional_imports = set()
     self.name_map = {}
+    self.api_module = api_module
 
   def new_namer(self, namespace):
     return naming.Namer(namespace, self.recursive, self.name_map,
@@ -85,6 +95,24 @@ class ConversionMap(object):
 
   def add_to_cache(self, original_entity, converted_ast):
     self.dependency_cache[original_entity] = converted_ast
+
+
+def is_whitelisted_for_graph(o):
+  """Check whether an entity is whitelisted for use in graph mode.
+
+  Examples of whitelisted entities include all members of the tensorflow
+  package.
+
+  Args:
+    o: A Python entity.
+  Returns:
+    Boolean
+  """
+  m = tf_inspect.getmodule(o)
+  for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
+    if m.__name__.startswith(prefix):
+      return True
+  return False
 
 
 def entity_to_graph(o, conversion_map, arg_values, arg_types):
@@ -145,7 +173,7 @@ def class_to_graph(c, conversion_map):
   if not members:
     raise ValueError('Cannot convert %s: it has no member methods.')
 
-  class_globals = None
+  class_namespace = None
   for _, m in members:
     node, _ = function_to_graph(
         m,
@@ -154,10 +182,10 @@ def class_to_graph(c, conversion_map):
         arg_types={'self': (c.__name__, c)},
         owner_type=c)
     # TODO(mdan): Do not assume all members have the same view of globals.
-    if class_globals is None:
-      class_globals = six.get_function_globals(m)
+    if class_namespace is None:
+      class_namespace = inspect_utils.getnamespace(m)
     converted_members[m] = node
-  namer = conversion_map.new_namer(class_globals)
+  namer = conversion_map.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
   node = gast.ClassDef(
       class_name,
@@ -169,22 +197,34 @@ def class_to_graph(c, conversion_map):
   return node, class_name
 
 
+def _add_self_references(namespace, api_module):
+  """Self refs are only required for analysis and are not used directly."""
+  # Manually add the utils namespace which may be used from generated code.
+  if 'py2tf_util' not in namespace:
+    namespace['py2tf_utils'] = utils
+  elif namespace['py2tf_utils'] != utils:
+    raise ValueError(
+        'The module name "py2tf_utils" is reserved and may not be used.')
+
+  # We also make reference to the api module for dynamic conversion, but
+  # to avoid circular references we don't import it here.
+  if 'py2tf_api' not in namespace:
+    namespace['py2tf_api'] = api_module
+  elif namespace['py2tf_api'] != api_module:
+    raise ValueError(
+        'The module name "py2tf_api" is reserved and may not be used.')
+
+
 def function_to_graph(f, conversion_map, arg_values, arg_types,
                       owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
   node, source = parser.parse_entity(f)
   node = node.body[0]
-  namespace = six.get_function_globals(f)
 
-  # This is needed for non-global functions.
-  closure = six.get_function_closure(f)
-  if closure:
-    for e in closure:
-      if callable(e.cell_contents):
-        fn = e.cell_contents
-        namespace[fn.__name__] = fn
-
+  namespace = inspect_utils.getnamespace(f)
+  _add_self_references(namespace, conversion_map.api_module)
   namer = conversion_map.new_namer(namespace)
+
   ctx = context.EntityContext(
       namer=namer,
       source_code=source,
@@ -192,8 +232,9 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       namespace=namespace,
       arg_values=arg_values,
       arg_types=arg_types,
+      owner_type=owner_type,
       recursive=conversion_map.recursive)
-  node = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
+  node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -204,6 +245,9 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
 
   node.name = new_name
   conversion_map.update_name_map(namer)
+  # TODO(mdan): Use this at compilation.
+  conversion_map.additional_imports.update(deps)
+
   return node, new_name
 
 
@@ -246,22 +290,20 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
-  node = decorators.transform(node, nocompile_decorators)
-  node = break_canonicalization.transform(node, ctx)
+  node, deps = decorators.transform(node, nocompile_decorators)
+  node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_canonicalization.transform(node, ctx)
+  node = continue_statements.transform(node, ctx)
   ctx.namespace['len'] = len
 
   node = _static_analysis_pass(node, ctx)
-  node = for_canonicalization.transform(node, ctx)
-  # for_canonicalization may insert new global references.
+  node = for_loops.transform(node, ctx)
+  # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
-  # builtin_functions may insert new global references.
-  ctx.namespace['print'] = print
 
   node = _static_analysis_pass(node, ctx)
   node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,
@@ -272,5 +314,6 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = _static_analysis_pass(node, ctx)
   node = logical_expressions.transform(node)
   node = side_effect_guards.transform(node, ctx)
+  node = name_scopes.transform(node, ctx)
 
-  return node
+  return node, deps

@@ -49,7 +49,7 @@ RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
 #endif  // IS_SLIM_BUILD
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
-               << ". No comprression will be used.";
+               << ". No compression will be used.";
   }
   return options;
 }

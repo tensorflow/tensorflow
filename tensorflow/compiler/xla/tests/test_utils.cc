@@ -287,7 +287,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape) {
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
     HloModule* const module) {
-  TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(module));
+  TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::minstd_rand0 engine;
   std::vector<std::unique_ptr<Literal>> arguments(params.size());

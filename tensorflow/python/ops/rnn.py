@@ -83,8 +83,9 @@ def _best_effort_input_batch_size(flat_input):
   """Get static input batch size if available, with fallback to the dynamic one.
 
   Args:
-    flat_input: An iterable of time major input Tensors of shape [max_time,
-      batch_size, ...]. All inputs should have compatible batch sizes.
+    flat_input: An iterable of time major input Tensors of shape
+      `[max_time, batch_size, ...]`.
+    All inputs should have compatible batch sizes.
 
   Returns:
     The batch size in Python integer if available, or a scalar Tensor otherwise.

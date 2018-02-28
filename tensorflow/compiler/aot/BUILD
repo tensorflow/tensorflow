@@ -134,7 +134,6 @@ tf_library(
     graph = "test_graph_tfadd.pbtxt",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -148,7 +147,6 @@ tf_library(
     graph = "test_graph_tfunknownop.pbtxt",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -163,7 +161,6 @@ tf_library(
     graph = "test_graph_tfunknownop.pbtxt",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -177,7 +174,6 @@ tf_library(
     graph = "test_graph_tfunknownop.pbtxt",
     tags = [
         "manual",
-        "notap",
     ],
 )
 
@@ -201,7 +197,6 @@ cc_library(
     name = "benchmark_extra_android",
     tags = [
         "manual",
-        "notap",
     ],
     visibility = ["//visibility:public"],
 )

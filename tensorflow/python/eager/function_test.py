@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -593,6 +594,173 @@ class FunctionTest(test.TestCase):
         self.assertEqual(v.name, 'foo/bar:0')
       with ops.get_default_graph().as_default():
         create_variable()
+
+
+class AutomaticControlDependenciesTest(test.TestCase):
+
+  def testBasic(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      with function.AutomaticControlDependencies() as c:
+        v.assign(v + 1)
+        v.assign(2 * v)
+        val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(), 4.0)
+
+  def testCondMustRun(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+
+        def true_fn():
+          v.assign(v + 1)
+          return 0.0
+
+        def false_fn():
+          v.assign(v + 4)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
+
+  def testCondMustRunSeparateRead(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+
+        def true_fn():
+          v.assign(v + 1)
+          return 0.0
+
+        def false_fn():
+          v.assign(v + 4)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        one = constant_op.constant(1.0)
+        c.mark_as_return(one)
+      one.eval(feed_dict={p: False})
+      self.assertAllEqual(v.read_value().eval(), 5.0)
+      one.eval(feed_dict={p: True})
+      self.assertAllEqual(v.read_value().eval(), 6.0)
+
+  def testCondNested(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      q = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+
+        def true_fn():
+          v.assign(v + 1, name='true')
+          return 1.0
+
+        def false_fn():
+
+          def inner_true_fn():
+            v.assign(v * 2, name='false_true')
+            return 2.0
+
+          def inner_false_fn():
+            v.assign(v * 3, name='false_false')
+            return 3.0
+
+          control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        with ops.name_scope('final'):
+          val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
+      self.assertAllEqual(val.eval(feed_dict={p: False, q: True}), 6.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
+
+  def testCondOneBranch(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+
+        def true_fn():
+          return 0.0
+
+        def false_fn():
+          v.assign(v + 4)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
+
+  def testCondOneBranchUpdateBefore(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+        v.assign(v * 2)
+
+        def true_fn():
+          return 0.0
+
+        def false_fn():
+          v.assign(v + 4)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
+
+  def testCondOneBranchUpdateAfter(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      p = array_ops.placeholder(dtype=dtypes.bool)
+      with function.AutomaticControlDependencies() as c:
+
+        def true_fn():
+          return 0.0
+
+        def false_fn():
+          v.assign(v + 4)
+          return 1.0
+
+        control_flow_ops.cond(p, true_fn, false_fn)
+        v.assign(v * 2)
+        val = v.read_value()
+        c.mark_as_return(val)
+      self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
+      self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
+
+  def testDecorator(self):
+    with context.graph_mode(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+
+      @function.automatic_control_dependencies
+      def f():
+        v.assign(v + 1)
+        v.assign(2 * v)
+        return v.read_value()
+
+      self.assertAllEqual(f().eval(), 4.0)
 
 
 if __name__ == '__main__':

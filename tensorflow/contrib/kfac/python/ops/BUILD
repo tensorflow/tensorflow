@@ -144,10 +144,13 @@ py_library(
         ":fisher_estimator",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )

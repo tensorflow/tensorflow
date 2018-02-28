@@ -233,6 +233,26 @@ StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShape(
   return status_or_shape;
 }
 
+StatusOr<ProgramShape> ComputationBuilder::GetProgramShape() {
+  TF_RETURN_IF_ERROR(first_error_);
+
+  GetComputationShapeRequest request;
+  *request.mutable_computation() = computation_.handle();
+  GetComputationShapeResponse response;
+
+  VLOG(2) << "making get-program-shape-request";
+  Status status = client_->stub()->GetComputationShape(&request, &response);
+  VLOG(2) << "done with get-program-shape-request";
+
+  if (!status.ok()) {
+    first_error_ = status;
+    return status;
+  }
+
+  TF_RET_CHECK(response.has_program_shape());
+  return std::move(*response.mutable_program_shape());
+}
+
 ComputationDataHandle ComputationBuilder::CheckShape(
     const ComputationDataHandle& operand, const Shape& expected_shape) {
   std::unique_ptr<Shape> actual_shape = GetShape(operand).ConsumeValueOrDie();
@@ -769,6 +789,20 @@ ComputationDataHandle ComputationBuilder::CustomCall(
   return RunOpAndParseResponse(&op_request);
 }
 
+ComputationDataHandle ComputationBuilder::HostCompute(
+    tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
+    const string& channel_name, int64 cost_estimate_ns, const Shape& shape) {
+  OpRequest op_request;
+  HostComputeRequest* request = op_request.mutable_host_compute_request();
+  for (const ComputationDataHandle& operand : operands) {
+    *request->add_operands() = operand;
+  }
+  *request->mutable_shape() = shape;
+  request->set_channel_name(channel_name);
+  request->set_cost_estimate_ns(cost_estimate_ns);
+  return RunOpAndParseResponse(&op_request);
+}
+
 ComputationDataHandle ComputationBuilder::Complex(
     const ComputationDataHandle& real, const ComputationDataHandle& imag,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
@@ -1197,6 +1231,22 @@ ComputationDataHandle ComputationBuilder::While(
   *request->mutable_condition() = condition.handle();
   *request->mutable_body() = body.handle();
   *request->mutable_init() = init;
+  return RunOpAndParseResponse(&op_request);
+}
+
+ComputationDataHandle ComputationBuilder::Gather(
+    const ComputationDataHandle& input,
+    const ComputationDataHandle& gather_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  OpRequest op_request;
+  GatherRequest* gather_request = op_request.mutable_gather_request();
+  *gather_request->mutable_input() = input;
+  *gather_request->mutable_gather_indices() = gather_indices;
+  *gather_request->mutable_dimension_numbers() = dimension_numbers;
+  for (int64 window_bound : window_bounds) {
+    gather_request->add_window_bounds(window_bound);
+  }
   return RunOpAndParseResponse(&op_request);
 }
 

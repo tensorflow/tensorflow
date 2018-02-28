@@ -64,6 +64,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  def testGPUInt64(self):
+    if not context.context().num_gpus():
+      return
+    with context.eager_mode(), context.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
+      self.assertAllEqual(1, v.numpy())
+
   def testEagerNameNotIdentity(self):
     with context.eager_mode():
       v0 = resource_variable_ops.ResourceVariable(1.0, name="a")
@@ -162,14 +169,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testScatterAdd(self):
-    handle = resource_variable_ops.var_handle_op(
-        dtype=dtypes.int32, shape=[1, 1])
-    self.evaluate(resource_variable_ops.assign_variable_op(
-        handle, constant_op.constant([[1]], dtype=dtypes.int32)))
-    self.evaluate(resource_variable_ops.resource_scatter_add(
-        handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
-    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-    self.assertEqual(self.evaluate(read), [[3]])
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant([[1]], dtype=dtypes.int32)))
+      self.evaluate(resource_variable_ops.resource_scatter_add(
+          handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterUpdateString(self):
     handle = resource_variable_ops.var_handle_op(

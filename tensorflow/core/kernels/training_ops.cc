@@ -1228,11 +1228,8 @@ inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
     quadratic =
         Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
   }
-  if (Eigen::numext::abs(linear) > l1) {
-    return (l1 * sgn(linear) - linear) / quadratic;
-  } else {
-    return static_cast<T>(0.0);
-  }
+  auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
+  return (l1_reg_adjust - linear) / quadratic;
 }
 }  // namespace
 

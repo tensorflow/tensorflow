@@ -71,7 +71,7 @@ class ResNet50Test(tf.test.TestCase):
       model.call = tfe.defun(model.call)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 1000), output.shape)
 
   def test_apply(self):
@@ -85,7 +85,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     output_shape = ((2, 2048, 1, 1)
                     if data_format == 'channels_first' else (2, 1, 1, 2048))
     self.assertEqual(output_shape, output.shape)
@@ -95,7 +95,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False, pooling='avg')
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 2048), output.shape)
 
   def test_train(self):
@@ -194,11 +194,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     with tf.device(device):
       images, _ = random_batch(batch_size)
       for _ in xrange(num_burn):
-        model(images).cpu()
+        model(images, training=False).cpu()
       gc.collect()
       start = time.time()
       for _ in xrange(num_iters):
-        model(images).cpu()
+        model(images, training=False).cpu()
       self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_apply(self):

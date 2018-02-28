@@ -99,10 +99,10 @@ class SoftmaxTest(test.TestCase):
 
   def _testOverflow(self, use_gpu=False):
     if use_gpu:
-      type = np.float32
+      type = np.float32  # pylint: disable=redefined-builtin
     else:
-      type = np.float64
-    max = np.finfo(type).max
+      type = np.float64  # pylint: disable=redefined-builtin
+    max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
     with self.test_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
