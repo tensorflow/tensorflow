@@ -782,6 +782,14 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
   auto stringify_constant = [](const HloInstruction* constant) {
     const auto& shape = constant->shape();
 
+    // If the shape has a dimension of size zero, print it as e.g.
+    // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
+    // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
+    // is just noise.
+    if (ShapeUtil::HasZeroElements(shape)) {
+      return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
+    }
+
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
     if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
