@@ -45,27 +45,30 @@ feature dimension in `operand`), the operation calculates the gradients with
 respect to `operand`, `offset` and `scale` across all the other dimensions. The
 `feature_index` must be a valid index for the feature dimension in `operand`.
 
-The three gradients are defined by the following formulas:
+The three gradients are defined by the following formulas (Assuming a
+4-dimensional tensor as `operand` and (l) is the index for feature dimension):
 
-\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+\\( coef_l = \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (\nabla y_{ijkl} * (x_{ijkl} - \mu_l) / (\sigma^2_{l}+\epsilon)) \\)
 
-\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+\\( \nabla x_{ijkl} = \gamma_{l} * (1/\sqrt{\sigma^2_{l}+\epsilon}) * [\nabla y_{ijkl} - mean(\nabla y) - (x_{ijkl} - \mu_{l}) * coef_l] \\)
 
-\\( \nabla \beta = sum(\nabla y) \\)
+\\( \nabla \beta_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} \\)
+
+\\( \nabla \gamma_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} * ((x_{ijkl} - \mu_l) / \sqrt{\sigma^2_{l}+\epsilon}) \\)
 
 The inputs `mean` and `variance` represents moments value
 across batch and spatial dimensions.
 
 The output type is a tuple of three handles:
 
-|Outputs       | Type                    | Semantics                           |
-|------------- | ----------------------- | ------------------------------------|
-|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `operand`                           :
-|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `scale`                             :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `offset`                            :
+|Outputs       | Type                    | Semantics                            |
+|------------- | ----------------------- | ------------------------------------ |
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `operand` (\\( \nabla x\\))          :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `scale` (\\( \nabla \gamma\\))       :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `offset`(\\( \nabla \beta\\))        :
 
 
 ## BatchNormInference
@@ -119,11 +122,11 @@ Normalizes an array across batch and spatial dimensions.
 | Arguments       | Type                    | Semantics                        |
 | --------------- | ----------------------- | -------------------------------- |
 | `operand`       | `ComputationDataHandle` | n dimensional array to be        |
-:                 :                         : normalized                       :
+:                 :                         : normalized (x)                   :
 | `scale`         | `ComputationDataHandle` | 1 dimensional array              |
 :                 :                         : (\\(\gamma\\))                   :
 | `offset`        | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\beta\\ )                    :
+:                 :                         : (\\(\beta\\))                    :
 | `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
 | `feature_index` | `int64`                 | Index to feature dimension       |
 :                 :                         : in `operand`                     :
