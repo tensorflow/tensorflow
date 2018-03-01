@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
+
 TRTCalibOp::TRTCalibOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("segment_nodes", &segment_nodes_));
   OP_REQUIRES_OK(context, context->GetAttr("input_names", &input_names_));
@@ -57,9 +58,9 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
 
 void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   // TODO(aaroey): make sure ctx->resource_mgr() is used in future PR.
-  auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
+  auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto res_mgr = trt_rm->getManager("TRTCalibOps");
-  tensorflow::trt::TRTCalibrationResource* calib_res = nullptr;
+  tensorflow::tensorrt::TRTCalibrationResource* calib_res = nullptr;
   auto status = res_mgr->Lookup(resource_name_, resource_name_, &calib_res);
 
   if (!status.ok()) {
@@ -124,7 +125,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
 
 REGISTER_KERNEL_BUILDER(Name("TRTCalibOp").Device(DEVICE_GPU), TRTCalibOp);
 
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif
 #endif

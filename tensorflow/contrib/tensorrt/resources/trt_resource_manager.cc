@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/logging.h"
+
+namespace tensorflow {
+namespace tensorrt {
 
 std::shared_ptr<tensorflow::ResourceMgr>
-tensorflow::trt::TRTResourceManager::getManager(const string& mgr_name) {
+tensorflow::tensorrt::TRTResourceManager::getManager(const string& mgr_name) {
   // mutex is held for lookup only. Most instantiations where mutex will be held
   // longer will be during op creation and should be ok.
   tensorflow::mutex_lock lock(map_mutex_);
@@ -31,3 +34,6 @@ tensorflow::trt::TRTResourceManager::getManager(const string& mgr_name) {
   VLOG(1) << "Returning old manager " << mgr_name;
   return s->second;
 }
+
+}  // namespace tensorrt
+}  // namespace tensorflow

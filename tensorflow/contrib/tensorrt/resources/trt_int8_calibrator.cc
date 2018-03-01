@@ -26,7 +26,7 @@ limitations under the License.
 #include "cuda_runtime_api.h"
 
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
 
 // set the batch size before constructing the thread to execute engine
 int TRTInt8Calibrator::getBatchSize() const { return batch_size_; }
@@ -113,7 +113,7 @@ TRTInt8Calibrator::~TRTInt8Calibrator() {
   VLOG(1) << "Destroying calibrator for " << engine_name_;
 }
 
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif
 #endif

@@ -26,7 +26,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
 // This class provides a 1 element queue to match TFs push model to
 // TRTs pull model for calibration. When TRT implements a means for
 // a push calibration This class should be updated accordingly
@@ -58,7 +58,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   std::atomic_bool calib_running_;
   string engine_name_;
 };
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_
 #endif

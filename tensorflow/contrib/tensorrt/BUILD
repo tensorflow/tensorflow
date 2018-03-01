@@ -197,6 +197,7 @@ tf_cuda_library(
         "resources/trt_resources.h",
     ],
     deps = [
+        ":trt_logging",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

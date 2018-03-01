@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
 class TRTCalibrationResource : public tensorflow::ResourceBase {
  public:
   TRTCalibrationResource()
@@ -88,7 +88,7 @@ class TRTEngineResource : public tensorflow::ResourceBase {
   nvinfer1::IExecutionContext* ctx_;
 };
 
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCEMGR_TRTRESOURCES_H_
 #endif

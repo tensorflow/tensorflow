@@ -29,7 +29,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
 // TODO(sami): Convert this to async kernel!
 class TRTCalibOp : public OpKernel {
  public:
@@ -45,7 +45,7 @@ class TRTCalibOp : public OpKernel {
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
 };
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif
 #endif

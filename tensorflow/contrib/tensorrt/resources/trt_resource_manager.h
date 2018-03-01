@@ -22,11 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
-
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
+
 class TRTResourceManager {
   TRTResourceManager() = default;
 
@@ -44,8 +42,8 @@ class TRTResourceManager {
       managers_;
   tensorflow::mutex map_mutex_;
 };
-}  // namespace trt
+
+}  // namespace tensorrt
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
-#endif
-#endif
