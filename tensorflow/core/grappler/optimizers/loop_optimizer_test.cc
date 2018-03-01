@@ -14,19 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
-#include "tensorflow/core/grappler/utils/frame.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace grappler {
