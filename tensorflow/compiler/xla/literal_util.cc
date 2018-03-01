@@ -813,7 +813,7 @@ std::unique_ptr<Literal> Literal::Slice(
     CHECK_GE(start_indices[dnum], 0);
     CHECK_LE(limit_indices[dnum], shape().dimensions(dnum));
     int64 dimension = limit_indices[dnum] - start_indices[dnum];
-    CHECK_GT(dimension, 0);
+    CHECK_GE(dimension, 0);
     result_dimensions.push_back(dimension);
   }
   const auto result_shape =
