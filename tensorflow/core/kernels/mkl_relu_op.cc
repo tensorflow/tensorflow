@@ -600,8 +600,8 @@ class MklReluGradOpBase : public OpKernel {
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
-        // both src and diff_dst are tf layout,
-        // so get tf shape from anyone should be ok
+        // both src and diff_dst are TensorFlow layout,
+        // so it is ok to get TensorFlow shape.
         tf_shape_diff_src = src_tensor.shape();
       }
       AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
