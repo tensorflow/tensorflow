@@ -180,12 +180,10 @@ int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
 }
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
-  // TODO(apassos) this will be potentially incorrect in the distributed case as
-  // our local device will have a name which depends on the ClusterSpec and
-  // hence will require the context to resolve.
   status->status = tensorflow::Status::OK();
-  return (h->d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
-                           : h->d->name().c_str();
+  return (h->op_device == nullptr)
+             ? "/job:localhost/replica:0/task:0/device:CPU:0"
+             : h->op_device->name().c_str();
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
