@@ -192,7 +192,8 @@ class EinsumTest(test.TestCase):
       'abc,cba',
       'dba,ead,cad->bce',
       'aef,fbc,dca->bde',
-      'iJ,Jk->IJ',
+      'iJ,Jk->ik',
+      'iJ,Ki->JK',
       'iJk,Jklm->Jk'
   ]
 
