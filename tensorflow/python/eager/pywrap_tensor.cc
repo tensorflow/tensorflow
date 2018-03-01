@@ -520,16 +520,11 @@ PyTypeObject* EagerTensorType = nullptr;
 
 #if PY_MAJOR_VERSION >= 3
 static PyType_Slot EagerTensor_Type_slots[] = {
-    Py_tp_dealloc,
-    reinterpret_cast<void*>(EagerTensor_dealloc),
-    Py_tp_methods,
-    reinterpret_cast<void*>(EagerTensor_methods),
-    Py_tp_getset,
-    reinterpret_cast<void*>(EagerTensor_getseters),
-    Py_tp_init,
-    reinterpret_cast<void*>(EagerTensor_init),
-    0,
-    nullptr,
+    {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
+    {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
+    {0, nullptr},
 };
 
 PyType_Spec EagerTensor_Type_spec = {"EagerTensor", sizeof(EagerTensor), 0,
