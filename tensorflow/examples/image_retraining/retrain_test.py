@@ -67,22 +67,52 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortResult:0'))
 
   @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
-  def testAddFinalTrainingOps(self, flags_mock):
+  def testAddFinalRetrainOps(self, flags_mock):
     with tf.Graph().as_default():
       with tf.Session() as sess:
         bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
-        # Test creating final training op with quantization
-        retrain.add_final_training_ops(5, 'final', bottleneck, 1024, False)
+        # Test creating final training op with quantization.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, False,
+                                      False)
         self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
 
   @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
-  def testAddFinalTrainingOpsQuantized(self, flags_mock):
-    with tf.Graph().as_default():
+  def testAddFinalRetrainOpsQuantized(self, flags_mock):
+    # Ensure that the training and eval graph for quantized models are correctly
+    # created.
+    with tf.Graph().as_default() as g:
       with tf.Session() as sess:
         bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
-        # Test creating final training op with quantization
-        retrain.add_final_training_ops(5, 'final', bottleneck, 1024, True)
+        # Test creating final training op with quantization, set is_training to
+        # true.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, True, True)
         self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
+        found_fake_quant = 0
+        for op in g.get_operations():
+          if op.type == 'FakeQuantWithMinMaxVars':
+            found_fake_quant += 1
+            # Ensure that the inputs of each FakeQuant operations has 2 Assign
+            # operations in the training graph (Assign[Min,Max]Last,
+            # Assign[Min,Max]Ema)
+            self.assertEqual(2,
+                             len([i for i in op.inputs if 'Assign' in i.name]))
+        self.assertEqual(found_fake_quant, 2)
+    with tf.Graph().as_default() as g:
+      with tf.Session() as sess:
+        bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
+        # Test creating final training op with quantization, set is_training to
+        # false.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, True, False)
+        self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
+        found_fake_quant = 0
+        for op in g.get_operations():
+          if op.type == 'FakeQuantWithMinMaxVars':
+            found_fake_quant += 1
+            for i in op.inputs:
+              # Ensure that no operations are Assign operation since this is the
+              # evaluation graph.
+              self.assertTrue('Assign' not in i.name)
+        self.assertEqual(found_fake_quant, 2)
 
   def testAddEvaluationStep(self):
     with tf.Graph().as_default():

@@ -115,6 +115,19 @@ class BackpropTest(test.TestCase):
     with self.assertRaises(RuntimeError):
       backprop.gradients_function(f)(constant_op.constant(1.0))
 
+  def testGradientsFunctionInCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def f(x):
+      (y,) = backprop.gradients_function(lambda x: x * x)(x)
+
+      def grad(dy):
+        return [2 * dy]
+
+      return y, grad
+
+    self.assertAllEqual(f(1.0), 2.0)
+
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
     embedding_size = 512

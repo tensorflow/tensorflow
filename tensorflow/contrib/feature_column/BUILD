@@ -33,5 +33,34 @@ py_library(
     name = "sequential_feature_column",
     srcs = ["python/feature_column/sequential_feature_column.py"],
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "sequential_feature_column_test",
+    srcs = ["python/feature_column/sequential_feature_column_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":sequential_feature_column",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+    ],
 )

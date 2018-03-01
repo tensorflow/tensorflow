@@ -354,7 +354,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     return false;
   }
   const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  const string& op_name = node.op();
+  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -368,7 +369,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace")) {
+  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
+      StringPiece(op_name).starts_with("Inplace")) {
     return false;
   }
   return true;

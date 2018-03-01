@@ -327,6 +327,35 @@ same op/node (created by `Iterator.get_next()`). Therefore,  evaluating *any* of
 these tensors will advance the iterator for all components. A typical consumer
 of an iterator will include all components in a single expression.
 
+### Saving iterator state
+
+The @{tf.contrib.data.make_saveable_from_iterator} function creates a
+`SaveableObject` from an iterator, which can be used to save and
+restore the current state of the iterator (and, effectively, the whole input
+pipeline). A saveable object thus created can be added to @{tf.train.Saver}
+variables list or the `tf.GraphKeys.SAVEABLE_OBJECTS` collection for saving and
+restoring in the same manner as a @{tf.Variable}. Refer to
+@{$saved_model$Saving and Restoring} for details on how to save and restore
+variables.
+
+```python
+# Create saveable object from iterator.
+saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+
+# Save the iterator state by adding it to the saveable objects collection.
+tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
+saver = tf.train.Saver()
+
+with tf.Session() as sess:
+
+  if should_checkpoint:
+    saver.save(path_to_checkpoint)
+
+# Restore the iterator state.
+with tf.Session() as sess:
+  saver.restore(sess, path_to_checkpoint)
+```
+
 ## Reading input data
 
 ### Consuming NumPy arrays

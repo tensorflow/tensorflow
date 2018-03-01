@@ -23,7 +23,6 @@ See the @{$python/control_flow_ops} guide.
 @@no_op
 @@count_up_to
 @@cond
-@@smart_cond
 @@case
 @@while_loop
 @@logical_and
@@ -1717,8 +1716,15 @@ class CondContext(ControlFlowContext):
     self._pivot = g.as_graph_element(
         ops.prepend_name_scope(context_def.pivot_name, import_scope))
     self._branch = context_def.branch
-    super(CondContext, self).__init__(
-        values_def=context_def.values_def, import_scope=import_scope)
+    super(CondContext, self).__init__(values_def=context_def.values_def,
+                                      import_scope=import_scope)
+    # The predicate and pivot ops appear in self._values, but don't have self
+    # set as their control context. The __init__ call above will set self for
+    # all values, so manually override the predicate and pivot contexts here.
+    # pylint: disable=protected-access
+    self._pred.op._set_control_flow_context(self.outer_context)
+    self._pivot.op._set_control_flow_context(self.outer_context)
+    # pylint: enable=protected-access
 
   @property
   def pred(self):
@@ -1766,13 +1772,9 @@ class CondContext(ControlFlowContext):
       context_def.branch = self._branch
       context_def.values_def.MergeFrom(super(CondContext, self)._to_values_def(
           export_scope))
-      # TODO(b/72868227): enable this once the corresponding control_flow.proto
-      # changes have been checked in (they aren't checked in and this is
-      # disabled for now to ensure forwards compatibility).
-      if False:  # pylint: disable=using-constant-test
-        for nested in self._nested_contexts:
-          nested_def = context_def.nested_contexts.add()
-          nested.to_control_flow_context_def(nested_def)
+      for nested in self._nested_contexts:
+        nested_def = context_def.nested_contexts.add()
+        nested.to_control_flow_context_def(nested_def)
 
       return context_def
     else:
@@ -1784,14 +1786,10 @@ class CondContext(ControlFlowContext):
     ret = CondContext(context_def=context_def,
                       import_scope=import_scope)
 
-    # TODO(b/72868227): remove "if hasattr(...)" once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is here for now to ensure forwards compatibility).
-    if hasattr(context_def, "nested_contexts"):
-      ret.Enter()
-      for nested_def in context_def.nested_contexts:
-        from_control_flow_context_def(nested_def)
-      ret.Exit()
+    ret.Enter()
+    for nested_def in context_def.nested_contexts:
+      from_control_flow_context_def(nested_def)
+    ret.Exit()
     return ret
 
   def to_control_flow_context_def(self, context_def, export_scope=None):
@@ -2109,10 +2107,7 @@ def cond(pred,
     # Only add non-nested conds to the collection. Any nested control flow will
     # be encapsulated in the root context.
     assert context_t.outer_context == context_f.outer_context
-    # TODO(b/72868227): remove "if True..." once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if True or context_t.outer_context is None:
+    if context_t.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
       ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
@@ -2126,61 +2121,6 @@ def cond(pred,
 
 # pylint: enable=g-doc-args
 # pylint: enable=redefined-outer-name
-
-
-def smart_cond(pred, true_fn=None, false_fn=None, name=None):
-  """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
-
-  If `pred` is a bool or has a constant value, we return either `true_fn()`
-  or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
-
-  Arguments:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    name: Optional name prefix when using `tf.cond`.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`.
-
-  Raises:
-    TypeError: If `true_fn` or `false_fn` is not callable.
-  """
-  if not callable(true_fn):
-    raise TypeError("`true_fn` must be callable.")
-  if not callable(false_fn):
-    raise TypeError("`false_fn` must be callable.")
-
-  pred_value = smart_constant_value(pred)
-  if pred_value is not None:
-    if pred_value:
-      return true_fn()
-    else:
-      return false_fn()
-  else:
-    return cond(pred, true_fn=true_fn, false_fn=false_fn, name=name)
-
-
-def smart_constant_value(pred):
-  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
-
-  Arguments:
-    pred: A scalar, either a Python bool or tensor.
-
-  Returns:
-    True or False if `pred` has a constant boolean value, None otherwise.
-
-  Raises:
-    TypeError: If `pred` is not a Tensor or bool.
-  """
-  if isinstance(pred, bool):
-    pred_value = pred
-  elif isinstance(pred, ops.Tensor):
-    pred_value = tensor_util.constant_value(pred)
-  else:
-    raise TypeError("`pred` must be a Tensor or a Python bool.")
-  return pred_value
 
 
 def _resource_safe_shape(t):
@@ -2390,13 +2330,9 @@ class WhileContext(ControlFlowContext):
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_values_def(
               export_scope=export_scope))
-      # TODO(b/72868227): remove "if True..." once the corresponding
-      # control_flow.proto changes have been checked in (they aren't checked in
-      # and this is disabled for now to ensure forwards compatibility).
-      if False:  # pylint: disable=using-constant-test
-        for nested in self._nested_contexts:
-          nested_def = context_def.nested_contexts.add()
-          nested.to_control_flow_context_def(nested_def)
+      for nested in self._nested_contexts:
+        nested_def = context_def.nested_contexts.add()
+        nested.to_control_flow_context_def(nested_def)
 
       return context_def
     else:
@@ -2418,14 +2354,10 @@ class WhileContext(ControlFlowContext):
     """
     ret = WhileContext(context_def=context_def,
                        import_scope=import_scope)
-    # TODO(b/72868227): remove "if hasattr(...)" once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if hasattr(context_def, "nested_contexts"):
-      ret.Enter()
-      for nested_def in context_def.nested_contexts:
-        from_control_flow_context_def(nested_def, import_scope=import_scope)
-      ret.Exit()
+    ret.Enter()
+    for nested_def in context_def.nested_contexts:
+      from_control_flow_context_def(nested_def, import_scope=import_scope)
+    ret.Exit()
     return ret
 
   def GetWhileContext(self):
@@ -3270,10 +3202,7 @@ def while_loop(cond,
         swap_memory=swap_memory)
     # Only add non-nested loops to the collection. Any nested control flow will
     # be encapsulated in the root context.
-    # TODO(b/72868227): enable condition once the corresponding
-    # control_flow.proto changes have been checked in (they aren't checked in
-    # and this is disabled for now to ensure forwards compatibility).
-    if True or loop_context.outer_context is None:
+    if loop_context.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     if maximum_iterations is not None:
