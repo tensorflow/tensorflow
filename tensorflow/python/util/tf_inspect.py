@@ -42,7 +42,7 @@ def getargspec(object):  # pylint: disable=redefined-builtin
   """
   decorators, target = tf_decorator.unwrap(object)
   return next((d.decorator_argspec for d in decorators
-               if d.decorator_argspec is not None), _inspect.getargspec(target))
+               if d.decorator_argspec is not None), _inspect.getfullargspec(target))
 
 
 def getfullargspec(obj):  # pylint: disable=redefined-builtin
