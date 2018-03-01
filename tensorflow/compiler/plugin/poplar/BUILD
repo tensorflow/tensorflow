@@ -265,7 +265,7 @@ py_test(
 
 py_test(
     name = "ipu_model_device_test",
-    size = "small",
+    size = "medium",
     srcs = ["tests/ipu_model_device_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",
