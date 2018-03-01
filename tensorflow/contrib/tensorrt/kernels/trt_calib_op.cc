@@ -120,7 +120,6 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
 };
 
 #undef TYPECASE
-#undef GET_TENSOR_ADDRESS
 
 REGISTER_KERNEL_BUILDER(Name("TRTCalibOp").Device(DEVICE_GPU), TRTCalibOp);
 
