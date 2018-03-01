@@ -100,6 +100,93 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, FixedTypeFunction) {
+  // Create and instantiate a version of the XTimesTwo function that only
+  // accepts floats a inputs.
+  const Tensor kTwo = test::AsScalar<float>(2.0f);
+  FunctionDef x_times_two = FunctionDefHelper::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: float"},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_FLOAT}}},
+          {{"y"}, "Mul", {"x", "two"}, {{"T", DT_FLOAT}}},
+      });
+
+  constexpr char device[] = "/device:CPU:0";
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {test::function::NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}},
+                            device),
+       test::function::NDef("y", "XTimesTwo", {"x"}, {}, device),
+       test::function::NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, device)},
+      // FunctionLib
+      {
+          x_times_two,
+      });
+
+  FunctionOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int count = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y/inlined_inputs") {
+      count++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(device, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    } else if (node.name() == "y/x") {
+      count++;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(device, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y/inlined_inputs:0", node.input(0));
+    } else if (node.name() == "y/two") {
+      count++;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(device, node.device());
+    } else if (node.name() == "y/y") {
+      count++;
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(device, node.device());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("y/x", node.input(0));
+      EXPECT_EQ("y/two:0", node.input(1));
+    } else if (node.name() == "y") {
+      count++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(device, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y/y", node.input(0));
+    } else if (node.name() == "z") {
+      count++;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(device, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+    }
+  }
+  EXPECT_EQ(6, count);
+
+  item.fetch = {"z"};
+  Tensor pi(DT_FLOAT, {});
+  pi.flat<float>()(0) = 3.14f;
+  item.feed.emplace_back("x", pi);
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

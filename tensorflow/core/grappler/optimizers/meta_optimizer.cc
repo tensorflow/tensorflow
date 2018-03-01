@@ -136,7 +136,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   } else {
     const std::set<string> available_optimizers = {
-        "pruning",      "constfold",  "layout",     "memory",
+        "pruning",      "function",   "constfold",  "layout", "memory",
         "autoparallel", "arithmetic", "dependency", "loop"};
     std::vector<string> custom_optimizer_names;
     for (const auto& optimizer_name : cfg_.optimizers()) {

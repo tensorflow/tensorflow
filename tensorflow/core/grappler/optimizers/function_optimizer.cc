@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 
 namespace tensorflow {
@@ -53,13 +54,17 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   AttrValue::ListValue* type_list =
       (*func_inputs->mutable_attr())["T"].mutable_list();
   for (const OpDef::ArgDef& arg : func.signature().input_arg()) {
-    auto it = attr.find(arg.type_attr());
-    if (it == attr.end()) {
-      return errors::InvalidArgument("Invalid input argument ", arg.name(),
-                                     " for function ", node.op(),
-                                     " instantiated by ", node.name());
+    if (arg.type() != DT_INVALID) {
+      type_list->add_type(arg.type());
+    } else {
+      auto it = attr.find(arg.type_attr());
+      if (it == attr.end()) {
+        return errors::InvalidArgument("Invalid input argument ", arg.name(),
+                                       " for function ", node.op(),
+                                       " instantiated by ", node.name());
+      }
+      type_list->add_type(it->second.type());
     }
-    type_list->add_type(it->second.type());
   }
 
   for (NodeDef& func_body_node : *item->graph.mutable_node()) {
@@ -75,7 +80,7 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
     } else {
       // Update the input names.
       for (string& input : *func_body_node.mutable_input()) {
-        input = strings::StrCat(node.name(), "/", input);
+        input = AddPrefixToNodeName(input, node.name());
       }
     }
 
@@ -98,13 +103,17 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   func_outputs->set_device(node.device());
   type_list = (*func_outputs->mutable_attr())["T"].mutable_list();
   for (const OpDef::ArgDef& arg : func.signature().output_arg()) {
-    auto it = attr.find(arg.type_attr());
-    if (it == attr.end()) {
-      return errors::InvalidArgument("Invalid output argument ", arg.name(),
-                                     " for function ", node.op(),
-                                     " instantiated by ", node.name());
+    if (arg.type() != DT_INVALID) {
+      type_list->add_type(arg.type());
+    } else {
+      auto it = attr.find(arg.type_attr());
+      if (it == attr.end()) {
+        return errors::InvalidArgument("Invalid output argument ", arg.name(),
+                                       " for function ", node.op(),
+                                       " instantiated by ", node.name());
+      }
+      type_list->add_type(it->second.type());
     }
-    type_list->add_type(it->second.type());
     func_outputs->add_input(strings::StrCat(node.name(), "/", arg.name()));
   }
 
