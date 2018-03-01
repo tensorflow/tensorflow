@@ -109,13 +109,13 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
  *  Signature:
- * (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;Lorg/tensorflow/lite/NativeInterpreterWrapper;)[J
+ * (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;Ljava/lang/Object;Z)[J
  */
 JNIEXPORT jlongArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values, jobject wrapper);
+    jobjectArray values, jobject wrapper, jboolean memory_allocated);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -132,11 +132,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJI[I)
+ *  Signature: (JJI[I)Z
  *
- * It resizes dimensions of a input.
+ * It returns true if resizing input tensor to different dimensions, else return
+ * false.
  */
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jint input_idx, jintArray dims);
