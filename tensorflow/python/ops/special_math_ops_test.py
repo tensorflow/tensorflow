@@ -192,6 +192,8 @@ class EinsumTest(test.TestCase):
       'abc,cba',
       'dba,ead,cad->bce',
       'aef,fbc,dca->bde',
+      'iJ,Jk->IJ',
+      'iJk,Jklm->Jk'
   ]
 
   long_cases = [
