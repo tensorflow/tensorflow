@@ -262,6 +262,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@six_archive//:six",
     ],
 )

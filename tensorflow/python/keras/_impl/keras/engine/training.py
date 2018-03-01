@@ -879,6 +879,15 @@ class Model(Network):
     else:
       self._symbolic_set_inputs(inputs, training=training)
 
+  def _set_scope(self, scope=None):
+    """Modify the Layer scope creation logic to create ResourceVariables."""
+    super(Model, self)._set_scope(scope=scope)
+    # Subclassed Models create ResourceVariables by default. This makes it
+    # easier to use Models in an eager/graph agnostic way (since eager execution
+    # always uses ResourceVariables).
+    if not self._is_graph_network:
+      self._scope.set_use_resource(True)
+
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
 
