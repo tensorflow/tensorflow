@@ -75,12 +75,12 @@ tf_cuda_library(
 cc_library(
     name = "trt_engine_op_kernel",
     srcs = [
-      "kernels/trt_calib_op.cc",
-      "kernels/trt_engine_op.cc",
+        "kernels/trt_calib_op.cc",
+        "kernels/trt_engine_op.cc",
     ],
     hdrs = [
-      "kernels/trt_calib_op.h",
-      "kernels/trt_engine_op.h",
+        "kernels/trt_calib_op.h",
+        "kernels/trt_engine_op.h",
     ],
     copts = tf_copts(),
     deps = [

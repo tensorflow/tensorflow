@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
-#define TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H
+#define TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H
 
 #include <memory>
 #include <string>
@@ -49,4 +49,4 @@ class TRTCalibOp : public OpKernel {
 }  // namespace tensorflow
 #endif
 #endif
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H

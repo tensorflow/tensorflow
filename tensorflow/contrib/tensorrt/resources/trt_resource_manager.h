@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCE_MANAGER_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_RESOURCE_MANAGER_H_
 #include <memory>
 
 #include <string>
 #include <unordered_map>
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace trt {
@@ -44,3 +47,5 @@ class TRTResourceManager {
 }  // namespace trt
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCE_TRT_RESOURCE_MANAGER_H_
+#endif
+#endif

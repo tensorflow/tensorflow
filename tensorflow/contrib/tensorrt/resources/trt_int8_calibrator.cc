@@ -18,23 +18,27 @@ limitations under the License.
 #include <atomic>
 #include <chrono>
 #include <unordered_map>
-#include "cuda_runtime_api.h"
 
 #include "tensorflow/core/platform/logging.h"
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "cuda_runtime_api.h"
+
 namespace tensorflow {
 namespace trt {
+
 // set the batch size before constructing the thread to execute engine
 int TRTInt8Calibrator::getBatchSize() const { return batch_size_; }
 
 TRTInt8Calibrator::TRTInt8Calibrator(
     const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
-    int batch_size, string engineName)
+    int batch_size, string engine_name)
     : batch_size_(batch_size),
       done_(false),
       dev_buffers_(dev_buffers),
       calib_running_(false),
-      engine_name_(engineName) {}
+      engine_name_(engine_name) {}
 
 bool TRTInt8Calibrator::setBatch(
     const std::unordered_map<string, void*>& data) {
@@ -67,7 +71,7 @@ bool TRTInt8Calibrator::setBatch(
 }
 
 bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
-                                 int nbBindings) {
+                                 int num_bindings) {
   calib_running_.store(false, std::memory_order_release);  // wait for new batch
   cond_.notify_all();
   while (!calib_running_.load(
@@ -80,7 +84,7 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
     return false;
   }
 
-  for (int i = 0; i < nbBindings; i++) {
+  for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
     if (it == dev_buffers_.end()) {
       LOG(FATAL) << "Calibration engine asked for unknown tensor name '"
@@ -104,3 +108,5 @@ TRTInt8Calibrator::~TRTInt8Calibrator() {
 
 }  // namespace trt
 }  // namespace tensorflow
+#endif
+#endif

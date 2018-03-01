@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCES_H_
-
 #define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCES_H_
 
 #include <list>
@@ -23,13 +22,17 @@ limitations under the License.
 #include <thread>
 #include <vector>
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace trt {
-struct TRTCalibrationResource : public tensorflow::ResourceBase {
+class TRTCalibrationResource : public tensorflow::ResourceBase {
+ public:
   TRTCalibrationResource()
       : calibrator_(nullptr),
         builder_(nullptr),
@@ -39,8 +42,6 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
         thr_(nullptr) {}
   string DebugString() override {
     std::stringstream oss;
-#define VALID_OR_NULL(ptr) \
-  (!ptr ? "nullptr" : std::hex << (void)ptr << std::dec << std::endl)
     oss << " Calibrator = " << std::hex << calibrator_ << std::dec << std::endl
         << " Builder    = " << std::hex << builder_ << std::dec << std::endl
         << " Network    = " << std::hex << network_ << std::dec << std::endl
@@ -48,7 +49,6 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
         << " Logger     = " << std::hex << logger_ << std::dec << std::endl
         << " Thread     = " << std::hex << thr_ << std::dec << std::endl;
     return oss.str();
-#undef VALID_OR_NULL
   }
   ~TRTCalibrationResource() {
     VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
@@ -62,7 +62,8 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
   std::thread* thr_;
 };
 
-struct TRTWeightStore : public tensorflow::ResourceBase {
+class TRTWeightStore : public tensorflow::ResourceBase {
+ public:
   TRTWeightStore() {}
   std::list<std::vector<uint8_t>> store_;
   string DebugString() override {
@@ -79,7 +80,8 @@ struct TRTWeightStore : public tensorflow::ResourceBase {
   virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
 };
 
-struct TRTEngineResource : public tensorflow::ResourceBase {
+class TRTEngineResource : public tensorflow::ResourceBase {
+ public:
   TRTEngineResource() : runtime_(nullptr), ctx_(nullptr){};
   string DebugString() override { return string(""); }
   nvinfer1::IRuntime* runtime_;
@@ -89,3 +91,5 @@ struct TRTEngineResource : public tensorflow::ResourceBase {
 }  // namespace trt
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCEMGR_TRTRESOURCES_H_
+#endif
+#endif

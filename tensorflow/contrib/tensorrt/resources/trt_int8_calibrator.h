@@ -13,28 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTINT8CALIBRATOR_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTINT8CALIBRATOR_H_
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_
+#define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_
 
 #include <atomic>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include "tensorflow/core/platform/mutex.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
 namespace tensorflow {
 namespace trt {
-//  This class provides a 1 element queue to match TFs push model to
-//  TRTs pull model for calibration. When TRT implements a means for
-//  a push calibration This class should be updated accordingly
+// This class provides a 1 element queue to match TFs push model to
+// TRTs pull model for calibration. When TRT implements a means for
+// a push calibration This class should be updated accordingly
 
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
  public:
   TRTInt8Calibrator(
       const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
-      int batch_size, string engineName);
+      int batch_size, string engine_name);
   int getBatchSize() const override;
-  bool getBatch(void* bindings[], const char* names[], int nbBindings) override;
+  bool getBatch(void* bindings[], const char* names[],
+                int num_bindings) override;
   bool setBatch(const std::unordered_map<string, void*>& data);
   void setDone() { done_ = true; }
   const void* readCalibrationCache(std::size_t& length) override;
@@ -42,14 +46,20 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   ~TRTInt8Calibrator();
 
  private:
-  int batch_size_;
-  tensorflow::mutex cond_mtx_;
-  tensorflow::condition_variable cond_;
+  const int batch_size_;
+  tensorflow::mutex cond_mtx_;           // mutex for condition_variable
+  tensorflow::condition_variable cond_;  // condition variable to implement
+                                         // producer-consumer queue for
+                                         // calibration
   bool done_;
-  const std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
+  const std::unordered_map<string, std::pair<void*, size_t>>
+      dev_buffers_;  // map to keep tensorrt input buffers and sizes keyed with
+                     // buffer names
   std::atomic_bool calib_running_;
   string engine_name_;
 };
 }  // namespace trt
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTINT8CALIBRATOR_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_
+#endif
+#endif
