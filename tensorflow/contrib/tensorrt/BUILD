@@ -121,8 +121,8 @@ tf_cuda_library(
 tf_gen_op_wrapper_py(
     name = "trt_engine_op",
     deps = [
-        ":trt_engine_op_op_lib",
         ":trt_calib_op_op_lib",
+        ":trt_engine_op_op_lib",
         ":trt_logging",
         ":trt_shape_function",
     ],
