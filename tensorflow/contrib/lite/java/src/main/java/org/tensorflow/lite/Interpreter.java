@@ -167,6 +167,19 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getOutputIndex(opName);
   }
 
+
+  /**
+   * Returns native inference timing.
+   * <p>IllegalArgumentException will be thrown if the model is not initialized by the
+   * {@link Interpreter}.
+   */
+  public Long getLastNativeInferenceDurationNanoseconds() {
+    if (wrapper == null) {
+      throw new IllegalStateException("The interpreter has already been closed.");
+    }
+    return wrapper.getLastNativeInferenceDurationNanoseconds();
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
