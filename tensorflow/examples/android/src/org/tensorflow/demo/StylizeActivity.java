@@ -16,8 +16,10 @@
 
 package org.tensorflow.demo;
 
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.BitmapFactory;
@@ -34,6 +36,7 @@ import android.os.SystemClock;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -43,6 +46,7 @@ import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,6 +59,11 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Vector;
 
 /**
  * Sample activity that stylizes the camera preview according to "A Learned Representation For
@@ -381,6 +390,17 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     grid = (GridView) findViewById(R.id.grid_layout);
     grid.setAdapter(adapter);
     grid.setOnTouchListener(gridTouchAdapter);
+
+    // Change UI on Android TV
+    UiModeManager uiModeManager = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+    if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+      RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(400, ViewGroup.LayoutParams.MATCH_PARENT);
+      grid.setNumColumns(4);
+      layoutParams.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+      grid.setLayoutParams(layoutParams);
+      adapter.buttons.clear();
+    }
+
     setStyle(adapter.items[0], 1.0f);
   }
 
@@ -601,5 +621,37 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     lines.add("Initialized size: " + initializedSize);
 
     borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    int moveOffset = 0;
+    switch (keyCode) {
+      case KeyEvent.KEYCODE_DPAD_LEFT:
+        moveOffset = -1;
+        break;
+      case KeyEvent.KEYCODE_DPAD_RIGHT:
+        moveOffset = 1;
+        break;
+      case KeyEvent.KEYCODE_DPAD_UP:
+        moveOffset = -1 * grid.getNumColumns();
+        break;
+      case KeyEvent.KEYCODE_DPAD_DOWN:
+        moveOffset = grid.getNumColumns();
+        break;
+    }
+
+    // get the highest selected style
+    int currentSelect = 0;
+    float highestValue = 0;
+    for (int i = 0; i < adapter.getCount(); i++) {
+      if (adapter.items[i].value > highestValue) {
+        currentSelect = i;
+        highestValue = adapter.items[i].value;
+      }
+    }
+    setStyle(adapter.items[(currentSelect + moveOffset + adapter.getCount()) % adapter.getCount()], 1);
+
+    return super.onKeyDown(keyCode, event);
   }
 }
