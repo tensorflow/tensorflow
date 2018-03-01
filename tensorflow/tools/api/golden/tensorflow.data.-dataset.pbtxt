@@ -64,7 +64,7 @@ tf_class {
   }
   member_method {
     name: "list_files"
-    argspec: "args=[\'file_pattern\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'file_pattern\', \'shuffle\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "make_initializable_iterator"
