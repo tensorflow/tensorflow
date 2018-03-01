@@ -34,6 +34,11 @@ bool IsConstantHalf(const HloInstruction *inst) {
          inst->literal().IsAllFloat(0.5);
 }
 
+bool IsConstantOne(const HloInstruction *inst) {
+  return !ShapeUtil::HasZeroElements(inst->shape()) &&
+      inst->literal().IsAllFloat(1.0);
+}
+
 bool IsPoplarConvolution(const HloInstruction *inst) {
   if (inst->to_apply()->name().substr(0, 15) == "pop_convolution") return true;
   if (inst->to_apply()->name().substr(0, 14) == "pop_depth_conv") return true;

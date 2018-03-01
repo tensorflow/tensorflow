@@ -302,6 +302,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
+    else if (name == "sigmoidgrad") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSigmoidGradOp(*graph_,
+                                              resources_,
+                                              inst,
+                                              GetOutputShape(inst),
+                                              tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
     else if (name == "biasadd") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,

@@ -453,6 +453,32 @@ CreateSigmoidOp(poplar::Graph &graph,
   return seq;
 }
 
+port::StatusOr<poplar::program::Program>
+CreateSigmoidGradOp(poplar::Graph &graph,
+                    CompilerResources& res,
+                    const HloInstruction *inst,
+                    const xla::Shape& output_shape,
+                    TensorMap& tensor_map) {
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+
+  poplar::Tensor outgrad;
+  TF_ASSIGN_OR_RETURN(outgrad, FindInstructionInput(tensor_map, inst, 1));
+
+  poplar::program::Sequence seq;
+  poplar::Tensor t =
+      popnn::nonLinearityInputGradient(graph,
+                                       popnn::NON_LINEARITY_SIGMOID,
+                                       out, outgrad, seq,
+                                       inst->name());
+
+  TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
+
+  return seq;
+}
+
 }
 }
 

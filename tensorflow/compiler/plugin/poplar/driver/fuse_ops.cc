@@ -30,6 +30,9 @@ static FusedGraphInfo fuse_info[] = {
   {"sigmoid", 0},
   {"sigmoid", 0},
   {"relugrad", 0},
+  {"relugrad", 0},
+  {"sigmoidgrad", 0},
+  {"sigmoidgrad", 0},
   {"biasadd_broadcast", 0},
   {"biasadd_broadcast", 0},
   {"biasadd", 0},
@@ -72,11 +75,11 @@ static const std::vector<HloMatcherPattern> patterns = {
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Relu (implicit broadcast)
+  // Relu
   {{HloOpcode::kMaximum, true, IsFloatType, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
-  // Relu (explicit broadcast)
+  // Relu with broadcast
   {{HloOpcode::kMaximum, true, IsFloatType, {1, -1}},
    {HloOpcode::kBroadcast, true, nullptr, {2}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
@@ -101,8 +104,26 @@ static const std::vector<HloMatcherPattern> patterns = {
   // ReluGrad
   {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
    {HloOpcode::kGt, true, IsTfReluGradOp, {-2, 2}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // ReluGrad with broadcast
+  {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
+   {HloOpcode::kGt, true, IsTfReluGradOp, {-2, 2}},
    {HloOpcode::kBroadcast, true, nullptr, {3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // SigmoidGrad
+  {{HloOpcode::kMultiply, true, IsFloatType, {1, 2}},
+   {HloOpcode::kMultiply, true, nullptr, {-1, -2}},
+   {HloOpcode::kSubtract, true, nullptr, {3, -2}},
+   {HloOpcode::kConstant, true, IsConstantOne, {}}},
+
+    // SigmoidGrad with broadcast
+  {{HloOpcode::kMultiply, true, IsFloatType, {1, 2}},
+   {HloOpcode::kMultiply, true, nullptr, {-1, -2}},
+   {HloOpcode::kSubtract, true, nullptr, {3, -2}},
+   {HloOpcode::kBroadcast, true, nullptr, {4}},
+   {HloOpcode::kConstant, true, IsConstantOne, {}}},
 
   // BiasAdd on convolution (explicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},

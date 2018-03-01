@@ -13,6 +13,7 @@ bool IsRandomNormal(const HloInstruction *inst);
 bool IsRandomUniform(const HloInstruction *inst);
 bool IsConstantZero(const HloInstruction *inst);
 bool IsConstantHalf(const HloInstruction *inst);
+bool IsConstantOne(const HloInstruction *inst);
 bool IsPoplarConvolution(const HloInstruction *inst);
 bool IsExternalPadding(const HloInstruction *inst);
 bool IsAveragePool(const HloInstruction *inst);

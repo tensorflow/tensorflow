@@ -62,28 +62,36 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       HloInstruction* operand = inst->mutable_operand(i);
       int n = node.operands[i];
       if (n < 0) {
+        // When n<0, we are verifying an input to the fusion
         if (input_map_.count(n) > 0) {
           if (input_map_[n] != operand) {
+            // An input label refers to only one instruction
             return false;
           }
         } else {
           if (input_set_.count(operand) > 0) {
+            // An instruction cannot supply more than one input label
             return false;
-          } else {
-            input_map_[n] = operand;
-            input_set_.insert(operand);
-            continue;
           }
+
+          input_map_[n] = operand;
+          input_set_.insert(operand);
         }
-      }
-      if (n <= node_num) return false;
+      } else {
+        // When n>0, we are verifying an instruction operand
+        if (n <= node_num) {
+          // Backward references are not allowed
+          return false;
+        }
 
-      if (match.instructions[n] != nullptr &&
-          match.instructions[n] != operand) {
-        return false;
-      }
+        if (match.instructions[n] != nullptr &&
+            match.instructions[n] != operand) {
+          // The operand's opcode must match
+          return false;
+        }
 
-      match.instructions[n] = operand;
+        match.instructions[n] = operand;
+      }
     }
   }
 
