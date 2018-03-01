@@ -1076,6 +1076,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   CHECK(LayoutUtil::HasLayout(input_shape) &&
         LayoutUtil::HasLayout(output_shape));
 
+  if (!SameElementType(input_shape, output_shape)) {
+    return false;
+  }
+
   // Padding is not handled.
   if (LayoutUtil::IsPadded(input_shape) && LayoutUtil::IsPadded(output_shape)) {
     return false;
@@ -1105,6 +1109,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
                                               const Shape& output_shape) {
   CHECK(LayoutUtil::HasLayout(input_shape) &&
         LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
+    return false;
+  }
 
   // Padding is not handled.
   if (LayoutUtil::IsPadded(input_shape) || LayoutUtil::IsPadded(output_shape)) {
