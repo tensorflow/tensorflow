@@ -75,8 +75,7 @@ across image recognition, speech, object detection, and
 ### Community and Partner Engagement
 #### Special Interest Groups: 
 * Mobilizing the community to work together in focused domains
-* [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute)
-: build and packaging of TensorFlow
+* [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute): build and packaging of TensorFlow
 * More to be identified and launched
 
 #### Community:
