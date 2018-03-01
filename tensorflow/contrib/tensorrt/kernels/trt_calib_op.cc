@@ -36,6 +36,25 @@ TRTCalibOp::TRTCalibOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("resource_name", &resource_name_));
 };
 
+#define TYPECASE(dt, X, Y)                                                \
+  case dt: {                                                              \
+    return (void*)X->flat<tensorflow::EnumToDataType<dt>::Type>().data(); \
+  }
+
+void* GetTensorAddress(const Tensor* tensor_ptr) {
+  auto tensor_type = tensor_ptr->dtype();
+  switch (tensor_type) {
+    TYPECASE(tensorflow::DT_FLOAT, tensor_ptr, dest_ptr);
+    TYPECASE(tensorflow::DT_HALF, tensor_ptr, dest_ptr);
+    TYPECASE(tensorflow::DT_INT8, tensor_ptr, dest_ptr);
+    default: {
+      LOG(FATAL) << "Unsupported Data type "
+                 << tensorflow::DataTypeString(tensor_type);
+      return nullptr;
+    }
+  }
+}
+
 void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
   auto res_mgr = trt_rm->getManager("TRTCalibOps");
@@ -60,37 +79,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
                                               &dev_tensors_.at(i), nullptr));
       const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
       CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
-      void* device_address = nullptr;
-      {
-        auto tensor_type = device_tensor->dtype();
-        switch (tensor_type) {
-          case tensorflow::DT_FLOAT: {
-            device_address = (void*)device_tensor
-                                 ->flat<tensorflow::EnumToDataType<
-                                     tensorflow::DT_FLOAT>::Type>()
-                                 .data();
-          }
-          case tensorflow::DT_HALF: {
-            device_address =
-                (void*)device_tensor
-                    ->flat<
-                        tensorflow::EnumToDataType<tensorflow::DT_HALF>::Type>()
-                    .data();
-          }
-          case tensorflow::DT_INT8: {
-            device_address =
-                (void*)device_tensor
-                    ->flat<
-                        tensorflow::EnumToDataType<tensorflow::DT_INT8>::Type>()
-                    .data();
-          }
-          default: {
-            LOG(FATAL) << "Unsupported Data type "
-                       << tensorflow::DataTypeString(tensor_type);
-            break;
-          }
-        }
-      }
+      void* device_address = GetTensorAddress(device_tensor);
       device_buffers_.emplace(input_names_.at(i),
                               std::pair<void*, size_t>(
                                   device_address, device_tensor->TotalBytes()));
@@ -115,36 +104,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   std::unordered_map<string, void*> input_data;
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
-    void* data_address = nullptr;
-    {
-      auto tensor_type = t.dtype();
-      switch (tensor_type) {
-        case tensorflow::DT_FLOAT: {
-          device_address =
-              (void*)t
-                  .flat<
-                      tensorflow::EnumToDataType<tensorflow::DT_FLOAT>::Type>()
-                  .data();
-        }
-        case tensorflow::DT_HALF: {
-          device_address =
-              (void*)t
-                  .flat<tensorflow::EnumToDataType<tensorflow::DT_HALF>::Type>()
-                  .data();
-        }
-        case tensorflow::DT_INT8: {
-          device_address =
-              (void*)t
-                  .flat<tensorflow::EnumToDataType<tensorflow::DT_INT8>::Type>()
-                  .data();
-        }
-        default: {
-          LOG(FATAL) << "Unsupported Data type "
-                     << tensorflow::DataTypeString(tensor_type);
-          break;
-        }
-      }
-    }
+    void* data_address = GetTensorAddress(&t);
     const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(),
              device_tensor->TotalBytes());  // use the tensor so FW keeps it
