@@ -464,6 +464,8 @@ class HierarchicalController(Controller):
 
     self.type_dict = {}
     for op_type in self.cluster.ListAvailableOps():
+      if isinstance(op_type, bytes):
+        op_type = op_type.decode()
       if op_type in used_ops:
         self.type_dict[op_type] = len(self.type_dict)
 
@@ -612,8 +614,8 @@ class HierarchicalController(Controller):
     num_inter_group_connections = num_connections - num_intra_group_connections
     if verbose:
       print("grouping evaluation metric")
-      print(("num_connections={} num_intra_group_connections={} "
-             "num_inter_group_connections={}").format(
+      print("num_connections={} num_intra_group_connections={} "
+             "num_inter_group_connections={}".format(
                  num_connections, num_intra_group_connections,
                  num_inter_group_connections))
     self.dag_matrix = dag_matrix
@@ -972,8 +974,8 @@ class HierarchicalController(Controller):
             controller_ops["reward"]["ph"][child_id]: reward,
         })
     if verbose:
-      print(("run_time={:<.5f} reward={:<.5f} "
-             "best_reward={:<.5f}").format(run_time, reward, best_reward))
+      print("run_time={:<.5f} reward={:<.5f} "
+             "best_reward={:<.5f}".format(run_time, reward, best_reward))
 
     # Reward is a double, best_reward a float: allow for some slack in the
     # comparison.
