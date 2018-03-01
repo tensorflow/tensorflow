@@ -2046,7 +2046,7 @@ def _add_sparse_to_tensors_map(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._add_sparse_to_tensors_map(
+  return gen_sparse_ops.add_sparse_to_tensors_map(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -2086,7 +2086,7 @@ def _add_many_sparse_to_tensors_map(sp_input,
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return gen_sparse_ops._add_many_sparse_to_tensors_map(
+  return gen_sparse_ops.add_many_sparse_to_tensors_map(
       sp_input.indices,
       sp_input.values,
       sp_input.dense_shape,
@@ -2167,7 +2167,7 @@ def _take_many_sparse_from_tensors_map(sparse_map_op,
   with ops.colocate_with(sparse_map_op):
     shared_name = sparse_map_op.get_attr("shared_name") or sparse_map_op.name
     output_indices, output_values, output_shape = (
-        gen_sparse_ops._take_many_sparse_from_tensors_map(
+        gen_sparse_ops.take_many_sparse_from_tensors_map(
             sparse_handles,
             dtype=sparse_map_op.get_attr("T"),
             container=sparse_map_op.get_attr("container"),
