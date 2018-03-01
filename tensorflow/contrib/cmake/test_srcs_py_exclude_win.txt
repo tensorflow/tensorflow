@@ -34,7 +34,6 @@ tensorflow/python/debug/lib/session_debug_grpc_test.py
 tensorflow/python/training/localhost_cluster_performance_test.py
 tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py
 tensorflow/python/kernel_tests/functional_ops_test.py
-tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py
 # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
 tensorflow/python/data/kernel_tests/iterator_ops_test.py
 tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py
