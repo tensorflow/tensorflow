@@ -1249,8 +1249,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
-        // both src and diff_dst are tf layout,
-        // so get tf shape from anyont should be ok
+        // both src and diff_dst are TensorFlow layout,
+        // so it is OK to get TensorFlow shape.
         tf_shape_diff_src = src_tensor.shape();
       }
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
