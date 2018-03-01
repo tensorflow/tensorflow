@@ -56,6 +56,7 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
 }
 
 void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
+  // TODO(aaroey): make sure ctx->resource_mgr() is used in future PR.
   auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
   auto res_mgr = trt_rm->getManager("TRTCalibOps");
   tensorflow::trt::TRTCalibrationResource* calib_res = nullptr;
@@ -114,6 +115,8 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   VLOG(2) << "Filled map for sending";
   calib_res->calibrator_->setBatch(input_data);
   VLOG(2) << "Passed calibration data";
+  // TODO(aaroey): make sure we wait for the completion of calibration on the
+  // last batch in future PR.
 };
 
 #undef TYPECASE
