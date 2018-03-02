@@ -186,7 +186,6 @@ _allowed_symbols_array_ops = [
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",  # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",

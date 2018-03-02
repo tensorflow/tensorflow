@@ -437,7 +437,7 @@ class TensorArrayTest(test.TestCase):
 
       # Test reading wrong datatype, which is only possible in graph mode
       if context.in_graph_mode():
-        r0_bad = gen_data_flow_ops._tensor_array_read_v3(
+        r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
         with self.assertRaisesOpError(
             "TensorArray dtype is float but Op requested dtype double."):

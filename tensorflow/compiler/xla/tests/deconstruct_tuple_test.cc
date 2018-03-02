@@ -195,7 +195,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("deconstructing nested tuples not yet supported"));
+              HasSubstr("Deconstructing nested tuples is not implemented"));
 }
 
 }  // namespace

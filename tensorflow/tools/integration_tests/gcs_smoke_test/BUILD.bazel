@@ -54,3 +54,14 @@ integration_test(
     test_docker_image = toolchain_container_images()["tensorflow"],
     test_type = "MultiMachine",
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+)

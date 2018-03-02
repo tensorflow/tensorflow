@@ -1481,7 +1481,6 @@ def conv3d_transpose(
         name=name)
 
 
-# pylint: disable=protected-access
 @tf_export("nn.bias_add")
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
@@ -1506,10 +1505,9 @@ def bias_add(value, bias, data_format=None, name=None):
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
+    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
 
 
-# pylint: disable=protected-access
 def bias_add_v1(value, bias, name=None):
   """Adds `bias` to `value`.
 
@@ -1534,7 +1532,7 @@ def bias_add_v1(value, bias, name=None):
   with ops.name_scope(name, "BiasAddV1", [value, bias]) as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
-    return gen_nn_ops._bias_add_v1(value, bias, name=name)
+    return gen_nn_ops.bias_add_v1(value, bias, name=name)
 
 
 @tf_export("nn.crelu")
@@ -1580,7 +1578,7 @@ def relu6(features, name=None):
   """
   with ops.name_scope(name, "Relu6", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    return gen_nn_ops._relu6(features, name=name)
+    return gen_nn_ops.relu6(features, name=name)
 
 
 @tf_export("nn.leaky_relu")
@@ -1645,7 +1643,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
-    compute_op: Either gen_nn_ops._softmax or gen_nn_ops._log_softmax
+    compute_op: Either gen_nn_ops.softmax or gen_nn_ops.log_softmax
     dim: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
@@ -1739,7 +1737,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops._softmax, axis, name)
+  return _softmax(logits, gen_nn_ops.softmax, axis, name)
 
 
 @tf_export("nn.log_softmax")
@@ -1769,7 +1767,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops._log_softmax, axis, name)
+  return _softmax(logits, gen_nn_ops.log_softmax, axis, name)
 
 
 def _ensure_xent_args(name, sentinel, labels, logits):
@@ -1871,7 +1869,7 @@ def softmax_cross_entropy_with_logits_v2(
     # Do the actual op computation.
     # The second output tensor contains the gradients.  We use it in
     # _CrossEntropyGrad() in nn_grad but not here.
-    cost, unused_backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+    cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 
     # The output cost shape should be the input minus dim.
@@ -2038,7 +2036,7 @@ def sparse_softmax_cross_entropy_with_logits(
                        (labels_static_shape.ndims, logits.get_shape().ndims))
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
-      cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+      cost, _ = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
           precise_logits, labels, name=name)
       if logits.dtype == dtypes.float16:
         return math_ops.cast(cost, dtypes.float16)
@@ -2051,7 +2049,7 @@ def sparse_softmax_cross_entropy_with_logits(
     labels = array_ops.reshape(labels, [-1])
     # The second output tensor contains the gradients.  We use it in
     # _CrossEntropyGrad() in nn_grad but not here.
-    cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+    cost, _ = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
     cost = array_ops.reshape(cost, labels_shape)
     cost.set_shape(labels_static_shape)
@@ -2086,7 +2084,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.name_scope(name, "AvgPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._avg_pool(
+    return gen_nn_ops.avg_pool(
         value,
         ksize=ksize,
         strides=strides,
@@ -2116,12 +2114,13 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._max_pool(value,
-                                ksize=ksize,
-                                strides=strides,
-                                padding=padding,
-                                data_format=data_format,
-                                name=name)
+    return gen_nn_ops.max_pool(
+        value,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -2331,7 +2330,7 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops.top_kv2(input, k=k, sorted=sorted, name=name)
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
@@ -2650,4 +2649,4 @@ def in_top_k(predictions, targets, k, name=None):
     A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
   """
   with ops.name_scope(name, "in_top_k"):
-    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)
+    return gen_nn_ops.in_top_kv2(predictions, targets, k, name=name)

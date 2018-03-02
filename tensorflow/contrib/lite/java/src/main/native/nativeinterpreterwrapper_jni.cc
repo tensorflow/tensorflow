@@ -353,7 +353,7 @@ JNIEXPORT jlongArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values) {
+    jobjectArray values, jobject wrapper) {
   tflite::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return nullptr;
@@ -384,12 +384,22 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   status = setInputs(env, interpreter, input_size, data_types, nums_of_bytes,
                      values);
   if (status != kTfLiteOk) return nullptr;
+  timespec beforeInference = ::tflite::getCurrentTime();
   // runs inference
   if (interpreter->Invoke() != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return nullptr;
+  }
+  timespec afterInference = ::tflite::getCurrentTime();
+  jclass wrapper_clazz = env->GetObjectClass(wrapper);
+  jfieldID fid =
+      env->GetFieldID(wrapper_clazz, "inferenceDurationNanoseconds", "J");
+  if (fid != 0) {
+    env->SetLongField(
+        wrapper, fid,
+        ::tflite::timespec_diff_nanoseconds(&beforeInference, &afterInference));
   }
   // returns outputs
   const std::vector<int>& results = interpreter->outputs();

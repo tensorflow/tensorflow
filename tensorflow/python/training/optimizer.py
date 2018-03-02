@@ -216,7 +216,11 @@ def _get_processor(v):
 
 
 @tf_export("train.Optimizer")
-class Optimizer(checkpointable.Checkpointable):
+class Optimizer(
+    # Optimizers inherit from CheckpointableBase rather than Checkpointable
+    # since they do most of their dependency management themselves (slot
+    # variables are special-cased, and non-slot variables are keyed to graphs).
+    checkpointable.CheckpointableBase):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -645,7 +649,8 @@ class Optimizer(checkpointable.Checkpointable):
 
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
-    if context.in_graph_mode():
+    in_graph_mode = context.in_graph_mode()
+    if in_graph_mode:
       graph = colocate_with.graph
     else:
       graph = None
@@ -653,11 +658,50 @@ class Optimizer(checkpointable.Checkpointable):
     key = (name, graph)
     v = self._non_slot_dict.get(key, None)
     if v is None:
+      self._maybe_initialize_checkpointable()
       with ops.colocate_with(colocate_with):
+        if not in_graph_mode:
+          restored_initial_value = self._preload_simple_restoration(
+              name=name, shape=None)
+          if restored_initial_value is not None:
+            initial_value = restored_initial_value
         v = variable_scope.variable(initial_value, name=name, trainable=False)
+        # Restore this variable by name if necessary, but don't add a
+        # Checkpointable dependency. Optimizers return the current graph's
+        # non-slot variables from _checkpoint_dependencies explicitly rather
+        # than unconditionally adding dependencies (since there may be multiple
+        # non-slot variables with the same name in different graphs, trying to
+        # save all of them would result in errors).
+        self._handle_deferred_dependencies(name=name, checkpointable=v)
       self._non_slot_dict[key] = v
 
     return v
+
+  @property
+  def _checkpoint_dependencies(self):
+    """From Checkpointable. Gather graph-specific non-slot variables to save."""
+    current_graph_non_slot_variables = []
+    current_graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    for (name, _), variable_object in sorted(self._non_slot_dict.items(),
+                                             # Avoid comparing graphs
+                                             key=lambda item: item[0][0]):
+      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+        current_graph_non_slot_variables.append(
+            checkpointable.CheckpointableReference(
+                name=name, ref=variable_object))
+    return (super(Optimizer, self)._checkpoint_dependencies
+            + current_graph_non_slot_variables)
+
+  def _lookup_dependency(self, name):
+    """From Checkpointable. Find a non-slot variable in the current graph."""
+    unconditional = super(Optimizer, self)._lookup_dependency(name)
+    if unconditional is not None:
+      return unconditional
+    if context.in_graph_mode():
+      graph = ops.get_default_graph()
+    else:
+      graph = None
+    return self._get_non_slot_variable(name, graph=graph)
 
   def _get_non_slot_variable(self, name, graph=None):
     return self._non_slot_dict.get((name, graph), None)

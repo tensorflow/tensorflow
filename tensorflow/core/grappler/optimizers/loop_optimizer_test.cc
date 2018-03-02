@@ -544,6 +544,65 @@ TEST_F(LoopOptimizerTest, NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+namespace {
+NodeDef* AddNode(const string& name, const string& op,
+                 const std::vector<string>& inputs, GraphDef* graph) {
+  NodeDef* node = graph->add_node();
+  node->set_name(name);
+  node->set_op(op);
+  for (const string& input : inputs) {
+    node->add_input(input);
+  }
+  return node;
+}
+}  // namespace
+
+TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
+  GrapplerItem item;
+  GraphDef& graph = item.graph;
+  // Stack with corresponding push/pop.
+  AddNode("stack1", "StackV2", {}, &graph);
+  AddNode("push1", "StackPushV2", {"stack1"}, &graph);
+  AddNode("pop1", "StackPopV2", {"stack1"}, &graph);
+  // Stack with corresponding push/pop behind Enter.
+  AddNode("stack2", "StackV2", {}, &graph);
+  AddNode("push_enter", "Enter", {"stack1"}, &graph);
+  AddNode("push2", "StackPushV2", {"push_enter"}, &graph);
+  AddNode("pop_enter", "Enter", {"stack1"}, &graph);
+  AddNode("pop2", "StackPopV2", {"pop_enter"}, &graph);
+  // Stack with unexpected op type in fanout of Stack.
+  AddNode("stack3", "StackV2", {}, &graph);
+  AddNode("push3", "StackPushV2", {"stack3"}, &graph);
+  AddNode("stop", "StopGradient", {"stack3"}, &graph);
+  LoopOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
+TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
+  GrapplerItem item;
+  GraphDef& graph = item.graph;
+  AddNode("stack1", "StackV2", {}, &graph);
+  AddNode("push1", "StackPushV2", {"stack1"}, &graph);
+  AddNode("stack2", "StackV2", {}, &graph);
+  AddNode("push_enter", "Enter", {"stack2"}, &graph);
+  AddNode("push2", "StackPushV2", {"push_enter"}, &graph);
+  LoopOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(3, output.node_size());
+  int found = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    if (output.node(i).name() == "stack1") ++found;
+    if (output.node(i).name() == "push_enter") ++found;
+    if (output.node(i).name() == "stack2") ++found;
+  }
+  EXPECT_EQ(3, found);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

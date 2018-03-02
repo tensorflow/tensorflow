@@ -194,9 +194,17 @@ class SimpleGraphView {
     return outputs_[node_idx];
   }
 
+  // Traverse the graph starting at `node_idx`, collecting indices of nodes
+  // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
+  // walk continues to its children. It is assumed that *graph_ was not modified
+  // after the call to Initialize().
+  void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
+                        int node_idx, std::set<int>* nodes_found) const;
+
   string PrintToString() const;
 
  private:
+  const GraphDef* graph_;  // Not owned.
   std::vector<string> index_to_name_;
   std::unordered_map<string, int> name_to_index_;
   std::vector<gtl::InlinedVector<int, 4>> inputs_;

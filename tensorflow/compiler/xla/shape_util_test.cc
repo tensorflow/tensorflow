@@ -573,10 +573,11 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func = [&invocations](const std::vector<int64>& indexes) {
-      invocations++;
-      return true;
-    };
+    auto increment_func =
+        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
+          invocations++;
+          return true;
+        };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -586,6 +587,29 @@ TEST(ShapeUtilTest, ForEachIndex) {
 
     EXPECT_EQ(invocations, data.invocations);
   }
+}
+
+TEST(ShapeUtilTest, ForEachIndexWithStatus) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  // Increments at every invocation.
+  int invocations = 0;
+  auto increment_func =
+      [&invocations](
+          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+    if (++invocations == 5) {
+      return Unimplemented("Cannot increment beyond 5.");
+    }
+    return true;
+  };
+
+  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+      shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
+      increment_func);
+
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(error_status.error_message(),
+              ::testing::HasSubstr("Cannot increment beyond 5."));
+  EXPECT_EQ(invocations, 5);
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {

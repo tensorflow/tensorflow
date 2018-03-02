@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <jni.h>
 #include <stdio.h>
+#include <time.h>
 #include <vector>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -28,6 +29,9 @@ limitations under the License.
 namespace tflite {
 // This is to be provided at link-time by a library.
 extern std::unique_ptr<OpResolver> CreateOpResolver();
+extern timespec getCurrentTime();
+extern jlong timespec_diff_nanoseconds(struct timespec* start,
+                                       struct timespec* stop);
 }  // namespace tflite
 
 #ifdef __cplusplus
@@ -104,13 +108,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
- *  Signature: (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;)[J
+ *  Signature:
+ * (JJ[Ljava/lang/Object;[I[I[Ljava/lang/Object;Lorg/tensorflow/lite/NativeInterpreterWrapper;)[J
  */
 JNIEXPORT jlongArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values);
+    jobjectArray values, jobject wrapper);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper

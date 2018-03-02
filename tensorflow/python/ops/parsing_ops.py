@@ -700,8 +700,7 @@ def _parse_example_raw(serialized,
     # Finally, convert dense_shapes to TensorShapeProto
     dense_shapes = [shape.as_proto() for shape in dense_shapes]
 
-    # pylint: disable=protected-access
-    outputs = gen_parsing_ops._parse_example(
+    outputs = gen_parsing_ops.parse_example(
         serialized=serialized,
         names=names,
         dense_defaults=dense_defaults_vec,
@@ -710,7 +709,6 @@ def _parse_example_raw(serialized,
         dense_keys=dense_keys,
         dense_shapes=dense_shapes,
         name=name)
-    # pylint: enable=protected-access
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
@@ -1132,8 +1130,7 @@ def _parse_single_sequence_example_raw(serialized,
     feature_list_dense_shapes = [tensor_shape.as_shape(shape).as_proto()
                                  for shape in feature_list_dense_shapes]
 
-    # pylint: disable=protected-access
-    outputs = gen_parsing_ops._parse_single_sequence_example(
+    outputs = gen_parsing_ops.parse_single_sequence_example(
         serialized=serialized,
         debug_name=debug_name,
         context_dense_defaults=context_dense_defaults_vec,
@@ -1149,7 +1146,6 @@ def _parse_single_sequence_example_raw(serialized,
         feature_list_dense_missing_assumed_empty=(
             feature_list_dense_missing_assumed_empty),
         name=name)
-    # pylint: enable=protected-access
 
     (context_sparse_indices, context_sparse_values,
      context_sparse_shapes, context_dense_values,
@@ -1182,7 +1178,6 @@ def _parse_single_sequence_example_raw(serialized,
 @tf_export("decode_csv")
 def decode_csv(records, record_defaults, field_delim=",",
                use_quote_delim=True, name=None, na_value=""):
-  # pylint: disable=protected-access
   """Convert CSV records to tensors. Each column maps to one tensor.
 
   RFC 4180 format is expected for the CSV records.
@@ -1211,11 +1206,13 @@ def decode_csv(records, record_defaults, field_delim=",",
     Each tensor will have the same shape as records.
   """
   # TODO(martinwicke), remove the wrapper when new Python API generator is done.
-  return gen_parsing_ops._decode_csv(
-      records=records, record_defaults=record_defaults,
-      field_delim=field_delim, use_quote_delim=use_quote_delim,
-      na_value=na_value, name=name)
-  # pylint: enable=protected-access
+  return gen_parsing_ops.decode_csv(
+      records=records,
+      record_defaults=record_defaults,
+      field_delim=field_delim,
+      use_quote_delim=use_quote_delim,
+      na_value=na_value,
+      name=name)
 
 
 # TODO(b/70890287): Combine the implementation of this op and
@@ -1391,7 +1388,6 @@ def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
     # Finally, convert dense_shapes to TensorShapeProto
     dense_shapes = [shape.as_proto() for shape in dense_shapes]
 
-    # pylint: disable=protected-access
     outputs = gen_parsing_ops.parse_single_example(
         serialized=serialized,
         dense_defaults=dense_defaults_vec,
@@ -1401,7 +1397,6 @@ def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
         dense_keys=dense_keys,
         dense_shapes=dense_shapes,
         name=name)
-    # pylint: enable=protected-access
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 

@@ -417,4 +417,45 @@ public final class NativeInterpreterWrapperTest {
     assertThat(shape[1]).isEqualTo(3);
     assertThat(shape[2]).isEqualTo(1);
   }
+
+  @Test
+  public void testGetInferenceLatency() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    Tensor[] outputs = wrapper.run(inputs);
+    assertThat(outputs.length).isEqualTo(1);
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isGreaterThan(0L);
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInferenceLatencyWithNewWrapper() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetLatencyAfterFailedInference() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    try {
+      wrapper.run(inputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains("0-th input dimension should be [?,8,8,3], but found [?,8,7,3]");
+    }
+    assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
+    wrapper.close();
+  }
 }
