@@ -137,10 +137,10 @@ class UniqueWithCountsTest(test.TestCase):
     for dtype in [np.int32, np.int64]:
       x = np.array([[1, 0, 0], [1, 0, 0], [2, 0, 0]])
       with self.test_session() as sess:
-        y0, idx0, count0 = gen_array_ops._unique_with_counts_v2(
+        y0, idx0, count0 = gen_array_ops.unique_with_counts_v2(
             x, axis=np.array([0], dtype))
         tf_y0, tf_idx0, tf_count0 = sess.run([y0, idx0, count0])
-        y1, idx1, count1 = gen_array_ops._unique_with_counts_v2(
+        y1, idx1, count1 = gen_array_ops.unique_with_counts_v2(
             x, axis=np.array([1], dtype))
         tf_y1, tf_idx1, tf_count1 = sess.run([y1, idx1, count1])
       self.assertAllEqual(tf_y0, np.array([[1, 0, 0], [2, 0, 0]]))
@@ -155,7 +155,7 @@ class UniqueWithCountsTest(test.TestCase):
     # by default, the axis will be wrapped to allow `axis=None`.
     x = np.random.randint(2, high=10, size=7000)
     with self.test_session() as sess:
-      y, idx, count = gen_array_ops._unique_with_counts_v2(
+      y, idx, count = gen_array_ops.unique_with_counts_v2(
           x, axis=np.array([], np.int32))
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
