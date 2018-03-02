@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
 
+from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
@@ -206,6 +208,31 @@ class MetricsTest(test.TestCase):
       self.assertAllEqual(m2.result().eval(), 2.0)
       self.assertAllEqual(m1.result().eval(), 1.0)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testSaveRestore(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    mean = metrics.Mean()
+    checkpoint = checkpointable_utils.Checkpoint(mean=mean)
+    mean.build()
+    mean._built = True
+    self.evaluate(mean.init_variables())
+    self.evaluate(mean(100.))
+    self.evaluate(mean(200.))
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(mean(1000.))
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.evaluate(mean(300.))
+    self.assertAllEqual(200., self.evaluate(mean.value()))
+
+    restore_mean = metrics.Mean()
+    restore_checkpoint = checkpointable_utils.Checkpoint(mean=restore_mean)
+    status = restore_checkpoint.restore(save_path)
+    restore_update = restore_mean(300.)
+    status.assert_consumed().run_restore_ops()
+    self.evaluate(restore_update)
+    self.assertAllEqual(200., self.evaluate(restore_mean.value()))
+    self.assertEqual(3, self.evaluate(restore_mean.denom))
 
 if __name__ == "__main__":
   test.main()

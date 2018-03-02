@@ -117,6 +117,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
