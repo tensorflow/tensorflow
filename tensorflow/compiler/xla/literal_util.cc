@@ -1434,6 +1434,24 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
   }
 }
 
+StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(
+    const Shape& dest_shape) const {
+  if (!ShapeUtil::IsTuple(dest_shape)) {
+    return Convert(dest_shape.element_type());
+  }
+  std::vector<Literal> elements;
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+    auto element = LiteralView::Create(*this, {i});
+    TF_ASSIGN_OR_RETURN(
+        auto new_element,
+        element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
+    elements.push_back(std::move(*new_element));
+  }
+  auto converted = MakeUnique<Literal>();
+  *converted = Literal::MoveIntoTuple(&elements);
+  return std::move(converted);
+}
+
 template <typename NativeT>
 bool Literal::Piece::EqualElementsInternal(
     const Literal::Piece& other, std::vector<int64>* multi_index) const {

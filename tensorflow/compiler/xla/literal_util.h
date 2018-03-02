@@ -333,6 +333,11 @@ class Literal {
   StatusOr<std::unique_ptr<Literal>> Convert(
       PrimitiveType primitive_dest_type) const;
 
+  // Converts this literal to the given shape. Returns an error is the
+  // conversion is not possible.
+  StatusOr<std::unique_ptr<Literal>> ConvertToShape(
+      const Shape& dest_shape) const;
+
   // Creates a scalar literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
 
