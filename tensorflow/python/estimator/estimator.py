@@ -570,7 +570,7 @@ class Estimator(object):
       export_dir_base: A string containing a directory in which to create
         timestamped subdirectories containing exported SavedModels.
       serving_input_receiver_fn: A function that takes no argument and
-        returns a `ServingInputReceiver`.
+        returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel, or `None` if no extra assets are needed.
       as_text: whether to write the SavedModel proto in text format.
