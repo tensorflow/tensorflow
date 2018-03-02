@@ -102,7 +102,8 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   func_outputs->set_op("IdentityN");
   func_outputs->set_device(node.device());
   type_list = (*func_outputs->mutable_attr())["T"].mutable_list();
-  for (const OpDef::ArgDef& arg : func.signature().output_arg()) {
+  for (int i = 0; i < func.signature().output_arg_size(); ++i) {
+    const OpDef::ArgDef& arg = func.signature().output_arg(i);
     if (arg.type() != DT_INVALID) {
       type_list->add_type(arg.type());
     } else {
@@ -114,7 +115,8 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
       }
       type_list->add_type(it->second.type());
     }
-    func_outputs->add_input(strings::StrCat(node.name(), "/", arg.name()));
+    // Use the fetch names since they take into account the output mapping.
+    func_outputs->add_input(strings::StrCat(node.name(), "/", item->fetch[i]));
   }
 
   return Status::OK();

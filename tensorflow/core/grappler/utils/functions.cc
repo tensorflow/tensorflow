@@ -124,9 +124,22 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
     }
   }
 
-  // Add the function outputs to the list of fetch nodes.
+  // Add the function outputs to the list of fetch nodes, taking into account
+  // the output mapping if any.
   for (const auto& out : func.signature().output_arg()) {
-    new_item->fetch.emplace_back(out.name());
+    auto it = func.ret().find(out.name());
+    if (it != func.ret().end()) {
+      auto it2 = port_map.find(it->second);
+      if (it2 == port_map.end()) {
+        LOG(ERROR) << "Unknown output mapping: " << it->first << " to "
+                   << it->second;
+        return nullptr;
+      } else {
+        new_item->fetch.emplace_back(it2->second);
+      }
+    } else {
+      new_item->fetch.emplace_back(out.name());
+    }
   }
   // Add the function inputs to the list of feeds.
   for (const auto& inp : func.signature().input_arg()) {
