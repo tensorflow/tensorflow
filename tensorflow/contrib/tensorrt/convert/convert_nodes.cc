@@ -71,7 +71,8 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
       break;
 
     default:
-      return tensorflow::errors::InvalidArgument("Unsupported data type "+tensorflow::DataTypeString(tf_dtype));
+      return tensorflow::errors::InvalidArgument(
+          "Unsupported data type " + tensorflow::DataTypeString(tf_dtype));
   }
   return tensorflow::Status::OK();
 }
@@ -2537,7 +2538,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
       shape_inference_node_name = s.output_edge_map->at(tensor_name).second;
       shape_inference_output_idx = s.output_edge_map->at(tensor_name).first;
     }
-    if(shape_inference_output_idx<0)continue;
+    if (shape_inference_output_idx < 0) continue;
     VLOG(2) << "shapeinference name: " << shape_inference_node_name
             << " idx: " << shape_inference_output_idx;
 
