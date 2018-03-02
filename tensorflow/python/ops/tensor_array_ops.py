@@ -148,7 +148,7 @@ class _GraphTensorArray(object):
         # will retroactively set the device value of this op.
         def create():
           """Create the TensorArray op."""
-          return gen_data_flow_ops._tensor_array_v3(
+          return gen_data_flow_ops.tensor_array_v3(
               dtype=dtype,
               size=size,
               element_shape=element_shape,
@@ -237,7 +237,7 @@ class _GraphTensorArray(object):
       flow = self.flow
     with ops.name_scope(name, "TensorArrayGrad", [self._handle]):
       with ops.colocate_with(self._handle):
-        g_handle, unused_flow = gen_data_flow_ops._tensor_array_grad_v3(
+        g_handle, unused_flow = gen_data_flow_ops.tensor_array_grad_v3(
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
           flow = array_ops.identity(flow, name="gradient_flow")
@@ -252,7 +252,7 @@ class _GraphTensorArray(object):
 
   def read(self, index, name=None):
     """See TensorArray."""
-    value = gen_data_flow_ops._tensor_array_read_v3(
+    value = gen_data_flow_ops.tensor_array_read_v3(
         handle=self._handle,
         index=index,
         flow_in=self._flow,
@@ -270,7 +270,7 @@ class _GraphTensorArray(object):
       if self._infer_shape:
         self._merge_element_shape(value.shape)
       with self._maybe_colocate_with(value):
-        flow_out = gen_data_flow_ops._tensor_array_write_v3(
+        flow_out = gen_data_flow_ops.tensor_array_write_v3(
             handle=self._handle,
             index=index,
             value=value,
@@ -296,7 +296,7 @@ class _GraphTensorArray(object):
       element_shape = self._element_shape[0]
     else:
       element_shape = tensor_shape.TensorShape(None)
-    value = gen_data_flow_ops._tensor_array_gather_v3(
+    value = gen_data_flow_ops.tensor_array_gather_v3(
         handle=self._handle,
         indices=indices,
         flow_in=self._flow,
@@ -314,7 +314,7 @@ class _GraphTensorArray(object):
           tensor_shape.TensorShape(self._element_shape[0].dims[1:]))
     else:
       element_shape_except0 = tensor_shape.TensorShape(None)
-    value, _ = gen_data_flow_ops._tensor_array_concat_v3(
+    value, _ = gen_data_flow_ops.tensor_array_concat_v3(
         handle=self._handle,
         flow_in=self._flow,
         dtype=self._dtype,
@@ -341,7 +341,7 @@ class _GraphTensorArray(object):
       if self._infer_shape and context.in_graph_mode():
         self._merge_element_shape(value.shape[1:])
       with self._maybe_colocate_with(value):
-        flow_out = gen_data_flow_ops._tensor_array_scatter_v3(
+        flow_out = gen_data_flow_ops.tensor_array_scatter_v3(
             handle=self._handle,
             indices=indices,
             value=value,
@@ -370,7 +370,7 @@ class _GraphTensorArray(object):
               self._merge_element_shape(
                   tensor_shape.TensorShape([clengths[0]]).concatenate(
                       value.shape[1:]))
-        flow_out = gen_data_flow_ops._tensor_array_split_v3(
+        flow_out = gen_data_flow_ops.tensor_array_split_v3(
             handle=self._handle,
             value=value,
             lengths=lengths_64,
@@ -386,13 +386,13 @@ class _GraphTensorArray(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops._tensor_array_size_v3(
+    return gen_data_flow_ops.tensor_array_size_v3(
         handle=self._handle, flow_in=self.flow, name=name)
 
   @tf_should_use.should_use_result
   def close(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops._tensor_array_close_v3(
+    return gen_data_flow_ops.tensor_array_close_v3(
         handle=self._handle, name=name)
 
 # pylint: enable=protected-access

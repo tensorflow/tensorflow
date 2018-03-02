@@ -193,7 +193,7 @@ class FunctionTest(test.TestCase):
 
     @function.Defun(dtypes.float32, dtypes.float32)
     def XSquarePlusOneGrad(x, dy):
-      dx = functional_ops._symbolic_gradient(
+      dx = functional_ops.symbolic_gradient(
           input=[x, dy], Tout=[dtypes.float32], f="XSquarePlusOneFn", name="dx")
       return dx
 
@@ -295,7 +295,7 @@ class FunctionTest(test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = functional_ops._symbolic_gradient(
+      dx, dy = functional_ops.symbolic_gradient(
           input=[x, y, dz], Tout=[dtypes.float32] * 2, f="Foo")
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())

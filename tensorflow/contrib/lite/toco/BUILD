@@ -240,6 +240,7 @@ cc_library(
         "graph_transformations/resolve_tensorflow_tile.cc",
         "graph_transformations/resolve_transpose_attributes.cc",
         "graph_transformations/unfuse_activation_functions.cc",
+        "graph_transformations/unpartition_embedding_lookup.cc",
         "graph_transformations/unroll_batch_matmul.cc",
     ],
     hdrs = [

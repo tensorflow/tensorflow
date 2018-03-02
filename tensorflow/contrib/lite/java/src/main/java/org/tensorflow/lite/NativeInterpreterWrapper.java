@@ -91,8 +91,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
                 i, inputs.length));
       }
     }
+    inferenceDurationNanoseconds = -1;
     long[] outputsHandles =
-        run(interpreterHandle, errorHandle, sizes, dataTypes, numsOfBytes, inputs);
+        run(interpreterHandle, errorHandle, sizes, dataTypes, numsOfBytes, inputs, this);
     if (outputsHandles == null || outputsHandles.length == 0) {
       throw new IllegalStateException("Interpreter has no outputs.");
     }
@@ -109,7 +110,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       Object[] sizes,
       int[] dtypes,
       int[] numsOfBytes,
-      Object[] values);
+      Object[] values,
+      NativeInterpreterWrapper wrapper);
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
@@ -236,6 +238,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     }
   }
 
+  /**
+   * Gets the last inference duration in nanoseconds. It returns null if there is no previous
+   * inference run or the last inference run failed.
+   */
+  Long getLastNativeInferenceDurationNanoseconds() {
+    return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
+  }
+
   private static final int ERROR_BUFFER_SIZE = 512;
 
   private long errorHandle;
@@ -245,6 +255,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private long modelHandle;
 
   private int inputSize;
+
+  private long inferenceDurationNanoseconds = -1;
 
   private MappedByteBuffer modelByteBuffer;
 

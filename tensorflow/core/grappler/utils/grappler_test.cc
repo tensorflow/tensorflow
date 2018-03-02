@@ -46,8 +46,8 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
         session->Run(run_options, {}, {}, item.init_ops, &dummy, nullptr));
   }
   std::vector<Tensor> output_tensors;
-  TF_CHECK_OK(
-      session->Run(run_options, {}, item.fetch, {}, &output_tensors, nullptr));
+  TF_CHECK_OK(session->Run(run_options, item.feed, item.fetch, {},
+                           &output_tensors, nullptr));
   TF_CHECK_OK(session->Close());
   return output_tensors;
 }

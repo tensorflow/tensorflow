@@ -25,13 +25,13 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":sequential_feature_column",
+        ":sequence_feature_column",
     ],
 )
 
 py_library(
-    name = "sequential_feature_column",
-    srcs = ["python/feature_column/sequential_feature_column.py"],
+    name = "sequence_feature_column",
+    srcs = ["python/feature_column/sequence_feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
@@ -48,12 +48,12 @@ py_library(
 )
 
 py_test(
-    name = "sequential_feature_column_test",
-    srcs = ["python/feature_column/sequential_feature_column_test.py"],
+    name = "sequence_feature_column_test",
+    srcs = ["python/feature_column/sequence_feature_column_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":sequential_feature_column",
+        ":sequence_feature_column",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",

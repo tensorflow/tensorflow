@@ -47,46 +47,46 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
-      var_0 = gen_state_ops._variable(
+      var_0 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_0",
           container="",
           shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_1 = gen_state_ops._variable(
+        var_1 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_1",
             container="",
             shared_name="")
-      var_2 = gen_state_ops._variable(
+      var_2 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_2",
           container="",
           shared_name="")
-      var_3 = gen_state_ops._variable(
+      var_3 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_3",
           container="",
           shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_4 = gen_state_ops._variable(
+        var_4 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_4",
             container="",
             shared_name="")
         with g.device("/device:GPU:0"):
-          var_5 = gen_state_ops._variable(
+          var_5 = gen_state_ops.variable(
               shape=[1],
               dtype=dtypes.float32,
               name="var_5",
               container="",
               shared_name="")
-        var_6 = gen_state_ops._variable(
+        var_6 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_6",

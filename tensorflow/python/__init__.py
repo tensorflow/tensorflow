@@ -198,13 +198,9 @@ tf_export('TensorInfo')(TensorInfo)
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'mul',  # use tf.multiply instead.
-    'neg',  # use tf.negative instead.
-    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
-    'list_diff',  # Use tf.listdiff instead.
     'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',

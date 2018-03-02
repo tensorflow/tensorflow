@@ -79,6 +79,8 @@ string ComputationTypeString(ComputationType ty) {
       return "f32";
     case ComputationType::kF64:
       return "f64";
+    case ComputationType::kI32:
+      return "i32";
     case ComputationType::kComplexF32:
       return "complex f32";
     case ComputationType::kComplexF64:
@@ -86,6 +88,10 @@ string ComputationTypeString(ComputationType ty) {
     default:
       LOG(FATAL) << "Unknown ComputationType " << static_cast<int32>(ty);
   }
+}
+
+std::ostream& operator<<(std::ostream& os, ComputationType ty) {
+  return os << ComputationTypeString(ty);
 }
 
 }  // namespace blas
