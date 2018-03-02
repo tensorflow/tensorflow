@@ -49,6 +49,7 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import device_setter
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
@@ -1007,13 +1008,6 @@ def _get_replica_device_setter(config):
   Returns:
     A replica device setter, or None.
   """
-  ps_ops = [
-      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableV2', 'MutableHashTableOfTensors',
-      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
-      'MutableDenseHashTableV2', 'VarHandleOp'
-  ]
-
   if config.task_type:
     worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
   else:
@@ -1024,7 +1018,7 @@ def _get_replica_device_setter(config):
         ps_tasks=config.num_ps_replicas,
         worker_device=worker_device,
         merge_devices=True,
-        ps_ops=ps_ops,
+        ps_ops=list(device_setter.STANDARD_PS_OPS),
         cluster=config.cluster_spec)
   else:
     return None
