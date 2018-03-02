@@ -23,15 +23,12 @@ import six as _six
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl as _impl
-from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert,calib_convert
+from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert, calib_convert
 from tensorflow.python.util import compat
 import tensorflow as tf
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import meta_graph
-from tensorflow.python.framework import ops
-
-
 from tensorflow.python.framework import ops
 
 
@@ -58,13 +55,14 @@ def create_inference_graph(input_graph_def,
   Raises:
     RuntimeError: if the returned status message is malformed.
   """
-  supported_precision_modes={"FP32":0,
-                             "FP16":1,
-                             "INT8":2}
+  supported_precision_modes = {"FP32": 0,
+                               "FP16": 1,
+                               "INT8": 2}
   if precision_mode.upper() not in supported_precision_modes:
     raise ValueError(("precision mode '{}' is not supported."
-    "It should be one of {}").format(precision_mode,"{'FP32','FP16','INT8'}"))
-  mode=supported_precision_modes[precision_mode.upper()]
+                      "It should be one of {}").format(precision_mode,
+                      "{'FP32', 'FP16', 'INT8'}"))
+  mode = supported_precision_modes[precision_mode.upper()]
   def py2bytes(inp):
     return inp
 
@@ -99,7 +97,7 @@ def create_inference_graph(input_graph_def,
   # pair or strings where first one is encoded status and the second
   # one is the transformed graphs protobuf string.
   out = trt_convert(input_graph_def_str, out_names, max_batch_size,
-                    max_workspace_size_bytes,mode,minimum_segment_size)
+                    max_workspace_size_bytes, mode, minimum_segment_size)
   status = to_string(out[0])
   output_graph_def_string = out[1]
   del input_graph_def_str  # Save some memory
@@ -119,6 +117,8 @@ def create_inference_graph(input_graph_def,
   return output_graph_def
 
 def calib_graph_to_infer_graph(calibration_graph_def):
+  """Convert an existing calibration graph containing calibration data
+  to inference graph"""
   def py2bytes(inp):
     return inp
 
@@ -132,21 +132,19 @@ def calib_graph_to_infer_graph(calibration_graph_def):
     return inp.decode("utf-8")
 
   if _six.PY2:
-    to_bytes = py2bytes
     to_string = py2string
   else:
-    to_bytes = py3bytes
     to_string = py3string
 
-  graph_str=calibration_graph_def.SerializeToString()
-  out=calib_convert(graph_str)
-  status=to_string(out[0])
+  graph_str = calibration_graph_def.SerializeToString()
+  out = calib_convert(graph_str)
+  status = to_string(out[0])
   output_graph_def_string = out[1]
   del graph_str #save some memory
   if len(status) < 2:
-    raise _impl.UnknownError(None,None,status)
+    raise _impl.UnknownError(None, None, status)
   if status[:2] != "OK":
-    msg=status.split(";")
+    msg = status.split(";")
     if len(msg) == 1:
       raise RuntimeError("Status message is malformed {}".format(status))
     raise _impl._make_specific_exception(None,None,";".join(msg[1:]), int(msg[0]))
