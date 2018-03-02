@@ -119,7 +119,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
     if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
-      if (cfg_.memory_optimizer_target_node_name_prefix().empty()) {
+      if (cfg_.memory_optimizer_target_node_name_regexp().empty()) {
         optimizers.push_back(std::unique_ptr<GraphOptimizer>(
             // Use the default target node name prefix "gradients/"
             new MemoryOptimizer(cfg_.memory_optimization())));
@@ -127,7 +127,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         optimizers.push_back(
             std::unique_ptr<GraphOptimizer>(new MemoryOptimizer(
                 cfg_.memory_optimization(),
-                cfg_.memory_optimizer_target_node_name_prefix())));
+                cfg_.memory_optimizer_target_node_name_regexp())));
       }
     }
     if (cfg_.auto_parallel().enable()) {

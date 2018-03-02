@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -413,7 +414,7 @@ void RecomputeSubgraph(
 }
 
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
-                                const string& recomputation_targets_name_prefix,
+                                const string& recomputation_targets_name_regexp,
                                 GraphDef* graph, const GrapplerItem& item) {
   if (optimization_level != RewriterConfig::RECOMPUTATION_HEURISTICS &&
       optimization_level != RewriterConfig::HEURISTICS &&
@@ -437,16 +438,19 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   for (const auto& feed : item.feed) {
     feeds.insert(NodeName(feed.first));
   }
+  RE2 recomputation_targets_re(recomputation_targets_name_regexp);
   std::function<bool(const NodeDef&)> is_target =
-      [&recomputation_targets_name_prefix](const NodeDef& node) {
-        // Nodes whose inputs we may want to recompute. Typically targets will
-        // be gradients (recomputation_targets_name_prefix="gradients/"),
-        // although the prefix is configurable since gradients may be created
-        // in a name scope.
+      [&recomputation_targets_re](const NodeDef& node) {
+        // Nodes whose inputs we may want to recompute. This does a prefix
+        // regexp match, and typically one sets regexp="gradients/" meaning
+        // it will match all node names with scope beginning with "gradients/".
+        // If used within scopes, one may want to set regexp="(.+/)?gradients/".
         // TODO(allenl): Use a static schedule
         // (grappler::EstimateEarliestExecutionTimes) to recompute only nodes
         // whose outputs will sit around for a while.
-        return node.name().find(recomputation_targets_name_prefix) == 0;
+        bool match = recomputation_targets_re.Match(
+            node.name(), 0, node.name().size(), RE2::ANCHOR_START, nullptr, 0);
+        return match;
       };
 
   if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||
@@ -1225,7 +1229,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_prefix_,
+                             recomputation_targets_name_regexp_,
                              optimized_graph, item);
 
   GrapplerItem optimized_item(item, std::move(*optimized_graph));
