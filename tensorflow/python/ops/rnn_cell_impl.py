@@ -1187,6 +1187,10 @@ class MultiRNNCell(RNNCell):
           "cells must be a list or tuple, but saw: %s." % cells)
 
     self._cells = cells
+    for cell_number, cell in enumerate(self._cells):
+      # Add Checkpointable dependencies on these cells so their variables get
+      # saved with this object when using object-based saving.
+      self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):
