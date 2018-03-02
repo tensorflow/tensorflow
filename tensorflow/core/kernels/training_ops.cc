@@ -346,7 +346,7 @@ struct ApplyAdaMaxNonCuda {
     // v == u
     v.device(d) = (beta2() * v).cwiseMax(grad.abs());
     // var == θ
-    var.device(d) -= (lr() * m) / ((T(1) - beta1_power()) * v);
+    var.device(d) -= lr() / (T(1) - beta1_power()) * (m / (v + epsilon()));
   }
 };
 
@@ -359,7 +359,7 @@ struct ApplyAdaMaxSYCL {
                   T epsilon, typename TTypes<T>::ConstFlat grad) {
     m.device(d) += (grad - m) * (T(1) - beta1);
     v.device(d) = (beta2 * v).cwiseMax(grad.abs());
-    var.device(d) -= (lr * m) / ((T(1) - beta1_power) * v);
+    var.device(d) -= lr / (T(1) - beta1_power) * (m / (v + epsilon));
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
