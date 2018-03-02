@@ -43,16 +43,11 @@ TRTInt8Calibrator::TRTInt8Calibrator(
 
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
-  // TODO(aaroey): make sure that in future PR:
-  // 1. the mutex_lock is outside of the loop
-  // 2. wait() is used instead of wait_for()
-  // 3. done_ is to be protected by the mutex
-  // 4. the first batch is not missed
   if (done_) return false;
-  tensorflow::mutex_lock l(cond_mtx_);
+  tensorflow::mutex_lock lock(cond_mtx_);
   while ((calib_running_ || batch_is_set_) &&
          !done_) {  // wait while calibration is running
-    cond_.wait(l);
+    cond_.wait(lock);
     if (done_) return false;
   }
   CHECK(!calib_running_ && !batch_is_set_);
@@ -83,11 +78,11 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
 
 bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
                                  int num_bindings) {
-  tensorflow::mutex_lock l(cond_mtx_);
+  tensorflow::mutex_lock lock(cond_mtx_);
   calib_running_ = false;
   cond_.notify_all();
   while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
-    cond_.wait(l);
+    cond_.wait(lock);
   }
   if (done_) {
     return false;
@@ -111,7 +106,7 @@ const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
   return nullptr;
 }
 void TRTInt8Calibrator::setDone() {
-  tensorflow::mutex_lock l(cond_mtx_);
+  tensorflow::mutex_lock lock(cond_mtx_);
   done_ = true;
   cond_.notify_all();
 }

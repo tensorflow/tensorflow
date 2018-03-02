@@ -319,7 +319,7 @@ void Reorder4(nvinfer1::DimsNCHW shape, const T* idata,
 }
 
 template <typename T>
-void Reorder2(nvinfer1::DimsHW shape, T const* idata, nvinfer1::DimsHW istrides,
+void Reorder2(nvinfer1::DimsHW shape, const T* idata, nvinfer1::DimsHW istrides,
               T* odata, nvinfer1::DimsHW ostrides) {
   for (int h = 0; h < shape.h(); ++h) {
     for (int w = 0; w < shape.w(); ++w) {
@@ -330,7 +330,7 @@ void Reorder2(nvinfer1::DimsHW shape, T const* idata, nvinfer1::DimsHW istrides,
 }
 
 // TODO(jie): fail to tensorflow!!
-void ReorderCKtoKC(TRT_ShapedWeights const& iweights,
+void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
                    TRT_ShapedWeights* oweights) {
   int c = iweights.shape_.d[0];
   int k = iweights.shape_.d[1];
@@ -360,20 +360,20 @@ void ReorderCKtoKC(TRT_ShapedWeights const& iweights,
 }
 
 void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
-                       TRT_ShapedWeights* oweights, int nbGroups) {
+                       TRT_ShapedWeights* oweights, int num_groups) {
   CHECK_EQ(iweights.type_, oweights->type_);
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   int r = iweights.shape_.d[0];
   int s = iweights.shape_.d[1];
   // TRT requires GKcRS, while TF depthwise has RSCK
   //   where c=1, C=G
-  VLOG(2) << "nbGroups: " << nbGroups;
-  int c = iweights.shape_.d[2] / nbGroups;
+  VLOG(2) << "num_groups: " << num_groups;
+  int c = iweights.shape_.d[2] / num_groups;
   VLOG(2) << "c" << iweights.shape_.d[2] << " then " << c;
-  int k = iweights.shape_.d[3] * nbGroups;
+  int k = iweights.shape_.d[3] * num_groups;
   VLOG(2) << "k" << iweights.shape_.d[3] << " then " << k;
-  oweights->shape_.d[0] = k / nbGroups;
-  oweights->shape_.d[1] = c * nbGroups;
+  oweights->shape_.d[0] = k / num_groups;
+  oweights->shape_.d[1] = c * num_groups;
   oweights->shape_.d[2] = r;
   oweights->shape_.d[3] = s;
   nvinfer1::DimsNCHW istrides = {1, k, s * k * c, c * k};
@@ -419,7 +419,7 @@ class Converter;
 
 using OpConverter =
     std::function<tensorflow::Status(Converter&, const tensorflow::NodeDef&,
-                                     std::vector<TRT_TensorOrWeights> const&,
+                                     const std::vector<TRT_TensorOrWeights>&,
                                      std::vector<TRT_TensorOrWeights>*)>;
 
 class Converter {
@@ -764,7 +764,7 @@ tensorflow::Status BinaryCompute(const TRT_ShapedWeights& iweights_l,
 
 tensorflow::Status ConstantFoldUnary(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   TRT_ShapedWeights weights_input = inputs.at(0).weights();
 
@@ -800,7 +800,7 @@ tensorflow::Status ConstantFoldUnary(
 //   approach for constant folding
 tensorflow::Status ConstantFoldBinary(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   TRT_ShapedWeights weights_input_l = inputs.at(0).weights();
   TRT_ShapedWeights weights_input_r = inputs.at(1).weights();
@@ -1000,12 +1000,12 @@ tensorflow::Status BinaryTensorOpWeight(
 enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
 
 tensorflow::Status ConvertConv2DHelper(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs,
     int group  // group ==0 specifies depthwise conv
 ) {
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   TFAttrs attrs(node_def);
 
@@ -1025,16 +1025,16 @@ tensorflow::Status ConvertConv2DHelper(
   // tensor after transpose (NCHW)
   auto tensor_dim = tensor->getDimensions();
 
-  int nbGroups = group;
-  if (nbGroups == 0)  // depthwise convolution
-    nbGroups = tensor_dim.d[0];
-  VLOG(2) << "groups count: " << nbGroups;
+  int num_groups = group;
+  if (num_groups == 0)  // depthwise convolution
+    num_groups = tensor_dim.d[0];
+  VLOG(2) << "groups count: " << num_groups;
 
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
   TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
-  ReorderRSCKToKCRS(weights_rsck, &weights, nbGroups);
+  ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
-  int noutput = weights.shape_.d[0] * nbGroups;
+  int noutput = weights.shape_.d[0] * num_groups;
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
@@ -1087,7 +1087,7 @@ tensorflow::Status ConvertConv2DHelper(
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
   layer->setName(node_def.name().c_str());
-  layer->setNbGroups(nbGroups);
+  layer->setNbGroups(num_groups);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   auto dim_after = output_tensor->getDimensions();
@@ -1105,8 +1105,8 @@ tensorflow::Status ConvertConv2DHelper(
 }
 
 tensorflow::Status ConvertConv2DHelper(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights> & inputs,
     std::vector<TRT_TensorOrWeights>* outputs, ConvolutionType type) {
   switch (type) {
     case ConvolutionType::DEFAULT:
@@ -1119,7 +1119,7 @@ tensorflow::Status ConvertConv2DHelper(
 }
 
 tensorflow::Status BinaryTensorOpTensor(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
     const nvinfer1::ITensor* tensor_l, const nvinfer1::ITensor* tensor_r,
     std::vector<TRT_TensorOrWeights>* outputs) {
   static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
@@ -1158,8 +1158,8 @@ tensorflow::Status BinaryTensorOpTensor(
 }
 
 tensorflow::Status ConvertPlaceholder(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   VLOG(2) << "Placeholder should have been replace already";
   return tensorflow::errors::Unimplemented("cannot convert Placeholder op");
@@ -1181,16 +1181,16 @@ tensorflow::Status ConvertPlaceholder(
 }
 
 tensorflow::Status ConvertConv2D(Converter& ctx,
-                                 tensorflow::NodeDef const& node_def,
-                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 const tensorflow::NodeDef& node_def,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
   return ConvertConv2DHelper(ctx, node_def, inputs, outputs,
                              ConvolutionType::DEFAULT);
 }
 
 tensorflow::Status ConvertConv2DDepthwise(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   return ConvertConv2DHelper(ctx, node_def, inputs, outputs,
                              ConvolutionType::DEPTHWISE_CONV);
@@ -1198,9 +1198,9 @@ tensorflow::Status ConvertConv2DDepthwise(
 
 tensorflow::Status ConvertPool(Converter& ctx,
                                const tensorflow::NodeDef& node_def,
-                               std::vector<TRT_TensorOrWeights> const& inputs,
+                               const std::vector<TRT_TensorOrWeights>& inputs,
                                std::vector<TRT_TensorOrWeights>* outputs) {
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TFAttrs attrs(node_def);
 
   int h_index = 2;
@@ -1282,9 +1282,9 @@ tensorflow::Status ConvertPool(Converter& ctx,
 
 tensorflow::Status ConvertActivation(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IActivationLayer* layer = ctx.network()->addActivation(
       *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::ActivationType::kRELU);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -1294,14 +1294,14 @@ tensorflow::Status ConvertActivation(
 
 tensorflow::Status ConvertScale(Converter& ctx,
                                 const tensorflow::NodeDef& node_def,
-                                std::vector<TRT_TensorOrWeights> const& inputs,
+                                const std::vector<TRT_TensorOrWeights>& inputs,
                                 std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights())
     return tensorflow::errors::Unimplemented(
         "Only supports tensor op weight for now, at " + node_def.name());
   // Implement tensor binaryOp weight [channel wise] for now;
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   // TODO(jie): handle NHWC/NCHW transpose;
   TRT_ShapedWeights weights = inputs.at(1).weights();
@@ -1352,7 +1352,7 @@ tensorflow::Status ConvertScale(Converter& ctx,
 
 tensorflow::Status ConvertConst(Converter& ctx,
                                 const tensorflow::NodeDef& node_def,
-                                std::vector<TRT_TensorOrWeights> const& inputs,
+                                const std::vector<TRT_TensorOrWeights>& inputs,
                                 std::vector<TRT_TensorOrWeights>* outputs) {
   const auto& weights_tensor = node_def.attr().at("value").tensor();
 
@@ -1540,7 +1540,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
 
 tensorflow::Status ConvertIdentity(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   outputs->push_back(inputs.at(0));
   return tensorflow::Status::OK();
@@ -1548,7 +1548,7 @@ tensorflow::Status ConvertIdentity(
 
 tensorflow::Status ConvertBinary(Converter& ctx,
                                  const tensorflow::NodeDef& node_def,
-                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2)
     return tensorflow::errors::FailedPrecondition(
@@ -1575,7 +1575,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
 
 tensorflow::Status ConvertUnary(Converter& ctx,
                                 const tensorflow::NodeDef& node_def,
-                                std::vector<TRT_TensorOrWeights> const& inputs,
+                                const std::vector<TRT_TensorOrWeights>& inputs,
                                 std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 1)
     return tensorflow::errors::FailedPrecondition(
@@ -1593,7 +1593,7 @@ tensorflow::Status ConvertUnary(Converter& ctx,
 
 tensorflow::Status ConvertReduce(Converter& ctx,
                                  const tensorflow::NodeDef& node_def,
-                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights())
@@ -1601,7 +1601,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
         "Input expects tensor and weights, at" + node_def.name());
 
   // Implement tensor binaryOp weight [channel wise] for now;
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   auto dims = tensor->getDimensions();
   // Restore implicit batch dimension
   int nb_dims = dims.nbDims + 1;
@@ -1688,7 +1688,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
 
 tensorflow::Status ConvertPad(Converter& ctx,
                               const tensorflow::NodeDef& node_def,
-                              std::vector<TRT_TensorOrWeights> const& inputs,
+                              const std::vector<TRT_TensorOrWeights>& inputs,
                               std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights())
@@ -1696,7 +1696,7 @@ tensorflow::Status ConvertPad(Converter& ctx,
         "Input expects tensor and weights, at" + node_def.name());
 
   // Implement tensor binaryOp weight [channel wise] for now;
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   auto dims = tensor->getDimensions();
   // Restore implicit batch dimension
   int nb_dims = dims.nbDims + 1;
@@ -1873,8 +1873,8 @@ tensorflow::Status ConvertConcat(Converter& ctx,
 }
 
 tensorflow::Status ConvertFusedBatchNorm(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   TFAttrs attrs(node_def);
   float epsilon = attrs.get<float>("epsilon");
@@ -1959,10 +1959,10 @@ tensorflow::Status ConvertFusedBatchNorm(
 }
 
 tensorflow::Status ConvertMatMul(Converter& ctx,
-                                 tensorflow::NodeDef const& node_def,
-                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 const tensorflow::NodeDef& node_def,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor * tensor = inputs.at(0).tensor();
 
   // TODO(jie): transpose!
   TFAttrs attrs(node_def);
@@ -1987,8 +1987,8 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
 }
 
 tensorflow::Status ConvertReshape(
-    Converter& ctx, tensorflow::NodeDef const& node_def,
-    std::vector<TRT_TensorOrWeights> const& inputs,
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights())
@@ -1996,7 +1996,7 @@ tensorflow::Status ConvertReshape(
         "Input expects tensor and weights, at" + node_def.name());
 
   // implement tensor binaryOp weight [channel wise] for now;
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   auto dims = tensor->getDimensions();
   // restore implicit batch dimension
 
@@ -2282,7 +2282,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   VLOG(2) << "BUILDING 5";
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
-  for (std::pair<int, int> const& input : s.input_inds) {
+  for (const std::pair<int, int>& input : s.input_inds) {
     VLOG(2) << "parsing input!!!!!";
     int node_id = input.first;
     int output_idx = input.second;
@@ -2346,7 +2346,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   VLOG(2) << "finished sorting";
 
   for (const tensorflow::Node* node : order) {
-    tensorflow::NodeDef const& node_def = node->def();
+    const tensorflow::NodeDef& node_def = node->def();
     VLOG(2) << "converting node: " << node_def.name() << " , " << node_def.op();
     TF_RETURN_IF_ERROR(converter.convert_node(node_def));
   }
@@ -2357,7 +2357,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   std::vector<string> output_names;
   std::vector<tensorflow::DataType> output_dtypes;
   int trt_engine_op_output_idx = 0;
-  for (std::pair<int, int> const& output : s.output_inds) {
+  for (const std::pair<int, int>& output : s.output_inds) {
     int node_id = output.first;
     int output_idx = output.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);
@@ -2589,7 +2589,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   std::vector<string> output_names;
   std::vector<tensorflow::DataType> output_dtypes;
   int trt_engine_op_output_idx = 0;
-  for (std::pair<int, int> const& output : s.output_inds) {
+  for (const std::pair<int, int>& output : s.output_inds) {
     int node_id = output.first;
     int output_idx = output.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);

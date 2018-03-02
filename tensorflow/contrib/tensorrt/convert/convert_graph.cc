@@ -71,8 +71,6 @@ bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
       "DepthwiseConv2dNative",
       "FusedBatchNorm",
       "FusedBatchNormV2",
-      //, "MatMul",
-      //"Reshape"
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
