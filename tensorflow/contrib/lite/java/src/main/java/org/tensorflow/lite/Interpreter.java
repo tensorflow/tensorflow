@@ -167,7 +167,6 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getOutputIndex(opName);
   }
 
-
   /**
    * Returns native inference timing.
    * <p>IllegalArgumentException will be thrown if the model is not initialized by the
@@ -178,6 +177,15 @@ public final class Interpreter implements AutoCloseable {
       throw new IllegalStateException("The interpreter has already been closed.");
     }
     return wrapper.getLastNativeInferenceDurationNanoseconds();
+  }
+
+  /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
+  public void setUseNNAPI(boolean useNNAPI) {
+    if (wrapper != null) {
+      wrapper.setUseNNAPI(useNNAPI);
+    } else {
+      throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
+    }
   }
 
   /** Release resources associated with the {@code Interpreter}. */
