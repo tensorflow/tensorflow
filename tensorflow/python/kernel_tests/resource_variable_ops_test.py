@@ -526,7 +526,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(dtypes.int32, v.dtype)
       self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
-      self.assertEqual(context.get_default_context().device_name, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
       self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())

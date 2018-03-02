@@ -384,9 +384,6 @@ class ResourceVariable(variables.Variable):
                   shared_name=handle_name,
                   name=name,
                   graph_mode=self._in_graph_mode)
-              self._handle_device = (
-                  self._handle.device if self._in_graph_mode else
-                  context.get_default_context().device_name)
               self._shape = initial_value.get_shape()
           else:
             initial_value = initial_value()
@@ -399,9 +396,6 @@ class ResourceVariable(variables.Variable):
                 shared_name=handle_name,
                 name=name,
                 graph_mode=False)
-            self._handle_device = (
-                self._handle.device if self._in_graph_mode else
-                context.get_default_context().device_name)
             self._shape = initial_value.get_shape()
         # pylint: enable=protected-access
 
@@ -425,8 +419,6 @@ class ResourceVariable(variables.Variable):
               shared_name=handle_name,
               name=name,
               graph_mode=self._in_graph_mode)
-          self._handle_device = (self._handle.device if self._in_graph_mode else
-                                 context.get_default_context().device_name)
           self._shape = initial_value.get_shape()
 
         self._initial_value = initial_value if self._in_graph_mode else None
@@ -449,7 +441,7 @@ class ResourceVariable(variables.Variable):
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
             # messages.
-            with ops.device(self._handle_device):
+            with ops.device(self._handle.device):
               value = self._read_variable_op()
             self._graph_element = value
             if caching_device is not None:
@@ -489,7 +481,7 @@ class ResourceVariable(variables.Variable):
       # cycles being uncollectable, and means that no __del__ will be defined at
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
-          handle=self._handle, handle_device=self._handle_device)
+          handle=self._handle, handle_device=self._handle.device)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -507,7 +499,6 @@ class ResourceVariable(variables.Variable):
             variable_def.variable_name, import_scope=import_scope))
     self._shape = tensor_shape.TensorShape(
         self._handle.op.get_attr("shape"))
-    self._handle_device = self._handle.device
     self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
@@ -552,7 +543,7 @@ class ResourceVariable(variables.Variable):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle_device
+    return self._handle.device
 
   @property
   def graph(self):
@@ -586,7 +577,7 @@ class ResourceVariable(variables.Variable):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(self._handle_device):
+      with ops.device(self._handle.device):
         return self._read_variable_op()
 
   def _as_graph_element(self):
@@ -683,7 +674,7 @@ class ResourceVariable(variables.Variable):
     """
     with ops.name_scope("Read"):
       # Ensure we read the variable in the same device as the handle.
-      with ops.device(self._handle_device):
+      with ops.device(self._handle.device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
@@ -840,8 +831,7 @@ class ResourceVariable(variables.Variable):
     if hasattr(self, "_trainable") and self._trainable:
       tape.watch_variable(self)
     return _UnreadVariable(
-        self._handle, self.dtype, self._handle_device, self._shape,
-        self._in_graph_mode,
+        self._handle, self.dtype, self._shape, self._in_graph_mode,
         self._handle_deleter if not self._in_graph_mode else None, op)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
@@ -952,7 +942,7 @@ class _UnreadVariable(ResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, handle_device,  # pylint: disable=super-init-not-called
+  def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
                shape, in_graph_mode, deleter, parent_op):
     # We do not call super init on purpose.
     self._trainable = False
@@ -960,7 +950,6 @@ class _UnreadVariable(ResourceVariable):
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     self._in_graph_mode = in_graph_mode
     self._handle = handle
-    self._handle_device = handle_device
     self._shape = shape
     self._initial_value = None
     if isinstance(self._handle, ops.EagerTensor):
