@@ -2067,7 +2067,6 @@ void Converter::register_op_converters() {
   // This could be really handled as ConvertBinary
   op_registry_["BiasAdd"] = ConvertScale;
   op_registry_["Const"] = ConvertConst;
-  // op_registry_["MatMul"] = ConvertFullyConnected; // not used in vgg
   // TODO(ben,jie): this is a temp hack.
   op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
 

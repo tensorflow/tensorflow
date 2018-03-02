@@ -89,7 +89,9 @@ def run_calibration(gdef, dumm_inp):
     out = out.outputs[0]
   with csess.Session(
       config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
-    for _ in range(30):
+    # run over real calibration data here, we are mimicking a 
+    # calibration set of 30 different batches. Use as much calibration data as you want
+    for _ in range(30):  
       val = sess.run(out, {inp: dumm_inp})
   return val
 
@@ -122,7 +124,7 @@ if "__main__" in __name__:
                                                outputs=["output"],
                                                max_batch_size=inp_dims[0],
                                                max_workspace_size_bytes=1 << 25,
-                                               precision_mode="INt8",  # TRT Engine precision "FP32","FP16" or "INT8"
+                                               precision_mode="INT8",  # TRT Engine precision "FP32","FP16" or "INT8"
                                                minimum_segment_size=2  # minimum number of nodes in an engine
                                               )
   o4 = run_graph(fp16_graph, dummy_input)
