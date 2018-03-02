@@ -34,6 +34,7 @@ from tensorflow.python.layers import core
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpointable
@@ -853,6 +854,85 @@ class CheckpointingTests(test.TestCase):
             var=first_variable, name="m")))
         beta1_power, _ = optimizer._get_beta_accumulators()
         self.assertAllEqual(3., self.evaluate(beta1_power))
+
+
+class TemplateTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def test_checkpointable_save_restore(self):
+
+    def _templated():
+      v = variable_scope.get_variable(
+          "v", shape=[1], initializer=init_ops.zeros_initializer())
+      v2 = variable_scope.get_variable(
+          "v2", shape=[1], initializer=init_ops.zeros_initializer())
+      return v, v + 1., v2
+
+    save_template = template.make_template("s1", _templated)
+    save_root = checkpointable_utils.Checkpoint(my_template=save_template)
+    v1_save, _, v2_save = save_template()
+    self.evaluate(v1_save.assign([12.]))
+    self.evaluate(v2_save.assign([14.]))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = save_root.save(checkpoint_prefix)
+
+    load_template = template.make_template("s2", _templated)
+    load_root = checkpointable_utils.Checkpoint(my_template=load_template)
+    status = load_root.restore(save_path)
+    var, var_plus_one, var2 = load_template()
+    self.assertEqual(2, len(load_template._checkpoint_dependencies))
+    self.assertEqual("v", load_template._checkpoint_dependencies[0].name)
+    self.assertEqual("v2", load_template._checkpoint_dependencies[1].name)
+    status.assert_consumed().run_restore_ops()
+    self.assertAllEqual([12.], self.evaluate(var))
+    self.assertAllEqual([13.], self.evaluate(var_plus_one))
+    self.assertAllEqual([14.], self.evaluate(var2))
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def test_checkpointable_save_restore_nested(self):
+
+    def _inner_template():
+      v = variable_scope.get_variable(
+          "v", shape=[1], initializer=init_ops.zeros_initializer())
+      return v
+
+    def _outer_template():
+      first_inner = template.make_template("i1", _inner_template)
+      second_inner = template.make_template("i2", _inner_template)
+      v1 = first_inner()
+      v2 = second_inner()
+      v3 = second_inner()
+      return (first_inner, second_inner), (v1, v2, v3)
+
+    with variable_scope.variable_scope("ignored"):
+      save_template = template.make_template("s1", _outer_template)
+      save_root = checkpointable_utils.Checkpoint(my_template=save_template)
+      (inner_template_one, inner_template_two), _ = save_template()
+    self.evaluate(inner_template_one.variables[0].assign([20.]))
+    self.evaluate(inner_template_two.variables[0].assign([25.]))
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = save_root.save(checkpoint_prefix)
+
+    load_template = template.make_template("s2", _outer_template)
+    load_root = checkpointable_utils.Checkpoint(my_template=load_template)
+    status = load_root.restore(save_path)
+    (inner_template_one, inner_template_two), (v1, v2, v3) = load_template()
+    outer_template_dependencies = load_root.my_template._checkpoint_dependencies
+    self.assertEqual(2, len(outer_template_dependencies))
+    self.assertEqual("i1", outer_template_dependencies[0].name)
+    self.assertIs(inner_template_one, outer_template_dependencies[0].ref)
+    self.assertEqual("i2", outer_template_dependencies[1].name)
+    self.assertIs(inner_template_two, outer_template_dependencies[1].ref)
+    self.assertEqual(1, len(inner_template_one._checkpoint_dependencies))
+    self.assertEqual("v", inner_template_one._checkpoint_dependencies[0].name)
+    self.assertEqual(1, len(inner_template_two._checkpoint_dependencies))
+    self.assertEqual("v", inner_template_two._checkpoint_dependencies[0].name)
+    status.assert_consumed().run_restore_ops()
+    self.assertAllEqual([20.], self.evaluate(v1))
+    self.assertAllEqual([25.], self.evaluate(v2))
+    self.assertAllEqual([25.], self.evaluate(v3))
 
 
 class CheckpointCompatibilityTests(test.TestCase):

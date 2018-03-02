@@ -843,10 +843,17 @@ class Checkpoint(core_checkpointable.Checkpointable):
 
   def save(self, file_prefix, session=None):
     """Save a checkpoint. Wraps `tfe.CheckpointableSaver.save`."""
-    assign_op = self.save_counter.assign_add(1)
-    if context.in_graph_mode():
+    in_graph_mode = context.in_graph_mode()
+    if in_graph_mode:
       if session is None:
         session = ops.get_default_session()
+      if self._save_counter is None:
+        # When graph building, if this is a new save counter variable then it
+        # needs to be initialized before assign_add. This is only an issue if
+        # restore() has not been called first.
+        session.run(self.save_counter.initializer)
+    assign_op = self.save_counter.assign_add(1)
+    if in_graph_mode:
       session.run(assign_op)
     return self._saver.save(
         file_prefix=file_prefix,
