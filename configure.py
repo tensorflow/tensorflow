@@ -1043,7 +1043,7 @@ def set_tf_tensorrt_install_path(environ_cp):
 
     cuda_ver = convert_version_to_int(environ_cp['TF_CUDA_VERSION'])
     cudnn_ver = convert_version_to_int(environ_cp['TF_CUDNN_VERSION'])
-    nvinfer_pattern = re.compile('.*libnvinfer(?:_debug)?.so.?(.*)$')
+    nvinfer_pattern = re.compile('.*libnvinfer.so.?(.*)$')
     highest_ver = [0, None, None]
 
     for lib_file in possible_files:
