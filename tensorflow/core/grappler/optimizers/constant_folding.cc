@@ -1843,6 +1843,57 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       continue;
     }
 
+    // Partial constant propagation through IdentityN.
+    if (IsIdentityN(*node) && NumNonControlInputs(*node) > 0) {
+      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+      const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
+      for (int input_idx = 0; input_idx < node->input_size(); ++input_idx) {
+        const string& input = node->input(input_idx);
+        if (IsControlInput(input)) {
+          break;
+        }
+        const NodeDef* input_node = node_map_->GetNode(NodeName(input));
+        if (input_node == nullptr) {
+          LOG(ERROR) << "Bad input: " << input;
+          break;
+        }
+        // Forward constant inputs to outputs and add a control dependency on
+        // the IdentityN node.
+        if (IsReallyConstant(*input_node)) {
+          // Update each consumer.
+          for (NodeDef* consumer : consumers) {
+            bool add_dep = false;
+            for (int consumer_input_idx = 0;
+                 consumer_input_idx < consumer->input_size();
+                 ++consumer_input_idx) {
+              const string& consumer_input =
+                  consumer->input(consumer_input_idx);
+              if (IsControlInput(consumer_input)) {
+                break;
+              }
+              int output_idx;
+              const string input_node_name =
+                  ParseNodeName(consumer_input, &output_idx);
+              if (input_node_name == node->name() && output_idx == input_idx) {
+                consumer->set_input(consumer_input_idx, input);
+                // We will keep the input from IdentityN through a control
+                // dependendy, so we only need to add the consumer as an output
+                // for the constant input node.
+                node_map_->AddOutput(NodeName(input), consumer->name());
+                add_dep = true;
+              }
+            }
+            if (add_dep) {
+              consumer->add_input(AsControlDependency(node->name()));
+            }
+          }
+        }
+      }
+      for (NodeDef* consumer : consumers) {
+        DedupControlInputs(consumer);
+      }
+    }
+
     // Partial constant folding for associative operators:
     // Split AddN/AccumulateNV2 to enable partial
     // folding of ops when more than one but not all inputs are constant.
