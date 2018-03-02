@@ -399,6 +399,24 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
   return size * nmemb;
 }
 
+// This is pulled out as a separate function so that it's only computed when
+// an error occurs.
+string response_to_error_message(uint64 response_code, StringPiece response,
+                                 size_t response_to_error_limit,
+                                 CURLcode curl_result,
+                                 StringPiece error_buffer) {
+  string error_message = strings::StrCat(
+      "Error executing an HTTP request (HTTP response code ", response_code,
+      ", error code ", curl_result, ", error message '", error_buffer, "')");
+  if (!response.empty()) {
+    return strings::StrCat(
+        error_message, ", response '",
+        response.substr(0, std::min(response.size(), response_to_error_limit)),
+        "'");
+  }
+  return error_message;
+}
+
 Status CurlHttpRequest::Send() {
   CheckNotSent();
   CHECK(is_uri_set_) << "URI has not been set.";
@@ -430,13 +448,7 @@ Status CurlHttpRequest::Send() {
 
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
 
-  const auto& error_message = strings::StrCat(
-      "Error executing an HTTP request (HTTP response code ", response_code_,
-      ", error code ", curl_result, ", error message '", error_buffer, "')");
-
   Status result;
-  StringPiece response = GetResponse();
-  string extended_error_message;
   switch (response_code_) {
     // The group of response codes indicating that the request achieved
     // the expected goal.
@@ -447,7 +459,9 @@ Status CurlHttpRequest::Send() {
       if (curl_result != CURLE_OK) {
         // This means the server executed the request successfully, but then
         // something went wrong during the transmission of the response.
-        result = errors::Unavailable(error_message);
+        result = errors::Unavailable(response_to_error_message(
+            response_code_, GetResponse(), response_to_error_limit_,
+            curl_result, error_buffer));
       } else {
         result = Status::OK();
       }
@@ -463,27 +477,25 @@ Status CurlHttpRequest::Send() {
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
     case 400:  // Bad Request
     case 411:  // Length Required
-      result = errors::InvalidArgument(error_message);
+      result = errors::InvalidArgument(response_to_error_message(
+          response_code_, GetResponse(), response_to_error_limit_, curl_result,
+          error_buffer));
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
-      if (!response.empty()) {
-        extended_error_message = strings::StrCat(
-            error_message, ", response ",
-            response.substr(
-                0, std::min(response.size(), response_to_error_limit_)));
-        result = errors::PermissionDenied(extended_error_message);
-      } else {
-        result = errors::PermissionDenied(error_message);
-      }
+      result = errors::PermissionDenied(response_to_error_message(
+          response_code_, GetResponse(), response_to_error_limit_, curl_result,
+          error_buffer));
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = errors::NotFound(error_message);
+      result = errors::NotFound(response_to_error_message(
+          response_code_, GetResponse(), response_to_error_limit_, curl_result,
+          error_buffer));
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
@@ -495,7 +507,9 @@ Status CurlHttpRequest::Send() {
     case 307:  // Temporary Redirect
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(error_message);
+      result = errors::FailedPrecondition(response_to_error_message(
+          response_code_, GetResponse(), response_to_error_limit_, curl_result,
+          error_buffer));
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
@@ -511,7 +525,9 @@ Status CurlHttpRequest::Send() {
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(error_message);
+      result = errors::Unavailable(response_to_error_message(
+          response_code_, GetResponse(), response_to_error_limit_, curl_result,
+          error_buffer));
       break;
   }
   if (!result.ok()) {

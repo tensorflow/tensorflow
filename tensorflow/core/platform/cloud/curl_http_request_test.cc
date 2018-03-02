@@ -378,7 +378,7 @@ TEST(CurlHttpRequestTest, GetRequest_503) {
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request (HTTP response code 503, "
-      "error code 23, error message '')",
+      "error code 23, error message ''), response 'get response'",
       status.error_message());
   EXPECT_EQ(503, http_request.GetResponseCode());
 }
@@ -397,7 +397,8 @@ TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request (HTTP response code 0, "
-      "error code 28, error message 'Operation timed out')",
+      "error code 28, error message 'Operation timed out'), "
+      "response 'get response'",
       status.error_message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
@@ -629,7 +630,7 @@ TEST(CurlHttpRequestTest, ProgressIsStuck) {
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request (HTTP response code 200, "
-      "error code 42, error message '')",
+      "error code 42, error message ''), response 'test'",
       status.error_message());
 }
 
