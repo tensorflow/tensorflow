@@ -447,7 +447,9 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   jclass wrapper_clazz = env->GetObjectClass(wrapper);
   jfieldID fid =
       env->GetFieldID(wrapper_clazz, "inferenceDurationNanoseconds", "J");
-  if (fid != 0) {
+  if (env->ExceptionCheck()) {
+    env->ExceptionClear();
+  } else if (fid != nullptr) {
     env->SetLongField(
         wrapper, fid,
         ::tflite::timespec_diff_nanoseconds(&beforeInference, &afterInference));
