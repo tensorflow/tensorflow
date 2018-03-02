@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
@@ -56,6 +57,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
   if (optimizer == "pruning") {
     graph_optimizer.reset(new ModelPruner());
   }
+  if (optimizer == "function") {
+    graph_optimizer.reset(new FunctionOptimizer());
+  }
   if (optimizer == "constfold") {
     graph_optimizer.reset(new ConstantFolding(cpu_device_));
   }
@@ -90,6 +94,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!cfg_.disable_model_pruning()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
     }
+    if (cfg_.function_optimization() == RewriterConfig::ON) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new FunctionOptimizer()));
+    }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ConstantFolding(cfg_.constant_folding(), cpu_device_)));
@@ -102,7 +110,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new DependencyOptimizer(cfg_.dependency_optimization())));
     }
-    if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+    if (cfg_.loop_optimization() == RewriterConfig::ON) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new LoopOptimizer(cfg_.loop_optimization())));
     }
@@ -223,6 +231,7 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() != RewriterConfig::OFF ||
+         cfg.function_optimization() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.loop_optimization() == RewriterConfig::ON ||

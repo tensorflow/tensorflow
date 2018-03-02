@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -67,6 +68,18 @@ string DeviceName(const tensorflow::Device* d) {
 std::atomic_int_fast64_t func_id_generator(0);
 #endif  // TENSORFLOW_EAGER_USE_XLA
 }  // namespace
+
+TFE_ContextDevicePlacementPolicy PlacementPolicy(
+    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy) {
+  if (!soft_placement) {
+    return original_policy;
+  }
+  if (original_policy == TFE_DEVICE_PLACEMENT_EXPLICIT ||
+      original_policy == TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32) {
+    return TFE_DEVICE_PLACEMENT_SILENT;
+  }
+  return original_policy;
+}
 
 extern "C" {
 
@@ -777,15 +790,38 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   return launch_op;
 }
 #endif  // TENSORFLOW_EAGER_USE_XLA
+
+tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
+                                 TFE_Context* ctx, TF_Status* status) {
+  tensorflow::DeviceSet ds;
+  for (tensorflow::Device* d : ctx->devices()) {
+    ds.AddDevice(d);
+  }
+  tensorflow::DeviceTypeVector final_devices;
+  status->status = tensorflow::SupportedDeviceTypesForNode(
+      ds.PrioritizedDeviceTypeList(), ndef, &final_devices);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  if (final_devices.empty()) {
+    status->status = tensorflow::errors::Internal(
+        "Could not find valid device for node ", ndef.DebugString());
+    return nullptr;
+  }
+  for (tensorflow::Device* d : ctx->devices()) {
+    if (d->device_type() == final_devices[0].type_string()) {
+      return d;
+    }
+  }
+  status->status = tensorflow::errors::Unknown(
+      "Could not find a device for node ", ndef.DebugString());
+  return nullptr;
+}
+
 }  // namespace
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  TFE_Context* ctx = op->ctx;
-  // TODO(ashankar): ASSUMPTION: ctx->devices()[0] is always CPU
-  tensorflow::Device* device =
-      (op->device == nullptr) ? ctx->devices()[0] : op->device;
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
   std::unique_ptr<TFE_Op> xla_launch_op;
   if (op->use_xla && op->name != "_XlaLaunch") {
@@ -797,9 +833,17 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   }
 #endif  // TENSORFLOW_EAGER_USE_XLA
 
+  TFE_Context* ctx = op->ctx;
+  tensorflow::Device* device = op->device;
+  if (!ctx->soft_placement && device == nullptr) {
+    // TODO(ashankar): ASSUMPTION: ctx->devices()[0] is always CPU
+    device = ctx->devices()[0];
+  }
+
   std::vector<tensorflow::Tensor> outputs(1);
   const tensorflow::MemoryTypeVector* output_memory_types = nullptr;
-  tensorflow::Fprint128 cache_key = op->attrs.CacheKey(device->name());
+  tensorflow::Fprint128 cache_key =
+      op->attrs.CacheKey(device == nullptr ? "unspecified" : device->name());
   tensorflow::KernelAndDevice* kernel;
   {
     tensorflow::tf_shared_lock l(ctx->cache_mu);
@@ -807,6 +851,13 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   }
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
+    if (ctx->soft_placement && device == nullptr) {
+      device = SelectDevice(ndef, ctx, status);
+      if (!status->status.ok()) {
+        return;
+      }
+    }
+    CHECK(device != nullptr);
     if (ctx->log_device_placement) {
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
@@ -846,6 +897,12 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
   }
+  if (device == nullptr) {
+    // TODO(apassos) debug how the assignment below might return a different
+    // device from the one requested above.
+    device = kernel->device();
+  }
+
   std::vector<TFE_TensorHandle*> copied_tensors;
   status->status = ValidateInputTypeAndPlacement(
       ctx, ctx->devices()[0], device, op, kernel->kernel(), &copied_tensors);

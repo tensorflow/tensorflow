@@ -1223,7 +1223,7 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
     for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
-        y = gen_array_ops._snapshot(x)
+        y = gen_array_ops.snapshot(x)
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 

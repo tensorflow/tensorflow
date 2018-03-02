@@ -35,7 +35,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -60,7 +59,7 @@ def c_tfe_py_fastpath_execute(a,
   ), "The prototype doesn't contain C code for graph construction"
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", execute.record_gradient, name,
+        ctx._handle, ctx.device_name, "MatMul", name,
         ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
         "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
@@ -243,7 +242,8 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_gen_math_ops_matmul(self, m, transpose_b, num_iters):
     def func():
-      gen_math_ops._mat_mul(m, m, transpose_b=transpose_b)
+      gen_math_ops.mat_mul(m, m, transpose_b=transpose_b)
+
     self._run(func, num_iters)
 
   def _benchmark_tfe_py_fastpath_execute_matmul(self, m, transpose_b,

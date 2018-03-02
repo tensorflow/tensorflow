@@ -311,8 +311,7 @@ class BaseSaverBuilder(object):
     Returns:
       A string tensor.
     """
-    # pylint: disable=protected-access
-    return gen_io_ops._sharded_filename(filename_tensor, shard, num_shards)
+    return gen_io_ops.sharded_filename(filename_tensor, shard, num_shards)
 
   def _AddSaveOps(self, filename_tensor, saveables):
     """Add ops to save variables that are on the same shard.
@@ -421,8 +420,7 @@ class BaseSaverBuilder(object):
         sharded_saves.append(self._AddSaveOps(sharded_filename, saveables))
     # Return the sharded name for the save path.
     with ops.control_dependencies([x.op for x in sharded_saves]):
-      # pylint: disable=protected-access
-      return gen_io_ops._sharded_filespec(filename_tensor, num_shards_tensor)
+      return gen_io_ops.sharded_filespec(filename_tensor, num_shards_tensor)
 
   def _AddRestoreOps(self,
                      filename_tensor,

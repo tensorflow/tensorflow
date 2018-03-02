@@ -43,9 +43,14 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
 };
 
+TFE_ContextDevicePlacementPolicy PlacementPolicy(
+    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy);
+
 struct TFE_Context {
   explicit TFE_Context(const TFE_ContextOptions& opts, TF_Session* s)
-      : policy(opts.policy),
+      : soft_placement(
+            opts.session_options.options.config.allow_soft_placement()),
+        policy(PlacementPolicy(soft_placement, opts.policy)),
         session(s),
         rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
@@ -54,6 +59,7 @@ struct TFE_Context {
         log_device_placement(
             opts.session_options.options.config.log_device_placement()) {}
 
+  const bool soft_placement;
   const TFE_ContextDevicePlacementPolicy policy;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a

@@ -183,6 +183,8 @@ class KernelAndDevice {
 
   const OpKernel* kernel() const { return kernel_.get(); }
 
+  Device* device() const { return device_; }
+
   DataTypeVector* output_dtypes() { return &output_dtypes_; }
 
  private:

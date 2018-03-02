@@ -219,18 +219,16 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   graph._cleanup_py_funcs_used_in_graph.append(cleanup)
   # pylint: enable=protected-access
 
-  # pylint: disable=protected-access
   if eager:
-    result = gen_script_ops._eager_py_func(
+    result = gen_script_ops.eager_py_func(
         input=inp, token=token, Tout=Tout, name=name)
   else:
     if stateful:
-      result = gen_script_ops._py_func(
+      result = gen_script_ops.py_func(
           input=inp, token=token, Tout=Tout, name=name)
     else:
-      result = gen_script_ops._py_func_stateless(
+      result = gen_script_ops.py_func_stateless(
           input=inp, token=token, Tout=Tout, name=name)
-  # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
 

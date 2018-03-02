@@ -205,6 +205,7 @@ cc_library(
     name = "graph_to_functiondef",
     srcs = ["graph_to_functiondef.cc"],
     hdrs = ["graph_to_functiondef.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

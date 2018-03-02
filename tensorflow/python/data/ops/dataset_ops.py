@@ -26,16 +26,17 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
@@ -557,7 +558,7 @@ class Dataset(object):
     return PrefetchDataset(self, buffer_size)
 
   @staticmethod
-  def list_files(file_pattern):
+  def list_files(file_pattern, shuffle=None):
     """A dataset of all files matching a pattern.
 
     Example:
@@ -570,16 +571,31 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
-    NOTE: The order of the file names returned can be non-deterministic.
+    NOTE: The order of the file names returned can be non-deterministic even
+    when `shuffle` is `False`.
 
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
+      shuffle: (Optional.) If `True`, the file names will be shuffled randomly.
+        Defaults to `True`.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    return Dataset.from_tensor_slices(gen_io_ops.matching_files(file_pattern))
+    # TODO(b/73959787): Add a `seed` argument and make the `shuffle=False`
+    # behavior deterministic (e.g. by sorting the filenames).
+    if shuffle is None:
+      shuffle = True
+    matching_files = gen_io_ops.matching_files(file_pattern)
+    dataset = Dataset.from_tensor_slices(matching_files)
+    if shuffle:
+      # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
+      # list of files might be empty.
+      buffer_size = math_ops.maximum(
+          array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
+      dataset = dataset.shuffle(buffer_size)
+    return dataset
 
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
@@ -1484,16 +1500,7 @@ class ShuffleDataset(Dataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    seed, seed2 = random_seed.get_seed(seed)
-    if seed is None:
-      self._seed = constant_op.constant(0, dtype=dtypes.int64, name="seed")
-    else:
-      self._seed = ops.convert_to_tensor(seed, dtype=dtypes.int64, name="seed")
-    if seed2 is None:
-      self._seed2 = constant_op.constant(0, dtype=dtypes.int64, name="seed2")
-    else:
-      self._seed2 = ops.convert_to_tensor(
-          seed2, dtype=dtypes.int64, name="seed2")
+    self._seed, self._seed2 = random_seed.get_seed(seed)
     if reshuffle_each_iteration is None:
       self._reshuffle_each_iteration = True
     else:
