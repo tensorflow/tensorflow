@@ -403,6 +403,16 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "while_loop_perf_test",
+    size = "small",
+    srcs = ["tests/while_loop_perf_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -427,6 +437,7 @@ test_suite(
         "wide_const_finder_test",
         "monitored_session_test",
         "conditional_test",
+        "while_loop_perf_test",
     ],
 )
 
