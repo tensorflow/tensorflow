@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.platform import test
@@ -27,6 +28,7 @@ from tensorflow.python.platform import test
 
 class LocallyConnectedLayersTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_locallyconnected_1d(self):
     num_samples = 2
     num_steps = 8
@@ -39,16 +41,15 @@ class LocallyConnectedLayersTest(test.TestCase):
         if padding == 'same' and strides != 1:
           continue
 
-        with self.test_session():
-          testing_utils.layer_test(
-              keras.layers.LocallyConnected1D,
-              kwargs={
-                  'filters': filters,
-                  'kernel_size': filter_length,
-                  'padding': padding,
-                  'strides': strides
-              },
-              input_shape=(num_samples, num_steps, input_dim))
+        testing_utils.layer_test(
+            keras.layers.LocallyConnected1D,
+            kwargs={
+                'filters': filters,
+                'kernel_size': filter_length,
+                'padding': padding,
+                'strides': strides
+            },
+            input_shape=(num_samples, num_steps, input_dim))
 
   def test_locallyconnected_1d_regularization(self):
     num_samples = 2
@@ -86,6 +87,7 @@ class LocallyConnectedLayersTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_locallyconnected_2d(self):
     num_samples = 8
     filters = 3
@@ -98,20 +100,18 @@ class LocallyConnectedLayersTest(test.TestCase):
         if padding == 'same' and strides != (1, 1):
           continue
 
-        with self.test_session():
-          testing_utils.layer_test(
-              keras.layers.LocallyConnected2D,
-              kwargs={
-                  'filters': filters,
-                  'kernel_size': 3,
-                  'padding': padding,
-                  'kernel_regularizer': 'l2',
-                  'bias_regularizer': 'l2',
-                  'activity_regularizer': 'l2',
-                  'strides': strides,
-                  'data_format': 'channels_last'
-              },
-              input_shape=(num_samples, num_row, num_col, stack_size))
+        testing_utils.layer_test(
+            keras.layers.LocallyConnected2D,
+            kwargs={
+                'filters': filters,
+                'kernel_size': 3,
+                'padding': padding,
+                'kernel_regularizer': 'l2',
+                'bias_regularizer': 'l2',
+                'strides': strides,
+                'data_format': 'channels_last'
+            },
+            input_shape=(num_samples, num_row, num_col, stack_size))
 
   def test_locallyconnected_2d_channels_first(self):
     num_samples = 8

@@ -200,6 +200,12 @@ TfLiteStatus setInputs(JNIEnv* env, tflite::Interpreter* interpreter,
   return kTfLiteOk;
 }
 
+// TODO(yichengfan): evaluate the benefit to use tflite verifier.
+bool VerifyModel(const void* buf, size_t len) {
+  flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
+  return tflite::VerifyModelBuffer(verifier);
+}
+
 }  // namespace
 
 JNIEXPORT jobjectArray JNICALL
@@ -271,6 +277,17 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
   const char* path = env->GetStringUTFChars(model_file, nullptr);
+
+  {
+    tflite::FileCopyAllocation allocation(path, nullptr);
+    if (!VerifyModel(allocation.base(), allocation.bytes())) {
+      throwException(env, kIllegalArgumentException,
+                     "Contents of %s is not a valid flatbuffer model", path);
+      env->ReleaseStringUTFChars(model_file, path);
+      return 0;
+    }
+  }
+
   auto model = tflite::FlatBufferModel::BuildFromFile(path, error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
@@ -293,6 +310,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   const char* buf =
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
+  if (!VerifyModel(buf, capacity)) {
+    throwException(env, kIllegalArgumentException,
+                   "MappedByteBuffer is not a valid flatbuffer model");
+    return 0;
+  }
+
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {

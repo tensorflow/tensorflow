@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_stream_util.h"
@@ -64,6 +65,10 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+
+#if !defined(PLATFORM_GOOGLE)
+#include "cuda/cuda_config.h"
+#endif
 
 namespace tensorflow {
 
@@ -99,7 +104,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
         reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
-    const int cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id).value();
+    const int cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id).value();
     device_prop_ = &Eigen::m_deviceProperties[cuda_gpu_id];
   }
 
@@ -311,7 +316,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
-  gpu_device_info_->gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id_).value();
+  gpu_device_info_->gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value();
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
@@ -762,9 +767,11 @@ int64 MinSystemMemory(int64 available_memory) {
   // is necessary.
   min_system_memory *= 2;
 #endif
-#if defined(NVIDIA_TEGRA)
-  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM and Video RAM
-  min_system_memory = 1<<30;
+
+#if defined(ANDROID_TEGRA)
+  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM
+  // and Video RAM
+  min_system_memory = 1 << 30;
 #endif
   return min_system_memory;
 }
@@ -833,6 +840,9 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   }
 }
 
+const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
+const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
+
 Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                                            const string& name_prefix,
                                            std::vector<Device*>* devices) {
@@ -892,6 +902,35 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
     }
   }
 
+  std::vector<InterconnectMap> interconnect_maps;
+  TF_RETURN_IF_ERROR(
+      GetInterconnectMaps(visible_gpu_order, gpu_manager, &interconnect_maps));
+
+  // Print each interconnect map to the log.
+  for (const InterconnectMap& im : interconnect_maps) {
+    LOG(INFO) << "Device interconnect " << im.name << " with strength "
+              << im.strength << " edge matrix:";
+    string line_buf = "     ";
+    for (int i = 0; i < visible_gpu_order.size(); ++i) {
+      strings::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
+    }
+    LOG(INFO) << line_buf;
+    for (int i = 0; i < visible_gpu_order.size(); ++i) {
+      line_buf = strings::StrCat(visible_gpu_order[i].value(), ":   ");
+      CudaGpuId cuda_id_i = visible_gpu_order[i];
+      for (int j = 0; j < visible_gpu_order.size(); ++j) {
+        CudaGpuId cuda_id_j = visible_gpu_order[j];
+        if (im.directed_links.find({cuda_id_i, cuda_id_j}) !=
+            im.directed_links.end()) {
+          line_buf.append("Y ");
+        } else {
+          line_buf.append("N ");
+        }
+      }
+      LOG(INFO) << line_buf;
+    }
+  }
+
   const auto& virtual_devices = gpu_options.experimental().virtual_devices();
   if (!virtual_devices.empty()) {
     TF_RETURN_IF_ERROR(VerifyVirtualDeviceSettings(
@@ -902,9 +941,9 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
           valid_cuda_gpu_ids == visible_gpu_order);
   }
   int next_tf_gpu_id = 0;
+  std::vector<int64> memory_limit_bytes;
   for (int i = 0; i < num_gpus_to_use; ++i) {
     const CudaGpuId cuda_gpu_id = valid_cuda_gpu_ids[i];
-    std::vector<int64> memory_limit_bytes;
     if (virtual_devices.empty() ||
         virtual_devices.Get(i).memory_limit_mb_size() == 0) {
       int64 single_virtual_device_memory_limit = 0;
@@ -918,13 +957,30 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                        return static_cast<int64>(mb) * (1ll << 20);
                      });
     }
-    for (int64 bytes : memory_limit_bytes) {
+    while (next_tf_gpu_id < memory_limit_bytes.size()) {
       TfGpuId tf_gpu_id(next_tf_gpu_id);
       ++next_tf_gpu_id;
-      GpuIdUtil::InsertTfCudaGpuIdPair(tf_gpu_id, cuda_gpu_id);
-      TF_RETURN_IF_ERROR(
-          CreateGPUDevice(options, name_prefix, tf_gpu_id, bytes, devices));
+      GpuIdManager::InsertTfCudaGpuIdPair(tf_gpu_id, cuda_gpu_id);
     }
+  }
+  const int num_tf_gpus = next_tf_gpu_id;
+
+  LocalityMap device_localities;
+  TF_RETURN_IF_ERROR(
+      GetDeviceLocalities(num_tf_gpus, interconnect_maps, &device_localities));
+
+  // Build the GPUDevices
+  CHECK_EQ(next_tf_gpu_id, memory_limit_bytes.size());
+  for (int di = 0; di < num_tf_gpus; ++di) {
+    TfGpuId tf_gpu_id(di);
+    int64 bytes = memory_limit_bytes[di];
+    auto it = device_localities.find(tf_gpu_id);
+    if (it == device_localities.end()) {
+      return errors::Internal("Failed to find DeviceLocality for GPU device ",
+                              tf_gpu_id.value());
+    }
+    TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_gpu_id, bytes,
+                                       it->second, devices));
   }
   return Status::OK();
 }
@@ -949,54 +1005,155 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
                                              const string& name_prefix,
                                              TfGpuId tf_gpu_id,
                                              int64 memory_limit,
+                                             const DeviceLocality& dev_locality,
                                              std::vector<Device*>* devices) {
   CHECK_GE(tf_gpu_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
-
-  // Look up the device, to see its attributes.
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
+  CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+  int numa_node = dev_locality.numa_node();
+
   gpu::StreamExecutor* se =
-      GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
+      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
   const gpu::DeviceDescription& desc = se->GetDeviceDescription();
-  int numa_node = desc.numa_node();
-  if (numa_node < 0) {
-    // For some reason the StreamExecutor couldn't get the NUMA
-    // affinity of the GPU.  If this is not a multi-socket mobo with
-    // GPUs local to different buses, it doesn't matter.  If it is, we
-    // may run into trouble later with data transfer operations.  The
-    // trouble may manifest as slower than expected performance, or
-    // outright failures.
-    LOG(INFO) << "Could not identify NUMA node of " << device_name
-              << ", defaulting to 0.  Your kernel may not have been built "
-              << "with NUMA support.";
-    numa_node = 0;
-  }
-  Bytes allocated_bytes = static_cast<Bytes>(memory_limit);
-
-  // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
-  // virtualized in some environments, we can't just use the GPU id.
-  // NUMA locales are indexed from 0, buses are indexed from 1.
-  DeviceLocality dev_locality;
-  dev_locality.set_bus_id(numa_node + 1);
-  const CudaGpuId cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id);
-  VLOG(1) << "GPUDevice id " << cuda_gpu_id << " on bus "
-          << dev_locality.bus_id() << " numa: " << numa_node
-          << " pci: " << desc.pci_bus_id();
-
-  LOG(INFO) << "Creating TensorFlow device (" << device_name << " with "
-            << (memory_limit >> 20) << " MB memory) -> physical GPU ("
-            << GetShortDeviceDescription(cuda_gpu_id, desc) << ")";
   ProcessState* process_state = ProcessState::singleton();
+  Allocator* gpu_allocator = process_state->GetGPUAllocator(
+      options.config.gpu_options(), tf_gpu_id, memory_limit);
+  if (gpu_allocator == nullptr) {
+    return errors::Internal("Failed to get memory allocator for TF GPU ",
+                            tf_gpu_id.value(), " with ", memory_limit,
+                            " bytes of memory.");
+  }
+  AllocatorStats stats;
+  gpu_allocator->GetStats(&stats);
+  // 'memory_limit' is the required memory size, but if the allocator with given
+  // tf_gpu_id was created before, we'll use it instead of creating a new one
+  // (as TF gpu device is a shared resource), in which case the actual memory
+  // limit represented by 'stats.bytes_limit' used by that allocator may be
+  // different (which should be an error).
+  //
+  // TODO(laigd): report error if memory_limit doesn't match stats.bytes_limit.
   BaseGPUDevice* gpu_device = CreateGPUDevice(
-      options, device_name, allocated_bytes, dev_locality, tf_gpu_id,
-      GetShortDeviceDescription(cuda_gpu_id, desc),
-      process_state->GetGPUAllocator(options.config.gpu_options(), tf_gpu_id,
-                                     memory_limit),
+      options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
+      tf_gpu_id, GetShortDeviceDescription(cuda_gpu_id, desc), gpu_allocator,
       process_state->GetCPUAllocator(numa_node));
+  LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
+            << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
+            << GetShortDeviceDescription(cuda_gpu_id, desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   devices->push_back(gpu_device);
 
+  return Status::OK();
+}
+
+namespace {
+std::unique_ptr<std::map<std::pair<CudaGpuId, CudaGpuId>, bool>>
+GetPeerAccessMap(gpu::Platform* platform,
+                 const std::vector<CudaGpuId>& visible_gpu_order) {
+  std::unique_ptr<std::map<std::pair<CudaGpuId, CudaGpuId>, bool>> map(
+      new std::map<std::pair<CudaGpuId, CudaGpuId>, bool>);
+  for (CudaGpuId cuda_gpu_i : visible_gpu_order) {
+    for (CudaGpuId cuda_gpu_j : visible_gpu_order) {
+      gpu::StreamExecutor* from =
+          GpuIdUtil::ExecutorForCudaGpuId(platform, cuda_gpu_i).ValueOrDie();
+      gpu::StreamExecutor* to =
+          GpuIdUtil::ExecutorForCudaGpuId(platform, cuda_gpu_j).ValueOrDie();
+      (*map)[{cuda_gpu_i, cuda_gpu_j}] = from->CanEnablePeerAccessTo(to);
+    }
+  }
+
+  return map;
+}
+
+}  // namespace
+
+Status BaseGPUDeviceFactory::GetInterconnectMaps(
+    const std::vector<CudaGpuId>& visible_gpu_order, gpu::Platform* gpu_manager,
+    std::vector<InterconnectMap>* maps) {
+  // The default interconnect map is obtained from the StreamExecutor.
+  auto access_map = GetPeerAccessMap(gpu_manager, visible_gpu_order);
+  maps->resize(1);
+  InterconnectMap& imap = maps->at(0);
+  imap.name = "StreamExecutor";
+  imap.strength = InterconnectMap::kStreamExecutorStrength;
+  for (CudaGpuId cuda_id_i : visible_gpu_order) {
+    for (CudaGpuId cuda_id_j : visible_gpu_order) {
+      if (cuda_id_i == cuda_id_j) continue;
+      if ((*access_map)[{cuda_id_i, cuda_id_j}]) {
+        imap.directed_links.insert({cuda_id_i, cuda_id_j});
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status BaseGPUDeviceFactory::GetDeviceLocalities(
+    int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
+    LocalityMap* localities) {
+  std::vector<TfGpuId> all_tf_gpu_ids;
+  for (int i = 0; i < num_tf_gpus; ++i) {
+    all_tf_gpu_ids.push_back(TfGpuId(i));
+  }
+  for (TfGpuId tf_gpu_id : all_tf_gpu_ids) {
+    CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+    // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
+    // virtualized in some environments, we can't just use the GPU id.
+    // NUMA locales are indexed from 0, buses are indexed from 1.
+    gpu::StreamExecutor* se =
+        GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+    const gpu::DeviceDescription& desc = se->GetDeviceDescription();
+    int numa_node = desc.numa_node();
+    if (numa_node < 0) {
+      // For some reason the StreamExecutor couldn't get the NUMA
+      // affinity of the GPU.  If this is not a multi-socket mobo with
+      // GPUs local to different buses, it doesn't matter.  If it is, we
+      // may run into trouble later with data transfer operations.  The
+      // trouble may manifest as slower than expected performance, or
+      // outright failures.
+      LOG(INFO) << "Could not identify NUMA node of CUDA gpu id " << cuda_gpu_id
+                << ", defaulting to 0.  Your kernel may not have been built "
+                << "with NUMA support.";
+      numa_node = 0;
+    }
+    DeviceLocality dev_locality;
+    dev_locality.set_numa_node(numa_node);
+    dev_locality.set_bus_id(numa_node + 1);
+
+    // Set LocalLinks from InterconnectMaps.
+    LocalLinks* links = dev_locality.mutable_links();
+    for (const InterconnectMap& imap : interconnects) {
+      for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
+        CudaGpuId cuda_gpu_dst = GpuIdManager::TfToCudaGpuId(tf_gpu_dst);
+        if (imap.directed_links.find({cuda_gpu_id, cuda_gpu_dst}) !=
+            imap.directed_links.end()) {
+          InterconnectLink* ilink = links->add_link();
+          ilink->set_device_id(tf_gpu_dst.value());
+          ilink->set_type(imap.name);
+          ilink->set_strength(imap.strength);
+        }
+      }
+    }
+
+    // If this is one of multiple virtual GPUs on the same physical GPU
+    // add high strength links to the others.
+    for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
+      if (tf_gpu_id == tf_gpu_dst) continue;
+      CudaGpuId cuda_gpu_dst = GpuIdManager::TfToCudaGpuId(tf_gpu_dst);
+      if (cuda_gpu_id == cuda_gpu_dst) {
+        InterconnectLink* ilink = links->add_link();
+        ilink->set_device_id(tf_gpu_dst.value());
+        ilink->set_type("SAME_DEVICE");
+        ilink->set_strength(InterconnectMap::kSameDeviceStrength);
+      }
+    }
+
+    (*localities)[tf_gpu_id] = dev_locality;
+    VLOG(1) << "GPUDevice CudaGpuId " << cuda_gpu_id << " TfGpuId " << tf_gpu_id
+            << " on bus " << dev_locality.bus_id() << " numa: " << numa_node
+            << " pci: " << desc.pci_bus_id()
+            << " DeviceLocality: " << dev_locality.DebugString();
+  }
   return Status::OK();
 }
 
@@ -1105,38 +1262,19 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   return cuda_caps;
 }
 
-std::unique_ptr<std::map<std::pair<int, int>, bool>> GetPeerAccessMap(
-    gpu::Platform* platform, const std::vector<CudaGpuId>& visible_gpu_order) {
-  std::unique_ptr<std::map<std::pair<int, int>, bool>> map(
-      new std::map<std::pair<int, int>, bool>);
-  for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    const CudaGpuId i_gpu_id = visible_gpu_order[i];
-    for (int j = 0; j < visible_gpu_order.size(); ++j) {
-      const CudaGpuId j_gpu_id = visible_gpu_order[j];
-      gpu::StreamExecutor* from =
-          GpuIdUtil::ExecutorForCudaGpuId(platform, i_gpu_id).ValueOrDie();
-      gpu::StreamExecutor* to =
-          GpuIdUtil::ExecutorForCudaGpuId(platform, j_gpu_id).ValueOrDie();
-      (*map)[{i, j}] = from->CanEnablePeerAccessTo(to);
-    }
-  }
-
-  return map;
-}
-
 Status EnablePeerAccess(gpu::Platform* platform,
                         const std::vector<CudaGpuId>& visible_gpu_order) {
   int possible_peer_count = 0;
   int enabled_peer_count = 0;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
-    const CudaGpuId i_gpu_id = visible_gpu_order[i];
+    const CudaGpuId cuda_gpu_i = visible_gpu_order[i];
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
-      const CudaGpuId j_gpu_id = visible_gpu_order[j];
+      const CudaGpuId cuda_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
       gpu::StreamExecutor* from =
-          GpuIdUtil::ExecutorForCudaGpuId(platform, i_gpu_id).ValueOrDie();
+          GpuIdUtil::ExecutorForCudaGpuId(platform, cuda_gpu_i).ValueOrDie();
       gpu::StreamExecutor* to =
-          GpuIdUtil::ExecutorForCudaGpuId(platform, j_gpu_id).ValueOrDie();
+          GpuIdUtil::ExecutorForCudaGpuId(platform, cuda_gpu_j).ValueOrDie();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;
@@ -1144,7 +1282,7 @@ Status EnablePeerAccess(gpu::Platform* platform,
         if (!status.ok()) {
           LOG(WARNING)
               << "Unable to enable peer access between device ordinals "
-              << i_gpu_id << " and " << j_gpu_id << ", status: " << status;
+              << cuda_gpu_i << " and " << cuda_gpu_j << ", status: " << status;
         } else {
           ++enabled_peer_count;
         }
@@ -1215,27 +1353,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   if (new_gpu_found && visible_gpu_order.size() > 1) {
     // Enable peer access
     TF_RETURN_IF_ERROR(EnablePeerAccess(gpu_manager, visible_gpu_order));
-
-    // Print out a matrix showing which devices can DMA to one
-    // another.
-    LOG(INFO) << "Device peer to peer matrix";
-    auto access_map = GetPeerAccessMap(gpu_manager, visible_gpu_order);
-    string line_buf = "DMA: ";
-    for (int i = 0; i < visible_gpu_order.size(); ++i) {
-      strings::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
-    }
-    LOG(INFO) << line_buf;
-    for (int i = 0; i < visible_gpu_order.size(); ++i) {
-      line_buf = strings::StrCat(visible_gpu_order[i].value(), ":   ");
-      for (int j = 0; j < visible_gpu_order.size(); ++j) {
-        if ((*access_map)[{i, j}]) {
-          line_buf.append("Y ");
-        } else {
-          line_buf.append("N ");
-        }
-      }
-      LOG(INFO) << line_buf;
-    }
   }
 
   auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();

@@ -25,8 +25,10 @@ from tensorflow.python.estimator import gc
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('estimator.Exporter')
 class Exporter(object):
   """A class representing a type of model export."""
 
@@ -123,6 +125,7 @@ class _SavedModelExporter(Exporter):
     return export_result
 
 
+@tf_export('estimator.FinalExporter')
 class FinalExporter(Exporter):
   """This class exports the serving graph and checkpoints in the end.
 
@@ -174,6 +177,7 @@ class FinalExporter(Exporter):
                                              is_the_final_export)
 
 
+@tf_export('estimator.LatestExporter')
 class LatestExporter(Exporter):
   """This class regularly exports the serving graph and checkpoints.
 

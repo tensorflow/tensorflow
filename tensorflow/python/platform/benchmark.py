@@ -33,6 +33,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 # When a subclass of the Benchmark class is created, it is added to
@@ -181,6 +182,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
         throughput=throughput, extras=extras)
 
 
+@tf_export("test.Benchmark")
 class TensorFlowBenchmark(Benchmark):
   """Abstract class that provides helpers for TensorFlow benchmarks."""
 

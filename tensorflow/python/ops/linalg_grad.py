@@ -277,20 +277,28 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
   # https://j-towns.github.io/papers/svd-derivative.pdf
   a = op.inputs[0]
   a_shape = a.get_shape().with_rank_at_least(2)
+  grad_s_mat = array_ops.matrix_diag(grad_s)
 
-  if op.get_attr("compute_uv"):
-    # TODO(rmlarsen): Make this work with complex types.
-    if a.dtype.is_complex:
-      raise NotImplementedError(
-          "SVD gradient is not implemented for complex types and "
-          "compute_uv=True.")
-    grad_u_shape = grad_u.get_shape().with_rank_at_least(2)
-    grad_v_shape = grad_v.get_shape().with_rank_at_least(2)
-    m = a_shape[-2].merge_with(grad_u_shape[-2])
-    n = a_shape[-1].merge_with(grad_v_shape[-2])
-    batch_shape = a_shape[:-2].merge_with(grad_u_shape[:-2]).merge_with(
-        grad_v_shape[:-2])
-    a_shape = batch_shape.concatenate([m, n])
+  if not op.get_attr("compute_uv"):
+    s, u, v = linalg_ops.svd(a, compute_uv=True)
+    grad_a = math_ops.matmul(u, math_ops.matmul(grad_s_mat, v, adjoint_b=True))
+    grad_a.set_shape(a_shape)
+    return grad_a
+
+  full_matrices = op.get_attr("full_matrices")
+
+  # TODO(rmlarsen): Make this work with complex types.
+  if a.dtype.is_complex:
+    raise NotImplementedError(
+        "SVD gradient is not implemented for complex types and "
+        "compute_uv=True.")
+  grad_u_shape = grad_u.get_shape().with_rank_at_least(2)
+  grad_v_shape = grad_v.get_shape().with_rank_at_least(2)
+  m = a_shape[-2].merge_with(grad_u_shape[-2])
+  n = a_shape[-1].merge_with(grad_v_shape[-2])
+  batch_shape = a_shape[:-2].merge_with(grad_u_shape[:-2]).merge_with(
+      grad_v_shape[:-2])
+  a_shape = batch_shape.concatenate([m, n])
 
   m = a_shape[-2].value
   n = a_shape[-1].value
@@ -300,12 +308,9 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
         "SVD gradient has not been implemented for input with unknown "
         "inner matrix shape.")
 
-  if not op.get_attr("compute_uv"):
-    s, u, v = linalg_ops.svd(a, compute_uv=True, full_matrices=True)
-  else:
-    s = op.outputs[0]
-    u = op.outputs[1]
-    v = op.outputs[2]
+  s = op.outputs[0]
+  u = op.outputs[1]
+  v = op.outputs[2]
 
   use_adjoint = False
   if m > n:
@@ -317,19 +322,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     grad_u, grad_v = grad_v, grad_u
 
   with ops.control_dependencies([grad_s, grad_u, grad_v]):
-    grad_s_mat = array_ops.matrix_diag(grad_s)
-    if not op.get_attr("compute_uv"):
-      if use_adjoint:
-        grad_a = math_ops.matmul(
-            v[..., :, :m], math_ops.matmul(u, grad_s_mat), adjoint_b=True)
-      else:
-        grad_a = math_ops.matmul(u,
-                                 math_ops.matmul(
-                                     grad_s_mat, v[..., :, :m], adjoint_b=True))
-      grad_a.set_shape(a_shape)
-      return grad_a
-
-    if op.get_attr("full_matrices") and abs(m - n) > 1:
+    if full_matrices and abs(m - n) > 1:
       raise NotImplementedError(
           "svd gradient is not implemented for abs(m - n) > 1 "
           "when full_matrices is True")
@@ -371,7 +364,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
       gv1t_v1 = math_ops.matmul(gv1t, v1)
       term2_nous = gv1t - math_ops.matmul(gv1t_v1, v1, adjoint_b=True)
 
-      if op.get_attr("full_matrices"):
+      if full_matrices:
         v2 = v[..., :, m:n]
         grad_v2 = grad_v[..., :, m:n]
 

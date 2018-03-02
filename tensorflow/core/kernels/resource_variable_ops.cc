@@ -130,6 +130,7 @@ REGISTER_KERNEL_BUILDER(
                           ResourceHandleOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
@@ -252,6 +253,7 @@ class AssignVariableOp : public OpKernel {
     std::unique_ptr<Tensor> input_alias =
         context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
+    variable->is_initialized = true;
     if (input_alias) {
       *variable->tensor() = *input_alias;
       return;
@@ -362,7 +364,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(DT_VARIANT)));
 
     mutex_lock ml(*variable->mu());
-
+    variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
@@ -387,7 +389,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
-TF_CALL_variant(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
@@ -399,6 +400,7 @@ TF_CALL_variant(REGISTER_KERNELS);
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
@@ -457,11 +459,33 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
                           AssignUpdateVariableOp<GPUDevice, type, SUB>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
+class VarIsInitializedOp : public OpKernel {
+ public:
+  explicit VarIsInitializedOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    auto output_tensor = output->tensor<bool, 0>();
+    Var* variable = nullptr;
+    Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
+    if (!s.ok()) {
+      output_tensor() = false;
+      return;
+    }
+    core::ScopedUnref su(variable);
+    mutex_lock ml(*variable->mu());
+    output_tensor() = variable->is_initialized;
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
-                        IsResourceInitialized<Var>);
+                        VarIsInitializedOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
@@ -634,6 +658,9 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_ARITHEMTIC(type, CPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
+
+REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+                        scatter_op::UpdateOp::ASSIGN);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA

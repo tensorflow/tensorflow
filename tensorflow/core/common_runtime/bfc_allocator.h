@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -62,11 +62,11 @@ class BFCAllocator : public VisitableAllocator {
 
   bool TracksAllocationSizes() override;
 
-  size_t RequestedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
 
-  size_t AllocatedSize(void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
 
-  int64 AllocationId(void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
 
   void GetStats(AllocatorStats* stats) override;
 
@@ -127,10 +127,10 @@ class BFCAllocator : public VisitableAllocator {
     string DebugString(BFCAllocator* a,
                        bool recurse) NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
-      strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
-                         " | Requested Size: ",
-                         strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use());
+      strings::StrAppend(
+          &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
+          " | Requested Size: ", strings::HumanReadableNumBytes(requested_size),
+          " | in_use: ", in_use());
       if (recurse && prev != BFCAllocator::kInvalidChunkHandle) {
         Chunk* p = a->ChunkFromHandle(prev);
         strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));

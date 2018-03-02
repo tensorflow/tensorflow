@@ -65,7 +65,6 @@ import six
 import tensorflow as tf
 
 from tensorflow.contrib.eager.python import tfe
-from tensorflow.python.eager import context
 
 try:
   import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top

@@ -251,7 +251,8 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options,
+      const UserComputation& user_computation);
 
  protected:
   friend class LocalExecutable;
@@ -275,13 +276,19 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options);
+      const ExecutionOptions* execution_options,
+      const UserComputation& user_computation);
 
   // Builds an Executable for the given parameters.
+  //
+  // If device_allocator is not null, the compiler may use it to allocate temp
+  // buffers, which the compiler is responsible for freeing.  The allocator
+  // given here need not match the allocator used when running the executable.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
-      std::unique_ptr<HloModuleConfig> module_config,
-      Backend* backend, perftools::gputools::StreamExecutor* executor);
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
@@ -289,16 +296,17 @@ class Service : public ServiceInterface {
       std::vector<VersionedComputationHandle> versioned_handles,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors);
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+      DeviceMemoryAllocator* device_allocator);
 
   // Similar to BuildExecutable, but look in the compilation cache for the
   // executable first. If the executable is not in the cache, it is built and
   // inserted into the cache.
   StatusOr<std::shared_ptr<Executable>> BuildAndCacheExecutable(
       const VersionedComputationHandle& versioned_handle,
-      std::unique_ptr<HloModuleConfig> module_config,
-      Backend* backend, perftools::gputools::StreamExecutor* executor,
-      ExecutionProfile* profile);
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      perftools::gputools::StreamExecutor* executor, ExecutionProfile* profile,
+      DeviceMemoryAllocator* device_allocator = nullptr);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
@@ -339,6 +347,8 @@ class Service : public ServiceInterface {
   // represents a set of physical devices for the replicas.
   StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
+
+  Status MaybeDumpHloModule(const HloModule& module) const;
 
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.

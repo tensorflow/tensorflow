@@ -37,7 +37,7 @@ typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 enum AxisArgumentName { NAME_IS_AXIS, NAME_IS_CONCAT_DIM };
 
@@ -71,8 +71,9 @@ class ConcatBaseOp : public OpKernel {
     const TensorShape& input_shape = values[0].shape();
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
-    OP_REQUIRES(c, (0 <= axis && axis < input_dims) ||
-                       (allow_legacy_scalars() && concat_dim == 0),
+    OP_REQUIRES(c,
+                (0 <= axis && axis < input_dims) ||
+                    (allow_legacy_scalars() && concat_dim == 0),
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
@@ -97,8 +98,8 @@ class ConcatBaseOp : public OpKernel {
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i, "] = ",
-              in.shape().DebugString()));
+              input_shape.DebugString(), " vs. shape[", i,
+              "] = ", in.shape().DebugString()));
       for (int j = 0; j < input_dims; ++j) {
         if (j == axis) {
           continue;
@@ -107,8 +108,8 @@ class ConcatBaseOp : public OpKernel {
             c, in.dim_size(j) == input_shape.dim_size(j),
             errors::InvalidArgument(
                 "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.DebugString(), " vs. shape[", i, "] = ",
-                in.shape().DebugString()));
+                input_shape.DebugString(), " vs. shape[", i,
+                "] = ", in.shape().DebugString()));
       }
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -142,7 +143,7 @@ class ConcatBaseOp : public OpKernel {
         ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
         return;
       }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
@@ -252,7 +253,7 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                         ConcatV2Op<CPUDevice, int32>);
 
 #undef REGISTER_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class ConcatOffsetOp : public OpKernel {
  public:
@@ -347,5 +348,5 @@ REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .HostMemory("shape")
                             .HostMemory("offset"),
                         ConcatOffsetOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

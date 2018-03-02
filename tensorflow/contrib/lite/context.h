@@ -26,8 +26,8 @@ limitations under the License.
 // TfLiteRegistration - the implementation of a conceptual operation.
 //
 // Some abstractions in this file are created and managed by Interpreter.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,6 +37,9 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
+
+// Forward declare so GetNode can use this is in Context.
+typedef struct _TfLiteRegistration TfLiteRegistration;
 
 #define kOptionalTensor (-1)
 
@@ -205,33 +208,6 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 // Resize the allocated data of a (dynamic) tensor.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 
-typedef struct TfLiteContext {
-  // Number of tensors in the context.
-  int tensors_size;
-  // An tensor of tensors in the interpreter context (of length `tensors_size`)
-  TfLiteTensor* tensors;
-
-  // opaque full context ptr (an opaque c++ data structure)
-  void* impl_;
-
-  // Request memory pointer be resized. Updates dimensions on the tensor.
-  // NOTE: ResizeTensor takes ownership of newSize.
-  TfLiteStatus (*ResizeTensor)(struct TfLiteContext*, TfLiteTensor* tensor,
-                               TfLiteIntArray* new_size);
-  // Request that a error be reported with format string msg.
-  void (*ReportError)(struct TfLiteContext*, const char* msg, ...);
-
-  // Add `tensors_to_add` tensors, preserving pre-existing Tensor entries.  If
-  // non-null, the value pointed to by `first_new_tensor_index` will be set to
-  // the index of the first new tensor.
-  TfLiteStatus (*AddTensors)(struct TfLiteContext*, int tensors_to_add,
-                             int* first_new_tensor_index);
-
-  // TODO(ahentz): we should create a more general mechanism for this sort of
-  // library-global objects.
-  void* gemm_context;
-} TfLiteContext;
-
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not
 // other features like the type.
@@ -250,11 +226,75 @@ typedef struct {
   // Opaque data provided by the node implementer through `Registration.init`.
   void* user_data;
 
-  // Opaque data provided to the node if the node is a builtin.
+  // Opaque data provided to the node if the node is a builtin. This is usually
+  // a structure defined in builtin_op_data.h
   void* builtin_data;
+
+  // Custom initial data. This is the opaque data provided in the flatbuffer.
+  // WARNING: This is an experimental interface that is subject to change.
+  const void* custom_initial_data;
+  int custom_initial_data_size;
 } TfLiteNode;
 
-typedef struct {
+typedef struct TfLiteContext {
+  // Number of tensors in the context.
+  int tensors_size;
+
+  // The execution plan contains a list of the node indices in execution
+  // order. execution_plan->size is the current number of nodes. And,
+  // execution_plan->data[0] is the first node that needs to be run.
+  // TfLiteDelegates can traverse the current execution plan by iterating
+  // through each member of this array and using GetNodeAndRegistration() to
+  // access details about a node. i.e.
+  // TfLiteIntArray* execution_plan;
+  // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+  // for (int exec_index = 0; exec_index < execution_plan->size; exec_index++) {
+  //    int node_index = execution_plan->data[exec_index];
+  //    TfLiteNode* node;
+  //    TfLiteRegistration* reg;
+  //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
+  // }
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
+                                   TfLiteIntArray** execution_plan);
+
+  // An array of tensors in the interpreter context (of length `tensors_size`)
+  TfLiteTensor* tensors;
+
+  // opaque full context ptr (an opaque c++ data structure)
+  void* impl_;
+
+  // Request memory pointer be resized. Updates dimensions on the tensor.
+  // NOTE: ResizeTensor takes ownership of newSize.
+  TfLiteStatus (*ResizeTensor)(struct TfLiteContext*, TfLiteTensor* tensor,
+                               TfLiteIntArray* new_size);
+  // Request that a error be reported with format string msg.
+  void (*ReportError)(struct TfLiteContext*, const char* msg, ...);
+
+  // Add `tensors_to_add` tensors, preserving pre-existing Tensor entries.  If
+  // non-null, the value pointed to by `first_new_tensor_index` will be set to
+  // the index of the first new tensor.
+  TfLiteStatus (*AddTensors)(struct TfLiteContext*, int tensors_to_add,
+                             int* first_new_tensor_index);
+
+  // Get a Tensor node by node_index.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*GetNodeAndRegistration)(struct TfLiteContext*, int node_index,
+                                         TfLiteNode** node,
+                                         TfLiteRegistration** registration);
+
+  // Replace ops with one or more stub delegate operations. This function
+  // does not take ownership of `nodes_to_replace`.
+  TfLiteStatus (*ReplaceSubgraphsWithDelegateKernels)(
+      struct TfLiteContext*, TfLiteRegistration registration,
+      const TfLiteIntArray* nodes_to_replace);
+
+  // TODO(ahentz): we should create a more general mechanism for this sort of
+  // library-global objects.
+  void* gemm_context;
+} TfLiteContext;
+
+typedef struct _TfLiteRegistration {
   // Initializes the op from serialized data.
   // If a built-in op:
   //   `buffer` is the op's params data (TfLiteLSTMParams*).
@@ -291,9 +331,27 @@ typedef struct {
   // NN API. Note, it is the responsibility of the registration binder to
   // set this properly.
   int32_t builtin_code;
+
+  // Custom op name. If the op is a builtin, this will be null.
+  // WARNING: This is an experimental interface that is subject to change.
+  const char* custom_name;
 } TfLiteRegistration;
+
+// WARNING: This is an experimental interface that is subject to change.
+typedef struct {
+  // Data that delegate needs to identify itself. This data is owned by the
+  // delegate. The delegate is owned in the user code, so the delegate is
+  // responsible for doing this when it is destroyed.
+  void* data_;
+  // Invoked by ModifyGraphWithDelegate. This prepare is called, giving the
+  // delegate a view of the current graph through TfLiteContext*. It typically
+  // will look at the nodes and call ReplaceSubgraphsWithDelegateKernels()
+  // to ask the TensorFlow lite runtime to create macro-nodes to represent
+  // delegated subgraphs of the original graph.
+  TfLiteStatus (*Prepare)(TfLiteContext* context, void* data);
+} TfLiteDelegate;
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_CONTEXT_H_

@@ -60,6 +60,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.losses.python import losses_impl
 from tensorflow.python.util import tf_inspect
 
@@ -78,6 +79,7 @@ __all__ = [
     'wasserstein_gradient_penalty',
     'mutual_information_penalty',
     'combine_adversarial_loss',
+    'cycle_consistency_loss',
 ]
 
 
@@ -246,3 +248,32 @@ def combine_adversarial_loss(gan_loss,
       scalar_summaries,
       gradient_summaries)
   return gan_loss._replace(generator_loss=combined_loss)
+
+
+def cycle_consistency_loss(cyclegan_model, scope=None, add_summaries=False):
+  """Defines the cycle consistency loss.
+
+  Uses `cycle_consistency_loss` to compute the cycle consistency loss for a
+  `cyclegan_model`.
+
+  Args:
+    cyclegan_model: A `CycleGANModel` namedtuple.
+    scope: The scope for the operations performed in computing the loss.
+      Defaults to None.
+    add_summaries: Whether or not to add detailed summaries for the loss.
+      Defaults to False.
+
+  Returns:
+    A scalar `Tensor` of cycle consistency loss.
+
+  Raises:
+    ValueError: If `cyclegan_model` is not a `CycleGANModel` namedtuple.
+  """
+  if not isinstance(cyclegan_model, namedtuples.CycleGANModel):
+    raise ValueError(
+        '`cyclegan_model` must be a `CycleGANModel`. Instead, was %s.' %
+        type(cyclegan_model))
+  return losses_impl.cycle_consistency_loss(
+      cyclegan_model.model_x2y.generator_inputs, cyclegan_model.reconstructed_x,
+      cyclegan_model.model_y2x.generator_inputs, cyclegan_model.reconstructed_y,
+      scope, add_summaries)

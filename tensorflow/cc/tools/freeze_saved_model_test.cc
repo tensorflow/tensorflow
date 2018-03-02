@@ -71,7 +71,7 @@ class FreezeTest : public ::testing::Test {
     return Status::OK();
   }
 
-  // Adds `graph_def` to `saved_model_bundle` and intializes a session with
+  // Adds `graph_def` to `saved_model_bundle` and initializes a session with
   // `init_node`.
   Status AddGraphDefToSavedModelBundle(const GraphDef& graph_def,
                                        const string& init_node,

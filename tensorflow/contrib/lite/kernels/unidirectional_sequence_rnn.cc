@@ -15,14 +15,15 @@ limitations under the License.
 #include <unistd.h>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -82,47 +83,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output_size_array->data[0] = (time_major) ? max_time : batch_size;
   output_size_array->data[1] = (time_major) ? batch_size : max_time;
   output_size_array->data[2] = num_units;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, output,
-                                                   output_size_array));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size_array));
 
   return kTfLiteOk;
 }
-
-namespace {
-void RnnStep(const float* input_ptr_batch, const float* input_weights_ptr,
-             const float* recurrent_weights_ptr, const float* bias_ptr,
-             int input_size, int num_units, int input_weights_stride,
-             int recurrent_weights_stride, TfLiteFusedActivation activation,
-             float* hidden_state_ptr_batch, float* output_ptr_batch) {
-  // Output = bias
-  for (int o = 0; o < num_units; o++) {
-    output_ptr_batch[o] = bias_ptr[o];
-  }
-
-  // Output += input * input_weights
-  for (int o = 0; o < num_units; o++) {
-    for (int i = 0; i < input_size; i++) {
-      output_ptr_batch[o] += input_ptr_batch[i] * input_weights_ptr[i];
-    }
-    input_weights_ptr += input_weights_stride;
-  }
-
-  // Output += recurrent_weights * hidden_state
-  for (int o = 0; o < num_units; o++) {
-    for (int h = 0; h < num_units; h++) {
-      output_ptr_batch[o] +=
-          hidden_state_ptr_batch[h] * recurrent_weights_ptr[h];
-    }
-    recurrent_weights_ptr += recurrent_weights_stride;
-  }
-
-  // Output = activation(Output) and update hidden_state
-  for (int o = 0; o < num_units; o++) {
-    output_ptr_batch[o] = (ActivationFunctor(activation))(output_ptr_batch[o]);
-    hidden_state_ptr_batch[o] = output_ptr_batch[o];
-  }
-}
-}  // namespace
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSequenceRNNParams*>(node->builtin_data);
@@ -147,30 +112,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       (time_major) ? input->dims->data[0] : input->dims->data[1];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[2];
-  const int input_weights_stride = input_weights->dims->data[1];
-  const int recurrent_weights_stride = recurrent_weights->dims->data[1];
 
   // Initialize input_weights and recurrent_weights.
   const float* input_weights_ptr = input_weights->data.f;
   const float* recurrent_weights_ptr = recurrent_weights->data.f;
 
   if (time_major) {
-    // Unroll the sequence
+    // Initialize the pointer to hidden state.
+    float* hidden_state_ptr_batch = hidden_state->data.f;
+    // Unroll the sequence and use batch batch operations for efficiency.
     for (int s = 0; s < max_time; s++) {
-      for (int b = 0; b < batch_size; b++) {
-        // Initialize the pointer to hidden state.
-        float* hidden_state_ptr_batch = hidden_state->data.f + b * num_units;
-        // Initialize the pointer to input and output.
-        const float* input_ptr_batch =
-            input->data.f + s * input_size * batch_size + b * input_size;
-        float* output_ptr_batch =
-            output->data.f + s * num_units * batch_size + b * num_units;
+      // Initialize the pointer to input and output.
+      const float* input_ptr_batch =
+          input->data.f + s * input_size * batch_size;
+      float* output_ptr_batch = output->data.f + s * num_units * batch_size;
 
-        RnnStep(input_ptr_batch, input_weights_ptr, recurrent_weights_ptr,
-                bias_ptr, input_size, num_units, input_weights_stride,
-                recurrent_weights_stride, params->activation,
-                hidden_state_ptr_batch, output_ptr_batch);
-      }
+      kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
+                                 recurrent_weights_ptr, bias_ptr, input_size,
+                                 num_units, batch_size, params->activation,
+                                 hidden_state_ptr_batch, output_ptr_batch);
     }
   } else {
     // For each batch
@@ -184,10 +144,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         float* output_ptr_batch =
             output->data.f + b * num_units * max_time + s * num_units;
 
-        RnnStep(input_ptr_batch, input_weights_ptr, recurrent_weights_ptr,
-                bias_ptr, input_size, num_units, input_weights_stride,
-                recurrent_weights_stride, params->activation,
-                hidden_state_ptr_batch, output_ptr_batch);
+        kernel_utils::RnnBatchStep(
+            input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+            input_size, num_units, /*batch_size=*/1, params->activation,
+            hidden_state_ptr_batch, output_ptr_batch);
       }
     }
   }

@@ -88,7 +88,7 @@ class Embedding(tf.layers.Layer):
 
 
 class PTBModel(tfe.Network):
-  """LSTM for word language modelling.
+  """LSTM for word language modeling.
 
   Model described in:
   (Zaremba, et. al.) Recurrent Neural Network Regularization
@@ -339,8 +339,7 @@ if __name__ == "__main__":
       "http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz")
   parser.add_argument(
       "--logdir", type=str, default="", help="Directory for checkpoint.")
-  parser.add_argument(
-      "--epoch", type=int, default=20, help="Number of epoches.")
+  parser.add_argument("--epoch", type=int, default=20, help="Number of epochs.")
   parser.add_argument("--batch-size", type=int, default=20, help="Batch size.")
   parser.add_argument(
       "--seq-len", type=int, default=35, help="Sequence length.")

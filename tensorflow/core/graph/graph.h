@@ -62,8 +62,8 @@ class Node;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
 class NodeProperties;  // Defined in .cc
 
 class Node {
@@ -422,7 +422,7 @@ class Graph {
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
-  Node* CopyNode(Node* node);
+  Node* CopyNode(const Node* node);
 
   // Removes a node from this graph, including all edges from or to it.
   // *node should not be accessed after calling this function.
@@ -493,6 +493,13 @@ class Graph {
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
+
+  // This version can be called from debugger to inspect the graph content.
+  // Use the previous version outside debug context for efficiency reasons.
+  //
+  // Note: We do not expose a DebugString() API, since GraphDef.DebugString() is
+  // not defined in some TensorFlow builds.
+  GraphDef ToGraphDefDebug() const;
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.

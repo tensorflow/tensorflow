@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class XlaContext;
+
 // The XlaCompiler class is responsible for compilation of a self-contained
 // subgraph of a TensorFlow computation using the XLA linear algebra runtime.
 // It does a symbolic execution of the graph starting from specific input
@@ -104,9 +107,17 @@ class XlaCompiler {
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource, this is the
-    // shape of the resource's value.
-    xla::Shape shape;
+    // The shape of the argument. For:
+    // * a parameter: the shape of the parameter.
+    // * a constant: ignored; the shape given by constant_value is used
+    //     instead.
+    // * an uninitialized resource: ignored. We don't yet know the shape of an
+    //     uninitialized resource (otherwise we would have initialized it!)
+    // * an initialized variable: the shape of the variable's value.
+    // * an initialized TensorArray or Stack resource: the shape of an entry in
+    //   the TensorArray/Stack. Note this is the size of a single entry, not the
+    //   XLA data structure that represents the complete stack/array.
+    TensorShape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -175,8 +186,9 @@ class XlaCompiler {
     int input_index;
 
     // Type and shape of the tensor to be written back.
+    // The `shape` field has the same meaning as the Argument::shape field.
     DataType type;
-    xla::Shape shape;
+    TensorShape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
@@ -230,11 +242,30 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
+    // If set, the XLA representation of variables represented to XLA as the
+    // shape given by this shape function. Variables are reshaped to this shape
+    // on write, and reshaped to their original shape on read.
+    std::function<TensorShape(const TensorShape&, DataType)>
+        variable_representation_shape_fn;
+
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
     // that can be accessed by XLA op kernels.
     std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
+
+    // If not nullptr, this memory allocator can be used by the compiler for
+    // temporary allocations it might want to make during compilation.
+    //
+    // For example, the compiler may want to try out different algorithms and
+    // choose the fastest one, and it might run those algorithms over buffers
+    // created using this allocator.
+    //
+    // The compiler can function correctly without an explicit allocator given
+    // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
+    // allocate most or all available memory on the device, leaving none for the
+    // compiler to access, unless it can use TensorFlow's allocator.
+    xla::DeviceMemoryAllocator* device_allocator = nullptr;
   };
 
   explicit XlaCompiler(Options options);
@@ -253,11 +284,10 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
-  Status PrepareArguments(xla::ComputationBuilder* builder, NameAttrList func,
-                          const std::vector<DataType>& types,
-                          const std::vector<TensorShape>& shapes,
-                          const std::vector<const XlaExpression*>& expressions,
-                          std::vector<Argument>* args);
+  // Returns the shape of the XLA parameter for an argument 'arg'.
+  // See the class comment for more details about the argument passing
+  // convention.
+  Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -277,6 +307,17 @@ class XlaCompiler {
 
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
+
+  // Builds XLA computations for each of the arguments to the computation.
+  // `args` are the arguments to the computation.
+  Status BuildArguments(const Graph& graph,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        bool use_tuple_arg, xla::ComputationBuilder* builder,
+                        XlaContext* context, std::vector<int>* arg_cores,
+                        std::vector<XlaExpression>* arg_expressions,
+                        std::vector<int>* input_mapping,
+                        std::vector<xla::Shape>* input_shapes,
+                        bool is_entry_computation);
 
   // Graph compiler needs to know how to get an optimized graph from a function
   // body.

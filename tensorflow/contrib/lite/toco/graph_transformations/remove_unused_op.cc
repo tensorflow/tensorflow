@@ -33,7 +33,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
   // the model. We allow specifying an arbitrary input_array,
   // treating the part of the graph leading up to it as unused.
   for (const auto& output : op->outputs) {
-    CHECK(model->arrays.count(output));
+    CHECK(model->HasArray(output));
     // If this output is provided as the model's input array,
     // then we don't need this operator to produce its contents.
     if (IsInputArray(*model, output)) {
@@ -93,7 +93,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     if (IsDiscardableArray(*model, input) &&
         CountOpsWithInput(*model, input) == 1 &&
         !GetOpWithOutput(*model, input)) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
 
@@ -116,7 +116,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
       continue;
     }
     // Generic case: do delete this output array.
-    model->arrays.erase(output);
+    model->EraseArray(output);
   }
   model->operators.erase(it);
   return true;

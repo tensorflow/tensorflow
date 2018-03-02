@@ -877,7 +877,7 @@ class BaseDNNWarmStartingTest(object):
 
     # Create a second DNNClassifier, warm-started from the first.  Use a
     # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
-    # accumulator values that change).  Use a a new FeatureColumn with a
+    # accumulator values that change).  Use a new FeatureColumn with a
     # different vocabulary for occupation.
     new_vocab_list = ['doctor', 'consultant', 'engineer']
     new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,
@@ -1041,7 +1041,7 @@ class BaseDNNClassifierEvaluateTest(object):
         # There is no good way to calculate AUC for only two data points. But
         # that is what the algorithm returns.
         metric_keys.MetricKeys.AUC: 0.5,
-        metric_keys.MetricKeys.AUC_PR: 0.75,
+        metric_keys.MetricKeys.AUC_PR: 0.25,
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 

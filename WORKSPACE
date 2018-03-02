@@ -41,12 +41,12 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 tf_workspace()
 
 new_http_archive(
-    name = "inception5h",
+    name = "inception_v1",
     build_file = "models.BUILD",
-    sha256 = "d13569f6a98159de37e92e9c8ec4dae8f674fbf475f69fe6199b514f756d4364",
+    sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip",
-        "http://download.tensorflow.org/models/inception5h.zip",
+        "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
+        "http://download.tensorflow.org/models/inception_v1.zip",
     ],
 )
 

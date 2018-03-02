@@ -137,9 +137,9 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    DCHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
-                                        computation_type, algorithm, stream,
-                                        &profile_result));
+    CHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
+                                       computation_type, algorithm, stream,
+                                       &profile_result));
 
     if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
                                          best_result.elapsed_time_in_ms()) {

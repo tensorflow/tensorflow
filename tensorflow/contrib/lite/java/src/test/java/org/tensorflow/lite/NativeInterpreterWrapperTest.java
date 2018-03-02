@@ -60,9 +60,7 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains("Model provided has model identifier ' is ', should be 'TFL3'");
+      assertThat(e).hasMessageThat().contains("is not a valid flatbuffer model");
     }
   }
 

@@ -436,10 +436,7 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   }
 }
 
-REGISTER_OP("Darth")
-    .Input("x: float")
-    .Output("y: float")
-    .Doc(R"doc(
+REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
 Darth promises one return value.
 
 x: float
@@ -972,39 +969,38 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
 
   std::atomic<int32> num_done(0);
   // Runs session to compute <node>:0 using inter_op thread pool <pool>.
-  auto add_session_run_call = [use_global_pools, &def, &options, &sessions,
-                               &sessions_mu,
-                               &num_done](thread::ThreadPool* tp, Node* node,
-                                          int inter_op_pool) {
-    auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
-               inter_op_pool, node, &num_done]() {
-      RunOptions run_options;
-      run_options.set_inter_op_thread_pool(inter_op_pool);
-      std::vector<Tensor> outputs;
+  auto add_session_run_call =
+      [use_global_pools, &def, &options, &sessions, &sessions_mu, &num_done](
+          thread::ThreadPool* tp, Node* node, int inter_op_pool) {
+        auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
+                   inter_op_pool, node, &num_done]() {
+          RunOptions run_options;
+          run_options.set_inter_op_thread_pool(inter_op_pool);
+          std::vector<Tensor> outputs;
 
-      Session* session;
-      if (use_global_pools) {
-        std::unique_ptr<Session> s(NewSession(options));
-        TF_ASSERT_OK(s->Create(def));
-        session = s.get();
+          Session* session;
+          if (use_global_pools) {
+            std::unique_ptr<Session> s(NewSession(options));
+            TF_ASSERT_OK(s->Create(def));
+            session = s.get();
 
-        mutex_lock l(sessions_mu);
-        sessions.emplace_back(std::move(s));
-      } else {
-        session = sessions[0].get();
-      }
+            mutex_lock l(sessions_mu);
+            sessions.emplace_back(std::move(s));
+          } else {
+            session = sessions[0].get();
+          }
 
-      Status s = session->Run(run_options, {} /* inputs */,
-                              {node->name() + ":0"} /* output_names */, {},
-                              &outputs, nullptr /* run_metadata */);
-      TF_CHECK_OK(s);
-      ASSERT_EQ(1, outputs.size());
-      auto flat = outputs[0].flat<float>();
-      EXPECT_FLOAT_EQ(1.2, flat(0));
-      num_done.fetch_add(1);
-    };
-    tp->Schedule(fn);
-  };
+          Status s = session->Run(run_options, {} /* inputs */,
+                                  {node->name() + ":0"} /* output_names */, {},
+                                  &outputs, nullptr /* run_metadata */);
+          TF_CHECK_OK(s);
+          ASSERT_EQ(1, outputs.size());
+          auto flat = outputs[0].flat<float>();
+          EXPECT_FLOAT_EQ(1.2, flat(0));
+          num_done.fetch_add(1);
+        };
+        tp->Schedule(fn);
+      };
 
   // For blocking states:
   // - Starts at 0, BlockingOp::Compute will move to 1.

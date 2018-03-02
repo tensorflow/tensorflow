@@ -61,6 +61,11 @@ message OpMetricsResult {
 message OpMetricsDbResult {
   // A bunch of OpMetricsResults.
   repeated OpMetricsResult metrics_db = 1;
+  // The total host infeed-enqueue duration in picoseconds.
+  optional uint64 total_host_infeed_enq_duration_ps = 2;
+  // The total of the difference between the start times of two
+  // consecutive infeed-enqueues (per host) in picoseconds.
+  optional uint64 total_host_infeed_enq_start_timestamp_ps_diff = 3;
 }
 
 // Result proto for StepInfo.

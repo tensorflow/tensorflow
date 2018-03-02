@@ -22,6 +22,7 @@ import gc
 import tempfile
 import time
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import tensorflow.contrib.eager as tfe
@@ -52,14 +53,13 @@ def random_batch(batch_size):
 
 def train_one_step(model, images, labels, optimizer):
 
-  def model_loss():
+  with tfe.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-    return loss
-
-  optimizer.minimize(model_loss)
+  grads = tape.gradient(loss, model.variables)
+  optimizer.apply_gradients(zip(grads, model.variables))
 
 
 class ResNet50Test(tf.test.TestCase):
@@ -71,7 +71,7 @@ class ResNet50Test(tf.test.TestCase):
       model.call = tfe.defun(model.call)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 1000), output.shape)
 
   def test_apply(self):
@@ -85,7 +85,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False)
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     output_shape = ((2, 2048, 1, 1)
                     if data_format == 'channels_first' else (2, 1, 1, 2048))
     self.assertEqual(output_shape, output.shape)
@@ -95,7 +95,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format, include_top=False, pooling='avg')
     with tf.device(device):
       images, _ = random_batch(2)
-      output = model(images)
+      output = model(images, training=False)
     self.assertEqual((2, 2048), output.shape)
 
   def test_train(self):
@@ -194,11 +194,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     with tf.device(device):
       images, _ = random_batch(batch_size)
       for _ in xrange(num_burn):
-        model(images).cpu()
+        model(images, training=False).cpu()
       gc.collect()
       start = time.time()
       for _ in xrange(num_iters):
-        model(images).cpu()
+        model(images, training=False).cpu()
       self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_apply(self):

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 
 from tensorflow.contrib import learn
@@ -163,7 +164,7 @@ def extract_features(features, feature_columns):
     scope = "gbdt"
     with variable_scope.variable_scope(scope):
       feature_columns = list(feature_columns)
-      transformed_features = {}
+      transformed_features = collections.OrderedDict()
       for fc in feature_columns:
         # pylint: disable=protected-access
         if isinstance(fc, feature_column_lib._EmbeddingColumn):
@@ -681,13 +682,13 @@ class GradientBoostedDecisionTreeModel(object):
                               control_flow_ops.no_op))
 
     # Update handler stats.
-    handler_reads = {}
+    handler_reads = collections.OrderedDict()
     for handler in handlers:
       handler_reads[handler] = handler.scheduled_reads()
 
     handler_results = batch_ops_utils.run_handler_scheduled_ops(
         handler_reads, ensemble_stamp, worker_device)
-    per_handler_updates = {}
+    per_handler_updates = collections.OrderedDict()
     # Two values per handler. First one is if the handler is active for the
     # current layer. The second one is if the handler is going to be active
     # for the next layer.

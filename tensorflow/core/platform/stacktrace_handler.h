@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_
+#define TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_
 
 namespace tensorflow {
 namespace testing {
@@ -25,4 +25,4 @@ void InstallStacktraceHandler();
 }  // namespace testing
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_BACKTRACE_H_

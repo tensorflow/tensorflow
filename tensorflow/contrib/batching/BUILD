@@ -67,48 +67,14 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-tf_custom_op_library(
-    name = "python/ops/_batch_ops.so",
-    srcs = ["ops/batch_ops.cc"],
-    deps = [
-        "//tensorflow/contrib/batching/kernels:batch_kernels",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["batch_ops"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "batch_ops",
-    deps = [":batch_ops_op_lib"],
-)
-
-tf_kernel_library(
-    name = "batch_ops_kernels",
-    deps = [
-        "//tensorflow/contrib/batching/kernels:batch_kernels",
-        "//tensorflow/contrib/batching/util:periodic_function",
-        "//tensorflow/core/kernels:concat_lib",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:split_lib",
-    ],
-    alwayslink = 1,
-)
-
-tf_custom_op_py_library(
+py_library(
     name = "batch_py",
     srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
-    dso = [":python/ops/_batch_ops.so"],
-    kernels = [
-        ":batch_ops_kernels",
-        ":batch_ops_op_lib",
-    ],
     srcs_version = "PY2AND3",
     deps = [
-        ":batch_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops_gen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
@@ -116,6 +82,14 @@ tf_custom_op_py_library(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
     ],
+)
+
+cc_library(
+    name = "batch_ops_kernels",
+    deps = [
+        "//tensorflow/core/kernels:batch_kernels",
+    ],
+    alwayslink = 1,
 )
 
 py_test(
@@ -133,6 +107,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
         "//tensorflow/python:gradients",
         "//tensorflow/python:script_ops",
     ],

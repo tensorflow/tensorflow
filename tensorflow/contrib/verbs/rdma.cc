@@ -15,10 +15,11 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_VERBS
 
+#include <fcntl.h>
+#include <cstdlib>
+
 #include "tensorflow/contrib/verbs/rdma.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
-#include <cstdlib>
-#include <fcntl.h>
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -27,15 +28,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #endif
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
@@ -335,7 +337,7 @@ uint32_t set_param(uint32_t default_val, const char* env_param) {
 
 enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
   ibv_port_attr port_attr;
-  enum ibv_mtu mtu;
+  enum ibv_mtu mtu = IBV_MTU_512;
   string mtu_s;
   int rc, mtu_i;
 
@@ -447,9 +449,9 @@ void RdmaAdapter::Process_CQ() {
     CHECK_GE(ne, 0);
     for (int i = 0; i < ne; ++i) {
       CHECK(wc_[i].status == IBV_WC_SUCCESS)
-          << "Failed status \n" << ibv_wc_status_str(wc_[i].status) << " "
-          << wc_[i].status << " " << static_cast<int>(wc_[i].wr_id) << " "
-          << wc_[i].vendor_err;
+          << "Failed status \n"
+          << ibv_wc_status_str(wc_[i].status) << " " << wc_[i].status << " "
+          << static_cast<int>(wc_[i].wr_id) << " " << wc_[i].vendor_err;
       if (wc_[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
         RdmaChannel* rc = reinterpret_cast<RdmaChannel*>(wc_[i].wr_id);
         // put back a recv wr.
@@ -538,7 +540,7 @@ int RdmaChannel::PingPostRecv() {
 int RdmaChannel::PingPostSend() {
   struct ibv_send_wr wr, *bad_wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t) this;
+  wr.wr_id = (uint64_t)this;
   wr.sg_list = &ping_sge_list_;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_SEND;
@@ -658,7 +660,7 @@ void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
 void RdmaChannel::Recv() {
   struct ibv_recv_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t) this;
+  wr.wr_id = (uint64_t)this;
   struct ibv_recv_wr* bad_wr;
   CHECK(!ibv_post_recv(qp_, &wr, &bad_wr)) << "Failed to post recv";
 }
@@ -729,11 +731,11 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.grh.traffic_class = adapter_->params_.traffic_class;
 
     int r;
-    CHECK(!(r = ibv_modify_qp(qp_, &attr, IBV_QP_STATE | IBV_QP_AV |
-                                              IBV_QP_PATH_MTU |
-                                              IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
-                                              IBV_QP_MAX_DEST_RD_ATOMIC |
-                                              IBV_QP_MIN_RNR_TIMER)))
+    CHECK(!(r = ibv_modify_qp(qp_, &attr,
+                              IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU |
+                                  IBV_QP_DEST_QPN | IBV_QP_RQ_PSN |
+                                  IBV_QP_MAX_DEST_RD_ATOMIC |
+                                  IBV_QP_MIN_RNR_TIMER)))
         << "QP to Ready to Receive " << r;
 
     memset(&attr, 0, sizeof(ibv_qp_attr));
@@ -744,10 +746,10 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.rnr_retry = 7; /* infinite */
     attr.max_rd_atomic = 1;
 
-    CHECK(!(r = ibv_modify_qp(qp_, &attr, IBV_QP_STATE | IBV_QP_TIMEOUT |
-                                              IBV_QP_RETRY_CNT |
-                                              IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
-                                              IBV_QP_MAX_QP_RD_ATOMIC)))
+    CHECK(!(r = ibv_modify_qp(qp_, &attr,
+                              IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
+                                  IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN |
+                                  IBV_QP_MAX_QP_RD_ATOMIC)))
         << "QP to Ready to Send " << r;
 
     connected_ = true;
@@ -878,6 +880,7 @@ void RdmaMessageBuffer::SendNextItem() {
   }
 }
 
+#if GOOGLE_CUDA
 static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
                         size_t tensor_bytes, bool is_gpu_to_cpu) {
 #ifdef RDMA_COUNT_COPIES
@@ -896,16 +899,18 @@ static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
   }
   if ((++numTotalCopies % 0x400) == 0) {
     RDMA_LOG(0) << "Tensor copies:"
-                << " GPU to CPU: " << numGPUToCPUCopies
-                << " (" << numGPUToCPUCopiedBytes << " Bytes)"
-                << " CPU to GPU: " << numCPUToGPUCopies
-                << " (" << numCPUToGPUCopiedBytes << " Bytes)";
+                << " GPU to CPU: " << numGPUToCPUCopies << " ("
+                << numGPUToCPUCopiedBytes << " Bytes)"
+                << " CPU to GPU: " << numCPUToGPUCopies << " ("
+                << numCPUToGPUCopiedBytes << " Bytes)";
   }
-  RDMA_LOG(2) << "Copying tensor " << key
-              << " From: " << src_addr << " To: " << dst_addr;
-#endif
+  RDMA_LOG(2) << "Copying tensor " << key << " From: " << src_addr
+              << " To: " << dst_addr;
+#endif  // RDMA_COUNT_COPIES
 }
+#endif  // GOOGLE_CUDA
 
+#ifdef RDMA_DATA_VALIDATION
 static uint64_t Checksum(Device* device, const DeviceContext* device_context,
                          const Tensor& in) {
   uint64 checksum = 0;
@@ -917,7 +922,7 @@ static uint64_t Checksum(Device* device, const DeviceContext* device_context,
     checksum = (device_context != nullptr)
                    ? GPUUtil::Checksum(device, device_context, in)
                    : GPUUtil::Checksum(in);
-#endif
+#endif  // GOOGLE_CUDA
   } else {
     string s = in.SummarizeValue(999999);
     checksum = Hash64(s.c_str(), s.size(), 0);
@@ -952,16 +957,18 @@ static void ValidateChecksum(uint64_t expected, uint64_t actual,
     }
   }
 }
+#endif  // RDMA_DATA_VALIDATION
 
+#if GOOGLE_CUDA
 // Sync the 'done' operation on the GPU stream, but without all the data
 // copying.
-static void StreamGPUOp(Device* gpu_device,
-                        const DeviceContext* device_context,
+static void StreamGPUOp(Device* gpu_device, const DeviceContext* device_context,
                         StatusCallback done) {
   Tensor dummy1, dummy2;
-  GPUUtil::CopyGPUTensorToCPU(
-      gpu_device, device_context, &dummy1, &dummy2, done);
+  GPUUtil::CopyGPUTensorToCPU(gpu_device, device_context, &dummy1, &dummy2,
+                              done);
 }
+#endif  // GOOGLE_CUDA
 
 RdmaTensorResponse* RdmaChannel::AddTensorResponse(const RdmaMessage& rm) {
   mutex_lock lock{mu_};
@@ -1032,8 +1039,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
                                      const Rendezvous::Args& send_args,
                                      const Rendezvous::Args& recv_args,
                                      const Tensor& in, bool is_dead) {
-  Device* src_dev = nullptr;
-  Status s = PrepareRecvTensor(parsed, &src_dev);
+  Status s = PrepareRecvTensor(parsed, &src_dev_);
   if (!s.ok()) {
     SendErrorStatus(s);
     return;
@@ -1043,19 +1049,19 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
 #ifdef RDMA_DATA_VALIDATION
   // Always send a meta data message with the source checksum
   meta_data_changed_ = rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
-  checksum_ = Checksum(src_dev, send_args.device_context, in);
+  checksum_ = Checksum(src_dev_, send_args.device_context, in);
 #endif
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
   // string tensor needs to be serialized
   Tensor copy;
   TensorProto proto;
   const bool on_host = send_args.alloc_attrs.on_host();
-  if (src_dev->tensorflow_gpu_device_info() && !on_host) {
+  if (src_dev_->tensorflow_gpu_device_info() && !on_host) {
 #if GOOGLE_CUDA
     DeviceContext* send_dev_context = send_args.device_context;
     CHECK(send_dev_context)
-        << "send dev name: " << src_dev->name()
-        << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+        << "send dev name: " << src_dev_->name()
+        << " gpu_info: " << src_dev_->tensorflow_gpu_device_info();
 
     if (can_memcpy) {
       // If the tensor is located on a GDR compatible GPU, there is no need to
@@ -1067,8 +1073,8 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       // skip the copy here as well.
       if ((in.TotalBytes() > 0) && !meta_data_changed_ &&
           (RdmaMemoryMgr::Singleton().FindMemoryRegion(
-              (void*)DMAHelper::base(&in), in.TotalBytes()) != nullptr)) {
-        StreamGPUOp(src_dev, send_dev_context,
+               (void*)DMAHelper::base(&in), in.TotalBytes()) != nullptr)) {
+        StreamGPUOp(src_dev_, send_dev_context,
                     [this, in, proto, is_dead](const Status& s) {
                       Send(in, proto, is_dead, s);
                     });
@@ -1083,13 +1089,13 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       CountCopies(rm_.name_, (void*)DMAHelper::base(&in),
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
       GPUUtil::CopyGPUTensorToCPU(
-          src_dev, send_dev_context, &in, &copy,
+          src_dev_, send_dev_context, &in, &copy,
           [this, copy, proto, is_dead](const Status& s) {
             Send(copy, proto, is_dead, s);
           });
     } else {
       GPUUtil::SetProtoFromGPU(
-          in, src_dev, send_args.device_context, &proto, is_dead,
+          in, src_dev_, send_args.device_context, &proto, is_dead,
           [this, in, proto, is_dead](const Status& s) mutable {
             Send(in, proto, is_dead, s);
           });
@@ -1113,8 +1119,8 @@ void RdmaTensorResponse::Send(const Tensor& in, const TensorProto& proto,
     return;
   }
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
-  bool proto_size_changed = (!can_memcpy) &&
-                            (proto.ByteSize() != rm_.tensor_bytes_);
+  bool proto_size_changed =
+      (!can_memcpy) && (proto.ByteSize() != rm_.tensor_bytes_);
   if (meta_data_changed_ || proto_size_changed) {
     Clone(in, proto, is_dead);
     SendMetaData(in, proto, is_dead);
@@ -1137,7 +1143,10 @@ void RdmaTensorResponse::Clone(const Tensor& in, const TensorProto& proto,
   // tensor content may change before re-request was completed.
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
   if (can_memcpy && (in.TotalBytes() > 0)) {
-    Allocator* allocator = ProcessState::singleton()->GetCPUAllocator(0);
+    AllocatorAttributes host_alloc_attrs;
+    host_alloc_attrs.set_nic_compatible(true);
+    host_alloc_attrs.set_on_host(true);
+    Allocator* allocator = src_dev_->GetAllocator(host_alloc_attrs);
     tensor_ = new Tensor(allocator, in.dtype(), in.shape());
     memcpy(DMAHelper::base(tensor_), DMAHelper::base(&in), in.TotalBytes());
   } else {
@@ -1230,9 +1239,8 @@ void RdmaTensorResponse::SendErrorStatus(const Status& status) {
   rm.request_index_ = rm_.request_index_;
   rm.status_ = status;
   LOG(ERROR) << "Step 0x" << std::hex << rm.step_id_ << std::dec
-             << ": Sending RDMA_MESSAGE_ERROR_STATUS #"
-             << rm.request_index_ << ": " << rm.name_
-             << ". Status: " << status.ToString();
+             << ": Sending RDMA_MESSAGE_ERROR_STATUS #" << rm.request_index_
+             << ": " << rm.name_ << ". Status: " << status.ToString();
 
   string message = RdmaMessage::CreateMessage(rm);
   channel_->tx_message_buffer_->EnqueueItem(message);
@@ -1243,9 +1251,8 @@ void RdmaTensorResponse::SendErrorStatus(const Status& status) {
 }
 
 void RdmaTensorResponse::Destroy() {
-  bool res = false;
   if (src_buffer_ != nullptr) {
-    res = src_buffer_->Unref();
+    src_buffer_->Unref();
   }
   if (tensor_ != nullptr) {
     delete tensor_;
@@ -1329,13 +1336,13 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
     uint32_t gsProtoSize = gsProto.ByteSize();
     if (gsProtoSize + 4 > kErrorStatusMaxSize) {
       LOG(ERROR) << "Error status (" << gsProtoSize + 4 << " bytes) "
-                 << "is too big to fit in RDMA message ("
-                 << kErrorStatusMaxSize << " bytes). Truncated.";
+                 << "is too big to fit in RDMA message (" << kErrorStatusMaxSize
+                 << " bytes). Truncated.";
       gsProtoSize = kErrorStatusMaxSize - 4;
     }
-    *(uint32_t*)&message[kErrorStatusStartIndex] = gsProtoSize;
-    gsProto.SerializeToArray(&message[kErrorStatusStartIndex + 4],
-                             gsProtoSize);
+    uint32_t* proto_size = (uint32_t*)&message[kErrorStatusStartIndex];
+    *proto_size = gsProtoSize;
+    gsProto.SerializeToArray(&message[kErrorStatusStartIndex + 4], gsProtoSize);
     message_size += gsProtoSize + 4;
   }
   return string(message, message_size);
@@ -1385,8 +1392,8 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
   if (rm.type_ == RDMA_MESSAGE_ERROR_STATUS) {
     ErrorStatusProto gsProto;
     uint32_t gsProtoSize = *(uint32_t*)&message[kErrorStatusStartIndex];
-    CHECK(ParseProtoUnlimited(
-        &gsProto, &message[kErrorStatusStartIndex + 4], gsProtoSize))
+    CHECK(ParseProtoUnlimited(&gsProto, &message[kErrorStatusStartIndex + 4],
+                              gsProtoSize))
         << "Failed to parse error status proto from message. Aborting.";
     ::grpc::Status gs((::grpc::StatusCode)gsProto.error_code(),
                       gsProto.error_message(), gsProto.error_details());
@@ -1557,8 +1564,10 @@ void RdmaTensorRequest::AllocateTensorsAsync(StatusCallback done) {
   bool on_host = recv_args_.alloc_attrs.on_host();
   if (dst_dev_->tensorflow_gpu_device_info() && !on_host &&
       (proxy_tensor_ == nullptr)) {
-        // We need to sync the memory allocation on the GPU:
-        StreamGPUOp(dst_dev_, recv_args_.device_context, done);
+#if GOOGLE_CUDA
+    // We need to sync the memory allocation on the GPU:
+    StreamGPUOp(dst_dev_, recv_args_.device_context, done);
+#endif
   } else {
     done(Status::OK());
   }
@@ -1584,9 +1593,8 @@ void RdmaTensorRequest::Send(RdmaMessageType message_type) {
   rm.rkey_ = (mr_ == nullptr) ? 0 : mr_->rkey;
 
   RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
-              << ": Sending  " << MessageTypeToString(message_type)
-              << " #" << index_ << ": "
-              << rm.name_ << " on " << rdma_addr_
+              << ": Sending  " << MessageTypeToString(message_type) << " #"
+              << index_ << ": " << rm.name_ << " on " << rdma_addr_
               << " (rkey: 0x" << std::hex << rm.rkey_ << ")";
 
   string message = RdmaMessage::CreateMessage(rm);
@@ -1600,9 +1608,8 @@ void RdmaTensorRequest::RecvTensorMetaData(DataType dtype, TensorShape shape,
       key_, dtype, shape, is_dead, proto_size);
 
   DeallocateTensors();
-  AllocateTensorsAsync([this](const Status& s) {
-    Send(RDMA_MESSAGE_TENSOR_RE_REQUEST);
-  });
+  AllocateTensorsAsync(
+      [this](const Status& s) { Send(RDMA_MESSAGE_TENSOR_RE_REQUEST); });
 }
 
 void RdmaTensorRequest::RecvTensorContent() {
@@ -1610,8 +1617,8 @@ void RdmaTensorRequest::RecvTensorContent() {
   size_t message_size =
       can_memcpy ? result_tensor_->TotalBytes() : meta_data_->proto_size_;
   RDMA_LOG(1) << "Step 0x" << std::hex << step_id_ << std::dec
-              << ": Received tensor content #" << index_ << ": "
-              << key_ << " (Size: 0x" << std::hex << message_size << ")";
+              << ": Received tensor content #" << index_ << ": " << key_
+              << " (Size: 0x" << std::hex << message_size << ")";
 
   Tensor val;
 
@@ -1657,9 +1664,8 @@ void RdmaTensorRequest::RecvErrorStatus(const Status& status) {
 void RdmaTensorRequest::Start() {
   meta_data_ = RdmaMemoryMgr::Singleton().GetTensorMetaData(key_);
   if (meta_data_ != nullptr) {
-    AllocateTensorsAsync([this](const Status& s) {
-      Send(RDMA_MESSAGE_TENSOR_REQUEST);
-    });
+    AllocateTensorsAsync(
+        [this](const Status& s) { Send(RDMA_MESSAGE_TENSOR_REQUEST); });
   } else {
     Send(RDMA_MESSAGE_TENSOR_REQUEST);
   }

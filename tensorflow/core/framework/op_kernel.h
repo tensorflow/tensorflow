@@ -75,6 +75,14 @@ class OpKernel {
   // OpKernel won't be instantiated by the scheduler, so you may perform
   // expensive initialization in the descendant's constructor.
   explicit OpKernel(OpKernelConstruction* context);
+
+  // Specialized constructor that enables the descendant to provide a different
+  // `NodeDef` value. For example, this constructor can be used to provide a
+  // stripped-down `NodeDef` that does not contain the full set of attrs (such
+  // as tensor values) if the descendant stores them in a different form.
+  explicit OpKernel(OpKernelConstruction* context,
+                    std::unique_ptr<const NodeDef> node_def);
+
   virtual ~OpKernel();
 
   // An OpKernel's computation can be either synchronous or
@@ -316,8 +324,10 @@ class OpKernelConstruction {
   int graph_def_version() const { return graph_def_version_; }
 
   // Helper routines for the OP_REQUIRES macros
-  void CtxFailure(Status s);
-  void CtxFailureWithWarning(Status s);
+  void CtxFailure(const Status& s);
+  void CtxFailureWithWarning(const Status& s);
+  void CtxFailure(const char* file, int line, const Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const Status& s);
 
   // Unrecommended functions: these are functions that have some
   // current uses but are not recommended for use, and may go away at
@@ -899,9 +909,13 @@ class OpKernelContext {
   }
 
   AllocatorAttributes input_alloc_attr(int index) const {
-    DCHECK_GE(index, 0);
-    DCHECK_LT(index, params_->input_alloc_attrs->size());
-    return (*params_->input_alloc_attrs)[index];
+    if (params_->input_alloc_attrs == nullptr) {
+      return AllocatorAttributes();
+    } else {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, params_->input_alloc_attrs->size());
+      return (*params_->input_alloc_attrs)[index];
+    }
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {
@@ -1014,8 +1028,10 @@ class OpKernelContext {
   }
 
   // Helper routines for the OP_REQUIRES macros
-  void CtxFailure(Status s);
-  void CtxFailureWithWarning(Status s);
+  void CtxFailure(const Status& s);
+  void CtxFailureWithWarning(const Status& s);
+  void CtxFailure(const char* file, int line, const Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const Status& s);
 
   // Unrecommended functions: these are functions that have some
   // current uses but are not recommended for use, and may go away at
@@ -1030,24 +1046,27 @@ class OpKernelContext {
   TensorValue release_output(int index);
 
   bool track_allocations() const { return params_->track_allocations; }
-  bool allocate_on_host(AllocatorAttributes alloc_attr) const;
 
-  // Records temporary memory sizes.
-  void record_temp_memory_size(int64 size) { temp_memory_size_ += size; }
+  // Records temp memory allocation. Tensor object is recorded to identify the
+  // case where temp memory is used as output memory.
+  void record_temp_memory_allocation(int64 size, const Tensor& t)
+      LOCKS_EXCLUDED(stats_mu_);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_size() const { return temp_memory_size_; }
+  int64 temp_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
-  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1);
+  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
+      LOCKS_EXCLUDED(stats_mu_);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const {
-    return persistent_memory_allocated_;
-  }
+  int64 persistent_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
 
-  std::vector<int64> persistent_alloc_ids() const;
+  std::vector<int64> persistent_alloc_ids() const LOCKS_EXCLUDED(stats_mu_);
+
+  // Resets counters for temp and persistent memory and recorded ids.
+  void clear_recorded_memory() LOCKS_EXCLUDED(stats_mu_);
 
   bool input_is_ref(int index) const;
 
@@ -1092,9 +1111,15 @@ class OpKernelContext {
 
   bool is_output_dead_ = false;
 
-  int64 temp_memory_size_;
-  gtl::InlinedVector<int64, 2> persistent_alloc_ids_;
-  int64 persistent_memory_allocated_;
+  // The following data members are only used when allocation tracking is
+  // enabled.
+  mutable mutex stats_mu_;
+  int64 temp_memory_allocated_ GUARDED_BY(stats_mu_);
+  int64 persistent_memory_allocated_ GUARDED_BY(stats_mu_);
+  std::unique_ptr<gtl::InlinedVector<std::pair<const void*, int64>, 2>>
+      temp_tensor_buffer_and_size_ GUARDED_BY(stats_mu_);
+  std::unique_ptr<gtl::InlinedVector<int64, 2>> persistent_alloc_ids_
+      GUARDED_BY(stats_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1476,40 +1501,40 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 //   ...
 // }
 
-#define OP_REQUIRES(CTX, EXP, STATUS) \
-  do {                                \
-    if (!TF_PREDICT_TRUE(EXP)) {      \
-      (CTX)->CtxFailure((STATUS));    \
-      return;                         \
-    }                                 \
+#define OP_REQUIRES(CTX, EXP, STATUS)                  \
+  do {                                                 \
+    if (!TF_PREDICT_TRUE(EXP)) {                       \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
+      return;                                          \
+    }                                                  \
   } while (0)
 
-#define OP_REQUIRES_OK(CTX, ...)          \
-  do {                                    \
-    ::tensorflow::Status _s(__VA_ARGS__); \
-    if (!TF_PREDICT_TRUE(_s.ok())) {      \
-      (CTX)->CtxFailureWithWarning(_s);   \
-      return;                             \
-    }                                     \
+#define OP_REQUIRES_OK(CTX, ...)                            \
+  do {                                                      \
+    ::tensorflow::Status _s(__VA_ARGS__);                   \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      return;                                               \
+    }                                                       \
   } while (0)
 
-#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \
-  do {                                                \
-    if (!TF_PREDICT_TRUE(EXP)) {                      \
-      (CTX)->CtxFailure((STATUS));                    \
-      (CALLBACK)();                                   \
-      return;                                         \
-    }                                                 \
+#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \
+  do {                                                 \
+    if (!TF_PREDICT_TRUE(EXP)) {                       \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
+      (CALLBACK)();                                    \
+      return;                                          \
+    }                                                  \
   } while (0)
 
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK) \
-  do {                                              \
-    ::tensorflow::Status _s(STATUS);                \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                \
-      (CTX)->CtxFailureWithWarning(_s);             \
-      (CALLBACK)();                                 \
-      return;                                       \
-    }                                               \
+#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
+  do {                                                      \
+    ::tensorflow::Status _s(STATUS);                        \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      (CALLBACK)();                                         \
+      return;                                               \
+    }                                                       \
   } while (0)
 
 }  // namespace tensorflow

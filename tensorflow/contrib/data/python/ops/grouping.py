@@ -45,7 +45,7 @@ def group_by_window(key_func,
     key_func: A function mapping a nested structure of tensors
       (having shapes and types defined by `self.output_shapes` and
       `self.output_types`) to a scalar `tf.int64` tensor.
-    reduce_func: A function mapping a key and a dataset of up to `batch_size`
+    reduce_func: A function mapping a key and a dataset of up to `window_size`
       consecutive elements matching that key to another dataset.
     window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements matching the same key to combine in a single

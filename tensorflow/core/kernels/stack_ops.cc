@@ -42,7 +42,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class Stack : public ResourceBase {
  public:
@@ -242,7 +242,7 @@ REGISTER_KERNEL_BUILDER(Name("StackV2")
                             .HostMemory("max_size")
                             .HostMemory("handle"),
                         StackOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 class StackPushOp : public AsyncOpKernel {
@@ -274,11 +274,11 @@ class StackPushOp : public AsyncOpKernel {
     static constexpr int kCopyThreshold = 2048;
     static constexpr double kOccupancy = 0.7;
     if (swap_memory_ && !alloc_attrs.on_host() &&
-        ( std::is_same<Device, GPUDevice>::value
+        (std::is_same<Device, GPUDevice>::value
 #ifdef TENSORFLOW_USE_SYCL
-          || std::is_same<Device, SYCLDevice>::value
-#endif // TENSORFLOW_USE_SYCL
-        ) &&
+         || std::is_same<Device, SYCLDevice>::value
+#endif  // TENSORFLOW_USE_SYCL
+         ) &&
         tensor.TotalBytes() > kCopyThreshold && stack->IsUsefulToSwap(tensor)) {
       DeviceContext* device_ctxt = ctx->op_device_context();
       auto device = static_cast<tensorflow::Device*>(ctx->device());
@@ -391,7 +391,7 @@ REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(bool);
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StackPopOp : public AsyncOpKernel {
  public:
@@ -498,7 +498,7 @@ REGISTER_SYCL_HOST_KERNEL(bool);
 
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StackCloseOp : public OpKernel {
  public:
@@ -526,6 +526,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("StackCloseV2").Device(DEVICE_SYCL).HostMemory("handle"),
     StackCloseOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

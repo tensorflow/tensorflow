@@ -24,6 +24,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
@@ -34,8 +35,6 @@ class Scope(object):
     values: A dict mapping string to gast.Node, containing the value that was
         most recently assigned to the symbol.
   """
-
-  # TODO(mdan): Should rather use a CFG here?
 
   def __init__(self, parent):
     """Create a new scope.
@@ -69,7 +68,7 @@ class Scope(object):
     raise KeyError(name)
 
 
-class TypeInfoResolver(gast.NodeTransformer):
+class TypeInfoResolver(transformer.Base):
   """Annotates symbols with type information where possible.
 
   Nodes currently annotated:
@@ -77,9 +76,9 @@ class TypeInfoResolver(gast.NodeTransformer):
     * Attribute (helps resolve object methods)
   """
 
-  def __init__(self, value_hints):
+  def __init__(self, context):
+    super(TypeInfoResolver, self).__init__(context)
     self.scope = Scope(None)
-    self.value_hints = value_hints
     self.function_level = 0
 
   def visit_FunctionDef(self, node):
@@ -116,20 +115,34 @@ class TypeInfoResolver(gast.NodeTransformer):
     node.orelse = self._visit_block(node.orelse)
     return node
 
+  def _process_function_arg(self, arg_name):
+    str_name = str(arg_name)
+    if self.function_level == 1 and str_name in self.context.arg_types:
+      # Forge a node to hold the type information, so that method calls on
+      # it can resolve the type.
+      type_holder = arg_name.ast()
+      type_string, type_obj = self.context.arg_types[str_name]
+      anno.setanno(type_holder, 'type', type_obj)
+      anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
+      self.scope.setval(arg_name, type_holder)
+
+  def visit_arg(self, node):
+    self._process_function_arg(anno.getanno(node.arg, anno.Basic.QN))
+    return node
+
   def visit_Name(self, node):
     self.generic_visit(node)
+    qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Param):
-      self.scope.setval(node.id, gast.Name(node.id, gast.Load(), None))
-      # TODO(mdan): Member functions should not need type hints.
-      # We could attemp to extract im_class from the live_val annotation.
-      if self.function_level == 1 and node.id in self.value_hints:
-        # Forge a node to hold the type information, so that method calls on
-        # it can resolve the type.
-        type_holder = gast.Name(node.id, gast.Load(), None)
-        type_string, type_obj = self.value_hints[node.id]
-        anno.setanno(type_holder, 'type', type_obj)
-        anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
-        self.scope.setval(node.id, type_holder)
+      self._process_function_arg(qn)
+    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(qn):
+      # E.g. if we had
+      # a = b
+      # then for future references to `a` we should have traced_source = `b`
+      traced_source = self.scope.getval(qn)
+      if anno.hasanno(traced_source, 'type'):
+        anno.setanno(node, 'type', anno.getanno(traced_source, 'type'))
+        anno.setanno(node, 'type_fqn', anno.getanno(traced_source, 'type_fqn'))
     return node
 
   def _process_variable_assignment(self, source, targets):
@@ -148,16 +161,11 @@ class TypeInfoResolver(gast.NodeTransformer):
     for t in targets:
       if isinstance(t, gast.Tuple):
         for i, e in enumerate(t.elts):
-          self.scope.setval(e.id,
-                            gast.Subscript(
-                                source, gast.Index(i), ctx=gast.Store()))
-      elif isinstance(t, gast.Name):
-        self.scope.setval(t.id, source)
-      elif isinstance(t, gast.Attribute):
-        if not (isinstance(t.value, gast.Name) and t.value.id == 'self'):
-          raise ValueError(
-              'Dont know how to handle assignment to attributes of objects'
-              ' other than "self": [%s].%s' % (t.value, t.attr))
+          self.scope.setval(
+              anno.getanno(e, anno.Basic.QN),
+              gast.Subscript(source, gast.Index(i), ctx=gast.Store()))
+      elif isinstance(t, (gast.Name, gast.Attribute)):
+        self.scope.setval(anno.getanno(t, anno.Basic.QN), source)
       else:
         raise ValueError('Dont know how to handle assignment to %s' % t)
 
@@ -173,39 +181,6 @@ class TypeInfoResolver(gast.NodeTransformer):
     self._process_variable_assignment(node.value, node.targets)
     return node
 
-  def visit_Call(self, node):
-    target = node.func
-    if not anno.hasanno(target, 'live_val'):
-      if not isinstance(target, gast.Attribute):
-        # Suspecting this pattern would reach here:
-        #   foo = bar
-        #   foo()
-        raise ValueError('Dont know how to handle dynamic functions.')
-      if not isinstance(target.value, gast.Name):
-        # Possible example of this kind:
-        #   foo = module.Foo()
-        #   foo.bar.baz()
-        # TODO(mdan): This should be doable by using the FQN.
-        raise ValueError('Dont know how to handle object properties yet.')
-      # In the example below, object_source is 'tr.train.Optimizer()':
-      #   opt = tf.train.Optimizer()
-      #   opt.foo()
-      if self.scope.hasval(target.value.id):
-        object_source = self.scope.getval(target.value.id)
-        if not anno.hasanno(object_source, 'type'):
-          raise ValueError('Could not determine type of "%s". Is it dynamic?' %
-                           (target.value.id))
-        anno.setanno(target, 'type', anno.getanno(object_source, 'type'))
-        anno.setanno(target, 'type_fqn', anno.getanno(object_source,
-                                                      'type_fqn'))
-      else:
-        # TODO(mdan): Figure out what could the user do to get past this.
-        raise ValueError('No info on "%s". Is it dynamically built?' %
-                         (target.value.id))
-    self.generic_visit(node)
-    return node
 
-
-def resolve(node, value_hints):
-  assert value_hints is not None
-  return TypeInfoResolver(value_hints).visit(node)
+def resolve(node, context):
+  return TypeInfoResolver(context).visit(node)

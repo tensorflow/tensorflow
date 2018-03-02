@@ -19,28 +19,32 @@ to models defined without using eager execution.
 
 ## Installation
 
-Eager execution is **not** included in the latest release (version 1.4) of
-TensorFlow. To use it, you will need to [build TensorFlow from
-source](https://www.tensorflow.org/install/install_sources) or install the
-nightly builds.
+Eager execution is included in TensorFlow versions 1.5 and above.
+Installation instructions at https://www.tensorflow.org/install/
 
-For example, the nightly builds can be installed using `pip`:
+The contents of this guide are compatible with TensorFlow 1.5. However, if you
+run into bugs that are fixed in source but not the release, you may want to
+either [build from source](https://www.tensorflow.org/install/install_sources)
+or try a nightly build. The nightly builds are available as:
 
--   `pip install tf-nightly` (for CPU-only TensorFlow)
--   `pip install tf-nightly-gpu` (for GPU-enabled TensorFlow)
+- [`pip` packages](https://github.com/tensorflow/tensorflow/blob/master/README.md#installation) and
 
-Or using `docker`, with [Jupyter Notebook](http://jupyter.org/) support:
+- [docker](https://hub.docker.com/r/tensorflow/tensorflow/) images.
+
+For example, to run the latest nightly docker image:
 
 ```sh
-# For CPU-only TensorFlow
+# If you have a GPU, use https://github.com/NVIDIA/nvidia-docker
+docker pull tensorflow/tensorflow:nightly-gpu
+docker run --runtime=nvidia -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
+
+# If you do not have a GPU, use the CPU-only image
 docker pull tensorflow/tensorflow:nightly
 docker run -it -p 8888:8888 tensorflow/tensorflow:nightly
-
-# For GPU-enabled TensorFlow:
-# (Requires https://github.com/NVIDIA/nvidia-docker)
-nvidia-docker pull tensorflow/tensorflow:nightly-gpu
-nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
 ```
+
+And then visit http://localhost:8888 in your browser for a Jupyter notebook
+environment.
 
 ## Getting Started
 
@@ -565,8 +569,8 @@ for i in range(20001):
 print("Loss on test set: %f" % loss(model, data.test.images, data.test.labels).numpy())
 ```
 
-For a more complete example, see
-[`tensorflow/contrib/eager/python/examples/mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
+For a more complete example, see [the example in the tensorflow/models
+repository](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 ### Checkpointing trained variables
 
@@ -855,11 +859,9 @@ eagerly or constructing graphs. This means that you can iteratively develop your
 model with eager execution enabled and later, if needed, use the same code to
 reap the benefits of representing models as computational graphs.
 
-For example,
-[`mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
-defines a model that is eagerly executed. That same code is used to construct
-and execute a graph in
-[`mnist_graph_test.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist_graph_test.py).
+For example, the same model definition used to construct a graph in
+[mnist.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist.py)
+can be trained with eager execution enabled as in [`mnist_eager.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 Other models in the [examples
 directory](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/)

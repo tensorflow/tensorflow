@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/training_ops.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/training_ops.h"
 
 namespace tensorflow {
 
@@ -115,13 +115,11 @@ struct ApplyAdam<GPUDevice, T> {
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
     m.device(d) =
-        m +
-        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-            (grad - m);
+        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+                (grad - m);
     v.device(d) =
-        v +
-        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
-            (grad.square() - v);
+        v + (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+                (grad.square() - v);
 
     if (use_nesterov) {
       var.device(d) -=
@@ -157,9 +155,9 @@ struct ApplyRMSProp<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
-    ms.device(d) = ms +
-                   (rho.constant(one) - rho).reshape(single).broadcast(bcast) *
-                       (grad.square() - ms);
+    ms.device(d) =
+        ms + (rho.constant(one) - rho).reshape(single).broadcast(bcast) *
+                 (grad.square() - ms);
     mom.device(d) =
         mom * momentum.reshape(single).broadcast(bcast) +
         lr.reshape(single).broadcast(bcast) * grad /
@@ -212,7 +210,7 @@ struct ApplyAddSign<GPUDevice, T> {
     auto beta_bcast = beta.reshape(single).broadcast(bcast);
     auto one_minus_beta =
         (beta.constant(one) - beta).reshape(single).broadcast(bcast);
-    m.device(d) =  m * beta_bcast + grad * one_minus_beta;
+    m.device(d) = m * beta_bcast + grad * one_minus_beta;
 
     // The following is the GPU equivalent of the CPU version:
     // var.device(d) -= lr() * (alpha() + sign_decay() * sign_gm) * grad;
@@ -244,7 +242,7 @@ struct ApplyPowerSign<GPUDevice, T> {
     auto beta_bcast = beta.reshape(single).broadcast(bcast);
     auto one_minus_beta =
         (beta.constant(one) - beta).reshape(single).broadcast(bcast);
-    m.device(d) =  m * beta_bcast + grad * one_minus_beta;
+    m.device(d) = m * beta_bcast + grad * one_minus_beta;
 
     // The following is the GPU equivalent of the CPU version:
     // auto grad_scale = (logbase() * sign_decay() * sign_gm).exp();
@@ -253,7 +251,7 @@ struct ApplyPowerSign<GPUDevice, T> {
     auto lr_bcast = lr.reshape(single).broadcast(bcast);
     auto logbase_bcast = logbase.reshape(single).broadcast(bcast);
     auto sign_decay_bcast = sign_decay.reshape(single).broadcast(bcast);
-    auto grad_scale =  (logbase_bcast * sign_decay_bcast * sign_gm).exp();
+    auto grad_scale = (logbase_bcast * sign_decay_bcast * sign_gm).exp();
     var.device(d) -= lr_bcast * grad_scale * grad;
   }
 };

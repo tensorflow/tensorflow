@@ -47,6 +47,8 @@ constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 
+static const Costs::Duration kMinComputeTime(1);
+
 namespace {
 
 string GetDataFormat(const OpInfo& op_features) {
@@ -163,18 +165,20 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
 
-      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kSend, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
+
+      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kStopGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kReshape, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
+
+      {kConst, wrap(&OpLevelCostEstimator::PredictVariable)},
+      {kVariable, wrap(&OpLevelCostEstimator::PredictVariable)},
+      {kVariableV2, wrap(&OpLevelCostEstimator::PredictVariable)},
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
@@ -241,6 +245,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {"Add", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_sum_op<float>>::Cost},
       {"ApproximateEqual", 1},
+      {"BiasAdd", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_sum_op<float>>::Cost},
       {"Div", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"Equal", 1},
@@ -349,6 +355,9 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
   VLOG(1) << "Device: " << device.type() << " gflops: " << gflops
           << " gb_per_sec: " << gb_per_sec;
 
+  DCHECK_LT(0, gflops) << device.DebugString();
+  DCHECK_LT(0, gb_per_sec) << device.DebugString();
+
   return {gflops, gb_per_sec};
 }
 
@@ -404,6 +413,12 @@ Costs OpLevelCostEstimator::PredictCostOfAnUnknownOp(
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
   DeviceInfo device_perf = GetDeviceInfo(op_features.device());
+  if (device_perf.gigaops <= 0 || device_perf.gb_per_sec <= 0) {
+    VLOG(1) << "BAD DEVICE. Op:" << op_features.op()
+            << " device type:" << op_features.device().type()
+            << " device model:" << op_features.device().model();
+  }
+
   Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
           << " Execution Time (ns):" << compute_cost.count();
@@ -429,6 +444,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     costs.execution_time = compute_cost + memory_cost;
   }
   costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
   return costs;
 }
 
@@ -443,10 +459,15 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     const TensorShapeProto& original_image_shape,
     const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
     bool* found_unknown_shapes) {
+  VLOG(2) << "op features: " << op_features.DebugString();
+  VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  VLOG(2) << "Original filter shape: " << original_filter_shape.DebugString();
   auto image_shape =
       MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
   auto filter_shape =
       MaybeGetMinimumShape(original_filter_shape, 4, found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+  VLOG(2) << "Filter shape: " << filter_shape.DebugString();
 
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_features);
@@ -699,24 +720,87 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   return ops;
 }
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto) {
+  tensor_shape_proto->Clear();
+  // First convert TensorProto into Tensor class so that it correctly parses
+  // data values within TensorProto (whether it's in int_val, int64_val,
+  // tensor_content, or anything.
+  Tensor tensor(tensor_proto.dtype());
+  if (!tensor.FromProto(tensor_proto)) {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "failed to parse TensorProto: "
+                 << tensor_proto.DebugString();
+    return false;
+  }
+  if (tensor.dims() != 1) {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "tensor is not 1D: " << tensor.dims();
+    return false;
+  }
+  // Then, convert it back to TensorProto using AsProtoField, which makes sure
+  // the data is in int_val, int64_val, or such repeated data fields, not in
+  // tensor_content.
+  TensorProto temp_tensor;
+  tensor.AsProtoField(&temp_tensor);
+
+#define TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(type)        \
+  do {                                                   \
+    for (const auto& value : temp_tensor.type##_val()) { \
+      tensor_shape_proto->add_dim()->set_size(value);    \
+    }                                                    \
+  } while (0)
+
+  if (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT16 ||
+      tensor.dtype() == DT_INT8 || tensor.dtype() == DT_UINT8) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(int);
+  } else if (tensor.dtype() == DT_INT64) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(int64);
+  } else if (tensor.dtype() == DT_UINT32) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(uint32);
+  } else if (tensor.dtype() == DT_UINT64) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(uint64);
+  } else {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "Unsupported dtype: " << tensor.dtype();
+    return false;
+  }
+#undef TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO
+
+  return true;
+}
+
 // TODO(cliffy): Dedup this method and CountConv2DBackpropFilterOperations.
 int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
 
-  if (op_features.op() != kConv2dBackpropInput) {
-    LOG(ERROR) << "Invalid Operation";
+  DCHECK_EQ(kConv2dBackpropInput, op_features.op());
+
+  if (op_features.inputs_size() < 2) {
+    *found_unknown_shapes = true;
     return ops;
   }
 
-  if (op_features.outputs_size() != 1) {
-    // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropInput op.";
-    return ops;
+  TensorShapeProto input_shape;
+  bool shape_found = false;
+  if (op_features.inputs(0).has_value()) {
+    const TensorProto& value = op_features.inputs(0).value();
+    shape_found = GetTensorShapeProtoFromTensorProto(value, &input_shape);
+  }
+  if (!shape_found && op_features.outputs_size() == 1) {
+    input_shape = op_features.outputs(0).shape();
+    shape_found = true;
+  }
+  if (!shape_found) {
+    // Set the minimum filter size that's feasible.
+    for (int i = 0; i < 4; ++i) {
+      input_shape.add_dim()->set_size(1);
+    }
+    *found_unknown_shapes = true;
   }
 
-  const auto& input_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       input_shape, op_features.inputs(1).shape(), op_features,
       found_unknown_shapes);
@@ -739,18 +823,30 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
-  if (op_features.op() != kConv2dBackpropFilter) {
-    LOG(ERROR) << "Invalid Operation";
-    return ops;
+  DCHECK_EQ(kConv2dBackpropFilter, op_features.op());
+
+  TensorShapeProto filter_shape;
+  bool shape_found = false;
+  if (op_features.inputs_size() >= 2 && op_features.inputs(1).has_value()) {
+    const TensorProto& value = op_features.inputs(1).value();
+    shape_found = GetTensorShapeProtoFromTensorProto(value, &filter_shape);
+  }
+  if (!shape_found && op_features.outputs_size() == 1) {
+    filter_shape = op_features.outputs(0).shape();
+    shape_found = true;
+  }
+  if (!shape_found) {
+    // Set the minimum filter size that's feasible.
+    for (int i = 0; i < 4; ++i) {
+      filter_shape.add_dim()->set_size(1);
+    }
+    *found_unknown_shapes = true;
   }
 
-  if (op_features.outputs_size() != 1) {
-    // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropFilter op.";
+  if (op_features.inputs_size() < 1) {
+    *found_unknown_shapes = true;
     return ops;
   }
-
-  const auto& filter_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_features.inputs(0).shape(), filter_shape, op_features,
       found_unknown_shapes);
@@ -885,6 +981,30 @@ Costs OpLevelCostEstimator::PredictNoOp(const OpContext& op_context) const {
   return Costs::ZeroCosts();
 }
 
+Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
+  const auto& op_features = op_context.op_info;
+  VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
+  Costs result = Costs::ZeroCosts();
+  result.max_memory = CalculateOutputSize(op_features, &result.inaccurate);
+  // Assign the minimum amount of time we can represent to the identity op since
+  // it tends to be really cheap.
+  result.compute_time = kMinComputeTime;
+  result.execution_time = result.compute_time;
+  return result;
+}
+
+Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
+  const auto& op_features = op_context.op_info;
+  VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
+  Costs result = Costs::ZeroCosts();
+  result.persistent_memory =
+      CalculateOutputSize(op_features, &result.inaccurate);
+
+  result.compute_time = kMinComputeTime;
+  result.execution_time = result.execution_time;
+  return result;
+}
+
 Costs OpLevelCostEstimator::PredictBatchMatMul(
     const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
@@ -898,13 +1018,12 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
 
 Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
-  Costs costs;
+  Costs costs = Costs::ZeroCosts();
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
   // Metadata operations are so cheap we assume they take the minimum amount of
   // time we can represent (1 ns).
-  costs.execution_time = 1;
-  costs.compute_time = 1;
-  costs.memory_time = 0;
+  costs.compute_time = kMinComputeTime;
+  costs.execution_time = costs.compute_time;
 
   return costs;
 }

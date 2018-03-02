@@ -61,9 +61,9 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<const HloInstructionMap<string>> function_names,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
@@ -394,7 +394,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
-    llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
+    llvm::JITSymbol sym = jit_->FindCompiledSymbol(entry.second);
     TF_RET_CHECK(sym);
     InsertOrDie(
         &functions, instruction,

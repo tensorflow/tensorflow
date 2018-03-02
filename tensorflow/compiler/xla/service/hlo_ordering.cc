@@ -186,6 +186,22 @@ bool HloOrdering::UseIsBeforeValueDefinition(
     }
   }
 
+  if (use.instruction->opcode() == HloOpcode::kConditional) {
+    const HloInstruction* conditional = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->true_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in TRUE computation";
+      return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->false_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in FALSE computation";
+      return true;
+    }
+  }
+
   VLOG(4) << "  use is not before value";
   return false;
 }
@@ -249,7 +265,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto* computation : module_->computations()) {
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();

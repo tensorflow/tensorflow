@@ -92,10 +92,22 @@ def compute_pi_tracenorm(left_cov, right_cov):
   Returns:
     The computed scalar constant pi for these Kronecker Factors (as a Tensor).
   """
+
+  def _trace(cov):
+    if len(cov.shape) == 1:
+      # Diagonal matrix.
+      return math_ops.reduce_sum(cov)
+    elif len(cov.shape) == 2:
+      # Full matrix.
+      return math_ops.trace(cov)
+    else:
+      raise ValueError(
+          "What's the trace of a Tensor of rank %d?" % len(cov.shape))
+
   # Instead of dividing by the dim of the norm, we multiply by the dim of the
   # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_cov) * right_cov.shape.as_list()[0]
-  right_norm = math_ops.trace(right_cov) * left_cov.shape.as_list()[0]
+  left_norm = _trace(left_cov) * right_cov.shape.as_list()[0]
+  right_norm = _trace(right_cov) * left_cov.shape.as_list()[0]
   return math_ops.sqrt(left_norm / right_norm)
 
 
@@ -201,15 +213,15 @@ class FullFB(FisherBlock):
     self._factor.register_damped_inverse(damping)
 
   def multiply_inverse(self, vector):
-    inverse = self._factor.get_damped_inverse(self._damping)
-    out_flat = math_ops.matmul(inverse, utils.tensors_to_column(vector))
+    vector_flat = utils.tensors_to_column(vector)
+    out_flat = self._factor.left_multiply_inverse(
+        vector_flat, self._damping)
     return utils.column_to_tensors(vector, out_flat)
 
   def multiply(self, vector):
     vector_flat = utils.tensors_to_column(vector)
-    out_flat = (
-        math_ops.matmul(self._factor.get_cov(), vector_flat) +
-        self._damping * vector_flat)
+    out_flat = self._factor.left_multiply(
+        vector_flat, self._damping)
     return utils.column_to_tensors(vector, out_flat)
 
   def full_fisher_block(self):
@@ -265,16 +277,20 @@ class NaiveDiagonalFB(FisherBlock):
 
   def multiply_inverse(self, vector):
     vector_flat = utils.tensors_to_column(vector)
-    out_flat = vector_flat / (self._factor.get_cov() + self._damping)
+    print("vector_flat: %s" % vector_flat)
+    out_flat = self._factor.left_multiply_inverse(
+        vector_flat, self._damping)
+    print("out_flat: %s" % out_flat)
     return utils.column_to_tensors(vector, out_flat)
 
   def multiply(self, vector):
     vector_flat = utils.tensors_to_column(vector)
-    out_flat = vector_flat * (self._factor.get_cov() + self._damping)
+    out_flat = self._factor.left_multiply(
+        vector_flat, self._damping)
     return utils.column_to_tensors(vector, out_flat)
 
   def full_fisher_block(self):
-    return array_ops.diag(array_ops.reshape(self._factor.get_cov(), (-1,)))
+    return self._factor.get_cov()
 
   def tensors_to_compute_grads(self):
     return self._params
@@ -356,8 +372,9 @@ class FullyConnectedDiagonalFB(FisherBlock):
       Tensor of the same shape, corresponding to the inverse Fisher-vector
       product.
     """
-    reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect / (self._factor.get_cov() + self._damping)
+    reshaped_vec = utils.layer_params_to_mat2d(vector)
+    reshaped_out = self._factor.left_multiply_inverse(
+        reshaped_vec, self._damping)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def multiply(self, vector):
@@ -372,8 +389,9 @@ class FullyConnectedDiagonalFB(FisherBlock):
     Returns:
       Tensor of the same shape, corresponding to the Fisher-vector product.
     """
-    reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect * (self._factor.get_cov() + self._damping)
+    reshaped_vec = utils.layer_params_to_mat2d(vector)
+    reshaped_out = self._factor.left_multiply(
+        reshaped_vec, self._damping)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def tensors_to_compute_grads(self):
@@ -457,7 +475,9 @@ class ConvDiagonalFB(FisherBlock):
     self._num_locations = (
         inputs_shape[1] * inputs_shape[2] //
         (self._strides[1] * self._strides[2]))
-    self._damping = normalize_damping(damping, self._num_locations)
+
+    self._damping = (self._num_locations
+                     * normalize_damping(damping, self._num_locations))
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,
@@ -466,12 +486,14 @@ class ConvDiagonalFB(FisherBlock):
 
   def multiply_inverse(self, vector):
     reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect / (self._factor.get_cov() + self._damping)
+    reshaped_out = self._factor.left_multiply_inverse(
+        reshaped_vect, self._damping)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def multiply(self, vector):
     reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect * (self._factor.get_cov() + self._damping)
+    reshaped_out = self._factor.left_multiply(
+        reshaped_vect, self._damping)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def tensors_to_compute_grads(self):
@@ -531,28 +553,24 @@ class KroneckerProductFB(FisherBlock):
     return 1.0
 
   def multiply_inverse(self, vector):
-    left_factor_inv = self._input_factor.get_damped_inverse(self._input_damping)
-    right_factor_inv = self._output_factor.get_damped_inverse(
-        self._output_damping)
     reshaped_vector = utils.layer_params_to_mat2d(vector)
-    reshaped_out = math_ops.matmul(left_factor_inv,
-                                   math_ops.matmul(reshaped_vector,
-                                                   right_factor_inv))
+    reshaped_out = self._output_factor.right_multiply_inverse(
+        reshaped_vector,
+        self._output_damping)
+    reshaped_out = self._input_factor.left_multiply_inverse(
+        reshaped_out, self._input_damping)
     if self._renorm_coeff != 1.0:
       reshaped_out /= math_ops.cast(
           self._renorm_coeff, dtype=reshaped_out.dtype)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def multiply(self, vector):
-    left_factor = self._input_factor.get_cov()
-    right_factor = self._output_factor.get_cov()
     reshaped_vector = utils.layer_params_to_mat2d(vector)
-    reshaped_out = (
-        math_ops.matmul(reshaped_vector, right_factor) +
-        self._output_damping * reshaped_vector)
-    reshaped_out = (
-        math_ops.matmul(left_factor, reshaped_out) +
-        self._input_damping * reshaped_out)
+    reshaped_out = self._output_factor.right_multiply(
+        reshaped_vector,
+        self._output_damping)
+    reshaped_out = self._input_factor.left_multiply(
+        reshaped_out, self._input_damping)
     if self._renorm_coeff != 1.0:
       reshaped_out *= math_ops.cast(
           self._renorm_coeff, dtype=reshaped_out.dtype)
@@ -570,6 +588,74 @@ class KroneckerProductFB(FisherBlock):
     right_factor = self._output_factor.get_cov()
     return self._renorm_coeff * utils.kronecker_product(left_factor,
                                                         right_factor)
+
+
+class EmbeddingKFACFB(KroneckerProductFB):
+  """K-FAC FisherBlock for embedding layers.
+
+  This FisherBlock is similar to EmbeddingKFACFB, except that its
+  input factor is approximated by a diagonal matrix. In the case that each
+  example references exactly one embedding, this approximation is exact.
+
+  Does not support bias parameters.
+  """
+
+  def __init__(self, layer_collection, vocab_size):
+    """Creates a EmbeddingKFACFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      vocab_size: int. Size of vocabulary for this embedding layer.
+    """
+    self._inputs = []
+    self._outputs = []
+    self._vocab_size = vocab_size
+
+    super(EmbeddingKFACFB, self).__init__(layer_collection)
+
+  def instantiate_factors(self, grads_list, damping):
+    """Instantiate Kronecker Factors for this FisherBlock.
+
+    Args:
+      grads_list: List of list of Tensors. grads_list[i][j] is the
+        gradient of the loss with respect to 'outputs' from source 'i' and
+        tower 'j'. Each Tensor has shape [tower_minibatch_size, output_size].
+      damping: 0-D Tensor or float. 'damping' * identity is approximately added
+        to this FisherBlock's Fisher approximation.
+    """
+    # TODO(b/68033310): Validate which of,
+    #   (1) summing on a single device (as below), or
+    #   (2) on each device in isolation and aggregating
+    # is faster.
+    inputs = _concat_along_batch_dim(self._inputs)
+    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+
+    self._input_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.EmbeddingInputKroneckerFactor,  #
+        ((inputs,), self._vocab_size))
+    self._output_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.FullyConnectedKroneckerFactor,  #
+        (grads_list,))
+    self._register_damped_input_and_output_inverses(damping)
+
+  def tensors_to_compute_grads(self):
+    return self._outputs
+
+  def register_additional_minibatch(self, inputs, outputs):
+    """Registers an additional minibatch to the FisherBlock.
+
+    Args:
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to the
+        matrix-multiply.
+      outputs: Tensor of shape [batch_size, output_size]. Layer preactivations.
+    """
+    self._inputs.append(inputs)
+    self._outputs.append(outputs)
+
+  @property
+  def num_registered_minibatches(self):
+    return len(self._inputs)
 
 
 class FullyConnectedKFACBasicFB(KroneckerProductFB):

@@ -101,7 +101,7 @@ bool ResolveConstantStack::Run(Model* model, std::size_t op_index) {
   for (const auto& input : op->inputs) {
     if (IsDiscardableArray(*model, input) &&
         CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
 

@@ -64,8 +64,7 @@ REGISTER_OP("UnpackPath")
 
 class UnpackPath : public OpKernel {
  public:
-  explicit UnpackPath(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit UnpackPath(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     VLOG(1) << "unpack start";
@@ -73,8 +72,8 @@ class UnpackPath : public OpKernel {
     const Tensor& path_values_tensor = context->input(1);
 
     const int32 num_data = static_cast<int32>(path_tensor.shape().dim_size(0));
-    const int32 tree_depth = static_cast<int32>(
-        path_tensor.shape().dim_size(1));
+    const int32 tree_depth =
+        static_cast<int32>(path_tensor.shape().dim_size(1));
 
     const int32 num_nodes = MathUtil::IPow(2, tree_depth) - 1;
 
@@ -107,7 +106,6 @@ class UnpackPath : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnpackPath").Device(DEVICE_CPU),
-                        UnpackPath);
+REGISTER_KERNEL_BUILDER(Name("UnpackPath").Device(DEVICE_CPU), UnpackPath);
 
 }  // namespace tensorflow

@@ -215,5 +215,23 @@ XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
   ComputeAndCompareR2<float>(&builder, {{0, 0}, {0, 0}}, {});
 }
 
+XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<int32>({0, 1});
+  auto rhs = builder.ConstantR1<int32>({1, 1});
+  builder.ConvertElementType(builder.Eq(lhs, rhs), S32);
+
+  ComputeAndCompareR1<int32>(&builder, {0, 1}, {});
+}
+
+XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<int32>({0, 1});
+  auto rhs = builder.ConstantR1<int32>({1, 1});
+  builder.ConvertElementType(builder.Eq(lhs, rhs), F32);
+
+  ComputeAndCompareR1<float>(&builder, {0.0, 1.0}, {});
+}
+
 }  // namespace
 }  // namespace xla

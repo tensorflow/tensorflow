@@ -30,13 +30,13 @@ If you are installing TensorFlow with GPU support using one of the mechanisms
 described in this guide, then the following NVIDIA software must be
 installed on your system:
 
-  * CUDA® Toolkit 8.0. For details, see
+  * CUDA® Toolkit 9.0. For details, see
     [NVIDIA's
     documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/)
     Ensure that you append the relevant Cuda pathnames to the `%PATH%`
     environment variable as described in the NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6.0. For details, see
+  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
+  * cuDNN v7.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
@@ -47,7 +47,7 @@ installed on your system:
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -153,8 +153,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
-TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).

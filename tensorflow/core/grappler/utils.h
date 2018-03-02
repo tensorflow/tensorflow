@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -135,13 +136,16 @@ string AsControlDependency(const string& node);
 
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -163,6 +167,8 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 // Permute the nodes of graph in place according to the permutation.
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 class SimpleGraphView {
  public:

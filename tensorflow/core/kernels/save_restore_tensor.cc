@@ -106,11 +106,11 @@ void SaveTensors(
       OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(
                                   shape_spec, &shape, &slice, &slice_shape));
       OP_REQUIRES(context, slice_shape.IsSameSize(input.shape()),
-                  errors::InvalidArgument("Slice in shape_and_slice "
-                                          "specification does not match the "
-                                          "shape of the tensor to  save: ",
-                                          shape_spec, ", tensor: ",
-                                          input.shape().DebugString()));
+                  errors::InvalidArgument(
+                      "Slice in shape_and_slice "
+                      "specification does not match the "
+                      "shape of the tensor to  save: ",
+                      shape_spec, ", tensor: ", input.shape().DebugString()));
     }
 
 #define WRITER_ADD(T)                                           \

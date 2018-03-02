@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_
+#ifndef TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_
+#define TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_
 
 #include <limits>
 #include <string>
@@ -106,4 +106,4 @@ class RangeDecoder {
 };
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_
+#endif  // TENSORFLOW_CONTRIB_CODER_KERNELS_RANGE_CODER_H_

@@ -44,6 +44,8 @@ class SerializeSparseOp : public OpKernel {
   explicit SerializeSparseOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
+  bool IsExpensive() override;
+
   Status Initialize(Tensor* result);
   Status Serialize(const Tensor& input, T* result);
 
@@ -81,6 +83,21 @@ class SerializeSparseOp : public OpKernel {
     context->set_output(0, serialized_sparse);
   }
 };
+
+// NOTE(mrry): We specialize the IsExpensive() method differently for
+// the string and variant cases, because (i) the string version
+// actually performs memory copies as part of its serialization (and
+// is hence potentially expensive), and (ii) the variant version
+// performs O(1) shallow copies (and hence is much cheaper than
+// dispatching to another thread would be).
+template <>
+bool SerializeSparseOp<string>::IsExpensive() {
+  return true;
+}
+template <>
+bool SerializeSparseOp<Variant>::IsExpensive() {
+  return false;
+}
 
 template <>
 Status SerializeSparseOp<string>::Initialize(Tensor* result) {
@@ -426,7 +443,6 @@ class DeserializeSparseOp : public OpKernel {
     switch (dtype_) {
       TF_CALL_ALL_TYPES(HANDLE_TYPE);
       TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-      TF_CALL_variant(HANDLE_TYPE);
 #undef HANDLE_TYPE
       default:
         OP_REQUIRES(context, false,

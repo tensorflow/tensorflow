@@ -100,6 +100,8 @@ template <class InputDataT,
                   desired_shape.size(), "."));
 
   bool found = false;
+  const auto& input_tensor_shape = input_tensor.shape();
+
   for (int i = 0; i < rank; ++i) {
     // if (desired_shape(i) < 1) {
     if (desired_shape[i] < 1) {
@@ -111,6 +113,15 @@ template <class InputDataT,
       adjustable_dimension = i;
       found = true;
     } else {
+      OP_REQUIRES(
+          context, desired_shape[i] >= input_tensor_shape.dim_size(i),
+          tensorflow::errors::InvalidArgument(
+              "periodic_resample expects the size of non-adjustable "
+              "dimensions be at least as large as size of input tensor."
+              " Dimension ",
+              i, " input tensor has size ", input_tensor_shape.dim_size(i),
+              ", desired shape has size ", desired_shape[i], "."));
+
       // target_dimensions[i] = desired_shape(i);
       target_dimensions[i] = desired_shape[i];
       new_sliced_size *= target_dimensions[i];

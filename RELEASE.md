@@ -1,9 +1,98 @@
+# Release 1.6.0
+
+## Breaking Changes
+* Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
+* Prebuilt binaries will use AVX instructions. This may break TF on older CPUs.
+
+## Major Features And Improvements
+* New Optimizer internal API for non-slot variables. Descendants of AdamOptimizer that access _beta[12]_power will need to be updated.
+* `tf.estimator.{FinalExporter,LatestExporter}` now export stripped SavedModels. This improves forward compatibility of the SavedModel.
+* FFT support added to XLA CPU/GPU.
+
+## Bug Fixes and Other Changes
+* Documentation updates:
+  * Added a second version of Getting Started, which is aimed at ML
+newcomers.
+  * Clarified documentation on `resize_images.align_corners` parameter.
+  * Additional documentation for TPUs.
+* Google Cloud Storage (GCS):
+  * Add client-side throttle.
+  * Add a `FlushCaches()` method to the FileSystem interface, with an implementation for GcsFileSystem.
+* Other:
+  * Add `tf.contrib.distributions.Kumaraswamy`.
+  * `RetryingFileSystem::FlushCaches()` calls the base FileSystem's `FlushCaches()`.
+  * Add `auto_correlation` to distributions.
+  * Add `tf.contrib.distributions.Autoregressive`.
+  * Add SeparableConv1D layer.
+  * Add convolutional Flipout layers.
+  * When both inputs of `tf.matmul` are bfloat16, it returns bfloat16, instead of float32.
+  * Added `tf.contrib.image.connected_components`.
+  * Add `tf.contrib.framework.CriticalSection` that allows atomic variable access.
+  * Output variance over trees predictions for classifications tasks.
+  * For `pt` and `eval` commands, allow writing tensor values to filesystem as numpy files.
+  * gRPC: Propagate truncated errors (instead of returning gRPC internal error).
+  * Augment `parallel_interleave` to support 2 kinds of prefetching.
+  * Improved XLA support for C64-related ops log, pow, atan2, tanh.
+  * Add probabilistic convolutional layers.
+
+## API Changes
+* Introducing `prepare_variance` boolean with default setting to False for backward compatibility.
+* Move `layers_dense_variational_impl.py` to `layers_dense_variational.py`.
+
+## Known Bugs
+* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
+  `CUDA_ILLEGAL_ADDRESS` failures.
+
+  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
+  and CUDA 9.1 sometimes does not properly compute the carry bit when
+  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
+  large_constant]`) into 32-bit arithmetic in SASS.
+
+  As a result, these versions of `ptxas` miscompile most XLA programs which use
+  more than 4GB of temp memory.  This results in garbage results and/or
+  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
+
+  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
+  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
+  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
+  or disable XLA:GPU.
+
+  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
+  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, Ag Ramesh, Aiden Scandella, Akimasa Kimura, Alex Rothberg, Allen Goodman,
+amilioto, Andrei Costinescu, Andrei Nigmatulin, Anjum Sayed, Anthony Platanios,
+Anush Elangovan, Armando Fandango, Ashish Kumar Ram, Ashwini Shukla, Ben, Bhavani Subramanian,
+Brett Koonce, Carl Thomé, cclauss, Cesc, Changming Sun, Christoph Boeddeker, Clayne Robison,
+Clemens Schulz, Clint (Woonhyuk Baek), codrut3, Cole Gerdemann, Colin Raffel, Daniel Trebbien,
+Daniel Ylitalo, Daniel Zhang, Daniyar, Darjan Salaj, Dave Maclachlan, David Norman, Dong--Jian,
+dongsamb, dssgsra, Edward H, eladweiss, elilienstein, Eric Lilienstein, error.d, Eunji Jeong, fanlu,
+Florian Courtial, fo40225, Fred, Gregg Helt, Guozhong Zhuang, Hanchen Li, hsm207, hyunyoung2,
+ImSheridan, Ishant Mrinal Haloi, Jacky Ko, Jay Young, Jean Flaherty, Jerome, JerrikEph, Jesse
+Kinkead, jfaath, Jian Lin, jinghuangintel, Jiongyan Zhang, Joel Hestness, Joel Shor, Johnny Chan,
+Julian Niedermeier, Julian Wolff, JxKing, K-W-W, Karl Lessard, Kasper Marstal, Keiji Ariyama,
+Koan-Sin Tan, Loki Der Quaeler, Loo Rong Jie, Luke Schaefer, Lynn Jackson, ManHyuk, Matt Basta,
+Matt Smith, Matthew Schulkind, Michael, michaelkhan3, Miguel Piedrafita, Mikalai Drabovich,
+Mike Knapp, mjwen, mktozk, Mohamed Aly, Mohammad Ashraf Bhuiyan, Myungjoo Ham, Naman Bhalla,
+Namrata-Ibm, Nathan Luehr, nathansilberman, Netzeband, Niranjan Hasabnis, Omar Aflak, Ozge
+Yalcinkaya, Parth P Panchal, patrickzzy, Patryk Chrabaszcz, Paul Van Eck, Paweł Kapica, Peng Yu,
+Philip Yang, Pierre Blondeau, Po-Hsien Chu, powderluv, Puyu Wang, Rajendra Arora, Rasmus, Renat
+Idrisov, resec, Robin Richtsfeld, Ronald Eddy Jr, Sahil Singh, Sam Matzek, Sami Kama, sandipmgiri,
+Santiago Castro, Sayed Hadi Hashemi, Scott Tseng, Sergii Khomenko, Shahid, Shengpeng Liu, Shreyash
+Sharma, Shrinidhi Kl, Simone Cirillo, simsicon, Stanislav Levental, starsblinking, Stephen Lumenta,
+Steven Hickson, Su Tang, Taehoon Lee, Takuya Wakisaka, Ted Chang, Ted Ying, Tijmen Verhulsdonck,
+Timofey Kondrashov, vade, vaibhav, Valentin Khrulkov, vchigrin, Victor Costan, Viraj Navkal,
+Vivek Rane, wagonhelm, Yan Facai (颜发才), Yanbo Liang, Yaroslav Bulatov, yegord, Yong Tang,
+Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, 田传武
+
 # Release 1.5.0
 
 ## Breaking Changes
-* Prebuilt binaries are now built against CUDA 9 and cuDNN 7.
-* Our Linux binaries are built using ubuntu 16 containers, potentially
-  introducing glibc incompatibility issues with ubuntu 14.
+* Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
 * Starting from 1.6 release, our prebuilt binaries will use AVX instructions.
   This may break TF on older CPUs.
 
@@ -12,7 +101,7 @@
   preview version is now available.
 * [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
   dev preview is now available.
-* CUDA 9 and cuDNN 7 support.
+* CUDA 9.0 and cuDNN 7 support.
 * Accelerated Linear Algebra (XLA):
   * Add `complex64` support to XLA compiler.
   * `bfloat` support is now added to XLA infrastructure.
@@ -125,6 +214,27 @@
 * Minor refactor: move stats files from `stochastic` to `common` and remove
   `stochastic`.
 
+## Known Bugs
+* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
+  `CUDA_ILLEGAL_ADDRESS` failures.
+
+  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
+  and CUDA 9.1 sometimes does not properly compute the carry bit when
+  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
+  large_constant]`) into 32-bit arithmetic in SASS.
+
+  As a result, these versions of `ptxas` miscompile most XLA programs which use
+  more than 4GB of temp memory.  This results in garbage results and/or
+  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
+
+  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
+  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
+  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
+  or disable XLA:GPU.
+
+  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
+  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -160,7 +270,7 @@ answered questions, and were part of inspiring discussions.
 # Release 1.4.1
 
 ## Bug Fixes and Other Changes
-* `LinearClassifier` fix for CloudML Engine.
+* `LinearClassifier` fix.
 
 # Release 1.4.0
 
@@ -523,7 +633,7 @@ answered questions, and were part of inspiring discussions.
 * Fixed LIBXSMM integration.
 * Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
 * Improve implicit broadcasting lowering.
-* Improving stability of GCS/Bigquery clients by a faster retrying of stale transmissions.
+* Improving stability of GCS/BigQuery clients by a faster retrying of stale transmissions.
 * Remove OpKernelConstruction::op_def() as part of minimizing proto dependencies.
 * VectorLaplaceDiag distribution added.
 * Android demo no longer requires libtensorflow_demo.so to run (libtensorflow_inference.so still required)

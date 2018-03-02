@@ -28,17 +28,17 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   auto* op = static_cast<RangeOperator*>(base_op);
 
   CHECK_EQ(op->inputs.size(), 3);
-  const auto& start_array = *model->arrays[op->inputs[0]];
+  const auto& start_array = model->GetArray(op->inputs[0]);
   if (!start_array.has_shape()) {
     // Yield until all input dims have been resolved.
     return false;
   }
-  const auto& limit_array = *model->arrays[op->inputs[1]];
+  const auto& limit_array = model->GetArray(op->inputs[1]);
   if (!limit_array.has_shape()) {
     // Yield until all input dims have been resolved.
     return false;
   }
-  const auto& delta_array = *model->arrays[op->inputs[2]];
+  const auto& delta_array = model->GetArray(op->inputs[2]);
   if (!delta_array.has_shape()) {
     // Yield until all input dims have been resolved.
     return false;
@@ -52,7 +52,7 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   }
 
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
     return false;
@@ -87,15 +87,15 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   // Delete the input array if no longer used
   if (IsDiscardableArray(*model, op->inputs[0]) &&
       CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->arrays.erase(op->inputs[0]);
+    model->EraseArray(op->inputs[0]);
   }
   if (IsDiscardableArray(*model, op->inputs[1]) &&
       CountOpsWithInput(*model, op->inputs[1]) == 1) {
-    model->arrays.erase(op->inputs[1]);
+    model->EraseArray(op->inputs[1]);
   }
   if (IsDiscardableArray(*model, op->inputs[2]) &&
       CountOpsWithInput(*model, op->inputs[2]) == 1) {
-    model->arrays.erase(op->inputs[2]);
+    model->EraseArray(op->inputs[2]);
   }
 
   // Delete the operator

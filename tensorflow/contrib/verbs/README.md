@@ -25,9 +25,9 @@ The design is based on TensorFlow r1.0. An RDMA path is added between servers fo
 During the server setup, an RDMA manager is created to manage low-level RDMA components such as RDMA channel and RDMA adapter, an RDMA rendezvous manager is created to oversee send/recv operations between servers. Following the distributed TensorFlow design philosophy, the send operation is passive, i.e. merely placing a tensor in the local out-going table. It is the receive operation that actually initiates the tensor transfer.
 
 TensorFlow dynamically allocates memory for tensors that are to be sent or received. This causes difficulty for RDMA operations where pinned memory is required. Few remedies are possible:
-1. The memory is pinned, transfered, then unpinned for each and every tensor to be transferred. This incurs significant operation overhead since pinning and unpinning memory for each dynamically generated tensor is slow. 
+1. The memory is pinned, transferred, then unpinned for each and every tensor to be transferred. This incurs significant operation overhead since pinning and unpinning memory for each dynamically generated tensor is slow. 
 2. Buffer is pre-allocated and pinned for each tensor. This incurs large memory overhead and extra copying from the tensor to its pinned buffer, but may still be faster than the former.
-3. Following HKUST research on the use of GPU direct, and their [GDR implementation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/gdr/README.md), there is a smart way to benefit from the TensorFlow allocation theme which is mostly pool based, i.e allocators pre-allocate a large memory block, and allocate the tensors from there. By attaching a custom Visitor to relevant alloactors, we can do a single registration of the entire memory block, which zeros the registration overhead. Once the block is registered, each new tensor allocated will be at a registred address, which will allow us to do direct RDMA writes to it.
+3. Following HKUST research on the use of GPU direct, and their [GDR implementation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/gdr/README.md), there is a smart way to benefit from the TensorFlow allocation theme which is mostly pool based, i.e allocators pre-allocate a large memory block, and allocate the tensors from there. By attaching a custom Visitor to relevant allocators, we can do a single registration of the entire memory block, which zeros the registration overhead. Once the block is registered, each new tensor allocated will be at a registered address, which will allow us to do direct RDMA writes to it.
 
 For best performance, we will adopt HKUST 0 copies approach in our solution. This means:
 
@@ -77,7 +77,7 @@ When the receiver receives the **RDMA_MESSAGE_META_DATA_RESPONSE**, it will loca
 
 1. Update the local meta-data cache.
 2. Reallocate the result/proxy tensors. 
-3. Re-send the tensor request. For tracability, the new message has a different name: **RDMA_MESSAGE_TENSOR_RE_REQUEST**.
+3. Re-send the tensor request. For traceability, the new message has a different name: **RDMA_MESSAGE_TENSOR_RE_REQUEST**.
 
 When the sender receives a **RDMA_MESSAGE_TENSOR_RE_REQUEST**, it will locate the relevant **RdmaTensorResponse** using the request index specified in the message, and invoke its **Resume()** method, which will RDMA write the contents of the tensor that was cloned earlier, to the new remote address specified in the re-request.
 
@@ -93,7 +93,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 
 1. When the sender receives a tensor request, the source tensor may or may not be ready yet. The situation is handled through a process of tag matching:
 	* If the request arrives before the tensor is ready, then a callback is put in a local table, and will be invoked once the tensor arrives.
-	* If the tensor is ready before the request arives, than the tensor is put in a local table. When the request arrives, it will invoke the callback immediatly.
+	* If the tensor is ready before the request arives, than the tensor is put in a local table. When the request arrives, it will invoke the callback immediately.
    In code it is done by calling **RecvLocalAsync()**, which receives the tensor's key, step-id, and the callback.
 2. When the callback is invoked, the relevant tensor is removed from the tag matching table. In the case where we need to send the tensor's meta-data, the **RdmaTensorResponse** will store a copy of the tensor until the re-request arrives.
 3. The sending of protocol messages (**RDMA_MESSAGE_TENSOR_REQUEST**, **RDMA_MESSAGE_META_DATA_RESPONSE** and **RDMA_MESSAGE_TENSOR_RE_REQUEST**) is done by the class **RdmaMessageBuffer**. All messages are sent using RDMA writes from/to fixed messages buffers. This implies that we cannot send on a specific channel more than one message at a time. In order to synchronize the messages, the **RdmaMessageBuffer** holds the a local and remote buffer statuses which can be either busy or idle. When a write is issued, both statuses will be changed to busy. When the write-complete event is received, the local status is changed to idle. When the write is received on the remote side, the remote side will parse the message, and return an ACK back to the sending side on which the sending side will update the remote status to idle. When both the local and remote statuses are idle, the next message can be sent.
@@ -115,7 +115,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 		* Reallocate the result tensor (and proxy tensor if required).
 		* Re-send the request to the remote side.
 	* **RecvTensorContent()**    - Receive tensor content from the remote side (RDMA write was completed).
-		* Decode proto if required and/or move to GPU if the content was not written to it directly (GPU direct is not avaliable).
+		* Decode proto if required and/or move to GPU if the content was not written to it directly (GPU direct is not available).
 		* Invoke the done callback.
 * **class RdmaTensorResponse**   - Holds and manages information for a single tensor response throughout the entire send cycle. API:
 	* **Start()**                - Start the response sequence. 
@@ -153,7 +153,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 	* request_index - Request index.
 	* is_dead/data_type/tensor_shape/tensor_bytes - The up-to-date meta-data.
 	* checksum - In data validation mode, this will hold the checksum of the source tensor.
-* **RDMA_MESSAGE_TENSOR_RE_REQUEST** - (receiver ==> sender) Tensor re-requset after meta-data update and reallocation of result/proxy tensors.
+* **RDMA_MESSAGE_TENSOR_RE_REQUEST** - (receiver ==> sender) Tensor re-request after meta-data update and reallocation of result/proxy tensors.
 	* type - The message type.
 	* name (name_size) - Name of the requested tensor.
 	* step_id - Step ID.

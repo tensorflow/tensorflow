@@ -173,30 +173,32 @@ description: "Description\nfor Op1."
   OpDef op;
   protobuf::TextFormat::ParseFromString(op_text, &op);  // NOLINT
 
-  const string expected_api_def = R"(graph_op_name: "Op1"
-in_arg {
-  name: "a"
-  description: <<END
+  const string expected_api_def = R"(op {
+  graph_op_name: "Op1"
+  in_arg {
+    name: "a"
+    description: <<END
 Description for a.
 END
-}
-out_arg {
-  name: "output"
-  description: <<END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
 Description for output.
 END
-}
-attr {
-  name: "b"
-  description: <<END
+  }
+  attr {
+    name: "b"
+    description: <<END
 Description for b.
 END
-}
-summary: "Summary for Op1."
-description: <<END
+  }
+  summary: "Summary for Op1."
+  description: <<END
 Description
 for Op1.
 END
+}
 )";
   EXPECT_EQ(expected_api_def, CreateApiDef(op));
 }

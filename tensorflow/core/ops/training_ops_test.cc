@@ -24,7 +24,7 @@ static void TestGradAndIndicesErrorHandling(const ShapeInferenceTestOp& op,
                                             string shape_spec_middle,
                                             const string& shape_spec_end = "") {
   auto shape_spec = [&shape_spec_middle, shape_spec_end](
-      const char* var_spec, const char* grad_indices_spec) {
+                        const char* var_spec, const char* grad_indices_spec) {
     return strings::StrCat(var_spec, ";", shape_spec_middle, ";",
                            grad_indices_spec, shape_spec_end);
   };

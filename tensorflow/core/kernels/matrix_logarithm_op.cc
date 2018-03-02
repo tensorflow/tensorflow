@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-
 namespace tensorflow {
 
 template <class Scalar>
@@ -40,7 +39,8 @@ class MatrixLogarithmOp : public LinearAlgebraOp<Scalar> {
                      MatrixMaps* outputs) final {
     const ConstMatrixMap& input = inputs[0];
     if (input.rows() == 0) return;
-    using Matrix = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+    using Matrix =
+        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     Matrix tmp = input;
     outputs->at(0) = tmp.log();
   }
@@ -53,9 +53,9 @@ class MatrixLogarithmOp : public LinearAlgebraOp<Scalar> {
 // logarithm. If all eigenvalues are positive, then this returns the correct
 // logarithm, however checking for positive definiteness adds significant
 // overhead. Therefore at present we only register this Op for complex types.
-REGISTER_LINALG_OP("MatrixLogarithm",
-                   (MatrixLogarithmOp<complex64>), complex64);
-REGISTER_LINALG_OP("MatrixLogarithm",
-                   (MatrixLogarithmOp<complex128>), complex128);
+REGISTER_LINALG_OP("MatrixLogarithm", (MatrixLogarithmOp<complex64>),
+                   complex64);
+REGISTER_LINALG_OP("MatrixLogarithm", (MatrixLogarithmOp<complex128>),
+                   complex128);
 
 }  // namespace tensorflow

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
+# pylint: disable=unused-import
 """ResNet50 model for Keras.
 
 # Reference:
@@ -31,9 +32,9 @@ import os
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import layers
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import preprocess_input  # pylint: disable=unused-import
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import preprocess_input
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
 from tensorflow.python.keras._impl.keras.layers import BatchNormalization
@@ -45,7 +46,10 @@ from tensorflow.python.keras._impl.keras.layers import GlobalMaxPooling2D
 from tensorflow.python.keras._impl.keras.layers import Input
 from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.models import Model
+from tensorflow.python.keras._impl.keras.utils import layer_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_tf_dim_ordering_tf_kernels.h5'
@@ -78,7 +82,8 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
   x = Activation('relu')(x)
 
   x = Conv2D(
-      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(x)
+      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(
+          x)
   x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
   x = Activation('relu')(x)
 
@@ -92,7 +97,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
 def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
                                                                           2)):
-  """conv_block is the block that has a conv layer at shortcut.
+  """A block that has a conv layer at shortcut.
 
   Arguments:
       input_tensor: input tensor
@@ -100,14 +105,14 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
       filters: list of integers, the filters of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
-      strides: Tuple of integers.
+      strides: Strides for the first conv layer in the block.
 
   Returns:
       Output tensor for the block.
 
-  Note that from stage 3, the first conv layer at main path is with
-  strides=(2,2)
-  And the shortcut should have strides=(2,2) as well
+  Note that from stage 3,
+  the first conv layer at main path is with strides=(2, 2)
+  And the shortcut should have strides=(2, 2) as well
   """
   filters1, filters2, filters3 = filters
   if K.image_data_format() == 'channels_last':
@@ -118,13 +123,14 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   bn_name_base = 'bn' + str(stage) + block + '_branch'
 
   x = Conv2D(
-      filters1, (1, 1), strides=strides,
-      name=conv_name_base + '2a')(input_tensor)
+      filters1, (1, 1), strides=strides, name=conv_name_base + '2a')(
+          input_tensor)
   x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
   x = Activation('relu')(x)
 
   x = Conv2D(
-      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(x)
+      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(
+          x)
   x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
   x = Activation('relu')(x)
 
@@ -132,8 +138,8 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
 
   shortcut = Conv2D(
-      filters3, (1, 1), strides=strides,
-      name=conv_name_base + '1')(input_tensor)
+      filters3, (1, 1), strides=strides, name=conv_name_base + '1')(
+          input_tensor)
   shortcut = BatchNormalization(axis=bn_axis, name=bn_name_base + '1')(shortcut)
 
   x = layers.add([x, shortcut])
@@ -141,6 +147,8 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   return x
 
 
+@tf_export('keras.applications.ResNet50',
+           'keras.applications.resnet50.ResNet50')
 def ResNet50(include_top=True,
              weights='imagenet',
              input_tensor=None,
@@ -152,7 +160,7 @@ def ResNet50(include_top=True,
   Optionally loads weights pre-trained
   on ImageNet. Note that when using TensorFlow,
   for best performance you should set
-  `image_data_format="channels_last"` in your Keras config
+  `image_data_format='channels_last'` in your Keras config
   at ~/.keras/keras.json.
 
   The model and the weights are compatible with both
@@ -164,15 +172,15 @@ def ResNet50(include_top=True,
       include_top: whether to include the fully-connected
           layer at the top of the network.
       weights: one of `None` (random initialization),
-          'imagenet' (pre-training on ImageNet),
-          or the path to the weights file to be loaded.
+            'imagenet' (pre-training on ImageNet),
+            or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or `(3, 224, 224)` (with `channels_first` data format).
-          It should have exactly 3 input channels,
+          It should have exactly 3 inputs channels,
           and width and height should be no smaller than 197.
           E.g. `(200, 200, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -219,15 +227,18 @@ def ResNet50(include_top=True,
   if input_tensor is None:
     img_input = Input(shape=input_shape)
   else:
-    img_input = Input(tensor=input_tensor, shape=input_shape)
-
+    if not K.is_keras_tensor(input_tensor):
+      img_input = Input(tensor=input_tensor, shape=input_shape)
+    else:
+      img_input = input_tensor
   if K.image_data_format() == 'channels_last':
     bn_axis = 3
   else:
     bn_axis = 1
 
-  x = Conv2D(64, (7, 7),
-             strides=(2, 2), padding='same', name='conv1')(img_input)
+  x = Conv2D(
+      64, (7, 7), strides=(2, 2), padding='same', name='conv1')(
+          img_input)
   x = BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
   x = Activation('relu')(x)
   x = MaxPooling2D((3, 3), strides=(2, 2))(x)
@@ -289,4 +300,5 @@ def ResNet50(include_top=True,
     model.load_weights(weights_path)
   elif weights is not None:
     model.load_weights(weights)
+
   return model

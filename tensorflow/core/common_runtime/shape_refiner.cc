@@ -211,14 +211,14 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
-  std::vector<Node*> input_nodes(node->num_inputs());
+  std::vector<const Node*> input_nodes(node->num_inputs());
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
       input_handle_shapes_and_types(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
-    Node* input = e->src();
+    const Node* input = e->src();
     auto it = node_to_context_.find(input);
     if (it == node_to_context_.end()) {
       return errors::FailedPrecondition(

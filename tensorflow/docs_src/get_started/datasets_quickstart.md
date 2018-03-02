@@ -28,8 +28,8 @@ def train_input_fn(features, labels, batch_size):
     # Shuffle, repeat, and batch the examples.
     dataset = dataset.shuffle(1000).repeat().batch(batch_size)
 
-    # Build the Iterator, and return the read end of the pipeline.
-    return dataset.make_one_shot_iterator().get_next()
+    # Return the dataset.
+    return dataset
 ```
 
 Let's look at this more closely.
@@ -40,7 +40,7 @@ This function expects three arguments. Arguments expecting an "array" can
 accept nearly anything that can be converted to an array with `numpy.array`.
 One exception is
 [`tuple`](https://docs.python.org/3/tutorial/datastructures.html#tuples-and-sequences)
-which has special meaning for `Datasets`.
+which, as we will see, has special meaning for `Datasets`.
 
 * `features`: A `{'feature_name':array}` dictionary (or
   [`DataFrame`](https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html))
@@ -73,11 +73,12 @@ Let's walk through the `train_input_fn()`.
 
 ### Slices
 
-In the simplest cases, @{tf.data.Dataset.from_tensor_slices} function takes an
-array and returns a @{tf.data.Dataset} representing slices of the array. For
-example, an array containing the @{$tutorials/layers$mnist training data}
-has a shape of `(60000, 28, 28)`. Passing this to `from_tensor_slices` returns
-a `Dataset` object containing 60000 slices, each one a 28x28 image.
+The function starts by using the @{tf.data.Dataset.from_tensor_slices} function
+to create a @{tf.data.Dataset} representing slices of the array. The array is
+sliced across the first dimension. For example, an array containing the
+@{$tutorials/layers$mnist training data} has a shape of `(60000, 28, 28)`.
+Passing this to `from_tensor_slices` returns a `Dataset` object containing
+60000 slices, each one a 28x28 image.
 
 The code that returns this `Dataset` is as follows:
 
@@ -89,18 +90,24 @@ mnist_ds = tf.data.Dataset.from_tensor_slices(mnist_x)
 print(mnist_ds)
 ```
 
-This will print the following line, showing the @{$programmers_guide/tensors#shapes$shapes} and @{$programmers_guide/tensors#data_types$types} of the items in
-the dataset. Note that the dataset does not know how many items it contains.
+This will print the following line, showing the
+@{$programmers_guide/tensors#shapes$shapes} and
+@{$programmers_guide/tensors#data_types$types} of the items in
+the dataset. Note that a `Dataset` does not know how many items it contains.
 
 ``` None
 <TensorSliceDataset shapes: (28,28), types: tf.uint8>
 ```
 
-The dataset above represents a collection of simple arrays, but datasets are
-much more powerful than this. Datasets transparently handle any nested
-combination of dictionaries or tuples. For example, ensuring that `features`
-is a standard dictionary, you can then convert the dictionary of arrays to
-a `Dataset` of dictionaries as follows:
+The `Dataset` above represents a simple collection of arrays, but datasets are
+much more powerful than this. A `Dataset` can transparently handle any nested
+combination of dictionaries or tuples (or
+[`namedtuple`](https://docs.python.org/2/library/collections.html#collections.namedtuple)
+).
+
+For example after converting the iris `features`
+to a standard python dictionary, you can then convert the dictionary of arrays
+to a `Dataset` of dictionaries as follows:
 
 ``` python
 dataset = tf.data.Dataset.from_tensor_slices(dict(features))
@@ -124,9 +131,9 @@ and `types` of the `Dataset` take on the same structure. This dataset contains
 dictionaries of @{$programmers_guide/tensors#rank$scalars}, all of type
 `tf.float64`.
 
-The first line of `train_input_fn` uses the same functionality, but adds
-another level of structure. It creates a dataset containing
-`(features, labels)` pairs.
+The first line of the iris `train_input_fn` uses the same functionality, but
+adds another level of structure. It creates a dataset containing
+`(features_dict, label)` pairs.
 
 The following code shows that the label is a scalar with type `int64`:
 
@@ -164,14 +171,14 @@ dataset = dataset.shuffle(1000).repeat().batch(batch_size)
 ```
 
 The @{tf.data.Dataset.shuffle$`shuffle`} method uses a fixed-size buffer to
-shuffle the items as they pass through. Setting a `buffer_size` greater than
-the number of examples in the `Dataset` ensures that the data is completely
-shuffled. The Iris data set only contains 150 examples.
+shuffle the items as they pass through. In this case the `buffer_size` is
+greater than the number of examples in the `Dataset`, ensuring that the data is
+completely shuffled (The Iris data set only contains 150 examples).
 
-The @{tf.data.Dataset.repeat$`repeat`} method has the `Dataset` restart when
-it reaches the end. To limit the number of epochss, set the `count` argument.
+The @{tf.data.Dataset.repeat$`repeat`} method restarts the `Dataset` when
+it reaches the end. To limit the number of epochs, set the `count` argument.
 
-The @{tf.data.Dataset.repeat$`batch`} method collects a number of examples and
+The @{tf.data.Dataset.batch$`batch`} method collects a number of examples and
 stacks them, to create batches. This adds a dimension to their shape. The new
 dimension is added as the first dimension. The following code uses
 the `batch` method on the MNIST `Dataset`, from earlier. This results in a
@@ -213,35 +220,16 @@ print(dataset)
 
 ### Return
 
-<!-- TODO(markdaoust) This line can be simplified to "return dataset" -->
+At this point the `Dataset` contains `(features_dict, labels)` pairs.
+This is the format expected by the `train` and `evaluate` methods, so the
+`input_fn` returns the dataset.
 
-The `train`, `evaluate`, and `predict` methods of every Estimator require
-input functions to return a `(features, label)` pair containing
-@{$programmers_guide/tensors$tensorflow tensors}. The `train_input_fn` uses
-the following line to convert the Dataset into the expected format:
+The `labels` can/should be omitted when using the `predict` method.
 
-```python
-# Build the Iterator, and return the read end of the pipeline.
-features_result, labels_result = dataset.make_one_shot_iterator().get_next()
-```
+<!--
+  TODO(markdaoust): link to `input_fn` doc when it exists
+-->
 
-The result is a structure of @{$programmers_guide/tensors$TensorFlow tensors},
-matching the layout of the items in the `Dataset`.
-For an introduction to what these objects are and how to work with them,
-see @{$programmers_guide/low_level_intro}.
-
-``` python
-print((features_result, labels_result))
-```
-
-```None
-({
-    'SepalLength': <tf.Tensor 'IteratorGetNext:2' shape=(?,) dtype=float64>,
-    'PetalWidth': <tf.Tensor 'IteratorGetNext:1' shape=(?,) dtype=float64>,
-    'PetalLength': <tf.Tensor 'IteratorGetNext:0' shape=(?,) dtype=float64>,
-    'SepalWidth': <tf.Tensor 'IteratorGetNext:3' shape=(?,) dtype=float64>},
-Tensor("IteratorGetNext_1:4", shape=(?,), dtype=int64))
-```
 
 ## Reading a CSV File
 
@@ -277,12 +265,9 @@ ds = tf.data.TextLineDataset(train_path).skip(1)
 
 ### Build a csv line parser
 
-Ultimately we will need to parse each of the lines in the dataset, to
-produce the necessary `(features, label)` pairs.
-
 We will start by building a function to parse a single line.
 
-The following `iris_data.parse_line` function acomplishes this taks using the
+The following `iris_data.parse_line` function accomplishes this task using the
 @{tf.decode_csv} function, and some simple python code:
 
 We must parse each of the lines in the dataset in order to generate the

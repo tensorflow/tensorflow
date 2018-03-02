@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -78,8 +79,14 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
+// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : def_(new NodeDef(context->def())),
+    : OpKernel(context,
+               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+
+OpKernel::OpKernel(OpKernelConstruction* context,
+                   std::unique_ptr<const NodeDef> node_def)
+    : def_(std::move(node_def)),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
       input_memory_types_(context->input_memory_types().begin(),
@@ -100,7 +107,8 @@ OpKernel::OpKernel(OpKernelConstruction* context)
 
   // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) && context->device_type() != DeviceType(DEVICE_SYCL);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               context->device_type() != DeviceType(DEVICE_SYCL);
 }
 
 OpKernel::~OpKernel() {}
@@ -252,7 +260,7 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params),
       outputs_(num_outputs),
-      temp_memory_size_(0),
+      temp_memory_allocated_(0),
       persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
@@ -466,7 +474,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     return nullptr;
   }
   // Check that input and output memory types match, i.e.
-  // that they either both live in host or both live in device memmory.
+  // that they either both live in host or both live in device memory.
   if (input_memory_type(input_index) != output_memory_type) {
     return nullptr;
   }
@@ -661,12 +669,11 @@ Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
-  if (track_allocations() && out_temp->TotalBytes() > 0) {
+  if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
-      int64 alloc_size =
-          a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
-      record_temp_memory_size(alloc_size);
+      int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
+      record_temp_memory_allocation(alloc_size, *out_temp);
     }
   }
   return s;
@@ -683,6 +690,15 @@ Status OpKernelContext::allocate_persistent(DataType type,
     *out_persistent = PersistentTensor(persistent);
     if (out_tensor) {
       *out_tensor = out_persistent->AccessTensor(this);
+    }
+    if (track_allocations()) {
+      Tensor* t = out_persistent->AccessTensor(this);
+      Allocator* a = get_allocator(attr);
+      if (a->TracksAllocationSizes()) {
+        int64 alloc_size = a->AllocatedSize(t->tensor_data().data());
+        int64 alloc_id = a->AllocationId(t->tensor_data().data());
+        record_persistent_memory_allocation(alloc_size, alloc_id);
+      }
     }
   }
   return s;
@@ -708,6 +724,22 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_EQ(mutable_output(index), nullptr);
   record_tensor_reference(tensor);
   outputs_[index] = TensorValue(new Tensor(tensor));
+  if (track_allocations() && tensor.TotalBytes() > 0) {
+    mutex_lock l(stats_mu_);
+    if (!temp_tensor_buffer_and_size_) {
+      return;
+    }
+    auto it = std::find_if(temp_tensor_buffer_and_size_->begin(),
+                           temp_tensor_buffer_and_size_->end(),
+                           [&tensor](const std::pair<const void*, int64>& e) {
+                             return e.first == static_cast<const void*>(
+                                                   tensor.tensor_data().data());
+                           });
+    if (it != temp_tensor_buffer_and_size_->end()) {
+      temp_memory_allocated_ -= it->second;
+      temp_tensor_buffer_and_size_->erase(it);
+    }
+  }
 }
 
 void OpKernelContext::set_output_ref(int index, mutex* mu,
@@ -785,19 +817,60 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                               outputs);
 }
 
-bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
-  return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
+void OpKernelContext::record_temp_memory_allocation(int64 size,
+                                                    const Tensor& t) {
+  mutex_lock l(stats_mu_);
+  temp_memory_allocated_ += size;
+  if (!temp_tensor_buffer_and_size_) {
+    temp_tensor_buffer_and_size_.reset(
+        new gtl::InlinedVector<std::pair<const void*, int64>, 2>());
+  }
+  temp_tensor_buffer_and_size_->emplace_back(
+      static_cast<const void*>(t.tensor_data().data()), size);
+}
+
+int64 OpKernelContext::temp_memory_allocated() const {
+  mutex_lock l(stats_mu_);
+  return temp_memory_allocated_;
 }
 
 void OpKernelContext::record_persistent_memory_allocation(int64 size,
                                                           int64 alloc_id) {
+  mutex_lock l(stats_mu_);
   persistent_memory_allocated_ += size;
-  persistent_alloc_ids_.push_back(alloc_id);
+  if (alloc_id >= 0) {
+    if (!persistent_alloc_ids_) {
+      persistent_alloc_ids_.reset(new gtl::InlinedVector<int64, 2>());
+    }
+    persistent_alloc_ids_->push_back(alloc_id);
+  }
+}
+
+int64 OpKernelContext::persistent_memory_allocated() const {
+  mutex_lock l(stats_mu_);
+  return persistent_memory_allocated_;
 }
 
 std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
-  return std::vector<int64>(persistent_alloc_ids_.begin(),
-                            persistent_alloc_ids_.end());
+  mutex_lock l(stats_mu_);
+  if (persistent_alloc_ids_) {
+    return std::vector<int64>(persistent_alloc_ids_->begin(),
+                              persistent_alloc_ids_->end());
+  } else {
+    return std::vector<int64>();
+  }
+}
+
+void OpKernelContext::clear_recorded_memory() {
+  mutex_lock l(stats_mu_);
+  temp_memory_allocated_ = 0;
+  persistent_memory_allocated_ = 0;
+  if (temp_tensor_buffer_and_size_) {
+    temp_tensor_buffer_and_size_->clear();
+  }
+  if (persistent_alloc_ids_) {
+    persistent_alloc_ids_->clear();
+  }
 }
 
 // OpKernel registration ------------------------------------------------------
@@ -940,13 +1013,6 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
-}
-
-Status FindKernelRegistration(const DeviceType& device_type, const Node& node,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
-  return FindKernelRegistration(device_type, node.def(), reg,
-                                was_attr_mismatch);
 }
 
 }  // namespace
@@ -1162,23 +1228,50 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
-void OpKernelConstruction::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelConstruction::CtxFailureWithWarning(Status s) {
+void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const char* file, int line,
+                                      const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
+                                                 const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailureWithWarning(Status s) {
+void OpKernelContext::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                            const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
   SetStatus(s);
 }
 

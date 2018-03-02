@@ -261,12 +261,12 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
       std::vector<int64>* algorithms, bool use_autotune, Tensor* out) {
     using perftools::gputools::blas::AlgorithmConfig;
     using perftools::gputools::blas::ComputationType;
-    using perftools::gputools::blas::ProfileResult;
-    using perftools::gputools::blas::Transpose;
     using perftools::gputools::blas::kDefaultAlgorithm;
     using perftools::gputools::blas::kDefaultBlasGemm;
     using perftools::gputools::blas::kDefaultBlasGemv;
     using perftools::gputools::blas::kNoAlgorithm;
+    using perftools::gputools::blas::ProfileResult;
+    using perftools::gputools::blas::Transpose;
     Transpose trans[] = {Transpose::kNoTranspose, Transpose::kTranspose};
     const uint64 m = a.dim_size(1 - dim_pair[0].first);
     const uint64 k = a.dim_size(dim_pair[0].first);

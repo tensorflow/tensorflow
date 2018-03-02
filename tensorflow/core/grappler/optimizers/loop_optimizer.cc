@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 
 #include <algorithm>
 #include <limits>
@@ -21,7 +22,6 @@ limitations under the License.
 #include <vector>
 #include <deque>
 
-#include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -400,8 +400,7 @@ Status LoopOptimizer::LoopInvariantNodeMotion() {
   return Status::OK();
 }
 
-Status LoopOptimizer::Optimize(Cluster* /*cluster*/,
-                               const GrapplerItem& item,
+Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
@@ -417,10 +416,9 @@ Status LoopOptimizer::Optimize(Cluster* /*cluster*/,
   return Status::OK();
 }
 
-void LoopOptimizer::Feedback(Cluster* /*cluster*/,
-                                   const GrapplerItem& /*item*/,
-                                   const GraphDef& /*optimized_graph*/,
-                                   double /*result*/) {
+void LoopOptimizer::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,
+                             const GraphDef& /*optimized_graph*/,
+                             double /*result*/) {
   // Nothing to do for LoopOptimizer.
 }
 

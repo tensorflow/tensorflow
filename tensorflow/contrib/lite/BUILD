@@ -6,8 +6,11 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
+exports_files(["LICENSE"])
+
 exports_files(glob([
     "testdata/*.bin",
+    "testdata/*.pb",
     "models/testdata/*",
 ]))
 
@@ -23,11 +26,6 @@ config_setting(
     values = {
         "cpu": "mips64",
     },
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
 )
 
 cc_library(
@@ -53,6 +51,8 @@ cc_test(
     srcs = ["arena_planner_test.cc"],
     deps = [
         ":arena_planner",
+        "//tensorflow/contrib/lite/testing:util",
+        "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -107,6 +107,7 @@ cc_library(
     srcs = [
         "allocation.cc",
         "error_reporter.cc",
+        "graph_info.cc",
         "interpreter.cc",
         "model.cc",
         "nnapi_delegate.cc",
@@ -116,6 +117,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "error_reporter.h",
+        "graph_info.h",
         "interpreter.h",
         "model.h",
         "nnapi_delegate.h",
@@ -167,6 +169,22 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test graph utils
+cc_test(
+    name = "graph_info_test",
+    size = "small",
+    srcs = ["graph_info_test.cc"],
+    deps = [
+        ":framework",
+        ":string_util",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -218,18 +236,18 @@ cc_test(
 
 # Model tests
 
-cc_library(
-    name = "models_test_utils",
-    testonly = 1,
-    hdrs = ["models/test_utils.h"],
-    deps = select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "@com_google_absl//absl/strings",
-            "//tensorflow/core:test",
-        ],
-    }),
-)
+#cc_library(
+#    name = "models_test_utils",
+#    testonly = 1,
+#    hdrs = ["models/test_utils.h"],
+#    deps = select({
+#        "//tensorflow:android": [],
+#        "//conditions:default": [
+#            "@com_google_absl//absl/strings",
+#            "//tensorflow/core:test",
+#        ],
+#    }),
+#)
 
 filegroup(
     name = "all_files",

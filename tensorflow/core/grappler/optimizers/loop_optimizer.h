@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -72,4 +72,4 @@ class LoopOptimizer : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LOOP_OPTIMIZER_H_

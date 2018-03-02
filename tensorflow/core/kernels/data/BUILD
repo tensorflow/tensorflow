@@ -44,11 +44,13 @@ tf_kernel_library(
     ],
 )
 
+# TODO(mrry): Remove this empty forwarding library.
 cc_library(
     name = "dataset",
-    srcs = ["dataset.cc"],
+    srcs = [],
     hdrs = ["dataset.h"],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -81,9 +83,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )
@@ -122,6 +122,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -205,6 +206,19 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "generator_dataset_op",
+    srcs = ["generator_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -318,18 +332,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "ignore_errors_dataset_op",
-    srcs = ["ignore_errors_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "stats_dataset_ops",
     srcs = ["stats_dataset_ops.cc"],
     deps = [
@@ -399,6 +401,19 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "tensor_queue_dataset_op",
+    srcs = ["tensor_queue_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -497,18 +512,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "unique_dataset_op",
-    srcs = ["unique_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "dataset_ops",
     deps = [
         ":batch_dataset_op",
@@ -517,8 +520,8 @@ tf_kernel_library(
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
+        ":generator_dataset_op",
         ":group_by_window_dataset_op",
-        ":ignore_errors_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",
@@ -540,8 +543,8 @@ tf_kernel_library(
         ":stats_dataset_ops",
         ":take_dataset_op",
         ":tensor_dataset_op",
+        ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
-        ":unique_dataset_op",
         ":zip_dataset_op",
     ],
 )

@@ -183,7 +183,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               TensorShape component_shape(
                   batch_results_[current_batch_index_].output[i].shape());
               component_shape.set_dim(0, num_elements);
-              Tensor component(cpu_allocator(), output[i].dtype(),
+              Tensor component(ctx->allocator({}), output[i].dtype(),
                                component_shape);
               TF_RETURN_IF_ERROR(
                   CopyPartialBatch(&component, output[i], num_elements));
@@ -244,7 +244,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      void EnsureOutputAllocated(BatchResult* batch_result,
+      void EnsureOutputAllocated(IteratorContext* ctx,
+                                 BatchResult* batch_result,
                                  const std::vector<Tensor>& return_values) {
         mutex_lock l(batch_result->mu);
         if (batch_result->output_allocated) {
@@ -254,7 +255,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({dataset()->batch_size_});
           component_shape.AppendShape(return_values[i].shape());
-          Tensor component(cpu_allocator(), return_values[i].dtype(),
+          Tensor component(ctx->allocator({}), return_values[i].dtype(),
                            component_shape);
           batch_result->output.emplace_back(std::move(component));
         }
@@ -285,10 +286,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               dataset()->captured_func_->RunAsync(
                   ctx, std::move(input_element), &result->return_values,
                   [this, ctx, result, batch_result, offset](Status ret_status) {
-                    delete ctx;
                     result->status.Update(ret_status);
                     if (ret_status.ok()) {
-                      EnsureOutputAllocated(batch_result,
+                      EnsureOutputAllocated(ctx, batch_result,
                                             result->return_values);
                       const size_t num_components =
                           result->return_values.size();
@@ -318,6 +318,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                         }
                       }
                     }
+                    delete ctx;
                     // NOTE(mrry): We clear the return values here to release
                     // any memory associated with them and to paralellize the
                     // destruction of the tensors (which can be surprisingly

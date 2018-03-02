@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _product(t):
@@ -264,6 +265,7 @@ def _compute_gradient_list(x,
   return ret
 
 
+@tf_export("test.compute_gradient")
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -325,6 +327,7 @@ def compute_gradient(x,
     return ret
 
 
+@tf_export("test.compute_gradient_error")
 def compute_gradient_error(x,
                            x_shape,
                            y,

@@ -168,7 +168,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Arg");
+      gnode->set_op(FunctionLibraryDefinition::kArgOp);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -328,7 +328,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Retval");
+      gnode->set_op(FunctionLibraryDefinition::kRetOp);
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", (*ret_index)++, gnode);
@@ -558,9 +558,9 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == "_Arg") {
+    if (n->op() == FunctionLibraryDefinition::kArgOp) {
       arg.push_back(n);
-    } else if (n->op() == "_Retval") {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -1064,26 +1064,36 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveFunction(const string& func) {
+Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
-  DCHECK(i != function_defs_.end());
+  if (i == function_defs_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent function ",
+                                   func);
+  }
   function_defs_.erase(i);
+  return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveGradient(const string& func) {
+Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
-  DCHECK(i != func_grad_.end());
+  if (i == func_grad_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent gradient ",
+                                   func);
+  }
   func_grad_.erase(i);
+  return Status::OK();
 }
 
 void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    RemoveFunction(f);
+    Status s = RemoveFunction(f);
+    DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
-    RemoveGradient(f);
+    Status s = RemoveGradient(f);
+    DCHECK(s.ok());
   }
 }
 
@@ -1264,8 +1274,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

@@ -250,7 +250,8 @@ TEST_F(QuantizedOpTest, QuantizeV2_32Bit) {
   Tensor expected(allocator(), DT_QINT32, TensorShape({element_count}));
   test::FillValues<qint32>(&expected,
                            {
-                               std::numeric_limits<int32>::min(), 0,
+                               std::numeric_limits<int32>::min(),
+                               0,
                                static_cast<int32>(1.0f * (1 << 23)),
                                static_cast<int32>(1.25f * (1 << 23)),
                                static_cast<int32>(1.75f * (1 << 23)),

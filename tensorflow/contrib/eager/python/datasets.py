@@ -112,7 +112,7 @@ class Iterator(object):
         remote_fn.add_to_graph(None)
         target = constant_op.constant("/device:CPU:0")
       with ops.device(self._device):
-        self._buffer_resource_handle = prefetching_ops.function_buffering_resource(
+        self._buffer_resource_handle = prefetching_ops.function_buffering_resource(  # pylint: disable=line-too-long
             string_arg=iter_string_handle,
             f=remote_fn,
             target_device=target,
@@ -120,8 +120,9 @@ class Iterator(object):
             thread_pool_size=1,
             container="",
             shared_name=_generate_shared_name("function_buffer_resource"))
-        self._buffer_resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=self._buffer_resource_handle, handle_device=self._device)
+        self._buffer_resource_deleter = resource_variable_ops.EagerResourceDeleter(  # pylint: disable=line-too-long
+            handle=self._buffer_resource_handle,
+            handle_device=self._device)
 
   def __iter__(self):
     return self
@@ -141,7 +142,12 @@ class Iterator(object):
         # TODO(ashankar): Consider removing this ops.device() contextmanager
         # and instead mimic ops placement in graphs: Operations on resource
         # handles execute on the same device as where the resource is placed.
-        ret = gen_dataset_ops.iterator_get_next(
+        # NOTE(mrry): Here we use the "_sync" variant of `iterator_get_next`
+        # because in eager mode this code will run synchronously on the calling
+        # thread. Therefore we do not need to make a defensive context switch
+        # to a background thread, and can achieve a small constant performance
+        # boost by invoking the iterator synchronously.
+        ret = gen_dataset_ops.iterator_get_next_sync(
             self._resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)

@@ -24,10 +24,6 @@ from tensorflow.contrib.py2tf.pyct import pretty_printer
 from tensorflow.python.platform import test
 
 
-def f(x):
-  return x + 1
-
-
 class PrettyPrinterTest(test.TestCase):
 
   def test_format(self):

@@ -1342,7 +1342,7 @@ class BaseLinearClassifierEvaluationTest(object):
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
           metric_keys.MetricKeys.AUC: 0.,
-          metric_keys.MetricKeys.AUC_PR: 1.,
+          metric_keys.MetricKeys.AUC_PR: 0.5,
       }
     else:
       # Multi classes: loss = 1 * -log ( soft_max(logits)[label] )
@@ -2003,7 +2003,7 @@ class BaseLinearWarmStartingTest(object):
 
     # Create a second LinearClassifier, warm-started from the first.  Use a
     # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
-    # accumulator values that change).  Use a a new FeatureColumn with a
+    # accumulator values that change).  Use a new FeatureColumn with a
     # different vocabulary for occupation.
     new_vocab_list = ['doctor', 'consultant', 'engineer']
     new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,

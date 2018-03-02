@@ -85,6 +85,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:partitioned_variables",
@@ -93,6 +94,8 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:numpy_io",
     ],
 )

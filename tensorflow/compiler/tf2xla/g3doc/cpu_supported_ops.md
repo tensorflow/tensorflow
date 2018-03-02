@@ -6,6 +6,9 @@ Operator                              | Type Constraint
 `Acosh`                               | `T={complex64,double,float}`
 `Add`                                 | `T={complex64,double,float,int32,int64}`
 `AddN`                                | `T={complex64,double,float,int32,int64,uint32,uint64}`
+`AdjustContrastv2`                    |
+`AdjustHue`                           |
+`AdjustSaturation`                    |
 `All`                                 | `Tidx={int32,int64}`
 `Angle`                               | `Tout={double,float}`<br>`T={complex64}`
 `Any`                                 | `Tidx={int32,int64}`
@@ -34,7 +37,7 @@ Operator                              | Type Constraint
 `BroadcastGradientArgs`               | `T={int32,int64}`
 `Cast`                                | `DstT={bool,complex64,double,float,int32,int64,uint32,uint64}`<br>`SrcT={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Ceil`                                | `T={double,float}`
-`Cholesky`                            | `T={complex64,double,float}`
+`Cholesky`                            | `T={double,float}`
 `Complex`                             | `Tout={complex64}`<br>`T={double,float}`
 `ComplexAbs`                          | `Tout={double,float}`<br>`T={complex64}`
 `Concat`                              | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
@@ -68,7 +71,11 @@ Operator                              | Type Constraint
 `Exp`                                 | `T={complex64,double,float}`
 `ExpandDims`                          | `Tdim={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Expm1`                               | `T={complex64,double,float}`
-`Fill`                                | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`ExtractImagePatches`                 | `T={double,float,int32,int64,uint32,uint64}`
+`FFT`                                 |
+`FFT2D`                               |
+`FFT3D`                               |
+`Fill`                                | `index_type={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Floor`                               | `T={double,float}`
 `FloorDiv`                            | `T={complex64,double,float,int32,int64}`
 `FloorMod`                            | `T={double,float,int32,int64}`
@@ -80,6 +87,13 @@ Operator                              | Type Constraint
 `GatherV2`                            | `Taxis={int32,int64}`<br>`Tindices={int32,int64}`<br>`Tparams={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Greater`                             | `T={double,float,int32,int64,uint32,uint64}`
 `GreaterEqual`                        | `T={double,float,int32,int64,uint32,uint64}`
+`HSVToRGB`                            | `T={double,float}`
+`IFFT`                                |
+`IFFT2D`                              |
+`IFFT3D`                              |
+`IRFFT`                               |
+`IRFFT2D`                             |
+`IRFFT3D`                             |
 `Identity`                            | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `IdentityN`                           | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Imag`                                | `Tout={double,float}`<br>`T={complex64}`
@@ -105,11 +119,14 @@ Operator                              | Type Constraint
 `MatMul`                              | `T={complex64,double,float}`
 `MatrixDiag`                          | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `MatrixDiagPart`                      | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`MatrixTriangularSolve`               | `T={complex64,double,float}`
 `Max`                                 | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
 `MaxPool`                             | `T={double,float,int32,int64}`
 `MaxPool3D`                           | `T={float}`
 `MaxPool3DGrad`                       | `TInput={float}`<br>`T={float}`
 `MaxPoolGrad`                         | `T={double,float,int32,int64,uint32,uint64}`
+`MaxPoolGradV2`                       | `T={double,float,int32,int64,uint32,uint64}`
+`MaxPoolV2`                           | `T={double,float,int32,int64}`
 `Maximum`                             | `T={double,float,int32,int64}`
 `Mean`                                | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
 `Min`                                 | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
@@ -131,6 +148,10 @@ Operator                              | Type Constraint
 `PreventGradient`                     | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Prod`                                | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
 `QuantizeAndDequantizeV2`             | `T={double,float}`
+`RFFT`                                |
+`RFFT2D`                              |
+`RFFT3D`                              |
+`RGBToHSV`                            | `T={double,float}`
 `RandomStandardNormal`                | `dtype={float}`
 `RandomUniform`                       | `T={int32,int64}`<br>`dtype={double,float}`
 `RandomUniformInt`                    | `T={int32,int64}`<br>`Tout={int32,int64}`
@@ -146,6 +167,8 @@ Operator                              | Type Constraint
 `Relu6Grad`                           | `T={double,float,int32,int64,uint32,uint64}`
 `ReluGrad`                            | `T={double,float,int32,int64,uint32,uint64}`
 `Reshape`                             | `Tshape={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`ResizeBilinear`                      | `T={double,float,int32,int64}`
+`ResizeBilinearGrad`                  | `T={double,float}`
 `ResourceApplyAdagrad`                | `T={double,float}`
 `ResourceApplyAdam`                   | `T={double,float}`
 `ResourceApplyFtrl`                   | `T={double,float}`
@@ -156,6 +179,7 @@ Operator                              | Type Constraint
 `ResourceGather`                      | `Tindices={int32,int64}`<br>`dtype={complex64,double,float,int32,int64,uint32,uint64}`
 `ResourceStridedSliceAssign`          | `Index={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Reverse`                             | `T={bool,complex64,double,float,int32,int64}`
+`ReverseSequence`                     | `Tlen={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `ReverseV2`                           | `T={bool,complex64,double,float,int32,int64}`<br>`Tidx={int32,int64}`
 `RightShift`                          | `T={int32,int64,uint32,uint64}`
 `Rint`                                | `T={double,float}`

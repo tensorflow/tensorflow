@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
 
 #include <memory>
 
@@ -153,6 +153,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleConditional(HloInstruction* conditional) override;
+
+  Status HandleCall(HloInstruction* call) override;
+
  private:
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
@@ -195,4 +199,4 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_

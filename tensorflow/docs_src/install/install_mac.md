@@ -5,7 +5,11 @@ instructions might also work on other macOS variants, we have only
 tested (and we only support) these instructions on machines meeting the
 following requirements:
 
-  * macOS X 10.11 (El Capitan) or higher
+  * macOS 10.12.6 (Sierra) or higher
+
+Note: There are known, accuracy-affecting numerical issues before macOS 10.12.6
+(Sierra) that are described in
+[GitHub#15933](https://github.com/tensorflow/tensorflow/issues/15933#issuecomment-366331383).
 
 Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
@@ -114,8 +118,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python 2.7, the command to install
      TensorFlow in the active Virtualenv is as follows:
 
-     <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py2-none-any.whl</b></pre>
+     <pre> $ <b>pip install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -237,8 +241,8 @@ take the following steps:
      you are installing TensorFlow for Mac OS and Python 2.7
      issue the following command:
 
-     <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py2-none-any.whl</b> </pre>
+     <pre> $ <b>sudo pip install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -347,7 +351,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -520,7 +524,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl
 </pre>
 
 
@@ -528,5 +532,5 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py2-none-a
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc1-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl
 </pre>

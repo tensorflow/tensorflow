@@ -40,7 +40,7 @@ PARAM_RE = re.compile(r"""
   ((?P<val>[^,\[]*)            # single value: "a" or None
    |
    \[(?P<vals>[^\]]*)\])       # list of values: None or "1,2,3"
-  ($|,)""", re.VERBOSE)
+  ($|,\s*)""", re.VERBOSE)
 
 
 def _parse_fail(name, var_type, value, values):
@@ -357,6 +357,8 @@ class HParams(object):
     hparams.parse_json('{"learning_rate": 0.3, "activations": "relu"}')
   ```
   """
+
+  _HAS_DYNAMIC_ATTRIBUTES = True  # Required for pytype checks.
 
   def __init__(self, hparam_def=None, model_structure=None, **kwargs):
     """Create an instance of `HParams` from keyword arguments.

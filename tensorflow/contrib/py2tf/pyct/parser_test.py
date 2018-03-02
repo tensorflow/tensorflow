@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import textwrap
+
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.platform import test
 
@@ -28,15 +30,16 @@ def f(x):
 
 class ParserTest(test.TestCase):
 
-  def test_parse_object(self):
-    mod = parser.parse_object(f)
+  def test_parse_entity(self):
+    mod, _ = parser.parse_entity(f)
     self.assertEqual('f', mod.body[0].name)
 
   def test_parse_str(self):
-    mod = parser.parse_str("""
+    mod = parser.parse_str(
+        textwrap.dedent("""
         def f(x):
           return x + 1
-    """)
+    """))
     self.assertEqual('f', mod.body[0].name)
 
 

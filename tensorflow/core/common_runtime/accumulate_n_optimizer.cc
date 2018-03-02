@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/node_builder.h"
-
 
 namespace tensorflow {
 namespace {
@@ -44,7 +42,6 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // third-party libraries aren't currently supported.
 class AccumulateNV2RemovePass : public GraphOptimizationPass {
  public:
-
   Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes

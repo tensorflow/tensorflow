@@ -61,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
-
 namespace tensorflow {
 
 namespace {
@@ -472,9 +471,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
 
-  TF_RETURN_IF_ERROR(
-      GetOrCreateExecutors(input_tensor_names, output_names, target_nodes,
-                           &executors_and_keys, &run_state_args));
+  TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
+                                          target_nodes, &executors_and_keys,
+                                          &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -1143,8 +1142,8 @@ Status DirectSession::GetOrCreateExecutors(
     options.debug_options = run_state_args->debug_options;
   }
 
-  std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
+  std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
@@ -1251,7 +1250,7 @@ Status DirectSession::GetOrCreateExecutors(
     item->device = device;
     Executor* executor;
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, partition_graph.release(), &executor));
+        NewLocalExecutor(params, std::move(partition_graph), &executor));
     item->executor.reset(executor);
   }
 

@@ -15,7 +15,7 @@ instructions might also work on other variants, we have only tested
 following requirements:
 
   * Linux, 64-bit, x86
-  * macOS X, Version 10.11 (El Capitan) or higher
+  * macOS X, Version 10.12.6 (Sierra) or higher
 
 
 ## Installation
@@ -38,7 +38,7 @@ enable TensorFlow for C:
          OS="linux" # Change to "darwin" for macOS
          TARGET_DIRECTORY="/usr/local"
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.5.0-rc1.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.6.0-rc1.tar.gz" |
            sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`

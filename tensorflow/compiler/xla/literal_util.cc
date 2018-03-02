@@ -234,7 +234,8 @@ Status Literal::CopySliceFromInternal(
       int64 src_index = linear_index(src_literal.shape(), src_indexes);
       int64 dest_index = linear_index(shape(), dest_indexes);
 
-      StridedCopy(data<NativeT>(), dest_index, stride_config.dest_stride,
+      // `this->` is needed to workaround MSVC bug: #16882
+      StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
                   src_literal.data<NativeT>(), src_index,
                   stride_config.source_stride, stride_config.minor_loop_size);
       return true;
@@ -830,6 +831,16 @@ std::unique_ptr<Literal> Literal::Slice(
             result_literal->Set<float>(indices, value);
           });
       return result_literal;
+    case C64:
+      result_literal->EachCell<complex64>(
+          [&](tensorflow::gtl::ArraySlice<int64> indices, complex64 /*value*/) {
+            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+              new_indices[i] = indices[i] + start_indices[i];
+            }
+            complex64 value = Get<complex64>(new_indices);
+            result_literal->Set<complex64>(indices, value);
+          });
+      return result_literal;
     case S32:
       result_literal->EachCell<int32>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {
@@ -996,6 +1007,49 @@ tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
 
 void Literal::SortSparseElements(const ShapeIndex& shape_index) {
   piece(shape_index).SortSparseElements();
+}
+
+Literal Literal::GetFirstScalarLiteral() const {
+  CHECK(ShapeUtil::IsArray(shape_));
+  CHECK_GT(ShapeUtil::ElementsIn(shape_), 0);
+  switch (shape_.element_type()) {
+    case PRED:
+      return std::move(*Literal::CreateR0<bool>(GetFirstElement<bool>()));
+    // 8 bit types.
+    case S8:
+      return std::move(*Literal::CreateR0<int8>(GetFirstElement<int8>()));
+    case U8:
+      return std::move(*Literal::CreateR0<uint8>(GetFirstElement<uint8>()));
+    // 16 bit types.
+    case BF16:
+      return std::move(
+          *Literal::CreateR0<bfloat16>(GetFirstElement<bfloat16>()));
+    case F16:
+      return std::move(*Literal::CreateR0<half>(GetFirstElement<half>()));
+    case S16:
+      return std::move(*Literal::CreateR0<int16>(GetFirstElement<int16>()));
+    case U16:
+      return std::move(*Literal::CreateR0<uint16>(GetFirstElement<uint16>()));
+    // 32 bit types.
+    case F32:
+      return std::move(*Literal::CreateR0<float>(GetFirstElement<float>()));
+    case S32:
+      return std::move(*Literal::CreateR0<int32>(GetFirstElement<int32>()));
+    case U32:
+      return std::move(*Literal::CreateR0<uint32>(GetFirstElement<uint32>()));
+    // 64 bit types.
+    case C64:
+      return std::move(
+          *Literal::CreateR0<complex64>(GetFirstElement<complex64>()));
+    case F64:
+      return std::move(*Literal::CreateR0<double>(GetFirstElement<double>()));
+    case S64:
+      return std::move(*Literal::CreateR0<int64>(GetFirstElement<int64>()));
+    case U64:
+      return std::move(*Literal::CreateR0<uint64>(GetFirstElement<uint64>()));
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << shape_.element_type();
+  }
 }
 
 void Literal::Piece::SortSparseElements() {
@@ -1247,11 +1301,17 @@ string Literal::ToString(bool print_layout) const {
 
 /* static */ std::unique_ptr<Literal> Literal::MakeTupleOwned(
     std::vector<std::unique_ptr<Literal>> elements) {
-  std::vector<const Literal*> element_ptrs;
+  std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto& element : elements) {
-    element_ptrs.push_back(element.get());
+    element_shapes.push_back(element->shape());
   }
-  return MakeTuple(element_ptrs);
+  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  for (int64 i = 0; i < elements.size(); ++i) {
+    TF_CHECK_OK(
+        literal->MoveFrom(std::move(*elements[i]), /*dest_shape_index=*/{i}));
+  }
+  return literal;
 }
 
 void Literal::EachCellAsString(
@@ -1552,6 +1612,92 @@ bool Literal::IsAllComplex(complex64 value) const {
     default:
       return false;
   }
+}
+
+bool Literal::IsAllFirst() const {
+  for (const auto& pair : pieces_) {
+    const Piece& piece = pair.second;
+    if (!ShapeUtil::IsArray(piece.subshape())) {
+      continue;
+    }
+
+    // Empty shapes are not all the first element since there is no first
+    // element.
+    if (ShapeUtil::HasZeroElements(piece.subshape())) {
+      return false;
+    }
+    auto piece_is_all = [&]() {
+      switch (piece.subshape().element_type()) {
+        case PRED: {
+          auto data = piece.data<bool>();
+          return AllElementsEqualValue<bool>(data, data[0]);
+        }
+        // 8 bit types
+        case S8: {
+          auto data = piece.data<int8>();
+          return AllElementsEqualValue<int8>(data, data[0]);
+        }
+        case U8: {
+          auto data = piece.data<uint8>();
+          return AllElementsEqualValue<uint8>(data, data[0]);
+        }
+        // 16 bit types
+        case BF16: {
+          auto data = piece.data<bfloat16>();
+          return AllElementsEqualValue<bfloat16>(data, data[0]);
+        }
+        case F16: {
+          auto data = piece.data<half>();
+          return AllElementsEqualValue<half>(data, data[0]);
+        }
+        case S16: {
+          auto data = piece.data<int16>();
+          return AllElementsEqualValue<int16>(data, data[0]);
+        }
+        case U16: {
+          auto data = piece.data<uint16>();
+          return AllElementsEqualValue<uint16>(data, data[0]);
+        }
+        // 32 bit types
+        case F32: {
+          auto data = piece.data<float>();
+          return AllElementsEqualValue<float>(data, data[0]);
+        }
+        case U32: {
+          auto data = piece.data<uint32>();
+          return AllElementsEqualValue<uint32>(data, data[0]);
+        }
+        case S32: {
+          auto data = piece.data<int32>();
+          return AllElementsEqualValue<int32>(data, data[0]);
+        }
+        // 64 bit types
+        case C64: {
+          auto data = piece.data<complex64>();
+          return AllElementsEqualValue<complex64>(data, data[0]);
+        }
+        case F64: {
+          auto data = piece.data<double>();
+          return AllElementsEqualValue<double>(data, data[0]);
+        }
+        case S64: {
+          auto data = piece.data<int64>();
+          return AllElementsEqualValue<int64>(data, data[0]);
+        }
+        case U64: {
+          auto data = piece.data<uint64>();
+          return AllElementsEqualValue<uint64>(data, data[0]);
+        }
+        default:
+          return false;
+      }
+    };
+
+    if (!piece_is_all()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool Literal::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {

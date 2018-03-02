@@ -40,8 +40,10 @@ from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("initialize_all_tables")
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -56,6 +58,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
+@tf_export("tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
