@@ -150,9 +150,7 @@ def _dnn_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
-    predictions: A dict of `Tensor` objects.
-    loss: A scalar containing the loss of the step.
-    train_op: The op for training.
+    An `EstimatorSpec` instance.
 
   Raises:
     ValueError: If features has the wrong type.

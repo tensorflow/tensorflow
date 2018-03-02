@@ -28,14 +28,12 @@ limitations under the License.
 #include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -46,36 +44,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
-
-// A simple SymbolResolver that delegates to the host dynamic linker.
-class SimpleResolver : public llvm::LegacyJITSymbolResolver {
- public:
-  explicit SimpleResolver(ExternalConstantPool* external_constant_pool)
-      : external_constant_pool_(external_constant_pool) {}
-
-  llvm::JITSymbol findSymbol(const std::string& name) override {
-    if (const uint8* from_constant_pool =
-            external_constant_pool_->Find(string(name))) {
-      return llvm::JITEvaluatedSymbol(
-          reinterpret_cast<uint64_t>(from_constant_pool),
-          llvm::JITSymbolFlags::None);
-    }
-
-    void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
-    if (func_addr == nullptr) {
-      return nullptr;
-    }
-    llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
-                                         llvm::JITSymbolFlags::None);
-    return symbol_info;
-  }
-  llvm::JITSymbol findSymbolInLogicalDylib(const std::string& name) override {
-    return nullptr;
-  }
-
- private:
-  ExternalConstantPool* external_constant_pool_;
-};
 
 llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -101,27 +69,6 @@ llvm::StringRef GetHostCpuName() {
   cpu_name.consume_back("-avx512");
   return cpu_name;
 }
-
-CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
-  CompilerFunctor::VectorIntrinsics intrinsics;
-#ifdef TF_XLA_HAS_SSE4_1
-  intrinsics.sse_intrinsics = true;
-#else
-  intrinsics.sse_intrinsics = false;
-#endif
-#ifdef TF_XLA_HAS_AVX
-  intrinsics.avx_intrinsics = true;
-#else
-  intrinsics.avx_intrinsics = false;
-#endif
-#ifdef TF_XLA_HAS_NEON
-  intrinsics.neon_intrinsics = true;
-#else
-  intrinsics.neon_intrinsics = false;
-#endif
-  return intrinsics;
-}
-
 }  // namespace
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
@@ -143,41 +90,45 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       execution_session_(string_pool_),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           [this](const std::string& name) -> llvm::JITSymbol {
-            if (const uint8* from_constant_pool =
-                    external_constant_pool_.Find(string(name))) {
-              return llvm::JITEvaluatedSymbol(
-                  reinterpret_cast<uint64_t>(from_constant_pool),
-                  llvm::JITSymbolFlags::None);
-            }
-
-            void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
-            if (func_addr == nullptr) {
-              return nullptr;
-            }
-            llvm::JITEvaluatedSymbol symbol_info(
-                reinterpret_cast<uint64_t>(func_addr),
-                llvm::JITSymbolFlags::None);
-            return symbol_info;
+            return this->ResolveRuntimeSymbol(name);
           },
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(
-          execution_session_,
-          [](llvm::orc::VModuleKey) {
-            return std::make_shared<llvm::SectionMemoryManager>(
-                orc_jit_memory_mapper::GetInstance());
-          },
-          [this](llvm::orc::VModuleKey K) { return symbol_resolver_; }),
-      compile_layer_(
-          object_layer_,
-          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
-                          optimize_for_size, enable_fast_math,
-                          disable_expensive_passes, GetAvailableIntrinsics(),
-                          std::move(pre_optimization_hook),
-                          std::move(post_optimization_hook))) {
+      object_layer_(execution_session_,
+                    [this](llvm::orc::VModuleKey) {
+                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
+                      result.MemMgr =
+                          std::make_shared<llvm::SectionMemoryManager>(
+                              orc_jit_memory_mapper::GetInstance());
+                      result.Resolver = symbol_resolver_;
+                      return result;
+                    }),
+      compile_layer_(object_layer_,
+                     CompilerFunctor(target_machine_.get(), &disassembler_,
+                                     opt_level, optimize_for_size,
+                                     enable_fast_math, disable_expensive_passes,
+                                     std::move(pre_optimization_hook),
+                                     std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
+}
+
+llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
+  if (const uint8* from_constant_pool =
+          external_constant_pool_.Find(string(name))) {
+    return llvm::JITEvaluatedSymbol(
+        reinterpret_cast<uint64_t>(from_constant_pool),
+        llvm::JITSymbolFlags::None);
+  }
+
+  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  if (func_addr == nullptr) {
+    return nullptr;
+  }
+  llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
+                                       llvm::JITSymbolFlags::None);
+  return symbol_info;
 }
 
 SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
@@ -194,19 +145,13 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
   cantFail(compile_layer_.removeModule(key));
 }
 
-llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
-  std::string mangled_name;
-  {
-    llvm::raw_string_ostream mangled_name_stream(mangled_name);
-    llvm::Mangler::getNameWithPrefix(mangled_name_stream, name, data_layout_);
-  }
-
+llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
   for (auto& key :
        llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(key, mangled_name,
+            compile_layer_.findSymbolIn(key, name,
                                         /*ExportedSymbolsOnly=*/true)) {
       return symbol;
     }
@@ -233,25 +178,21 @@ bool RegisterKnownJITSymbols() {
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
-#ifdef TF_XLA_HAS_NEON
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32NEON);
-#endif
-#ifdef TF_XLA_HAS_SSE4_1
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32SSE);
-#endif
-#ifdef TF_XLA_HAS_AVX
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV8F32AVX);
-#endif
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+
+  registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
+  registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 

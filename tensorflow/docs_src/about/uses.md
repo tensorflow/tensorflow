@@ -22,6 +22,14 @@ This section describes some of the current uses of the TensorFlow system.
 > TensorFlow, or even better, send us a pull request to add an entry to this
 > file.
 
+* **Deep Speech**
+<ul>
+   <li>**Organization**: Mozilla</li>
+   <li> **Domain**: Speech Recognition</li>
+   <li> **Description**:  A TensorFlow implementation motivated by Baidu's Deep Speech architecture.</li>
+   <li> **More info**: [GitHub Repo](https://github.com/mozilla/deepspeech)</li>
+</ul>
+
 * **RankBrain**
 <ul>
    <li>**Organization**: Google</li>

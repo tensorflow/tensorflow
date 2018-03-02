@@ -187,6 +187,7 @@ void SingleOpModel::BuildInterpreter(
   for (const auto& shape : input_shapes) {
     int input_idx = interpreter_->inputs()[i++];
     if (input_idx == kOptionalTensor) continue;
+    if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)

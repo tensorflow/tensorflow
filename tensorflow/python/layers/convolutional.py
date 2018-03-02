@@ -1096,10 +1096,10 @@ class SeparableConv1D(_SeparableConv):
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
-      strides = (1, 1) + self.strides + (1,)
+      strides = (1,) + self.strides * 2 + (1,)
       spatial_start_dim = 1
     else:
-      strides = (1, 1, 1) + self.strides
+      strides = (1, 1) + self.strides * 2
       spatial_start_dim = 2
 
     # Explicitly broadcast inputs and kernels to 4D.

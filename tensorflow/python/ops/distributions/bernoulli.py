@@ -22,7 +22,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -137,20 +136,11 @@ class Bernoulli(distribution.Distribution):
       return (array_ops.ones_like(event) * logits,
               array_ops.ones_like(logits) * event)
 
-    # First check static shape.
-    if (event.get_shape().is_fully_defined() and
-        logits.get_shape().is_fully_defined()):
-      if event.get_shape() != logits.get_shape():
-        logits, event = _broadcast(logits, event)
-    else:
-      logits, event = control_flow_ops.cond(
-          distribution_util.same_dynamic_shape(logits, event),
-          lambda: (logits, event),
-          lambda: _broadcast(logits, event))
+    if not (event.get_shape().is_fully_defined() and
+            logits.get_shape().is_fully_defined() and
+            event.get_shape() == logits.get_shape()):
+      logits, event = _broadcast(logits, event)
     return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
-
-  def _prob(self, event):
-    return math_ops.exp(self._log_prob(event))
 
   def _entropy(self):
     return (-self.logits * (math_ops.sigmoid(self.logits) - 1) +

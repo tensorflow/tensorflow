@@ -20,15 +20,17 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops.distributions import beta
 from tensorflow.python.ops.distributions import distribution
-from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import uniform
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -60,7 +62,7 @@ def _harmonic_number(x):
 
 
 @tf_export("distributions.Kumaraswamy")
-class Kumaraswamy(beta.Beta):
+class Kumaraswamy(transformed_distribution.TransformedDistribution):
   """Kumaraswamy distribution.
 
   The Kumaraswamy distribution is defined over the `(0, 1)` interval using
@@ -151,59 +153,32 @@ class Kumaraswamy(beta.Beta):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
+    concentration1 = ops.convert_to_tensor(
+        concentration1, name="concentration1")
+    concentration0 = ops.convert_to_tensor(
+        concentration0, name="concentration0")
     super(Kumaraswamy, self).__init__(
-        concentration1=concentration1,
-        concentration0=concentration0,
-        validate_args=validate_args,
-        allow_nan_stats=allow_nan_stats,
+        distribution=uniform.Uniform(
+            low=array_ops.zeros([], dtype=concentration1.dtype),
+            high=array_ops.ones([], dtype=concentration1.dtype),
+            allow_nan_stats=allow_nan_stats),
+        bijector=bijectors.Kumaraswamy(
+            concentration1=concentration1, concentration0=concentration0,
+            validate_args=validate_args),
+        batch_shape=distribution_util.get_broadcast_shape(
+            concentration1, concentration0),
         name=name)
     self._reparameterization_type = distribution.FULLY_REPARAMETERIZED
 
-  def _sample_n(self, n, seed=None):
-    expanded_concentration1 = array_ops.ones_like(
-        self.total_concentration, dtype=self.dtype) * self.concentration1
-    expanded_concentration0 = array_ops.ones_like(
-        self.total_concentration, dtype=self.dtype) * self.concentration0
-    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
-    uniform_sample = random_ops.random_uniform(
-        shape=shape, minval=0.0, maxval=1.0, dtype=self.dtype, seed=seed)
+  @property
+  def concentration1(self):
+    """Concentration parameter associated with a `1` outcome."""
+    return self.bijector.concentration1
 
-    kumaraswamy_sample = (1 - uniform_sample**(1. / expanded_concentration0))**(
-        1. / expanded_concentration1)
-    return kumaraswamy_sample
-
-  @distribution_util.AppendDocstring(_kumaraswamy_sample_note)
-  def _log_cdf(self, x):
-    a = self.concentration1
-    b = self.concentration0
-    return math_ops.log1p(-(1 - x**a)**b)
-
-  @distribution_util.AppendDocstring(_kumaraswamy_sample_note)
-  def _cdf(self, x):
-    a = self.concentration1
-    b = self.concentration0
-    return 1 - (1 - x**a)**b
-
-  def _survival_function(self, x):
-    a = self.concentration1
-    b = self.concentration0
-    return (1 - x**a)**b
-
-  def _log_survival_function(self, x):
-    a = self.concentration1
-    b = self.concentration0
-    return b * math_ops.log1p(-x**a)
-
-  def _log_unnormalized_prob(self, x):
-    x = self._maybe_assert_valid_sample(x)
-    a = self.concentration1
-    b = self.concentration0
-    return (a - 1) * math_ops.log(x) + (b - 1) * math_ops.log1p(-x**a)
-
-  def _log_normalization(self):
-    a = self.concentration1
-    b = self.concentration0
-    return -(math_ops.log(a) + math_ops.log(b))
+  @property
+  def concentration0(self):
+    """Concentration parameter associated with a `0` outcome."""
+    return self.bijector.concentration0
 
   def _entropy(self):
     a = self.concentration1
@@ -213,10 +188,11 @@ class Kumaraswamy(beta.Beta):
 
   def _moment(self, n):
     """Compute the n'th (uncentered) moment."""
+    total_concentration = self.concentration1 + self.concentration0
     expanded_concentration1 = array_ops.ones_like(
-        self.total_concentration, dtype=self.dtype) * self.concentration1
+        total_concentration, dtype=self.dtype) * self.concentration1
     expanded_concentration0 = array_ops.ones_like(
-        self.total_concentration, dtype=self.dtype) * self.concentration0
+        total_concentration, dtype=self.dtype) * self.concentration0
     beta_arg0 = 1 + n / expanded_concentration1
     beta_arg = array_ops.stack([beta_arg0, expanded_concentration0], -1)
     log_moment = math_ops.log(expanded_concentration0) + special_math_ops.lbeta(
@@ -246,13 +222,14 @@ class Kumaraswamy(beta.Beta):
           name="nan")
       is_defined = (self.concentration1 > 1.) & (self.concentration0 > 1.)
       return array_ops.where(is_defined, mode, nan)
+
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
-            array_ops.ones([], dtype=self.dtype),
+            array_ops.ones([], dtype=self.concentration1.dtype),
             self.concentration1,
             message="Mode undefined for concentration1 <= 1."),
         check_ops.assert_less(
-            array_ops.ones([], dtype=self.dtype),
+            array_ops.ones([], dtype=self.concentration0.dtype),
             self.concentration0,
             message="Mode undefined for concentration0 <= 1.")
     ], mode)

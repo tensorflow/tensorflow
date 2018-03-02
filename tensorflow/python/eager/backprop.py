@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import operator
 import threading
@@ -40,6 +41,26 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+
+
+class _TensorCache(object):
+  """Simple cache which evicts items based on length in a FIFO manner."""
+
+  def __init__(self, max_items=256):
+    self._data = collections.OrderedDict()
+    self._max_items = max_items if max_items else 256
+
+  def put(self, key, value):
+    self._data[key] = value
+
+    if len(self._data) > self._max_items:
+      self._data.popitem(last=False)
+
+  def get(self, key):
+    return self._data.get(key, None)
+
+  def flush(self):
+    self._data = {}
 
 
 _op_attr_type_cache = {}
@@ -116,112 +137,6 @@ _gradient_functions_lock = threading.Lock()
 _tracing = False
 
 
-# TODO(apassos) replace this with a mechanism which can happen at the op
-# gradient function registration site, to be less error-prone
-# TODO(apassos) add ops other than those in nn_grad and math_grad
-_ops_which_dont_need_outputs = set([
-    "Identity",
-    "MatMul",
-    "Conv2DBackpropInput",
-    "Conv2DBackpropFilter",
-    "Conv3D",
-    "Conv3DBackpropInputV2",
-    "AvgPool3D",
-    "AvgPool3DGrad",
-    "MaxPool3D",
-    "MaxPool3DGrad",
-    "MaxPool3DGradGrad",
-    "BiasAdd",
-    "BiasAddV1",
-    "BiasAddGrad",
-    "Relu6",
-    "Softplus",
-    "SoftplusGrad",
-    "Softsign",
-    "ReluGrad",
-    "Conv2D",
-    "DepthwiseConv2dNative",
-    "Dilation2D",
-    "AvgPool",
-    "AvgPoolGrad",
-    "BatchNormWithGlobalNormalization",
-    "L2Loss",
-    "Sum",
-    "Prod",
-    "SegmentSum",
-    "SegmentMean",
-    "SparseSegmentSum",
-    "SparseSegmentMean",
-    "SparseSegmentSqrtN",
-    "SegmentMin",
-    "SegmentMax",
-    "UnsortedSegmentSum",
-    "UnsortedSegmentMax",
-    "UnsortedSegmentMin",
-    "UnsortedSegmentProd",
-    "Abs",
-    "Neg",
-    "ReciprocalGrad",
-    "Square",
-    "Expm1",
-    "Log",
-    "Log1p",
-    "TanhGrad",
-    "SigmoidGrad",
-    "Sign",
-    "Sin",
-    "Cos",
-    "Tan",
-    "Add",
-    "Sub",
-    "Mul",
-    "Div",
-    "RealDiv",
-    "Maximum",
-    "Minimum",
-    "SquaredDifference",
-    "Select",
-    "SparseMatMul",
-    "BatchMatMul",
-    "Complex",
-    "Real",
-    "Imag",
-    "Angle",
-    "Conj",
-    "Cast",
-    "Cross",
-    "Cumsum",
-    "Cumprod",
-    "ReadVariableOp",
-    "VarHandleOp",
-    "Shape",
-])
-
-_ops_which_dont_need_inputs = set([
-    "Identity",
-    "Softmax",
-    "LogSoftmax",
-    "BiasAdd",
-    "Relu",
-    "Elu",
-    "Selu",
-    "SparseSoftmaxCrossEntropyWithLogits",
-    "Neg",
-    "Inv",
-    "Reciprocal",
-    "Sqrt",
-    "Exp",
-    "Tanh",
-    "Sigmoid",
-    "Real",
-    "Imag",
-    "Conj",
-    "ReadVariableOp",
-    "VarHandleOp",
-    "Shape",
-])
-
-
 # TODO(agarwal): use an automatic mechanism for handling None arguments to
 # gradient functions.
 # Some gradient functions can accept None arguments for gradients. The following
@@ -240,57 +155,25 @@ _grad_fn_accepts_none_for_indices = {
 }
 
 
-def _record_gradient(op_name, inputs, attrs, results, name):
-  """Records gradients for a TensorFlow operation.
-
-  Args:
-    op_name: Name of the TensorFlow operation (see REGISTER_OP in C++ code) to
-      execute.
-    inputs: A flat list of Tensor object inputs to the operation.
-    attrs: A tuple with alternating string attr names and attr values for this
-      operation.
-    results: The results of the operation (as a flat list).
-    name: Customized name for the operation.
-
-  Returns:
-    A list of maybe-wrapped results. Either Tensors or TensorNodes.
-
-  Raises:
-    An exception on error.
-  """
-  if not tape.could_possibly_record():
-    return
-
-  if op_name in _ops_which_dont_need_outputs:
-    op_outputs = None
-  else:
-    # TODO(apassos) this line creates a weak circular reference where the
-    # backprop function keeps an output alive which in turn keeps the tape entry
-    # alive which keeps the backprop function alive. Figure out how to break
-    # this up without breaking second derivatives of ops like Exp whose
-    # gradients depend only on the outputs.
-    op_outputs = results
-
-  if op_name in _ops_which_dont_need_inputs:
-    op_inputs = None
-  else:
-    op_inputs = inputs
-
-  num_inputs = len(inputs)
+def _get_backward_fn(op_name, attrs, num_inputs, op_inputs, op_outputs):
 
   def grad_fn(*orig_outputs):
-    """Generated gradient function."""
     result = _magic_gradient_function(op_name, attrs, num_inputs,
                                       op_inputs, op_outputs, orig_outputs)
     if _tracing:
-      print("Gradient for", (name if name else op_name), "inputs", op_inputs,
-            "output_grads", orig_outputs, "gradients", result)
+      print("Gradient for", op_name, "inputs", op_inputs, "output_grads",
+            orig_outputs, "gradients", result)
     return nest.flatten(result)
 
-  tape.record_operation(op_name, results, inputs, grad_fn)
-  if _tracing:
-    print("Computed op", (name if name else op_name), "inputs", inputs,
-          "outputs", results)
+  return grad_fn
+
+
+pywrap_tensorflow.TFE_Py_RegisterBackwardFunctionGetter(_get_backward_fn)
+
+
+def _record_gradient(op_name, inputs, attrs, results, name):
+  return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
+                                                 results, name)
 
 
 execute.record_gradient = _record_gradient
@@ -357,6 +240,7 @@ def implicit_val_and_grad(f):
       tape.pop_tape(this_tape)
     # Sorting variables by id, which is monotonically increasing in construction
     # order. This ensures unique order across executions.
+    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
     variables = list(sorted(this_tape.watched_variables(),
                             key=lambda v: v.handle._id))  # pylint: disable=protected-access
     sources = [x.handle for x in variables]
@@ -618,7 +502,7 @@ def val_and_grad_function(f, params=None):
   return decorated
 
 
-def make_vjp(f, params=None):
+def make_vjp(f, params=None, persistent=True):
   """Returns a function that computes f and is vjp w.r.t. params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
@@ -627,6 +511,8 @@ def make_vjp(f, params=None):
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
        A value of None will differentiate with respect to all parameters.
+    persistent: Boolean controlling whether the VJP function can be re-used.
+      Must be True or False.
 
   Returns:
     A function, which when called, returns a tuple (value, vjp), where:
@@ -654,7 +540,7 @@ def make_vjp(f, params=None):
     """Computes the value and gradient of the decorated function."""
     parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
-    this_tape = tape.push_new_tape()
+    this_tape = tape.push_new_tape(persistent=persistent)
     try:
       sources = []
       args = [
@@ -736,8 +622,7 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_last_zero_shape_dtype = [None, None]
-_last_zero = [None]
+_zeros_cache = _TensorCache()
 
 
 def _fast_fill(value, shape, dtype):
@@ -746,14 +631,17 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
+  device = context.context().device_name
   if dtype == dtypes.variant:
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  if [shape, dtype] != _last_zero_shape_dtype:
-    _last_zero_shape_dtype[:] = [shape, dtype]
-    _last_zero[0] = _fast_fill(0, shape, dtype)
-  return _last_zero[0]
+  cache_key = shape, dtype, device
+  cached = _zeros_cache.get(cache_key)
+  if cached is None:
+    cached = _fast_fill(0, shape, dtype)
+    _zeros_cache.put(cache_key, cached)
+  return cached
 
 
 def _ones(shape, dtype):
@@ -861,7 +749,11 @@ class GradientTape(object):
       tape.watch(t)
 
   def watched_variables(self):
-    return self._tape.watched_variables()
+    # Sorting variables by id, which is monotonically increasing in construction
+    # order. This ensures unique order across executions.
+    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
+    return list(sorted(self._tape.watched_variables(),
+                       key=lambda v: v.handle._id))  # pylint: disable=protected-access
 
   def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using information traced by the tape.

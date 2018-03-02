@@ -88,7 +88,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
                                                 quantization_node_name)
@@ -164,7 +164,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
@@ -240,7 +240,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
@@ -363,9 +363,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      fold_batch_norms.FoldBatchNorms(graph)
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
@@ -446,9 +446,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      fold_batch_norms.FoldBatchNorms(graph)
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
@@ -534,9 +534,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-      fold_batch_norms.FoldBatchNorms(graph)
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
 
-      quantize.Quantize(graph, quant_delay=delay)
+      quantize.Quantize(graph, True, quant_delay=delay)
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     weights_quant = graph.get_operation_by_name(scope + '/weights_quant/' +
                                                 quantization_node_name)

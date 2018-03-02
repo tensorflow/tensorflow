@@ -21,7 +21,7 @@ newcomers.
 * Other:
   * Add `tf.contrib.distributions.Kumaraswamy`.
   * `RetryingFileSystem::FlushCaches()` calls the base FileSystem's `FlushCaches()`.
-  * Add auto_correlation to distributions.
+  * Add `auto_correlation` to distributions.
   * Add `tf.contrib.distributions.Autoregressive`.
   * Add SeparableConv1D layer.
   * Add convolutional Flipout layers.
@@ -31,12 +31,12 @@ newcomers.
   * Output variance over trees predictions for classifications tasks.
   * For `pt` and `eval` commands, allow writing tensor values to filesystem as numpy files.
   * gRPC: Propagate truncated errors (instead of returning gRPC internal error).
-  * Augment parallel_interleave to support 2 kinds of prefetching.
+  * Augment `parallel_interleave` to support 2 kinds of prefetching.
   * Improved XLA support for C64-related ops log, pow, atan2, tanh.
   * Add probabilistic convolutional layers.
 
 ## API Changes
-* Introducing prepare_variance boolean with default setting to False for backward compatibility.
+* Introducing `prepare_variance` boolean with default setting to False for backward compatibility.
 * Move `layers_dense_variational_impl.py` to `layers_dense_variational.py`.
 
 ## Known Bugs
@@ -95,27 +95,6 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, ç”°ä¼
 * Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
 * Starting from 1.6 release, our prebuilt binaries will use AVX instructions.
   This may break TF on older CPUs.
-
-## Known Bugs
-* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
-  `CUDA_ILLEGAL_ADDRESS` failures.
-
-  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
-  and CUDA 9.1 sometimes does not properly compute the carry bit when
-  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
-  large_constant]`) into 32-bit arithmetic in SASS.
-
-  As a result, these versions of `ptxas` miscompile most XLA programs which use
-  more than 4GB of temp memory.  This results in garbage results and/or
-  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
-
-  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
-  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
-  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
-  or disable XLA:GPU.
-
-  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
-  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
 
 ## Major Features And Improvements
 * [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)

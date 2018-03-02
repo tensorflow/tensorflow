@@ -17,17 +17,18 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 namespace tensorflow {
 
-
 REGISTER_OP("TRTCalibOp")
-    .Attr("segment_nodes: list(string)")  // names of the ops in segment
-    .Attr("segment_output_names: list(string)")  // names of the output ops in segment
-    .Attr("input_names: list(string)")  // names of the inputs for passing into tensorrt
+    .Attr("segment_nodes: list(string)")         // names of the ops in segment
+    .Attr("segment_output_names: list(string)")  // names of the output ops in
+                                                 // segment
+    .Attr("input_names: list(string)")           // names of the inputs for
+                                                 // passing into tensorrt
     .Attr("resource_name: string")
     .Attr("InT: list({int8, float16, float32})")
     .Input("in_tensor: InT")
     .Output("out_tensor: InT")
     .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
-      for (int i = 0; i < c->num_inputs(); i++){
+      for (int i = 0; i < c->num_inputs(); i++) {
         c->set_output(i, c->input(i));
       }
       return Status::OK();

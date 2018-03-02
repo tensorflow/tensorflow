@@ -635,7 +635,7 @@ should be logged after every 50 steps of training.
 ### Train the Model
 
 Now we're ready to train our model, which we can do by creating `train_input_fn`
-ans calling `train()` on `mnist_classifier`. Add the following to `main()`:
+and calling `train()` on `mnist_classifier`. Add the following to `main()`:
 
 ```python
 # Train the model

@@ -209,4 +209,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret initializer identifier:', identifier)
+    raise ValueError('Could not interpret initializer identifier: ' +
+                     str(identifier))

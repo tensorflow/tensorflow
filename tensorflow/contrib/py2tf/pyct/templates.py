@@ -68,6 +68,10 @@ class ReplaceTransformer(gast.NodeTransformer):
     if isinstance(node, gast.Attribute):
       self._set_inner_child_context(node.value, ctx)
       node.ctx = gast.Load()
+    elif isinstance(node, gast.Tuple):
+      for e in node.elts:
+        self._set_inner_child_context(e, ctx)
+      node.ctx = ctx
     elif isinstance(node, gast.Name):
       node.ctx = ctx
     elif isinstance(node, (gast.Str, gast.Num)):

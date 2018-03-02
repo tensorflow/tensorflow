@@ -59,6 +59,15 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 
+// Registers e as the backward_function_getter.
+// The registered function creates a backward function (a function that can
+// return the gradient of the inputs an op given the gradient of it's outputs).
+// The registered function will be passed the following arguments:
+//    op_name, attrs, num_inputs, op_inputs, op_outputs
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e);
+
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
@@ -164,6 +173,11 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
 PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+
+// Record the gradient for a given op.
+PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
+                                PyObject* attrs, PyObject* results,
+                                PyObject* name);
 
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);

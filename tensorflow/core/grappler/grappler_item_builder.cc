@@ -296,6 +296,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
+  // Add each node referenced in a collection to the list of nodes to keep.
+  for (const auto& col : meta_graph.collection_def()) {
+    const CollectionDef& collection = col.second;
+    for (const string& node : collection.node_list().value()) {
+      new_item->keep_ops.push_back(NodeName(node));
+    }
+  }
+
   for (auto& node : *new_item->graph.mutable_node()) {
     if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {

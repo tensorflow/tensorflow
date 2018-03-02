@@ -225,33 +225,39 @@ string PrintDotTestParam(
 }
 
 class ParametricDotTest : public DotOperationTest,
-                          public ::testing::WithParamInterface<DotTestParam> {};
+                          public ::testing::WithParamInterface<DotTestParam> {
+ protected:
+  template <typename NativeT>
+  void TestImpl();
+};
 
-XLA_TEST_P(ParametricDotTest, TestF32) {
+template <typename NativeT>
+void ParametricDotTest::TestImpl() {
   DotTestParam param = GetParam();
 
-  std::unique_ptr<Array2D<float>> dot_lhs_data =
-      MakeLinspaceArray2D(0.0, 1.0, param.m, param.k);
+  std::unique_ptr<Array2D<NativeT>> dot_lhs_data =
+      MakeLinspaceArray2D<NativeT>(0.0, 1.0, param.m, param.k);
   std::unique_ptr<Literal> dot_lhs_lit = Literal::CreateR2FromArray2DWithLayout(
       *dot_lhs_data, LayoutUtil::MakeLayout(
                          MinorToMajorForIsRowMajor(param.dot_lhs_row_major)));
   std::unique_ptr<GlobalData> dot_lhs_handle =
       client_->TransferToServer(*dot_lhs_lit).ConsumeValueOrDie();
 
-  std::unique_ptr<Array2D<float>> dot_rhs_data =
-      MakeLinspaceArray2D(0.0, 1.0, param.k, param.n);
-  std::unique_ptr<Literal> dot_rhs_lit = Literal::CreateR2FromArray2DWithLayout(
-      *dot_rhs_data, LayoutUtil::MakeLayout(
-                         MinorToMajorForIsRowMajor(param.dot_rhs_row_major)));
+  std::unique_ptr<Array2D<NativeT>> dot_rhs_data =
+      MakeLinspaceArray2D<NativeT>(0.0, 1.0, param.k, param.n);
+  Layout rhs_layout = LayoutUtil::MakeLayout(
+      MinorToMajorForIsRowMajor(param.dot_rhs_row_major));
+  std::unique_ptr<Literal> dot_rhs_lit =
+      Literal::CreateR2FromArray2DWithLayout(*dot_rhs_data, rhs_layout);
   std::unique_ptr<GlobalData> dot_rhs_handle =
       client_->TransferToServer(*dot_rhs_lit).ConsumeValueOrDie();
 
-  std::unique_ptr<Array2D<float>> addend_data;
+  std::unique_ptr<Array2D<NativeT>> addend_data;
   std::unique_ptr<Literal> addend_lit;
   std::unique_ptr<GlobalData> addend_handle;
 
   if (param.has_addend) {
-    addend_data = MakeLinspaceArray2D(0.0, 1.0, param.m, param.n);
+    addend_data = MakeLinspaceArray2D<NativeT>(0.0, 1.0, param.m, param.n);
     addend_lit = Literal::CreateR2FromArray2DWithLayout(
         *addend_data, LayoutUtil::MakeLayout(
                           MinorToMajorForIsRowMajor(param.addend_row_major)));
@@ -259,24 +265,33 @@ XLA_TEST_P(ParametricDotTest, TestF32) {
   }
 
   ComputationBuilder builder(client_, TestName());
-  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+  auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
   auto result = builder.Dot(
-      builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {param.m, param.k}),
+      builder.Parameter(0,
+                        ShapeUtil::MakeShapeWithLayout(
+                            prim_type, {param.m, param.k},
+                            MinorToMajorForIsRowMajor(param.dot_lhs_row_major)),
                         "dot_lhs"),
-      builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {param.k, param.n}),
+      builder.Parameter(1,
+                        ShapeUtil::MakeShapeWithLayout(
+                            prim_type, {param.k, param.n},
+                            MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
                         "dot_rhs"));
 
   if (param.has_addend) {
     result = builder.Add(
-        result,
-        builder.Parameter(
-            2, ShapeUtil::MakeShape(prim_type, {param.m, param.n}), "addend"));
+        result, builder.Parameter(
+                    2,
+                    ShapeUtil::MakeShapeWithLayout(
+                        prim_type, {param.m, param.n},
+                        MinorToMajorForIsRowMajor(param.addend_row_major)),
+                    "addend"));
   }
 
-  std::unique_ptr<Array2D<float>> expected;
+  std::unique_ptr<Array2D<NativeT>> expected;
   if (param.has_addend) {
     expected = ReferenceUtil::ApplyElementwise2D(
-        std::plus<float>(),
+        std::plus<NativeT>(),
         *ReferenceUtil::MatmulArray2D(*dot_lhs_data, *dot_rhs_data),
         *addend_data);
   } else {
@@ -288,8 +303,12 @@ XLA_TEST_P(ParametricDotTest, TestF32) {
     args.push_back(addend_handle.get());
   }
 
-  ComputeAndCompareR2<float>(&builder, *expected, args, ErrorSpec(0.3, 3e-3));
+  ComputeAndCompareR2<NativeT>(&builder, *expected, args, ErrorSpec(0.3, 3e-3));
 }
+
+XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
+
+XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
 
 std::vector<DotTestParam> CreateDotTestParameters() {
   std::vector<DotTestParam> params;
@@ -305,23 +324,70 @@ std::vector<DotTestParam> CreateDotTestParameters() {
     }
   };
 
-  auto add_matrix_vector_dot_test = [&](int k, int n) {
-    for (bool has_addend : {false, true}) {
-      params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
-                        /*dot_lhs_row_major=*/true, /*dot_rhs_row_major=*/true,
-                        /*has_addend=*/has_addend, /*addend_row_major=*/true});
-      if (n != 1) {
-        params.push_back(
-            {/*m=*/n, /*k=*/k, /*n=*/1,
-             /*dot_lhs_row_major=*/true, /*dot_rhs_row_major=*/true,
-             /*has_addend=*/has_addend, /*addend_row_major=*/true});
-      }
-    }
-  };
-
   add_matrix_matrix_dot_test(/*m=*/12, /*k=*/117, /*n=*/7);
   add_matrix_matrix_dot_test(/*m=*/270, /*k=*/270, /*n=*/520);
   add_matrix_matrix_dot_test(/*m=*/260, /*k=*/3, /*n=*/520);
+
+  return params;
+}
+
+INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
+                        ::testing::ValuesIn(CreateDotTestParameters()),
+                        PrintDotTestParam);
+
+class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
+ public:
+  ParametricDotTestWithoutLayoutAssignment() {
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "layout-assignment");
+  }
+};
+
+XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) {
+  TestImpl<float>();
+}
+
+XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF64) {
+  TestImpl<double>();
+}
+
+std::vector<DotTestParam> CreateNoLayoutAssignmentDotTestParameters() {
+  std::vector<DotTestParam> params;
+
+  auto add_matrix_vector_dot_test = [&](int k, int n) {
+    for (bool lhs_row_major : {true, false}) {
+      for (bool rhs_row_major : {true, false}) {
+        for (bool has_addend : {true, false}) {
+          params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
+                            /*dot_lhs_row_major=*/lhs_row_major,
+                            /*dot_rhs_row_major=*/rhs_row_major,
+                            /*has_addend=*/has_addend,
+                            /*addend_row_major=*/true});
+          if (has_addend) {
+            params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
+                              /*dot_lhs_row_major=*/lhs_row_major,
+                              /*dot_rhs_row_major=*/rhs_row_major,
+                              /*has_addend=*/has_addend,
+                              /*addend_row_major=*/false});
+          }
+          if (n != 1) {
+            params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
+                              /*dot_lhs_row_major=*/lhs_row_major,
+                              /*dot_rhs_row_major=*/rhs_row_major,
+                              /*has_addend=*/has_addend,
+                              /*addend_row_major=*/true});
+            if (has_addend) {
+              params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
+                                /*dot_lhs_row_major=*/lhs_row_major,
+                                /*dot_rhs_row_major=*/rhs_row_major,
+                                /*has_addend=*/has_addend,
+                                /*addend_row_major=*/false});
+            }
+          }
+        }
+      }
+    }
+  };
 
   add_matrix_vector_dot_test(/*k=*/8, /*n=*/8);
   add_matrix_vector_dot_test(/*k=*/130, /*n=*/8);
@@ -329,6 +395,8 @@ std::vector<DotTestParam> CreateDotTestParameters() {
   add_matrix_vector_dot_test(/*k=*/290, /*n=*/130);
   add_matrix_vector_dot_test(/*k=*/1, /*n=*/1);
   add_matrix_vector_dot_test(/*k=*/1, /*n=*/16);
+  add_matrix_vector_dot_test(/*k=*/1, /*n=*/4);
+  add_matrix_vector_dot_test(/*k=*/1, /*n=*/3);
   add_matrix_vector_dot_test(/*k=*/3, /*n=*/16);
   add_matrix_vector_dot_test(/*k=*/3, /*n=*/3);
   add_matrix_vector_dot_test(/*k=*/29, /*n=*/29);
@@ -339,9 +407,10 @@ std::vector<DotTestParam> CreateDotTestParameters() {
   return params;
 }
 
-INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
-                        ::testing::ValuesIn(CreateDotTestParameters()),
-                        PrintDotTestParam);
+INSTANTIATE_TEST_CASE_P(
+    DotTests, ParametricDotTestWithoutLayoutAssignment,
+    ::testing::ValuesIn(CreateNoLayoutAssignmentDotTestParameters()),
+    PrintDotTestParam);
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
   TestSquareMatrixDot<float>(false, false);

@@ -639,6 +639,13 @@ specified devices may not be available. In order to work with graphs like these,
 you can run this transform to wipe the slate clean and delete the device
 specifier from all ops.
 
+### remove_control_dependencies
+
+Args: None \
+Prerequisites: None
+
+Removes all control dependencies from the graph.
+
 ### remove_nodes
 
 Args:

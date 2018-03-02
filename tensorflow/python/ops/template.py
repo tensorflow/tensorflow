@@ -557,6 +557,7 @@ class EagerTemplate(Template):
       # is created in __call__.
       variable_scope_name = None
     self._template_store = _EagerTemplateVariableStore(variable_scope_name)
+    self._variable_scope_context_manager = None
 
   def _call_func(self, args, kwargs):
     try:
@@ -611,8 +612,12 @@ class EagerTemplate(Template):
     # the variable scope is opened in order to ensure that templates nested at
     # the same level correctly uniquify lower variable scope names.
     if self._variable_scope:
-      with variable_scope.variable_scope(
-          self._variable_scope, reuse=variable_scope.AUTO_REUSE):
+      # Create a cache for the variable scope context manager the first time
+      # around so that we don't have to keep recreating it.
+      if not self._variable_scope_context_manager:
+        self._variable_scope_context_manager = variable_scope.variable_scope(
+            self._variable_scope, reuse=variable_scope.AUTO_REUSE)
+      with self._variable_scope_context_manager:
         with self._template_store.as_default():
           result = self._call_func(args, kwargs)
       return result

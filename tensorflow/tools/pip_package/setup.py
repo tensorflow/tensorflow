@@ -29,17 +29,17 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.6.0-rc0'
+_VERSION = '1.6.0-rc1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
     'grpcio >= 1.8.6',
-    'numpy >= 1.12.1',
+    'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
-    'tensorflow-tensorboard >= 1.5.0, < 1.6.0',
+    'tensorboard >= 1.6.0, < 1.7.0',
     'termcolor >= 1.1.0',
 ]
 

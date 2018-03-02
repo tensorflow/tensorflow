@@ -337,6 +337,21 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
+  TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (input->type) {
+    case kTfLiteFloat32:
+      optimized_ops::LogSoftmax(
+          GetTensorData<float>(input), GetTensorDims(input),
+          GetTensorData<float>(output), GetTensorDims(output));
+      return kTfLiteOk;
+    default:
+      context->ReportError(context, "Only float32 supported currently.");
+      return kTfLiteError;
+  }
+}
+
 }  // namespace activations
 
 TfLiteRegistration* Register_RELU() {
@@ -378,6 +393,13 @@ TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {activations::Init, activations::Free,
                                  activations::SoftmaxPrepare,
                                  activations::SoftmaxEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOG_SOFTMAX() {
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::GenericPrepare,
+                                 activations::LogSoftmaxEval};
   return &r;
 }
 

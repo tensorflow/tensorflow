@@ -1763,6 +1763,9 @@ class TPUEstimator(estimator_lib.Estimator):
     if 'config' in input_fn_args:
       kwargs['config'] = config
 
+    if 'mode' in input_fn_args:
+      kwargs['mode'] = mode
+
     with self._ctx.with_mode(mode) as ctx:
       # Setting the batch size in params first. This helps user to have same
       # input_fn for use_tpu=True/False.
