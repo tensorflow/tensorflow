@@ -1326,10 +1326,10 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
-  return gen_array_ops._unique_with_counts(x, out_idx, name)
+  return gen_array_ops.unique_with_counts(x, out_idx, name)
 
 
-unique_with_counts.__doc__ = gen_array_ops._unique_with_counts.__doc__
+unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 
 
 @tf_export("split")
