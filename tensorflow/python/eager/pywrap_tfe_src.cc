@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 
 using tensorflow::string;
 using tensorflow::strings::Printf;
@@ -1364,7 +1365,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 }
 
 namespace {
-static const int kFastPathExecuteInputStartIndex = 6;
+static const int kFastPathExecuteInputStartIndex = 5;
 
 PyObject* GetPythonObjectFromString(const char* s) {
 #if PY_MAJOR_VERSION >= 3
@@ -1621,46 +1622,43 @@ bool RunCallbacks(bool run_gradient_callback, bool run_post_exec_callbacks,
                   const std::vector<PyObject*>& flattened_inputs,
                   const std::vector<PyObject*>& flattened_attrs,
                   PyObject* flattened_result, PyObject* op_name, PyObject* name,
-                  PyObject* record_gradient_callback, PyObject* callbacks) {
-  PyObject* inputs = PyTuple_New(flattened_inputs.size());
+                  PyObject* callbacks) {
+  tensorflow::Safe_PyObjectPtr inputs =
+      tensorflow::make_safe(PyTuple_New(flattened_inputs.size()));
   for (int i = 0; i < flattened_inputs.size(); i++) {
     PyObject* input = flattened_inputs[i];
     Py_INCREF(input);
-    PyTuple_SET_ITEM(inputs, i, input);
+    PyTuple_SET_ITEM(inputs.get(), i, input);
   }
 
   int num_non_inferred_attrs = PyTuple_GET_SIZE(args) -
                                op_def->input_arg_size() -
                                kFastPathExecuteInputStartIndex;
   int num_attrs = flattened_attrs.size() + num_non_inferred_attrs;
-  PyObject* attrs = PyTuple_New(num_attrs);
+  tensorflow::Safe_PyObjectPtr attrs =
+      tensorflow::make_safe(PyTuple_New(num_attrs));
 
   for (int i = 0; i < num_non_inferred_attrs; i++) {
     auto* attr = PyTuple_GET_ITEM(
         args, kFastPathExecuteInputStartIndex + op_def->input_arg_size() + i);
     Py_INCREF(attr);
-    PyTuple_SET_ITEM(attrs, i, attr);
+    PyTuple_SET_ITEM(attrs.get(), i, attr);
   }
   for (int i = num_non_inferred_attrs; i < num_attrs; i++) {
     // Not INCREFing anything in flattened_attrs as each of those is a new
     // reference, so allow the attrs tuple to steal the reference.
-    PyTuple_SET_ITEM(attrs, i, flattened_attrs.at(i - num_non_inferred_attrs));
+    PyTuple_SET_ITEM(attrs.get(), i,
+                     flattened_attrs.at(i - num_non_inferred_attrs));
   }
 
-  PyObject* callback_args =
-      Py_BuildValue("OOOOO", op_name, inputs, attrs, flattened_result, name);
-
-  auto cleaner = tensorflow::gtl::MakeCleanup([inputs, attrs, callback_args] {
-    Py_DECREF(inputs);
-    Py_DECREF(attrs);
-    Py_DECREF(callback_args);
-  });
-
   if (run_gradient_callback) {
-    RecordGradient(op_name, inputs, attrs, flattened_result, name);
+    RecordGradient(op_name, inputs.get(), attrs.get(), flattened_result, name);
   }
 
   if (run_post_exec_callbacks) {
+    tensorflow::Safe_PyObjectPtr callback_args = tensorflow::make_safe(
+        Py_BuildValue("OOOOO", op_name, inputs.get(), attrs.get(),
+                      flattened_result, name));
     for (Py_ssize_t i = 0; i < PyList_Size(callbacks); i++) {
       PyObject* callback_fn = PyList_GET_ITEM(callbacks, i);
       if (!PyCallable_Check(callback_fn)) {
@@ -1673,7 +1671,7 @@ bool RunCallbacks(bool run_gradient_callback, bool run_post_exec_callbacks,
         return false;
       }
       PyObject* callback_result =
-          PyObject_CallObject(callback_fn, callback_args);
+          PyObject_CallObject(callback_fn, callback_args.get());
       if (!callback_result) {
         return false;
       }
@@ -1703,9 +1701,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   PyObject* op_name = PyTuple_GET_ITEM(args, 2);
   const tensorflow::OpDef* op_def = GetOpDef(op_name);
   if (op_def == nullptr) return nullptr;
-  PyObject* record_gradient_callback = PyTuple_GET_ITEM(args, 3);
-  PyObject* name = PyTuple_GET_ITEM(args, 4);
-  PyObject* callbacks = PyTuple_GET_ITEM(args, 5);
+  PyObject* name = PyTuple_GET_ITEM(args, 3);
+  PyObject* callbacks = PyTuple_GET_ITEM(args, 4);
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
     PyErr_SetString(
@@ -1775,9 +1772,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   // (similar to benchmark_tf_gradient_function_*). Also consider using an
   // InlinedVector for flattened_attrs and flattened_inputs if the benchmarks
   // point out problems with heap allocs.
-  bool run_gradient_callback = !*ThreadTapeIsStopped() &&
-                               !GetTapeSet()->empty() &&
-                               record_gradient_callback != Py_None;
+  bool run_gradient_callback =
+      !*ThreadTapeIsStopped() && !GetTapeSet()->empty();
   bool run_post_exec_callbacks =
       callbacks != Py_None && PyList_Size(callbacks) > 0;
   bool run_callbacks = run_gradient_callback || run_post_exec_callbacks;
@@ -1916,7 +1912,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   if (run_callbacks &&
       !RunCallbacks(run_gradient_callback, run_post_exec_callbacks, op_def,
                     args, *flattened_inputs, *flattened_attrs, flat_result,
-                    op_name, name, record_gradient_callback, callbacks)) {
+                    op_name, name, callbacks)) {
     return nullptr;
   }
 

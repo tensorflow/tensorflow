@@ -31,8 +31,8 @@ from tensorflow.python.util import nest
 # creation (avoiding double assignment when executing eagerly).
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
 
-_CheckpointableReference = collections.namedtuple(
-    "_CheckpointableReference",
+CheckpointableReference = collections.namedtuple(
+    "CheckpointableReference",
     [
         # The local name for this dependency.
         "name",
@@ -301,14 +301,17 @@ class CheckpointableBase(object):
 
     Not __init__, since most objects will forget to call it.
     """
-    if hasattr(self, "_checkpoint_dependencies"):
+    if hasattr(self, "_unconditional_checkpoint_dependencies"):
       # __init__ already called. This check means that we don't need
       # Checkpointable.__init__() in the constructor of every TensorFlow object.
       return
-    # A list of _CheckpointableReference objects.
-    self._checkpoint_dependencies = []
+    # A list of CheckpointableReference objects. Some classes implementing
+    # `Checkpointable`, notably `Optimizer`s, may override the
+    # _checkpoint_dependencies property with conditional dependencies
+    # (e.g. based on the current graph when saving).
+    self._unconditional_checkpoint_dependencies = []
     # Maps names -> Checkpointable objects
-    self._dependency_names = {}
+    self._unconditional_dependency_names = {}
     # Restorations for other Checkpointable objects on which this object may
     # eventually depend.
     self._deferred_dependencies = {}  # local name -> _CheckpointPosition list
@@ -320,9 +323,36 @@ class CheckpointableBase(object):
           "initialization code was run.")
     self._update_uid = -1
 
+  @property
+  def _checkpoint_dependencies(self):
+    """All dependencies of this object.
+
+    May be overridden to include conditional dependencies.
+
+    Returns:
+      A list of `CheckpointableReference` objects indicating named
+      `Checkpointable` dependencies which should be saved along with this
+      object.
+    """
+    return self._unconditional_checkpoint_dependencies
+
+  def _lookup_dependency(self, name):
+    """Look up a dependency by name.
+
+    May be overridden to include conditional dependencies.
+
+    Args:
+      name: The local name of the dependency.
+    Returns:
+      A `Checkpointable` object, or `None` if no dependency by this name was
+      found.
+    """
+    return self._unconditional_dependency_names.get(name, None)
+
   def _add_variable_with_custom_getter(
       self, name, shape=None, dtype=dtypes.float32,
-      initializer=None, getter=None, **kwargs_for_getter):
+      initializer=None, getter=None, overwrite=False,
+      **kwargs_for_getter):
     """Restore-on-create for a variable be saved with this `Checkpointable`.
 
     If the user has requested that this object or another `Checkpointable` which
@@ -334,12 +364,11 @@ class CheckpointableBase(object):
       name: A name for the variable. Must be unique within this object.
       shape: The shape of the variable.
       dtype: The data type of the variable.
-
       initializer: The initializer to use. Ignored if there is a deferred
         restoration left over from a call to
         `_restore_from_checkpoint_position`.
-
       getter: The getter to wrap which actually fetches the variable.
+      overwrite: If True, disables unique name and type checks.
       **kwargs_for_getter: Passed to the getter.
 
     Returns:
@@ -349,7 +378,7 @@ class CheckpointableBase(object):
       ValueError: If the variable name is not unique.
     """
     self._maybe_initialize_checkpointable()
-    if name in self._dependency_names:
+    if not overwrite and self._lookup_dependency(name) is not None:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
            "Checkpointable._add_variable called to create another with "
@@ -385,7 +414,13 @@ class CheckpointableBase(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    return self._track_checkpointable(new_variable, name=name)
+    if not overwrite or isinstance(new_variable, CheckpointableBase):
+      return self._track_checkpointable(new_variable, name=name,
+                                        overwrite=overwrite)
+    else:
+      # TODO(allenl): Some variable types are not yet supported. Remove this
+      # fallback once all get_variable() return types are Checkpointable.
+      return new_variable
 
   def _preload_simple_restoration(self, name, shape):
     """Return a dependency's value for restore-on-create.
@@ -455,9 +490,10 @@ class CheckpointableBase(object):
       raise TypeError(
           ("Checkpointable._track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
-    new_reference = _CheckpointableReference(name=name, ref=checkpointable)
-    if (name in self._dependency_names
-        and self._dependency_names[name] is not checkpointable):
+    new_reference = CheckpointableReference(name=name, ref=checkpointable)
+    current_object = self._lookup_dependency(name)
+    if (current_object is not None
+        and current_object is not checkpointable):
       if not overwrite:
         raise ValueError(
             ("Called Checkpointable._track_checkpointable() with name='%s', "
@@ -465,18 +501,46 @@ class CheckpointableBase(object):
              "dependency. Names must be unique (or overwrite=True).") % (name,))
       # This is a weird thing to do, but we're not going to stop people from
       # using __setattr__.
-      for index, (old_name, _) in enumerate(self._checkpoint_dependencies):
+      for index, (old_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
         if name == old_name:
-          self._checkpoint_dependencies[index] = new_reference
+          self._unconditional_checkpoint_dependencies[index] = new_reference
     else:
-      self._checkpoint_dependencies.append(new_reference)
+      self._unconditional_checkpoint_dependencies.append(new_reference)
 
-    self._dependency_names[name] = checkpointable
-    deferred_dependency_list = self._deferred_dependencies.pop(name, None)
-    if deferred_dependency_list is not None:
-      for checkpoint_position in deferred_dependency_list:
-        checkpoint_position.restore(checkpointable=checkpointable)
+    self._unconditional_dependency_names[name] = checkpointable
+    self._handle_deferred_dependencies(name=name, checkpointable=checkpointable)
     return checkpointable
+
+  def _handle_deferred_dependencies(self, name, checkpointable):
+    """Pop and load any deferred checkpoint restores into `checkpointable`.
+
+    This method does not add a new dependency on `checkpointable`, but it does
+    check if any outstanding/deferred dependencies have been queued waiting for
+    this dependency to be added (matched based on `name`). If so,
+    `checkpointable` and its dependencies are restored. The restorations are
+    considered fulfilled and so are deleted.
+
+    `_track_checkpointable` is more appropriate for adding a
+    normal/unconditional dependency, and includes handling for deferred
+    restorations. This method allows objects such as `Optimizer` to use the same
+    restoration logic while managing conditional dependencies themselves, by
+    overriding `_checkpoint_dependencies` and `_lookup_dependency` to change the
+    object's dependencies based on the context it is saved/restored in (a single
+    optimizer instance can have state associated with multiple graphs).
+
+    Args:
+      name: The name of the dependency within this object (`self`), used to
+        match `checkpointable` with values saved in a checkpoint.
+      checkpointable: The Checkpointable object to restore (inheriting from
+        `CheckpointableBase`).
+    """
+    deferred_dependencies_list = self._deferred_dependencies.pop(name, ())
+    for checkpoint_position in sorted(
+        deferred_dependencies_list,
+        key=lambda restore: restore.checkpoint.restore_uid,
+        reverse=True):
+      checkpoint_position.restore(checkpointable)
 
   def _restore_from_checkpoint_position(self, checkpoint_position):
     """Restore this object and its dependencies (may be deferred)."""
@@ -513,7 +577,7 @@ class CheckpointableBase(object):
       child_position = _CheckpointPosition(
           checkpoint=checkpoint,
           proto_id=child.node_id)
-      local_object = self._dependency_names.get(child.local_name, None)
+      local_object = self._lookup_dependency(child.local_name)
       if local_object is None:
         # We don't yet have a dependency registered with this name. Save it
         # in case we do.

@@ -46,8 +46,10 @@ def getargspec(object):  # pylint: disable=redefined-builtin
 
 
 def getfullargspec(obj):  # pylint: disable=redefined-builtin
-  """TFDecorator-aware replacement for inspect.getfullargspec and fallback to
-  inspect.getargspec in Python 2.
+  """TFDecorator-aware replacement for `inspect.getfullargspec`/`getargspec`.
+
+  This wrapper uses `inspect.getfullargspec` if available and falls back to
+  `inspect.getargspec` in Python 2.
 
   Args:
     obj: A callable, possibly decorated.

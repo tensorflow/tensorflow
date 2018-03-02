@@ -50,6 +50,19 @@ class MetricsTest(test.TestCase):
       self.assertEqual(
           set(m.variables),
           set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)))
+      self.assertEqual(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES), [])
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
+
+  def testUseGlobalVariablesCollections(self):
+    with context.graph_mode(), ops.Graph().as_default():
+      m = metrics.Mean(use_global_variables=True)
+      m(1000)
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
+      self.assertEqual(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES), [])
       self.assertEqual(
           set(m.variables),
           set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))

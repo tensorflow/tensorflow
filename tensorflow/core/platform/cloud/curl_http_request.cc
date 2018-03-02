@@ -493,14 +493,18 @@ Status CurlHttpRequest::Send() {
     case 303:  // See Other
     case 304:  // Not Modified
     case 307:  // Temporary Redirect
-    case 308:  // Resume Incomplete
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
       result = errors::FailedPrecondition(error_message);
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
-    // is just retried without any modification.
+    // is just retried without any modification. 308 return codes are intended
+    // for write requests that can be retried. See the documentation and the
+    // official library:
+    // https://cloud.google.com/storage/docs/json_api/v1/how-tos/resumable-upload
+    // https://github.com/google/apitools/blob/master/apitools/base/py/transfer.py
+    case 308:  // Resume Incomplete
     case 409:  // Conflict
     case 429:  // Too Many Requests
     case 500:  // Internal Server Error

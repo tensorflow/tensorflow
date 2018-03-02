@@ -1269,7 +1269,7 @@ Status Literal::Populate(const FnType& generator) {
     int64 minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](const std::vector<int64>& indexes) {
+    auto init_function = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       const int64 index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());

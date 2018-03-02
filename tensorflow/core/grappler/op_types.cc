@@ -300,6 +300,19 @@ bool IsSquaredDifference(const NodeDef& node) {
 
 bool IsSqueeze(const NodeDef& node) { return node.op() == "Squeeze"; }
 
+bool IsStackOp(const NodeDef& node) {
+  return node.op() == "Stack" || node.op() == "StackV2";
+}
+bool IsStackCloseOp(const NodeDef& node) {
+  return node.op() == "StackClose" || node.op() == "StackCloseV2";
+}
+bool IsStackPushOp(const NodeDef& node) {
+  return node.op() == "StackPush" || node.op() == "StackPushV2";
+}
+bool IsStackPopOp(const NodeDef& node) {
+  return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";

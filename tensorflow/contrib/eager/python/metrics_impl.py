@@ -93,11 +93,12 @@ class Metric(object):
   `aggregate()`, it is for use by TensorFlow infrastructure.
   """
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, use_global_variables=False):
     self._built = False
     self._vars = []
     self._initial_values = {}
     self._updates = []
+    self._use_global_variables = use_global_variables
     name = name or self.__class__.__name__
     # Replace things like spaces in name to create a valid scope name.
     scope_name = _to_replace.sub("_", name)
@@ -245,9 +246,14 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    collections = None if context.in_eager_mode() else [
-        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
-    ]
+    if context.in_eager_mode():
+      collections = None
+    else:
+      if self._use_global_variables:
+        collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+      else:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      collections += [ops.GraphKeys.METRIC_VARIABLES]
     v = variable_scope.get_variable(
         name,
         shape,
@@ -267,8 +273,10 @@ class Mean(Metric):
   # TODO(josh11b): Maybe have a dtype argument that defaults to tf.float64?
   # Or defaults to type of the input if it is tf.float32, else tf.float64?
 
-  def __init__(self, name=None, dtype=dtypes.float64):
-    super(Mean, self).__init__(name=name)
+  def __init__(self, name=None, dtype=dtypes.float64,
+               use_global_variables=False):
+    super(Mean, self).__init__(name=name,
+                               use_global_variables=use_global_variables)
     self.dtype = dtype
 
   def build(self, *args, **kwargs):

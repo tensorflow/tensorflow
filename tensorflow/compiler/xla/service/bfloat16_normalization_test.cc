@@ -41,13 +41,17 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kGetTupleElement) {
       return true;
     }
+    if (hlo.opcode() == HloOpcode::kDot) {
+      // Test that only the first operand of kDot supports BF16.
+      return operand_index == 0;
+    }
     return false;
   }
 
   bool SupportsBF16Output(const HloInstruction& hlo) const override {
     if (hlo.opcode() == HloOpcode::kAdd || hlo.opcode() == HloOpcode::kReduce ||
         hlo.opcode() == HloOpcode::kSubtract ||
-        hlo.opcode() == HloOpcode::kTuple ||
+        hlo.opcode() == HloOpcode::kDot || hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement) {
       return true;
     }
@@ -243,6 +247,33 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
   EXPECT_EQ(gte->shape().element_type(), BF16);
   EXPECT_EQ(crs->operand(1)->shape().element_type(), F32);
   EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {1}).element_type(), F32);
+}
+
+// Tests that the normalization should not cause unsupported mixed precision due
+// to resolving unsupported BF16 operand.
+TEST_F(BFloat16NormalizationTest, DoNotAddUnsupportedMixedPrecision) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape, "b"));
+
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kDot, a, b));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module.get()));
+
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(dot->shape().element_type(), F32);
+  EXPECT_EQ(dot->operand(0)->shape().element_type(), F32);
+  EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(dot->operand(1)->shape().element_type(), F32);
+  EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConvert);
 }
 
 }  // namespace xla
