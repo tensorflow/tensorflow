@@ -20,44 +20,43 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.platform import test
+from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class TimeDistributedTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_timedistributed_dense(self):
-    # first, test with Dense layer
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(2), input_shape=(3, 4)))
-      model.compile(optimizer='rmsprop', loss='mse')
-      model.fit(
-          np.random.random((10, 3, 4)),
-          np.random.random((10, 3, 2)),
-          epochs=1,
-          batch_size=10)
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(2), input_shape=(3, 4)))
+    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.fit(
+        np.random.random((10, 3, 4)),
+        np.random.random((10, 3, 2)),
+        epochs=1,
+        batch_size=10)
 
-      # test config
-      model.get_config()
+    # test config
+    model.get_config()
 
   def test_timedistributed_static_batch_size(self):
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
-      model.compile(optimizer='rmsprop', loss='mse')
-      model.fit(
-          np.random.random((10, 3, 4)),
-          np.random.random((10, 3, 2)),
-          epochs=1,
-          batch_size=10)
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
+    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.fit(
+        np.random.random((10, 3, 4)),
+        np.random.random((10, 3, 2)),
+        epochs=1,
+        batch_size=10)
 
   def test_timedistributed_conv2d(self):
-    # test with Conv2D
     with self.test_session():
       model = keras.models.Sequential()
       model.add(
@@ -73,7 +72,6 @@ class TimeDistributedTest(test.TestCase):
       model.summary()
 
   def test_timedistributed_stacked(self):
-    # test stacked layers
     with self.test_session():
       model = keras.models.Sequential()
       model.add(
@@ -133,6 +131,20 @@ class TimeDistributedTest(test.TestCase):
       # Verify input_map has one mapping from inputs to reshaped inputs.
       self.assertEqual(len(td._input_map.keys()), 1)
 
+  def test_TimeDistributed_trainable(self):
+    # test layers that need learning_phase to be set
+    x = keras.layers.Input(shape=(3, 2))
+    layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
+    _ = layer(x)
+    assert len(layer.updates) == 2
+    assert len(layer.trainable_weights) == 2
+    layer.trainable = False
+    assert not layer.updates
+    assert not layer.trainable_weights
+    layer.trainable = True
+    assert len(layer.updates) == 2
+    assert len(layer.trainable_weights) == 2
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -153,7 +165,7 @@ class BidirectionalTest(test.TestCase):
         model.add(
             keras.layers.Bidirectional(
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(loss='mse', optimizer='sgd')
+        model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
         # test compute output shape
@@ -338,23 +350,38 @@ class BidirectionalTest(test.TestCase):
     units = 3
 
     with self.test_session():
-      inputs = keras.Input((timesteps, dim))
+      input1 = keras.layers.Input((timesteps, dim))
       layer = keras.layers.Bidirectional(
           rnn(units, return_state=True, return_sequences=True))
-      outputs = layer(inputs)
-      output, state = outputs[0], outputs[1:]
+      state = layer(input1)[1:]
 
       # test passing invalid initial_state: passing a tensor
+      input2 = keras.layers.Input((timesteps, dim))
       with self.assertRaises(ValueError):
         output = keras.layers.Bidirectional(
-            rnn(units))(output, initial_state=state[0])
+            rnn(units))(input2, initial_state=state[0])
 
       # test valid usage: passing a list
-      output = keras.layers.Bidirectional(
-          rnn(units))(output, initial_state=state)
-      model = keras.Model(inputs, output)
-      inputs = np.random.rand(samples, timesteps, dim)
-      outputs = model.predict(inputs)
+      output = keras.layers.Bidirectional(rnn(units))(input2,
+                                                      initial_state=state)
+      model = keras.models.Model([input1, input2], output)
+      assert len(model.layers) == 4
+      assert isinstance(model.layers[-1].input, list)
+      inputs = [np.random.rand(samples, timesteps, dim),
+                np.random.rand(samples, timesteps, dim)]
+      model.predict(inputs)
+
+  def test_Bidirectional_trainable(self):
+    # test layers that need learning_phase to be set
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
+      _ = layer(x)
+      assert len(layer.trainable_weights) == 6
+      layer.trainable = False
+      assert not layer.trainable_weights
+      layer.trainable = True
+      assert len(layer.trainable_weights) == 6
 
 
 def _to_list(ls):

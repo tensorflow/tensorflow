@@ -653,7 +653,7 @@ class _EagerTensorArray(object):
     if len(tensors) > len(self._tensor_array) and not self._dynamic_size:
       raise ValueError(
           "Cannot unstack %d tensors into a TensorArray of static size %d" %
-          (len(tensors), len(self._tensors)))
+          (len(tensors), len(self._tensor_array)))
     ta = self._identity_without_array()
     ta._implementation._tensor_array = tensors  # pylint: disable=protected-access
     return ta

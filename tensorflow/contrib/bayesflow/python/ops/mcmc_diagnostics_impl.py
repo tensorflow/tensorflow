@@ -36,13 +36,13 @@ __all__ = [
 
 
 def effective_sample_size(states,
-                          max_lags_threshold=None,
-                          max_lags=None,
+                          filter_threshold=0.,
+                          filter_beyond_lag=None,
                           name=None):
   """Estimate a lower bound on effective sample size for each independent chain.
 
-  Roughly speaking, the "effective sample size" (ESS) is the size of an iid
-  sample with the same variance as `state`.
+  Roughly speaking, "effective sample size" (ESS) is the size of an iid sample
+  with the same variance as `state`.
 
   More precisely, given a stationary sequence of possibly correlated random
   variables `X_1, X_2,...,X_N`, each identically distributed ESS is the number
@@ -87,21 +87,28 @@ def effective_sample_size(states,
   This function estimates the above by first estimating the auto-correlation.
   Since `R_k` must be estimated using only `N - k` samples, it becomes
   progressively noisier for larger `k`.  For this reason, the summation over
-  `R_k` should be truncated at some number `max_lags < N`.  Since many MCMC
-  methods generate chains where `R_k > 0`, a reasonable critera is to truncate
-  at the first index where the estimated auto-correlation becomes negative.
+  `R_k` should be truncated at some number `filter_beyond_lag < N`.  Since many
+  MCMC methods generate chains where `R_k > 0`, a reasonable critera is to
+  truncate at the first index where the estimated auto-correlation becomes
+  negative.
+
+  The arguments `filter_beyond_lag`, `filter_threshold` are filters intended to
+  remove noisy tail terms from `R_k`.  They combine in an "OR" manner meaning
+  terms are removed if they were to be filtered under the `filter_beyond_lag` OR
+  `filter_threshold` criteria.
 
   Args:
     states:  `Tensor` or list of `Tensor` objects.  Dimension zero should index
       identically distributed states.
-    max_lags_threshold:  `Tensor` or list of `Tensor` objects.
+    filter_threshold:  `Tensor` or list of `Tensor` objects.
       Must broadcast with `state`.  The auto-correlation sequence is truncated
-      after the first appearance of a term less than `max_lags_threshold`.  If
-      both `max_lags` and `max_lags_threshold` are `None`,
-      `max_lags_threshold` defaults to `0`.
-    max_lags:  `Tensor` or list of `Tensor` objects.  Must be `int`-like and
-      scalar valued.  The auto-correlation sequence is truncated to this length.
-      May be provided only if `max_lags_threshold` is not.
+      after the first appearance of a term less than `filter_threshold`.
+      Setting to `None` means we use no threshold filter.  Since `|R_k| <= 1`,
+      setting to any number less than `-1` has the same effect.
+    filter_beyond_lag:  `Tensor` or list of `Tensor` objects.  Must be
+      `int`-like and scalar valued.  The auto-correlation sequence is truncated
+      to this length.  Setting to `None` means we do not filter based on number
+      of lags.
     name:  `String` name to prepend to created ops.
 
   Returns:
@@ -109,8 +116,8 @@ def effective_sample_size(states,
       each component of `states`.  Shape will be `states.shape[1:]`.
 
   Raises:
-    ValueError:  If `states` and `max_lags_threshold` or `states` and `max_lags`
-      are both lists with different lengths.
+    ValueError:  If `states` and `filter_threshold` or `states` and
+      `filter_beyond_lag` are both lists with different lengths.
   """
   states_was_list = _is_list_like(states)
 
@@ -118,15 +125,16 @@ def effective_sample_size(states,
   if not states_was_list:
     states = [states]
 
-  max_lags = _broadcast_maybelist_arg(states, max_lags, "max_lags")
-  max_lags_threshold = _broadcast_maybelist_arg(states, max_lags_threshold,
-                                                "max_lags_threshold")
+  filter_beyond_lag = _broadcast_maybelist_arg(states, filter_beyond_lag,
+                                               "filter_beyond_lag")
+  filter_threshold = _broadcast_maybelist_arg(states, filter_threshold,
+                                              "filter_threshold")
 
   # Process items, one at a time.
   with ops.name_scope(name, "effective_sample_size"):
     ess_list = [
         _effective_sample_size_single_state(s, ml, mlt)
-        for (s, ml, mlt) in zip(states, max_lags, max_lags_threshold)
+        for (s, ml, mlt) in zip(states, filter_beyond_lag, filter_threshold)
     ]
 
   if states_was_list:
@@ -134,38 +142,31 @@ def effective_sample_size(states,
   return ess_list[0]
 
 
-def _effective_sample_size_single_state(states, max_lags, max_lags_threshold):
+def _effective_sample_size_single_state(states, filter_beyond_lag,
+                                        filter_threshold):
   """ESS computation for one single Tensor argument."""
-  if max_lags is not None and max_lags_threshold is not None:
-    raise ValueError(
-        "Expected at most one of max_lags, max_lags_threshold to be provided.  "
-        "Found: {}, {}".format(max_lags, max_lags_threshold))
-
-  if max_lags_threshold is None:
-    max_lags_threshold = 0.
 
   with ops.name_scope(
       "effective_sample_size_single_state",
-      values=[states, max_lags, max_lags_threshold]):
+      values=[states, filter_beyond_lag, filter_threshold]):
 
     states = ops.convert_to_tensor(states, name="states")
     dt = states.dtype
 
-    if max_lags is not None:
-      auto_corr = sample_stats.auto_correlation(
-          states, axis=0, max_lags=max_lags)
-    elif max_lags_threshold is not None:
-      max_lags_threshold = ops.convert_to_tensor(
-          max_lags_threshold, dtype=dt, name="max_lags_threshold")
-      auto_corr = sample_stats.auto_correlation(states, axis=0)
+    # filter_beyond_lag == None ==> auto_corr is the full sequence.
+    auto_corr = sample_stats.auto_correlation(
+        states, axis=0, max_lags=filter_beyond_lag)
+    if filter_threshold is not None:
+      filter_threshold = ops.convert_to_tensor(
+          filter_threshold, dtype=dt, name="filter_threshold")
       # Get a binary mask to zero out values of auto_corr below the threshold.
       #   mask[i, ...] = 1 if auto_corr[j, ...] > threshold for all j <= i,
       #   mask[i, ...] = 0, otherwise.
       # So, along dimension zero, the mask will look like [1, 1, ..., 0, 0,...]
       # Building step by step,
-      #   Assume auto_corr = [1, 0.5, 0.0, 0.3], and max_lags_threshold = 0.2.
+      #   Assume auto_corr = [1, 0.5, 0.0, 0.3], and filter_threshold = 0.2.
       # Step 1:  mask = [False, False, True, False]
-      mask = auto_corr < max_lags_threshold
+      mask = auto_corr < filter_threshold
       # Step 2:  mask = [0, 0, 1, 1]
       mask = math_ops.cast(mask, dtype=dt)
       # Step 3:  mask = [0, 0, 1, 2]
@@ -173,14 +174,12 @@ def _effective_sample_size_single_state(states, max_lags, max_lags_threshold):
       # Step 4:  mask = [1, 1, 0, 0]
       mask = math_ops.maximum(1. - mask, 0.)
       auto_corr *= mask
-    else:
-      auto_corr = sample_stats.auto_correlation(states, axis=0)
 
     # With R[k] := auto_corr[k, ...],
     # ESS = N / {1 + 2 * Sum_{k=1}^N (N - k) / N * R[k]}
     #     = N / {-1 + 2 * Sum_{k=0}^N (N - k) / N * R[k]} (since R[0] = 1)
     #     approx N / {-1 + 2 * Sum_{k=0}^M (N - k) / N * R[k]}
-    #, where M is the max_lags truncation point chosen above.
+    # where M is the filter_beyond_lag truncation point chosen above.
 
     # Get the factor (N - k) / N, and give it shape [M, 1,...,1], having total
     # ndims the same as auto_corr

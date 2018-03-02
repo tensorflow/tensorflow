@@ -64,8 +64,11 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   ops::builtin::BuiltinOpResolver resolver;
   TfLiteRegistration* resize_op =
       resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR);
-  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, nullptr,
-                                     resize_op, nullptr);
+  auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
+      malloc(sizeof(TfLiteResizeBilinearParams)));
+  params->align_corners = false;
+  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, params, resize_op,
+                                     nullptr);
 
   interpreter->AllocateTensors();
 

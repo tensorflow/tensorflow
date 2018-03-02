@@ -72,6 +72,11 @@ TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
 TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "min");
 
+// If `op_device` is non-empty, set the created op on that device.
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name = "min");
+
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
                   const char* name = "neg");
 
@@ -126,6 +131,8 @@ class CSession {
   void CloseAndDelete(TF_Status* s);
 
   TF_Tensor* output_tensor(int i) { return output_values_[i]; }
+
+  TF_Session* mutable_session() { return session_; }
 
  private:
   void DeleteInputValues();

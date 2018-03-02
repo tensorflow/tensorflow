@@ -47,6 +47,21 @@ class CallTreesTest(converter_test_base.TestCase):
       result.renamed_test_fn_1 = renamed_test_fn_1
       self.assertEquals(3, result.test_fn_2(1))
 
+  def test_dynamic_function(self):
+
+    def test_fn_1():
+      raise ValueError('This should be masked by the mock.')
+
+    def test_fn_2(f):
+      return f() + 3
+
+    node = self.parse_and_analyze(test_fn_2, {})
+    node = call_trees.transform(node, self.ctx, (), ())
+
+    with self.compiled(node) as result:
+      # 10 = 7 (from the mock) + 3 (from test_fn_2)
+      self.assertEquals(10, result.test_fn_2(test_fn_1))
+
   def test_simple_methods(self):
 
     class TestClass(object):
@@ -59,12 +74,36 @@ class CallTreesTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(
         TestClass.test_fn_2, {'TestClass': TestClass},
+        namer=converter_test_base.FakeNoRenameNamer(),
         arg_types={'self': (TestClass.__name__, TestClass)})
     node = call_trees.transform(node, self.ctx, (), ())
 
     with self.compiled(node) as result:
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
+
+  def test_py_func_wrap_no_retval(self):
+
+    def test_fn(a):
+      setattr(a, 'foo', 'bar')
+
+    node = self.parse_and_analyze(test_fn, {'setattr': setattr})
+    node = call_trees.transform(node, self.ctx, (), ())
+
+    with self.compiled(node) as result:
+      with self.test_session() as sess:
+        # The function has no return value, so we do some tricks to grab the
+        # generated py_func node and ensure its effect only happens at graph
+        # execution.
+
+        class Dummy(object):
+          pass
+
+        a = Dummy()
+        result.test_fn(a)
+        self.assertFalse(hasattr(a, 'foo'))
+        sess.run(sess.graph.get_operations()[0])
+        self.assertEquals('bar', a.foo)
 
   def test_uncompiled_modules(self):
 

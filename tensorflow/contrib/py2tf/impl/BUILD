@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/contrib/py2tf/converters",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
         "@six_archive//:six",
     ],

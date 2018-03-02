@@ -263,6 +263,8 @@ class Layer(object):
       return  # Updates already applied when in eager mode.
 
     updates = _to_list(updates)
+    updates = [x if isinstance(x, ops.Operation)
+               else ops.convert_to_tensor(x) for x in updates]
     self._updates += updates
     if inputs is None:
       for u in updates:
@@ -730,12 +732,10 @@ class Layer(object):
                 activity_regularization = self._activity_regularizer(output)
               self.add_loss(activity_regularization, inputs=inputs)
 
-        if not in_deferred_mode:
-          # TODO(fchollet): consider how masking will work with deferred mode.
-          # Handle mask computation and propagation to the next layer.
+          # TODO(fchollet): consider enabling masking for Eager mode.
           if hasattr(self, 'compute_mask'):
             output_mask = self.compute_mask(inputs, previous_mask)
-            if isinstance(outputs, list):
+            if isinstance(outputs, (list, tuple)):
               if output_mask is None:
                 output_mask = [None for _ in range(len(outputs))]
               for x, m in zip(outputs, output_mask):

@@ -1201,6 +1201,23 @@ REGISTER_OP("UniqueWithCounts")
       return Status::OK();
     });
 
+REGISTER_OP("UniqueWithCountsV2")
+    .Input("x: T")
+    .Input("axis: Taxis")
+    .Output("y: T")
+    .Output("idx: out_idx")
+    .Output("count: out_idx")
+    .Attr("T: type")
+    .Attr("Taxis: {int32,int64} = DT_INT64")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      auto uniq = c->Vector(InferenceContext::kUnknownDim);
+      c->set_output(0, uniq);
+      c->set_output(1, c->input(0));
+      c->set_output(2, uniq);
+      return Status::OK();
+    });
+
 namespace {
 
 Status ShapeShapeFn(InferenceContext* c) {

@@ -86,6 +86,8 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
+  transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -188,19 +190,22 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
 }
 
 void Transform(const TocoFlags& toco_flags, Model* model) {
+  // Clean up after import.
+  SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
+  FinishBuildingRNNStates(model);
+
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
   const bool quantize_output =
-      SupportsQuantization(output_format) && inference_type == QUANTIZED_UINT8;
+      SupportsQuantization(output_format) &&
+      (inference_type == QUANTIZED_UINT8 || inference_type == QUANTIZED_INT16);
 
   if (quantize_output) {
     QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
         << "Quantized inference is not allowed with float inputs.";
   }
-
-  SetFinalDataTypeOnInputs(toco_flags, model);
-  UseArraysExtraInfo(model);
 
   // Remove unused ops before performing any other optimizations. This is to
   // stop optimizations from crossing the input/output boundaries. For example
@@ -231,7 +236,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
   transformations.Add(new ConvertPureConvToDepthwise);
   if (SupportsLstmCell(output_format)) {
-    transformations.Add(new IdentifyLstmCell);
+    if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
+      transformations.Add(new IdentifyLstmCell);
+    }
     if (output_format == TFLITE) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {

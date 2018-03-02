@@ -90,49 +90,51 @@ class EstimatorTest(test.TestCase):
   def testEstimatorInitManualRegistration(self):
     with self._graph.as_default():
       # We should be able to build an estimator for only the registered vars.
-      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection)
+      estimator.FisherEstimator(lambda: 0.2, [self.weights], 0.1,
+                                self.layer_collection)
 
       # Check that we throw an error if we try to build an estimator for vars
       # that were not manually registered.
       with self.assertRaises(ValueError):
-        estimator.FisherEstimator([self.weights, self.bias], 0.1, 0.2,
+        estimator.FisherEstimator(lambda: 0.2, [self.weights, self.bias], 0.1,
                                   self.layer_collection)
 
       # Check that we throw an error if we don't include registered variables,
       # i.e. self.weights
       with self.assertRaises(ValueError):
-        estimator.FisherEstimator([], 0.1, 0.2, self.layer_collection)
+        estimator.FisherEstimator(lambda: 0.2, [], 0.1, self.layer_collection)
 
   @test.mock.patch.object(utils.SubGraph, "variable_uses", return_value=42)
   def testVariableWrongNumberOfUses(self, mock_uses):
     with self.assertRaises(ValueError):
-      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection)
+      estimator.FisherEstimator(lambda: 0.2, [self.weights], 0.1,
+                                self.layer_collection)
 
   def testInvalidEstimationMode(self):
     with self.assertRaises(ValueError):
-      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection,
-                                "not_a_real_mode")
+      estimator.FisherEstimator(lambda: 0.2, [self.weights], 0.1,
+                                self.layer_collection, "not_a_real_mode")
 
   def testModeListCorrect(self):
     with self._graph.as_default():
-      est = estimator.FisherEstimator([self.weights], 0.1, 0.2,
+      est = estimator.FisherEstimator(lambda: 0.2, [self.weights], 0.1,
                                       self.layer_collection)
     self.assertItemsEqual(_ALL_ESTIMATION_MODES, est._gradient_fns.keys())
 
   def testAllModesBuild(self):
     for mode in _ALL_ESTIMATION_MODES:
       with self._graph.as_default():
-        estimator.FisherEstimator([self.weights], 0.1, 0.2,
+        estimator.FisherEstimator(lambda: 0.2, [self.weights], 0.1,
                                   self.layer_collection, mode)
 
   def test_cov_update_thunks(self):
     """Ensures covariance update ops run once per global_step."""
     with self._graph.as_default(), self.test_session() as sess:
       fisher_estimator = estimator.FisherEstimator(
+          damping_fn=lambda: 0.2,
           variables=[self.weights],
           layer_collection=self.layer_collection,
-          cov_ema_decay=0.0,
-          damping=0.0)
+          cov_ema_decay=0.0)
 
       # Construct an op that executes one covariance update per step.
       global_step = training_util.get_or_create_global_step()
@@ -176,10 +178,10 @@ class EstimatorTest(test.TestCase):
     """Ensures inverse update ops run once per global_step."""
     with self._graph.as_default(), self.test_session() as sess:
       fisher_estimator = estimator.FisherEstimator(
+          damping_fn=lambda: 0.2,
           variables=[self.weights],
           layer_collection=self.layer_collection,
-          cov_ema_decay=0.0,
-          damping=0.0)
+          cov_ema_decay=0.0)
 
       # Construct op that updates one inverse per global step.
       global_step = training_util.get_or_create_global_step()

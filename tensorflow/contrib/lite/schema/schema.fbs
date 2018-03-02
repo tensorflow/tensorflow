@@ -120,6 +120,15 @@ enum BuiltinOperator : byte {
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   STRIDED_SLICE = 45,
   BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  EXP = 47,
+  TOPK_V2 = 48,
+  SPLIT = 49,
+  LOG_SOFTMAX = 50,
+  // DELEGATE is a special op type for the operations which are delegated to
+  // other backends.
+  // WARNING: Experimental interface, subject to change
+  DELEGATE = 51,
+  BIDIRECTIONAL_SEQUENCE_LSTM = 52,
 }
 
 // Options for the builtin operators.
@@ -156,6 +165,10 @@ union BuiltinOptions {
   SqueezeOptions,
   SequenceRNNOptions,
   StridedSliceOptions,
+  ExpOptions,
+  TopKV2Options,
+  SplitOptions,
+  LogSoftmaxOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -315,6 +328,9 @@ table DivOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+table TopKV2Options {
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -332,6 +348,9 @@ table GatherOptions {
 table TransposeOptions {
 }
 
+table ExpOptions {
+}
+
 table MeanOptions {
   keep_dims: bool;
 }
@@ -340,12 +359,19 @@ table SqueezeOptions {
   squeeze_dims:[int];
 }
 
+table SplitOptions {
+  num_splits: int;
+}
+
 table StridedSliceOptions {
   begin_mask: int;
   end_mask: int;
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+}
+
+table LogSoftmaxOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

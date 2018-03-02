@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
-#define TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
+#ifndef TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H
+#define TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H
 
 #include <memory>
 #include <string>
@@ -24,10 +24,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 namespace tensorflow {
-namespace trt {
+namespace tensorrt {
 // TODO(sami): Convert this to async kernel!
 class TRTCalibOp : public OpKernel {
  public:
@@ -36,15 +38,15 @@ class TRTCalibOp : public OpKernel {
   void Compute(OpKernelContext* context) override;
 
  private:
-  std::string repo_name;
-  std::vector<std::string> segment_nodes_;
-  std::vector<std::string> input_names_;
+  string resource_name_;
+  std::vector<string> segment_nodes_;
+  std::vector<string> input_names_;
   std::vector<tensorflow::TensorShape> shapes_;
-  std::unordered_map<std::string, std::pair<void*, size_t>> device_buffers_;
+  std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
 };
-}  // namespace trt
+}  // namespace tensorrt
 }  // namespace tensorflow
 #endif
 #endif
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_TRT_CALIB_OP_H
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_CALIB_OP_H

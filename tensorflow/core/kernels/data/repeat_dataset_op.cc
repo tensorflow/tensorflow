@@ -187,12 +187,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           } else {
             input_impl_.reset();
             if (first_call) {
-              // If the first call to GetNext() fails because the end of
-              // sequence has been reached, we return an OutOfRange error to
-              // terminate the iteration. (Otherwise, this iterator would loop
-              // infinitely and never produce a value.)
-              return errors::OutOfRange(
-                  "Attempted to repeat an empty dataset infinitely.");
+              // If the first call to GetNext() fails because the end
+              // of sequence has been reached, we terminate the
+              // iteration immediately. (Otherwise, this iterator
+              // would loop infinitely and never produce a value.)
+              return Status::OK();
             }
           }
         } while (true);

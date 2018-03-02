@@ -90,11 +90,8 @@ void WarningHandler(png_structp png_ptr, png_const_charp msg) {
 void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   DecodeContext* const ctx = bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    if (!ctx->error_condition) {
-      VLOG(1) << "PNG read decoding error";
-      ctx->error_condition = true;
-    }
     memset(data, 0, length);
+    png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);
     ctx->data += length;

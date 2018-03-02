@@ -86,7 +86,8 @@ class ComputationsWithConstantsTest(LocalComputationTest):
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):
@@ -761,6 +762,23 @@ class SingleOpTest(LocalComputationTest):
         [3, 2])
     self._ExecuteAndCompareExact(c, expected=[[4, 5], [7, 8]])
 
+  def testSliceInDim(self):
+    c = self._NewComputation()
+    c.SliceInDim(
+        c.Constant(NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
+        start_index=1,
+        limit_index=2,
+        stride=1,
+        dimno=1)
+    self._ExecuteAndCompareExact(c, expected=[[2], [5], [8]])
+    c.SliceInDim(
+        c.Constant(NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
+        start_index=0,
+        limit_index=3,
+        stride=2,
+        dimno=0)
+    self._ExecuteAndCompareExact(c, expected=[[1, 2, 3], [7, 8, 9]])
+
   def testDynamicSlice(self):
     c = self._NewComputation()
     c.DynamicSlice(
@@ -879,6 +897,13 @@ class EmbeddedComputationsTest(LocalComputationTest):
     """Computation (f32) -> f32 that multiplies its parameter by 2."""
     c = self._NewComputation("mul_f32_by2")
     c.Mul(c.ParameterFromNumpy(NumpyArrayF32(0)), c.ConstantF32Scalar(2.0))
+    return c.Build()
+
+  def _CreateMulF32ByParamComputation(self):
+    """Computation (f32) -> f32 that multiplies one parameter by the other."""
+    c = self._NewComputation("mul_f32_by_param")
+    c.Mul(c.ParameterFromNumpy(NumpyArrayF32(0)),
+          c.ParameterFromNumpy(NumpyArrayF32(0)))
     return c.Build()
 
   def _CreateMulF64By2Computation(self):
@@ -1020,6 +1045,14 @@ class EmbeddedComputationsTest(LocalComputationTest):
            c.Constant(NumpyArrayF64([5.0, 5.0, 4.0, 4.0]))),
           self._CreateBinaryDivF64Computation(), [0])
     self._ExecuteAndCompareClose(c, expected=[0.2, 0.4, 0.75, 1.0])
+
+  def DISABLED_testMapWithStaticOperands(self):
+    c = self._NewComputation()
+    factor = c.ConstantF32Scalar(3.0)
+    c.Map([c.Constant(NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
+          self._CreateMulF32ByParamComputation(), [0],
+          static_operands=[factor])
+    self._ExecuteAndCompareClose(c, expected=[3.0, 6.0, 9.0, 12.0])
 
   def testSelectAndScatterF32(self):
     c = self._NewComputation()

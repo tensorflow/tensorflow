@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
 
 //#if GOOGLE_CUDA
 //#if GOOGLE_TENSORRT

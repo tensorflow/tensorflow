@@ -46,18 +46,18 @@ tf_cuda_cc_test(
 )
 
 tf_custom_op_library(
-  name="python/ops/_trt_engine_op.so",
-  srcs=[
-    "ops/trt_calib_op.cc",
-    "ops/trt_engine_op.cc",
-  ],
-  deps=[
-         ":trt_engine_op_kernel",
-         ":trt_shape_function",
-         "//tensorflow/core:lib_proto_parsing",
-       ] + if_tensorrt([
-    "@local_config_tensorrt//:nv_infer",
-  ]),
+    name = "python/ops/_trt_engine_op.so",
+    srcs = [
+        "ops/trt_calib_op.cc",
+        "ops/trt_engine_op.cc",
+    ],
+    deps = [
+        ":trt_engine_op_kernel",
+        ":trt_shape_function",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 tf_cuda_library(
@@ -73,37 +73,38 @@ tf_cuda_library(
 )
 
 cc_library(
-  name="trt_engine_op_kernel",
-  srcs=[
-    "kernels/trt_calib_op.cc",
-    "kernels/trt_engine_op.cc",
-  ],
-  hdrs=[
-    "kernels/trt_calib_op.h",
-    "kernels/trt_engine_op.h",
-  ],
-  copts=tf_copts(),
-  deps=[
-         ":trt_logging",
-         ":trt_resources",
-         "//tensorflow/core:gpu_headers_lib",
-         "//tensorflow/core:lib_proto_parsing",
-         "//tensorflow/core:stream_executor_headers_lib",
-       ] + if_tensorrt([
-    "@local_config_tensorrt//:nv_infer",
-  ]) + tf_custom_op_library_additional_deps(),
-  alwayslink=1,
-  visibility=["//visibility:public"],
+    name = "trt_engine_op_kernel",
+    srcs = [
+        "kernels/trt_calib_op.cc",
+        "kernels/trt_engine_op.cc",
+    ],
+    hdrs = [
+        "kernels/trt_calib_op.h",
+        "kernels/trt_engine_op.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":trt_logging",
+        ":trt_resources",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:stream_executor_headers_lib",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]) + tf_custom_op_library_additional_deps(),
+    visibility = ["//visibility:public"],
+    # TODO(laigd)
+    alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
 )
 
 tf_gen_op_libs(
-  op_lib_names=[
-    "trt_engine_op",
-    "trt_calib_op",
-  ],
-  deps=if_tensorrt([
-    "@local_config_tensorrt//:nv_infer",
-  ]),
+    op_lib_names = [
+        "trt_engine_op",
+        "trt_calib_op",
+    ],
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 tf_cuda_library(
@@ -119,13 +120,13 @@ tf_cuda_library(
 )
 
 tf_gen_op_wrapper_py(
-  name="trt_engine_op",
-  deps=[
-    ":trt_engine_op_op_lib",
-    ":trt_calib_op_op_lib",
-    ":trt_logging",
-    ":trt_shape_function",
-  ],
+    name = "trt_engine_op",
+    deps = [
+        ":trt_calib_op_op_lib",
+        ":trt_engine_op_op_lib",
+        ":trt_logging",
+        ":trt_shape_function",
+    ],
 )
 
 tf_custom_op_py_library(
@@ -205,37 +206,58 @@ tf_cuda_library(
   ],
 )
 
+tf_cuda_library(
+    name = "trt_resources",
+    srcs = [
+        "resources/trt_int8_calibrator.cc",
+        "resources/trt_resource_manager.cc",
+    ],
+    hdrs = [
+        "resources/trt_int8_calibrator.h",
+        "resources/trt_resource_manager.h",
+        "resources/trt_resources.h",
+    ],
+    deps = [
+        ":trt_logging",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
-  name="trt_conversion",
-  srcs=[
-    "convert/convert_graph.cc",
-    "convert/convert_nodes.cc",
-  ],
-  hdrs=[
-    "convert/convert_graph.h",
-    "convert/convert_nodes.h",
-  ],
-  deps=[
-         ":segment",
-         ":trt_logging",
-         ":trt_resources",
-         "//tensorflow/core/grappler:grappler_item",
-         "//tensorflow/core/grappler:utils",
-         "//tensorflow/core:framework",
-         "//tensorflow/core:framework_lite",
-         "//tensorflow/core:graph",
-         "//tensorflow/core:lib",
-         "//tensorflow/core:lib_internal",
-         "//tensorflow/core:protos_all_cc",
-         "//tensorflow/core/grappler:devices",
-         "//tensorflow/core/grappler/clusters:virtual_cluster",
-         "//tensorflow/core/grappler/costs:graph_properties",
-         "//tensorflow/core/grappler/optimizers:constant_folding",
-         "//tensorflow/core/grappler/optimizers:layout_optimizer",
-       ] + if_tensorrt([
-    "@local_config_tensorrt//:nv_infer",
-  ]) + tf_custom_op_library_additional_deps(),
+    name = "trt_conversion",
+    srcs = [
+        "convert/convert_graph.cc",
+        "convert/convert_nodes.cc",
+    ],
+    hdrs = [
+        "convert/convert_graph.h",
+        "convert/convert_nodes.h",
+    ],
+    deps = [
+        ":segment",
+        ":trt_logging",
+        ":trt_resources",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/optimizers:constant_folding",
+        "//tensorflow/core/grappler/optimizers:layout_optimizer",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 # Library for the segmenting portion of TensorRT operation creation

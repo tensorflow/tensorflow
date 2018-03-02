@@ -19,12 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import critical_section_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 # TODO(ebrevdo): Re-enable once CriticalSection is in core.
@@ -35,7 +33,7 @@ class CriticalSectionTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testCreateCriticalSection(self):
-    cs = critical_section_ops.CriticalSection(name="cs")
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
 
     def fn(a, b):
@@ -45,7 +43,7 @@ class CriticalSectionTest(test.TestCase):
         with ops.control_dependencies([nv]):
           return array_ops.identity(c)
 
-    num_concurrent = 1000
+    num_concurrent = 100
     r = [cs.execute(fn, 1.0, 2.0) for _ in range(num_concurrent)]
     self.evaluate(v.initializer)
     r_value = self.evaluate(r)
@@ -53,8 +51,64 @@ class CriticalSectionTest(test.TestCase):
                         sorted(r_value))
 
   @test_util.run_in_graph_and_eager_modes()
+  def testCriticalSectionWithControlFlow(self):
+    for outer_cond in [False, True]:
+      for inner_cond in [False, True]:
+        cs = critical_section_ops.CriticalSection(shared_name="cs")
+        v = resource_variable_ops.ResourceVariable(0.0, name="v")
+        num_concurrent = 100
+
+        # pylint: disable=cell-var-from-loop
+        def fn(a, b):
+          c = v.read_value()
+          def true_fn():
+            with ops.control_dependencies([c]):
+              nv = v.assign_add(a * b)
+              with ops.control_dependencies([nv]):
+                return array_ops.identity(c)
+          return control_flow_ops.cond(
+              array_ops.identity(inner_cond), true_fn, lambda: c)
+
+        def execute():
+          return cs.execute(fn, 1.0, 2.0)
+
+        r = [
+            control_flow_ops.cond(array_ops.identity(outer_cond),
+                                  execute,
+                                  v.read_value)
+            for _ in range(num_concurrent)
+        ]
+        # pylint: enable=cell-var-from-loop
+
+        self.evaluate(v.initializer)
+        r_value = self.evaluate(r)
+        if inner_cond and outer_cond:
+          self.assertAllClose([2.0 * i for i in range(num_concurrent)],
+                              sorted(r_value))
+        else:
+          self.assertAllClose([0] * num_concurrent, r_value)
+
+  def testCriticalSectionInParallelDoesntDeadlockOnError(self):
+    # No eager mode execution of this test because eager does not
+    # run fn() in parallel, which is where the deadlock could
+    # potentially occur (in graph mode).
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
+    v = resource_variable_ops.ResourceVariable(0.0, name="v")
+
+    def fn(i):
+      error = control_flow_ops.Assert((i % 2) == 1, ["Error"])
+      with ops.control_dependencies([error]):
+        return v.read_value()
+    num_concurrent = 2
+    r = [cs.execute(fn, i) for i in range(num_concurrent)]
+    self.evaluate(v.initializer)
+    for _ in range(100):
+      with self.assertRaisesOpError("Error"):
+        self.evaluate(r)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testCreateCriticalSectionFnReturnsOp(self):
-    cs = critical_section_ops.CriticalSection(name="cs")
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
 
     def fn_return_op(a, b):
@@ -62,7 +116,7 @@ class CriticalSectionTest(test.TestCase):
       with ops.control_dependencies([c]):
         nv = v.assign_add(a * b)
         with ops.control_dependencies([nv]):
-          return ()
+          return control_flow_ops.no_op()
 
     num_concurrent = 100
     r = [cs.execute(fn_return_op, 1.0, 2.0) for _ in range(num_concurrent)]
@@ -71,47 +125,25 @@ class CriticalSectionTest(test.TestCase):
     final_v = self.evaluate(v)
     self.assertAllClose(2.0 * num_concurrent, final_v)
 
-  def testCreateCriticalSectionRaw(self):
-    cs = critical_section_ops.CriticalSection(name="cs")
-    v = resource_variable_ops.ResourceVariable(0.0, name="v")
-
-    @function.Defun(dtypes.float32, dtypes.float32)
-    def fn(a, b):
-      c = v.read_value()
-      with ops.control_dependencies([c]):
-        nv = v.assign_add(a * b)
-        with ops.control_dependencies([nv]):
-          return array_ops.identity(c)
-
-    def execute(fn, *args):
-      output_args = fn.definition.signature.output_arg
-      return resource_variable_ops.execute_in_critical_section(
-          critical_section=cs._handle,
-          arguments=list(args) + fn.captured_inputs,
-          f=fn,
-          output_types=[out.type for out in output_args],
-          output_shapes=[tensor_shape.TensorShape(None) for _ in output_args])
-
-    num_concurrent = 1000
-    r = [execute(fn, 1.0, 2.0)[0] for _ in range(num_concurrent)]
-    self.evaluate(v.initializer)
-    r_value = self.evaluate(r)
-    self.assertAllClose([2.0 * i for i in range(num_concurrent)],
-                        sorted(r_value))
-
   def testCollection(self):
-    cs = critical_section_ops.CriticalSection(name="cs")
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
     self.assertIn(
         cs, ops.get_collection(critical_section_ops.CRITICAL_SECTIONS))
-    execute_op = cs.execute(lambda x: x + 1, 1.0).op
+    execute = cs.execute(lambda x: x + 1, 1.0, name="my_execute")
+    execute_op = [
+        x for x in execute.graph.get_operations()
+        if "my_execute" in x.name and "MutexLock" in x.type
+    ][0]
     self.assertIn(
         execute_op,
         [signature.op for signature in
          ops.get_collection(critical_section_ops.CRITICAL_SECTION_EXECUTIONS)])
 
-  @test_util.run_in_graph_and_eager_modes()
   def testRecursiveCriticalSectionAccessIsIllegal(self):
-    cs = critical_section_ops.CriticalSection(name="cs")
+    # This does not work properly in eager mode.  Eager users will
+    # just hit a deadlock if they do this.  But at least it'll be easier
+    # to debug.
+    cs = critical_section_ops.CriticalSection(shared_name="cs")
     def fn(x):
       return cs.execute(lambda x: x+1, x)
     with self.assertRaisesRegexp(
@@ -167,7 +199,7 @@ class CriticalSectionTest(test.TestCase):
   #     self.assertEqual(restored_exec[0].op.name, "imported/%s" % r.op.name)
 
   # def testToProto(self):
-  #   cs = critical_section_ops.CriticalSection(name="cs")
+  #   cs = critical_section_ops.CriticalSection(shared_name="cs")
   #   proto = cs.to_proto()
   #   self.assertEqual(proto.critical_section_name, cs._handle.name)
   #   cs_copy = critical_section_ops.CriticalSection.from_proto(proto)

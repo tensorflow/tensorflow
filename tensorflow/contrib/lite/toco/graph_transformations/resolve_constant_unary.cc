@@ -139,14 +139,13 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
            output_buffer_size * sizeof(output_float_data[0]));
   } else if (unary_op->type == OperatorType::kTensorFlowSum) {
     // At the moment only full reduction across all dimensions is supported.
-    for (int i = 0; i < output_dims_count; i++) {
-      CHECK_EQ(output_shape.dims(i), 1);
-    }
     float sum = 0.f;
     for (int i = 0; i < input_buffer_size; i++) {
       sum += (*input_float_data)[i];
     }
-    output_float_data[0] = sum;
+    for (int i = 0; i < output_buffer_size; ++i) {
+      output_float_data[i] = sum;
+    }
   } else if (unary_op->type == OperatorType::kTensorFlowMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.

@@ -41,12 +41,14 @@ class _EffectiveSampleSizeTest(object):
                                                    sess,
                                                    atol=1e-2,
                                                    rtol=1e-2,
-                                                   max_lags_threshold=None,
-                                                   max_lags=None):
+                                                   filter_threshold=None,
+                                                   filter_beyond_lag=None):
     x = array_ops.placeholder_with_default(
         input=x_, shape=x_.shape if self.use_static_shape else None)
     ess = mcmc_diagnostics.effective_sample_size(
-        x, max_lags_threshold=max_lags_threshold, max_lags=max_lags)
+        x,
+        filter_threshold=filter_threshold,
+        filter_beyond_lag=filter_beyond_lag)
     if self.use_static_shape:
       self.assertAllEqual(x.shape[1:], ess.shape)
 
@@ -56,18 +58,19 @@ class _EffectiveSampleSizeTest(object):
         np.ones_like(ess_) * expected_ess, ess_, atol=atol, rtol=rtol)
 
   def testIidRank1NormalHasFullEssMaxLags10(self):
-    # With a length 5000 iid normal sequence, and max_lags = 10, we should
-    # have a good estimate of ESS, and it should be close to the full sequence
-    # length of 5000.
-    # The choice of max_lags = 10 is a short cutoff, reasonable only since we
-    # know the correlation length should be zero right away.
+    # With a length 5000 iid normal sequence, and filter_beyond_lag = 10, we
+    # should have a good estimate of ESS, and it should be close to the full
+    # sequence length of 5000.
+    # The choice of filter_beyond_lag = 10 is a short cutoff, reasonable only
+    # since we know the correlation length should be zero right away.
     with self.test_session() as sess:
       with spectral_ops_test_util.fft_kernel_label_map():
         self._check_versus_expected_effective_sample_size(
             x_=rng.randn(5000).astype(np.float32),
             expected_ess=5000,
             sess=sess,
-            max_lags=10,
+            filter_beyond_lag=10,
+            filter_threshold=None,
             rtol=0.3)
 
   def testIidRank2NormalHasFullEssMaxLags10(self):
@@ -78,23 +81,25 @@ class _EffectiveSampleSizeTest(object):
             x_=rng.randn(5000, 2).astype(np.float32),
             expected_ess=5000,
             sess=sess,
-            max_lags=10,
+            filter_beyond_lag=10,
+            filter_threshold=None,
             rtol=0.3)
 
   def testIidRank1NormalHasFullEssMaxLagThresholdZero(self):
-    # With a length 5000 iid normal sequence, and max_lags_threshold = 0,
+    # With a length 5000 iid normal sequence, and filter_threshold = 0,
     # we should have a super-duper estimate of ESS, and it should be very close
     # to the full sequence length of 5000.
-    # The choice of max_lags_cutoff = 0 means we cutoff as soon as the auto-corr
-    # is below zero.  This should happen very quickly, due to the fact that the
-    # theoretical auto-corr is [1, 0, 0,...]
+    # The choice of filter_beyond_lag = 0 means we cutoff as soon as the
+    # auto-corris below zero.  This should happen very quickly, due to the fact
+    # that the theoretical auto-corr is [1, 0, 0,...]
     with self.test_session() as sess:
       with spectral_ops_test_util.fft_kernel_label_map():
         self._check_versus_expected_effective_sample_size(
             x_=rng.randn(5000).astype(np.float32),
             expected_ess=5000,
             sess=sess,
-            max_lags_threshold=0.,
+            filter_beyond_lag=None,
+            filter_threshold=0.,
             rtol=0.1)
 
   def testIidRank2NormalHasFullEssMaxLagThresholdZero(self):
@@ -105,7 +110,8 @@ class _EffectiveSampleSizeTest(object):
             x_=rng.randn(5000, 2).astype(np.float32),
             expected_ess=5000,
             sess=sess,
-            max_lags_threshold=0.,
+            filter_beyond_lag=None,
+            filter_threshold=0.,
             rtol=0.1)
 
   def testLength10CorrelationHasEssOneTenthTotalLengthUsingMaxLags50(self):
@@ -121,7 +127,8 @@ class _EffectiveSampleSizeTest(object):
             x_=x_,
             expected_ess=50000 // 10,
             sess=sess,
-            max_lags=50,
+            filter_beyond_lag=50,
+            filter_threshold=None,
             rtol=0.2)
 
   def testLength10CorrelationHasEssOneTenthTotalLengthUsingMaxLagsThresholdZero(
@@ -138,7 +145,8 @@ class _EffectiveSampleSizeTest(object):
             x_=x_,
             expected_ess=50000 // 10,
             sess=sess,
-            max_lags_threshold=0.,
+            filter_beyond_lag=None,
+            filter_threshold=0.,
             rtol=0.1)
 
   def testListArgs(self):
@@ -148,16 +156,16 @@ class _EffectiveSampleSizeTest(object):
     x_ = (iid_x_ * np.ones((5000, 10)).astype(np.float32)).reshape((50000,))
     y_ = rng.randn(50000).astype(np.float32)
     states = [x_, x_, y_, y_]
-    max_lags_threshold = [0., None, 0., None]
-    max_lags = [None, 5, None, 5]
+    filter_threshold = [0., None, 0., None]
+    filter_beyond_lag = [None, 5, None, 5]
 
     # See other tests for reasoning on tolerance.
     with self.test_session() as sess:
       with spectral_ops_test_util.fft_kernel_label_map():
         ess = mcmc_diagnostics.effective_sample_size(
             states,
-            max_lags_threshold=max_lags_threshold,
-            max_lags=max_lags)
+            filter_threshold=filter_threshold,
+            filter_beyond_lag=filter_beyond_lag)
         ess_ = sess.run(ess)
     self.assertAllEqual(4, len(ess_))
 
@@ -165,6 +173,59 @@ class _EffectiveSampleSizeTest(object):
     self.assertAllClose(50000 // 10, ess_[1], rtol=0.3)
     self.assertAllClose(50000, ess_[2], rtol=0.1)
     self.assertAllClose(50000, ess_[3], rtol=0.1)
+
+  def testMaxLagsThresholdLessThanNeg1SameAsNone(self):
+    # Setting both means we filter out items R_k from the auto-correlation
+    # sequence if k > filter_beyond_lag OR k >= j where R_j < filter_threshold.
+
+    # x_ has correlation length 10.
+    iid_x_ = rng.randn(500, 1).astype(np.float32)
+    x_ = (iid_x_ * np.ones((500, 10)).astype(np.float32)).reshape((5000,))
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        x = array_ops.placeholder_with_default(
+            input=x_, shape=x_.shape if self.use_static_shape else None)
+
+        ess_none_none = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=None, filter_beyond_lag=None)
+        ess_none_200 = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=None, filter_beyond_lag=200)
+        ess_neg2_200 = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=-2., filter_beyond_lag=200)
+        ess_neg2_none = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=-2., filter_beyond_lag=None)
+        ess_none_none_, ess_none_200_, ess_neg2_200_, ess_neg2_none_ = sess.run(
+            [ess_none_none, ess_none_200, ess_neg2_200, ess_neg2_none])
+
+        # filter_threshold=-2 <==> filter_threshold=None.
+        self.assertAllClose(ess_none_none_, ess_neg2_none_)
+        self.assertAllClose(ess_none_200_, ess_neg2_200_)
+
+  def testMaxLagsArgsAddInAnOrManner(self):
+    # Setting both means we filter out items R_k from the auto-correlation
+    # sequence if k > filter_beyond_lag OR k >= j where R_j < filter_threshold.
+
+    # x_ has correlation length 10.
+    iid_x_ = rng.randn(500, 1).astype(np.float32)
+    x_ = (iid_x_ * np.ones((500, 10)).astype(np.float32)).reshape((5000,))
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        x = array_ops.placeholder_with_default(
+            input=x_, shape=x_.shape if self.use_static_shape else None)
+
+        ess_1_9 = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=1., filter_beyond_lag=9)
+        ess_1_none = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=1., filter_beyond_lag=None)
+        ess_none_9 = mcmc_diagnostics.effective_sample_size(
+            x, filter_threshold=1., filter_beyond_lag=9)
+        ess_1_9_, ess_1_none_, ess_none_9_ = sess.run(
+            [ess_1_9, ess_1_none, ess_none_9])
+
+        # Since R_k = 1 for k < 10, and R_k < 1 for k >= 10,
+        # filter_threshold = 1 <==> filter_beyond_lag = 9.
+        self.assertAllClose(ess_1_9_, ess_1_none_)
+        self.assertAllClose(ess_1_9_, ess_none_9_)
 
 
 class EffectiveSampleSizeStaticTest(test.TestCase, _EffectiveSampleSizeTest):

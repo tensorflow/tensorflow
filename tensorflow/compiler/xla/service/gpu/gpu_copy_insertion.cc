@@ -49,7 +49,7 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(bool changed, generic_copy_insertion.Run(module));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(module));
+                      HloDataflowAnalysis::Run(*module));
 
   // Make sure all operands of a library call are in memory instead of constants
   // in IR.
@@ -79,9 +79,9 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
         TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
     } else if (IsCustomCallToDnnConvolution(*hlo)) {
-      // The last argument to a CUDNN convolution is its algorithm, which must
-      // be an HLO constant -- it shouldn't be copied.
-      for (int64 i = 0; i < hlo->operand_count() - 1; ++i) {
+      // The last two arguments to a CUDNN convolution are two HLO constants for
+      // cudnn algorithm and tensor_ops_enabled flag, which shouldn't be copied.
+      for (int64 i = 0; i < hlo->operand_count() - 2; ++i) {
         TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
     } else if (ImplementedAsLibraryCall(*hlo)) {

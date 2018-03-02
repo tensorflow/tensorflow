@@ -117,7 +117,7 @@ def _dnn_linear_combined_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
-    `ModelFnOps`
+    An `EstimatorSpec` instance.
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`

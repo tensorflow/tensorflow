@@ -1342,7 +1342,7 @@ class BaseLinearClassifierEvaluationTest(object):
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
           metric_keys.MetricKeys.AUC: 0.,
-          metric_keys.MetricKeys.AUC_PR: 1.,
+          metric_keys.MetricKeys.AUC_PR: 0.5,
       }
     else:
       # Multi classes: loss = 1 * -log ( soft_max(logits)[label] )
