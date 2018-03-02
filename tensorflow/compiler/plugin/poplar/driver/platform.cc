@@ -38,16 +38,16 @@ namespace perftools {
 namespace gputools {
 namespace poplarplugin {
 
-PoplarPlatform::PoplarPlatform() : name_("Poplar"), num_devices_(1) {
-  /*
+PoplarPlatform::PoplarPlatform() : name_("Poplar") {
   auto device_set = poplar::DeviceSet::getDeviceSet();
   if (device_set.getDevices().size() > 0) {
     num_devices_ = device_set.getDevices().size();
     if (num_devices_ > 4) {
       num_devices_ = 4;
     }
+  } else {
+    num_devices_ = 1;
   }
-  */
 }
 
 PoplarPlatform::~PoplarPlatform() {}
