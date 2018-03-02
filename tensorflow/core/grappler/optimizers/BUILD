@@ -540,8 +540,8 @@ tf_cc_test(
     srcs = ["loop_optimizer_test.cc"],
     tags = [
         "manual",
-        "no_oss",
-    ],  # b/74111495
+        "no_oss",  # b/74111495
+    ],
     deps = [
         ":loop_optimizer",
         "//tensorflow/cc:cc_ops",
