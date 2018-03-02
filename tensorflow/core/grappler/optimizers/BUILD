@@ -520,6 +520,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_folding",
         ":graph_optimizer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -529,6 +530,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
     ],
 )
 
