@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
@@ -129,20 +130,34 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //       default in //third_party:curl.BUILD and can be customized via an
   //       environment variable.
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
-  libcurl_->curl_easy_setopt(
-      curl_, CURLOPT_USERAGENT,
-      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput),
+      "Setting verbose output");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(
+          curl_, CURLOPT_USERAGENT,
+          strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str()),
+      "Setting user agent");
   // Do not use signals for timeouts - does not work in multi-threaded programs.
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
-                             CURL_HTTP_VERSION_2_0);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L),
+      "Disabling signals");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                                 CURL_HTTP_VERSION_2_0),
+      "Setting HTTP version");
 
   // Set up the progress meter.
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
-                             &CurlHttpRequest::ProgressCallback);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL),
+      "Disabling progress meter");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this),
+      "Setting custom pointer to the progress callback");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
+                                 &CurlHttpRequest::ProgressCallback),
+      "Setting the progress callback");
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -175,13 +190,17 @@ void CurlHttpRequest::SetUri(const string& uri) {
   CheckNotSent();
   is_uri_set_ = true;
   uri_ = uri;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str());
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str()),
+      "Setting URL");
 }
 
 void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
   CheckNotSent();
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_RANGE,
-                             strings::StrCat(start, "-", end).c_str());
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_RANGE,
+                                 strings::StrCat(start, "-", end).c_str()),
+      "Setting range");
 }
 
 void CurlHttpRequest::AddHeader(const string& name, const string& value) {
@@ -210,7 +229,9 @@ void CurlHttpRequest::SetDeleteRequest() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"),
+      "Setting delete request");
 }
 
 Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
@@ -232,9 +253,12 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(put_body_));
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1), "Setting PUT request");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                 reinterpret_cast<void*>(put_body_)),
+      "Setting read data");
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
   // FILE * userdata set with CURLOPT_READDATA.
   return Status::OK();
@@ -244,13 +268,18 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1), "Setting put request");
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting read data");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                 &CurlHttpRequest::ReadCallback),
+      "Setting read callback");
 }
 
 void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
@@ -259,11 +288,17 @@ void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   is_method_set_ = true;
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1),
+      "Setting POST request");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting read data");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                 &CurlHttpRequest::ReadCallback),
+      "Setting read callback");
   post_body_buffer_ = StringPiece(buffer, size);
 }
 
@@ -271,13 +306,19 @@ void CurlHttpRequest::SetPostEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1),
+      "Setting POST request");
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
-                             &CurlHttpRequest::ReadCallback);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting read data");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                 &CurlHttpRequest::ReadCallback),
+      "Setting read callback");
 }
 
 void CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
@@ -287,10 +328,14 @@ void CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   out_buffer->clear();
   response_buffer_ = out_buffer;
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
-                             &CurlHttpRequest::WriteCallback);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting write data");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
+                                 &CurlHttpRequest::WriteCallback),
+      "Setting write callback");
 }
 
 void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
@@ -299,10 +344,14 @@ void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
 
   direct_response_ = DirectResponseState{buffer, size, 0};
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
-                             &CurlHttpRequest::WriteCallbackDirect);
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting write data");
+  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
+                                 &CurlHttpRequest::WriteCallbackDirect),
+      "Setting write callback");
 }
 
 bool CurlHttpRequest::IsDirectResponse() const {
@@ -424,29 +473,50 @@ Status CurlHttpRequest::Send() {
   is_sent_ = true;
 
   if (curl_headers_) {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
+    TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_),
+        "Setting HTTP header");
   }
   if (resolve_list_) {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_RESOLVE, resolve_list_);
+    TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_RESOLVE, resolve_list_),
+        "Setting custom resolves");
   }
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
-                             reinterpret_cast<void*>(this));
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
-                             &CurlHttpRequest::HeaderCallback);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
+                                 reinterpret_cast<void*>(this)),
+      "Setting header data");
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
+                                 &CurlHttpRequest::HeaderCallback),
+      "Setting header function");
 
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, request_timeout_secs_);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
-                             connect_timeout_secs_);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, request_timeout_secs_),
+      "Setting request timeout");
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                                 connect_timeout_secs_),
+      "Setting connection timeout");
 
   char error_buffer[CURL_ERROR_SIZE] = {0};
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer),
+      "Setting error buffer");
 
-  const auto curl_result = libcurl_->curl_easy_perform(curl_);
+  const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      curl_result, "Performing request. Detailed error: ", error_buffer);
 
   double written_size = 0;
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD, &written_size);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD, &written_size),
+      "Fetching written size");
 
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
+  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
+      libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
+                                  &response_code_),
+      "Fetching response code");
 
   Status result;
   switch (response_code_) {
@@ -614,6 +684,14 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
 
   // No progress was made since the last call, but we should wait a bit longer.
   return 0;
+}
+
+Status CURLcodeToStatus(CURLcode code) {
+  // Return Unavailable to retry by default. We probably should distinguish
+  // between permanent or temporary failures.
+  return errors::Unavailable("Error executing an HTTP request (error code ",
+                             code, ", error message '",
+                             curl_easy_strerror(code), "')");
 }
 
 }  // namespace tensorflow
