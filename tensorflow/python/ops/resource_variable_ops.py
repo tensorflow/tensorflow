@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
@@ -930,6 +931,9 @@ class ResourceVariable(variables.Variable):
     raise RuntimeError("Variable **= value not supported. Use "
                        "value and variable = variable ** value to get a new "
                        "Tensor object.")
+
+
+pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
