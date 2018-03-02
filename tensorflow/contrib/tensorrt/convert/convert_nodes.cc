@@ -329,7 +329,7 @@ void Reorder2(nvinfer1::DimsHW shape, const T* idata, nvinfer1::DimsHW istrides,
   }
 }
 
-// TODO(jie): fail to tensorflow!!
+// TODO(jie): fallback to tensorflow!!
 void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
                    TRT_ShapedWeights* oweights) {
   int c = iweights.shape_.d[0];
@@ -355,7 +355,8 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     default:
-      LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
+      LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
+                 << DataTypeString(iweights.type_);
   }
 }
 
@@ -396,7 +397,8 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
     }
 
     default:
-      LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
+      LOG(FATAL) << "Unsupported type, expected fp32 or fp16 but got "
+                 << DataTypeString(iweights.type_);
   }
 }
 
@@ -414,7 +416,6 @@ inline std::shared_ptr<T> infer_object(T* obj) {
   return std::shared_ptr<T>(obj, InferDeleter());
 }
 
-// Logger for GIE info/warning/errors
 class Converter;
 
 using OpConverter =
@@ -455,7 +456,7 @@ class Converter {
       if (trt_tensors_.count(name)) {
         inputs.push_back(trt_tensors_.at(name));
       } else {
-        LOG(FATAL) << "input: " << name << "not availabled for node at, "
+        LOG(FATAL) << "input: " << name << " not availabled for node at, "
                    << node_def.name();
       }
     }
@@ -474,7 +475,6 @@ class Converter {
     TRT_ShapedWeights weights(type, nullptr, shape);
     // TODO(jie): check weights size_bytes. 0 means type error
     weight_store_->store_.push_back(std::vector<uint8_t>(weights.size_bytes()));
-    // temp_bufs_.push_back(std::vector<uint8_t>(weights.size_bytes()));
     weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
@@ -778,13 +778,12 @@ tensorflow::Status ConstantFoldUnary(
   CHECK_EQ(weights_input.type_,
            TFAttrs(node_def).get<tensorflow::DataType>("T"));
 
-  // Maybe I should do a switch
   LambdaFactory unary_op;
   if (node_def.op() == "Rsqrt") {
     // Compute rsqrt
     unary_op.op = LambdaFactory::OP_CATEGORY::RSQRT;
     auto ret = UnaryCompute(weights_input, &weights_output, unary_op);
-    // PAss the output
+    // Pass the output
     if (ret == tensorflow::Status::OK()) {
       outputs->push_back(TRT_TensorOrWeights(weights_output));
     }
@@ -796,7 +795,7 @@ tensorflow::Status ConstantFoldUnary(
 }
 
 // TODO(jie,ben) broadcast is needed yet not implemented
-// Let's get the simple stuff working first. Maybe we should fall bakc to TF
+// Let's get the simple stuff working first. Maybe we should fall back to TF
 //   approach for constant folding
 tensorflow::Status ConstantFoldBinary(
     Converter& ctx, const tensorflow::NodeDef& node_def,
@@ -843,7 +842,6 @@ tensorflow::Status ConstantFoldBinary(
   // Allocate output weights
   TRT_ShapedWeights weights_output = ctx.get_temp_weights(dtype, output_shape);
 
-  // Maybe I should do a switch
   LambdaFactory binary_op;
   if (node_def.op() == "Sub") {
     binary_op.op = LambdaFactory::OP_CATEGORY::SUB;
@@ -1106,7 +1104,7 @@ tensorflow::Status ConvertConv2DHelper(
 
 tensorflow::Status ConvertConv2DHelper(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    const std::vector<TRT_TensorOrWeights> & inputs,
+    const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs, ConvolutionType type) {
   switch (type) {
     case ConvolutionType::DEFAULT:
@@ -1125,8 +1123,6 @@ tensorflow::Status BinaryTensorOpTensor(
   static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
       {"Add", nvinfer1::ElementWiseOperation::kSUM},
       {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-      // {"max", nvinfer1::ElementWiseOperation::kMAX},
-      // {"min", nvinfer1::ElementWiseOperation::kMIN},
       {"Sub", nvinfer1::ElementWiseOperation::kSUB},
       {"Div", nvinfer1::ElementWiseOperation::kDIV},
   };
@@ -1426,12 +1422,6 @@ tensorflow::Status ConvertConst(Converter& ctx,
       memcpy(dst, tensor_data.data(), lenData);  // store into weight store
       weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
     }
-    // LOG(INFO) << " add: " << weights_tensor.float_val().data();
-    // LOG(INFO) << " value: " << (*weights_tensor.float_val().data());
-
-    // weights = ctx.get_temp_weights(dtype, scalar_shape);
-    // std::memcpy(const_cast<void*>(weights.values),
-    //           weights_tensor.float_val().data(), weights.size_bytes());
   } else if (!weights_tensor.int_val().empty()) {
     VLOG(2) << "int!!!" << node_def.name();
     nvinfer1::Dims scalar_shape;
@@ -1905,8 +1895,9 @@ tensorflow::Status ConvertFusedBatchNorm(
     if ((scale_weights.type_ != tensorflow::DataType::DT_FLOAT) &&
         (scale_weights.type_ != tensorflow::DataType::DT_HALF)) {
       return tensorflow::errors::Unimplemented(
-          "only float32 weights data type is supported, at " + node_def.name() +
-          " " + tensorflow::DataTypeString(scale_weights.type_));
+          "only float32 or float16 weight data type is supported, for node " +
+          node_def.name() + " got " +
+          tensorflow::DataTypeString(scale_weights.type_));
     }
     if (scale_weights.type_ == tensorflow::DT_FLOAT) {
       for (size_t i = 0; i < nweight; ++i) {
@@ -1962,11 +1953,10 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
                                  const tensorflow::NodeDef& node_def,
                                  const std::vector<TRT_TensorOrWeights>& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
-  const nvinfer1::ITensor * tensor = inputs.at(0).tensor();
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   // TODO(jie): transpose!
   TFAttrs attrs(node_def);
-  // bool transpose_w = bool(attrs->at("transpose_b")->i());
 
   // tensor after transpose (NCHW)
   auto tensor_dim = tensor->getDimensions();
@@ -2160,7 +2150,8 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   calib_res->thr_->join();
   delete calib_res->thr_;
   if (!calib_res->engine_) {
-    LOG(FATAL) << "Calibration failed!, engine is nullptr";
+    LOG(FATAL) << "Calibration failed!, engine is nullptr. Did you run "
+                  "calibration graph?";
   }
   auto weight_rmgr = trt_rm->getManager("WeightStore");
   TF_CHECK_OK(weight_rmgr->Delete<tensorflow::tensorrt::TRTWeightStore>(
@@ -2228,7 +2219,6 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   std::list<tensorflow::Node*> order;
   for (tensorflow::Node* node : order_vec) {
     if (s.subgraph_node_ids.count(node->id())) {
-      // order.push_back(node);
       order.push_front(node);  // we want topological order to contstruct the
       // network layer by layer
     }
@@ -2290,7 +2280,6 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     auto node_name = node->name();
     input_names.push_back(node_name);  // insert original node name without port
     // TODO(jie): alternative :)
-    // tensorflow::DataType tf_dtype = node->output_type(output_idx);
     if (!s.graph_properties.HasOutputProperties(node_name))
       return tensorflow::errors::Internal("failed to find input node: " +
                                           node_name);
@@ -2627,7 +2616,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   }
 
   VLOG(2) << "Finished output";
-  // TODO(jie): static_id is not thread safe.
 
   // Build the engine
   trt_builder->setMaxBatchSize(s.max_batch_size);
@@ -2639,7 +2627,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     VLOG(0) << "Using FP16 precision mode";
   }
   LOG(INFO) << "starting build engine";
-  // TODO(ben,jie): half2 and int8 mode support
   string engine_plan_string;
   {
     auto trt_engine =
