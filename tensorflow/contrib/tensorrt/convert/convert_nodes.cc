@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 
-//#if GOOGLE_CUDA
-//#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
 
 //  Check if the types are equal. Cast to int first so that failure log message
@@ -2696,5 +2696,5 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-//#endif  // GOOGLE_TENSORRT
-//#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-//#if GOOGLE_CUDA
-//#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -43,7 +43,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-//#endif  // GOOGLE_TENSORRT
-//#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_

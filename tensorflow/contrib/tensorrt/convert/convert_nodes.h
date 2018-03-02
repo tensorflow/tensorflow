@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 
-//#if GOOGLE_CUDA
-//#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -74,7 +74,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-//#endif  // GOOGLE_TENSORRT
-//#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_

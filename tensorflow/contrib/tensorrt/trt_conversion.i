@@ -106,7 +106,7 @@ std::pair<string, string> trt_convert(
   tensorflow::Status conversion_status =
       tensorflow::tensorrt::convert::ConvertGraphDefToTensorRT(
           graph_def, output_names, max_batch_size, max_workspace_size_bytes,
-          &outGraph, precision_mode,minimum_segment_size);
+          &outGraph, precision_mode, minimum_segment_size);
   if (!conversion_status.ok()) {
     auto retCode = (int)conversion_status.code();
     char buff[2000];
