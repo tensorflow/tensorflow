@@ -878,10 +878,8 @@ tensorflow::Status BinaryTensorOpWeight(
 
   // Check type consistency
   auto dtype = TFAttrs(node_def).get<nvinfer1::DataType>("T");
-  CHECK_EQ_TYPE(tensor->getType(), dtype);  // Cast to int for error messages
   nvinfer1::DataType ttype;
   TF_CHECK_OK(ConvertDType(weights.type_, &ttype));
-  CHECK_EQ_TYPE(ttype, dtype);  // Cast to int for error message
 
   // Check scale mode
   auto dims_w = weights.shape_;
