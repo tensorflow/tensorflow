@@ -534,7 +534,8 @@ class ResourceVariable(variables.Variable):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
-    self._graph_element = self.value()
+    self._graph_element = g.get_tensor_by_name(
+        self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
 
   def __nonzero__(self):
@@ -788,20 +789,52 @@ class ResourceVariable(variables.Variable):
 
   __array_priority__ = 100
 
-  def assign_sub(self, delta, use_locking=None, name=None):
+  def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
+    """Subtracts a value from this variable.
+
+    Args:
+      delta: A `Tensor`. The value to subtract from this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: The name to use for the operation.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    return self._lazy_read(gen_resource_variable_ops.assign_sub_variable_op(
-        self.handle,
-        ops.convert_to_tensor(delta, dtype=self.dtype),
-        name=name))
+    assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
+        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    if read_value:
+      return self._lazy_read(assign_sub_op)
+    return assign_sub_op
 
-  def assign_add(self, delta, use_locking=None, name=None):
-    return self._lazy_read(gen_resource_variable_ops.assign_add_variable_op(
-        self.handle,
-        ops.convert_to_tensor(delta, dtype=self.dtype),
-        name=name))
+  def assign_add(self, delta, use_locking=None, name=None, read_value=True):
+    """Adds a value to this variable.
+
+    Args:
+      delta: A `Tensor`. The value to add to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: The name to use for the operation.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
+    assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
+        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    if read_value:
+      return self._lazy_read(assign_add_op)
+    return assign_add_op
 
   def _lazy_read(self, op):
     if hasattr(self, "_trainable") and self._trainable:
@@ -811,14 +844,29 @@ class ResourceVariable(variables.Variable):
         self._in_graph_mode,
         self._handle_deleter if not self._in_graph_mode else None, op)
 
-  def assign(self, value, use_locking=None, name=None):
+  def assign(self, value, use_locking=None, name=None, read_value=True):
+    """Assigns a new value to this variable.
+
+    Args:
+      value: A `Tensor`. The new value for this variable.
+      use_locking: If `True`, use locking during the assignment.
+      name: The name to use for the assignment.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
     value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
     self._shape.assert_is_compatible_with(value_tensor.shape)
-    return self._lazy_read(
-        gen_resource_variable_ops.assign_variable_op(
-            self.handle,
-            value_tensor,
-            name=name))
+    assign_op = gen_resource_variable_ops.assign_variable_op(
+        self.handle, value_tensor, name=name)
+    if read_value:
+      return self._lazy_read(assign_op)
+    return assign_op
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,

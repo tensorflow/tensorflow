@@ -3954,6 +3954,7 @@ py_test(
         ":partitioned_variables",
         ":platform",
         ":pywrap_tensorflow",
+        ":resource_variable_ops",
         ":state_ops",
         ":training",
         ":variable_scope",
