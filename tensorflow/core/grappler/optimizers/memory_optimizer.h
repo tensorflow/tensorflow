@@ -27,14 +27,14 @@ class MemoryOptimizer : public GraphOptimizer {
  public:
   // optimization_level: Controls the level of autonomy for the memory
   //   optimizer. See RewriterConfig::memory_optimization.
-  // recomputation_targets_name_regxp: Name regxp for potential outputs of
+  // recomputation_targets_name_prefix: Name prefix for potential outputs of
   //   recomputations. See
-  //   RewriterConfig::memory_optimizer_target_node_name_regxp.
+  //   RewriterConfig::memory_optimizer_target_node_name_prefix.
   explicit MemoryOptimizer(
       RewriterConfig::MemOptType optimization_level,
-      const string& recomputation_targets_name_regexp = "gradients/")
+      const string& recomputation_targets_name_prefix = "gradients/")
       : optimization_level_(optimization_level),
-        recomputation_targets_name_regexp_(recomputation_targets_name_regexp) {}
+        recomputation_targets_name_prefix_(recomputation_targets_name_prefix) {}
   ~MemoryOptimizer() override {}
 
   string name() const override { return "memory_optimizer"; };
@@ -47,7 +47,7 @@ class MemoryOptimizer : public GraphOptimizer {
 
  private:
   RewriterConfig::MemOptType optimization_level_;
-  string recomputation_targets_name_regexp_;
+  string recomputation_targets_name_prefix_;
 };
 
 }  // end namespace grappler

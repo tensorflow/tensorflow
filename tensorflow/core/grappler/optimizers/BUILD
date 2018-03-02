@@ -363,7 +363,6 @@ cc_library(
         ":graph_rewriter",
         ":static_schedule",
         "//tensorflow/core:framework",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",

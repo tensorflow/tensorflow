@@ -2231,7 +2231,6 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/compiler:__subpackages__",
-        "//tensorflow/core/grappler:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [":lib_internal"],
