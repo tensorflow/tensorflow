@@ -3945,7 +3945,10 @@ py_test(
     size = "small",
     srcs = ["training/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+    ],
     deps = [
         ":client",
         ":client_testlib",
@@ -4739,6 +4742,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "grappler",
+        "no_cuda_on_cpu_tap",
         "no_pip",
     ],
     deps = [
