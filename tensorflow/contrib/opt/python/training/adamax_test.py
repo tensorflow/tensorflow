@@ -45,7 +45,7 @@ def adamax_update_numpy(param,
                       epsilon=1e-8):
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = np.maximum(beta2 * v, np.abs(g_t))
-  param_t = param - (alpha / (1 - beta1**t)) * m_t / v_t
+  param_t = param - (alpha / (1 - beta1**t)) * m_t / (v_t + epsilon)
   return param_t, m_t, v_t
 
 

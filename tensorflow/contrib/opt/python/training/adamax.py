@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training import optimizer
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -65,8 +65,49 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices, scatter_add):
-    raise NotImplementedError()
+  def _apply_sparse_shared(self, grad, var, indices,
+                           scatter_add, scatter_update):
+    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
+    beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
+    lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
+    beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
+    beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)
+    epsilon_t = math_ops.cast(self._epsilon_t, var.dtype.base_dtype)
+    # m_t = beta1 * m + (1 - beta1) * g_t
+    m = self.get_slot(var, "m")
+    m_slice = array_ops.gather(m, indices)
+    m_t_slice = m_slice * beta1_t + grad * (1 - beta1_t)
+    with ops.control_dependencies([m_t_slice]):
+      m_t = scatter_update(m, indices, m_t_slice)
+    # u_t = max(beta2 * u, abs(g_t))
+    v = self.get_slot(var, "v")
+    v_slice = array_ops.gather(v, indices)
+    v_t_slice = math_ops.maximum(v_slice * beta2_t, math_ops.abs(grad))
+    with ops.control_dependencies([v_t_slice]):
+      v_t = scatter_update(v, indices, v_t_slice)
+    # theta_t = theta - lr / (1 - beta1^t) * m_t / u_t
+    var_slice = -lr_t / (1 - beta1_power) * (m_t_slice /
+                                             (v_t_slice + epsilon_t))
+    with ops.control_dependencies([var_slice]):
+      var_update = scatter_add(var, indices, var_slice)
+    return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var):
-    raise NotImplementedError()
+    return self._apply_sparse_shared(
+        grad.values, var, grad.indices,
+        lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
+            x, i, v, use_locking=self._use_locking),
+        lambda x, i, v: state_ops.scatter_update(  # pylint: disable=g-long-lambda
+            x, i, v, use_locking=self._use_locking))
+
+  def _resource_scatter_update(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_update(
+            x.handle, i, v)]):
+      return x.value()
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    return self._apply_sparse_shared(
+        grad, var, indices,
+	self._resource_scatter_add, self._resource_scatter_update)

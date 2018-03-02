@@ -163,8 +163,9 @@ struct ApplyAdaMax<GPUDevice, T> {
     v.device(d) =
         (beta2.reshape(single).broadcast(bcast) * v).cwiseMax(grad.abs());
     var.device(d) -=
-        (lr * m) / ((beta1_power.constant(one) -
-                    beta1_power).reshape(single).broadcast(bcast) * v);
+        lr / (beta1_power.constant(one) -
+                 beta1_power).reshape(single).broadcast(bcast) *
+                     (m / (v + epsilon));
   }
 };
 
