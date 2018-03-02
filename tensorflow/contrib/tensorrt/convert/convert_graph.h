@@ -38,7 +38,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode,int minimum_segment_size);
+    int precision_mode, int minimum_segment_size);
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

@@ -24,6 +24,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "cuda_runtime_api.h"
 #include "tensorrt/include/NvInfer.h"
 namespace tensorflow {
 namespace tensorrt {
@@ -39,8 +40,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   int getBatchSize() const override;
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
-  bool setBatch(const std::unordered_map<string, void*>& data);
-  void setDone() { done_ = true; }
+  bool setBatch(const std::unordered_map<string, void*>& data,const cudaStream_t stream);
+  void setDone();
   const void* readCalibrationCache(std::size_t& length) override;
   void writeCalibrationCache(const void* ptr, std::size_t length) override;
   ~TRTInt8Calibrator();
@@ -55,7 +56,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   const std::unordered_map<string, std::pair<void*, size_t>>
       dev_buffers_;  // map to keep tensorrt input buffers and sizes keyed with
                      // buffer names
-  std::atomic_bool calib_running_;
+  bool calib_running_;
+  bool batch_is_set_;
   string engine_name_;
 };
 }  // namespace tensorrt

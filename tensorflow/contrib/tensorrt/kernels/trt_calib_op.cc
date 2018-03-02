@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -113,7 +114,13 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
     ctx->set_output(i, t);
   }
   VLOG(2) << "Filled map for sending";
-  calib_res->calibrator_->setBatch(input_data);
+  // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
+  const cudaStream_t* stream = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->CudaStreamMemberHack()));
+  calib_res->calibrator_->setBatch(input_data,*stream);
   VLOG(2) << "Passed calibration data";
   // TODO(aaroey): make sure we wait for the completion of calibration on the
   // last batch in future PR.

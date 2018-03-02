@@ -38,22 +38,24 @@ TRTInt8Calibrator::TRTInt8Calibrator(
       done_(false),
       dev_buffers_(dev_buffers),
       calib_running_(false),
+      batch_is_set_(false),
       engine_name_(engine_name) {}
 
-bool TRTInt8Calibrator::setBatch(
-    const std::unordered_map<string, void*>& data) {
+bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
+                                 const cudaStream_t stream) {
   // TODO(aaroey): make sure that in future PR:
   // 1. the mutex_lock is outside of the loop
   // 2. wait() is used instead of wait_for()
   // 3. done_ is to be protected by the mutex
   // 4. the first batch is not missed
   if (done_) return false;
-  while (calib_running_.load(
-      std::memory_order_acquire)) {  // wait while calibration is running
-    tensorflow::mutex_lock l(cond_mtx_);
-    cond_.wait_for(l, std::chrono::milliseconds(50));
+  tensorflow::mutex_lock l(cond_mtx_);
+  while ((calib_running_ || batch_is_set_) &&
+         !done_) {  // wait while calibration is running
+    cond_.wait(l);
     if (done_) return false;
   }
+  CHECK(!calib_running_ && !batch_is_set_);
   VLOG(1) << "Set Batch Waiting finished";
   for (const auto it : data) {
     auto devptr = dev_buffers_.find(it.first);
@@ -65,32 +67,32 @@ bool TRTInt8Calibrator::setBatch(
 
     // TODO(aaroey): we should not use sync copy on default stream. Make sure
     // stream->ThenMemcpy() is used in future PRs.
-    auto status =
-        cudaMemcpy(d.first, it.second, d.second, cudaMemcpyDeviceToDevice);
+    auto status = cudaMemcpyAsync(d.first, it.second, d.second,
+                                  cudaMemcpyDeviceToDevice, stream);
     if (status != cudaSuccess) {
       LOG(FATAL) << "cudaMemcpy " << engine_name_ << " for '" << it.first
                  << "' failed with " << status;
     }
   }
-  calib_running_.store(true, std::memory_order_release);  // release builder
+  cudaStreamSynchronize(
+      stream);  // we have to wait for the stream before returning!
+  batch_is_set_ = true;
   cond_.notify_all();
   return true;
 }
 
 bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
                                  int num_bindings) {
-  calib_running_.store(false, std::memory_order_release);  // wait for new batch
+  tensorflow::mutex_lock l(cond_mtx_);
+  calib_running_ = false;
   cond_.notify_all();
-  while (!calib_running_.load(
-      std::memory_order_acquire)) {  // wait until new batch arrives
-    tensorflow::mutex_lock l(cond_mtx_);
-    cond_.wait_for(l, std::chrono::milliseconds(50));
-    if (done_) return false;
+  while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
+    cond_.wait(l);
   }
   if (done_) {
     return false;
   }
-
+  CHECK(!calib_running_ && batch_is_set_);
   for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
     if (it == dev_buffers_.end()) {
@@ -100,13 +102,19 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 
     bindings[i] = it->second.first;
   }
+  batch_is_set_ = false;
+  calib_running_ = true;
   return true;
 }
 
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
   return nullptr;
 }
-
+void TRTInt8Calibrator::setDone() {
+  tensorflow::mutex_lock l(cond_mtx_);
+  done_ = true;
+  cond_.notify_all();
+}
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {}
 TRTInt8Calibrator::~TRTInt8Calibrator() {
