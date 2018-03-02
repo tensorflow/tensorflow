@@ -41,7 +41,8 @@ def create_inference_graph(input_graph_def,
                            outputs,
                            max_batch_size=1,
                            max_workspace_size_bytes=2 << 20,
-                           precision_mode="FP32"):
+                           precision_mode="FP32",
+                           minimum_segment_size=3):
   """Python wrapper for the TRT transormation.
 
 
@@ -98,7 +99,7 @@ def create_inference_graph(input_graph_def,
   # pair or strings where first one is encoded status and the second
   # one is the transformed graphs protobuf string.
   out = trt_convert(input_graph_def_str, out_names, max_batch_size,
-                    max_workspace_size_bytes,mode)
+                    max_workspace_size_bytes,mode,minimum_segment_size)
   status = to_string(out[0])
   output_graph_def_string = out[1]
   del input_graph_def_str  # Save some memory

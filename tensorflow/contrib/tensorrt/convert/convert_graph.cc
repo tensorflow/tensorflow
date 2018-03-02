@@ -322,7 +322,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode = 0) {
+    int precision_mode = 0, int minimum_segment_size = 3) {
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
@@ -357,7 +357,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // AJ refactoring shape inference through grappler/GraphProperties.
   tensorflow::grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(false));
-
   // Build full graph
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
                                              gdef.library());
@@ -374,7 +373,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
 
   // TODO(sami): this should be passed as a knob!!!!
-  segment_options.minimum_segment_size = 2;
+  segment_options.minimum_segment_size = minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       gdef, IsTensorRTCandidate, segment_options, &segments));
@@ -410,7 +409,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       if (status != tensorflow::Status::OK()) {
         LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
                      << " due to: \n"
-                     << status.ToString() << "SKIPPING......";
+                     << status.ToString() << " SKIPPING......";
       }
       count++;
     }
