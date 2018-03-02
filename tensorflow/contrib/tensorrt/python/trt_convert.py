@@ -60,8 +60,9 @@ def create_inference_graph(input_graph_def,
                                "INT8": 2}
   if precision_mode.upper() not in supported_precision_modes:
     raise ValueError(("precision mode '{}' is not supported."
-                      "It should be one of {}").format(precision_mode,
-                      "{'FP32', 'FP16', 'INT8'}"))
+                      "It should be one of {}"
+                     ).format(precision_mode,
+                              "{'FP32', 'FP16', 'INT8'}"))
   mode = supported_precision_modes[precision_mode.upper()]
   def py2bytes(inp):
     return inp
@@ -119,11 +120,6 @@ def create_inference_graph(input_graph_def,
 def calib_graph_to_infer_graph(calibration_graph_def):
   """Convert an existing calibration graph containing calibration data
   to inference graph"""
-  def py2bytes(inp):
-    return inp
-
-  def py3bytes(inp):
-    return inp.encode("utf-8", errors="surrogateescape")
 
   def py2string(inp):
     return inp
@@ -147,7 +143,7 @@ def calib_graph_to_infer_graph(calibration_graph_def):
     msg = status.split(";")
     if len(msg) == 1:
       raise RuntimeError("Status message is malformed {}".format(status))
-    raise _impl._make_specific_exception(None,None,";".join(msg[1:]), int(msg[0]))
+    raise _impl._make_specific_exception(None, None, ";".join(msg[1:]), int(msg[0]))
   output_graph_def = graph_pb2.GraphDef()
   output_graph_def.ParseFromString(output_graph_def_string)
   del output_graph_def_string #save some memory
