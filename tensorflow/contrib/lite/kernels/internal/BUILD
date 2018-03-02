@@ -10,21 +10,25 @@ tflite_deps_intel = [
     "@arm_neon_2_x86_sse",
 ]
 
+HARD_FP_FLAGS_IF_APPLICABLE = select({
+    "//tensorflow:android_arm": ["-mfloat-abi=softfp"],
+    "//tensorflow:android_arm64": ["-mfloat-abi=softfp"],
+    "//tensorflow:android_armeabi": ["-mfloat-abi=softfp"],
+    "//conditions:default": [],
+})
+
 NEON_FLAGS_IF_APPLICABLE = select({
     ":arm": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     ":armeabi-v7a": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     ":armv7a": [
         "-O3",
         "-mfpu=neon",
-        "-mfloat-abi=softfp",
     ],
     "//conditions:default": [
         "-O3",
@@ -283,7 +287,7 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
     ],
-    copts = NEON_FLAGS_IF_APPLICABLE,
+    copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
