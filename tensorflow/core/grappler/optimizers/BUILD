@@ -500,7 +500,6 @@ tf_cc_test(
     srcs = ["loop_optimizer_test.cc"],
     deps = [
         ":loop_optimizer",
-        ":constant_folding",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
