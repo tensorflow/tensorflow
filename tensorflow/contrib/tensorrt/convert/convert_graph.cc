@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
 
-//#if GOOGLE_CUDA
-//#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
@@ -422,5 +422,5 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-//#endif  // GOOGLE_TENSORRT
-//#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
