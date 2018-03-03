@@ -53,11 +53,10 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
 
     ```
     t <- t + 1
-    lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 
     m_t <- beta1 * m_{t-1} + (1 - beta1) * g
     v_t <- max(beta2 * v_{t-1}, abs(g))
-    variable <- variable - lr_t / (1 - beta1^t) * m_t / (v_t + epsilon)
+    variable <- variable - learning_rate / (1 - beta1^t) * m_t / (v_t + epsilon)
     ```
 
     Similar to AdamOptimizer, the epsilon is added for numerical stability
