@@ -309,6 +309,27 @@ cc_library(
     ],
 )
 
+# Audio support classes imported directly from TensorFlow.
+cc_library(
+    name = "audio_utils",
+    srcs = [
+        "mfcc.cc",
+        "mfcc_dct.cc",
+        "mfcc_mel_filterbank.cc",
+        "spectrogram.cc",
+    ],
+    hdrs = [
+        "mfcc.h",
+        "mfcc_dct.h",
+        "mfcc_mel_filterbank.h",
+        "spectrogram.h",
+    ],
+    deps = [
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d",
+    ],
+)
+
 cc_library(
     name = "tensor_utils",
     srcs = [
