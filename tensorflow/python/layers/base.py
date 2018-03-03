@@ -578,7 +578,7 @@ class Layer(checkpointable.CheckpointableBase):
           if isinstance(variable, tf_variables.PartitionedVariable):
             raise RuntimeError(
                 'Partitioned variable regularization is not yet '
-                'supported when executing eagerly. File a feature request'
+                'supported when executing eagerly. File a feature request '
                 'if this is important to you.')
           # Save a zero-argument lambda which runs the regularizer on the
           # variable, to be executed when `Layer.losses` is requested.

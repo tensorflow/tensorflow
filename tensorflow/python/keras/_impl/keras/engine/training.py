@@ -736,7 +736,7 @@ class Model(Network):
     # initialization for Eager mode execution
     if context.in_eager_mode():
       if target_tensors is not None:
-        raise ValueError('target_tensors are not currently supported in Eager'
+        raise ValueError('target_tensors are not currently supported in Eager '
                          'mode.')
       self.total_loss = None
       self.metrics_tensors = []
