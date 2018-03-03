@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.signal.python.kernel_tests import test_util
 from tensorflow.contrib.signal.python.ops import mel_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -172,6 +173,14 @@ class LinearToMelTest(test.TestCase):
         mel_matrix = mel_ops.linear_to_mel_weight_matrix(dtype=dtype)
         rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
         self.assertEqual(1, len(rewritten_graph.node))
+
+  def test_num_spectrogram_bins(self):
+    with self.test_session(use_gpu=True):
+      mel_matrix_np = spectrogram_to_mel_matrix(
+          20, 129, 8000.0, 125.0, 3800.0)
+      mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+          20, constant_op.constant(129), 8000.0, 125.0, 3800.0)
+      self.assertAllClose(mel_matrix_np, mel_matrix.eval(), atol=3e-6)
 
 
 if __name__ == "__main__":
