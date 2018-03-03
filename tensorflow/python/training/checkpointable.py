@@ -22,6 +22,7 @@ import collections
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.util import nest
 
@@ -181,13 +182,16 @@ class _CheckpointPosition(object):
       dtype = self._checkpoint.dtype_map[checkpoint_key]
       base_type = dtype.base_dtype
       with ops.init_scope():
-        value, = io_ops.restore_v2(
-            prefix=self._checkpoint.save_path,
-            tensor_names=[checkpoint_key],
-            shape_and_slices=[""],
-            dtypes=[base_type],
-            name="%s_checkpoint_read" % (serialized_tensor.name,))
-        value_tensors[serialized_tensor.name] = value
+        with ops.device("/cpu:0"):
+          # Run the restore itself on the CPU.
+          value, = io_ops.restore_v2(
+              prefix=self._checkpoint.save_path,
+              tensor_names=[checkpoint_key],
+              shape_and_slices=[""],
+              dtypes=[base_type],
+              name="%s_checkpoint_read" % (serialized_tensor.name,))
+        # Copy the value to the current device if necessary.
+        value_tensors[serialized_tensor.name] = array_ops.identity(value)
       return value_tensors
 
   def restore_ops(self):

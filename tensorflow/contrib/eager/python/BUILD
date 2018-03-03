@@ -243,13 +243,13 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "checkpointable_utils_test",
     srcs = ["checkpointable_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":checkpointable_utils",
         ":network",
+        "@six_archive//:six",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -265,7 +265,6 @@ py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
-        "@six_archive//:six",
     ],
 )
 

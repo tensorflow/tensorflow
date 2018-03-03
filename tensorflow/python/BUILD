@@ -2882,6 +2882,7 @@ py_library(
     srcs = ["training/checkpointable.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":io_ops_gen",
         ":ops",
