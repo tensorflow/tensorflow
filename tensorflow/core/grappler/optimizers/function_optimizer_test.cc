@@ -339,6 +339,40 @@ TEST_F(FunctionOptimizerTest, FunctionWithInputForwarding) {
   test::ExpectTensorEqual<int>(tensors_expected[2], tensors[2]);
 }
 
+TEST_F(FunctionOptimizerTest, FunctionWithoutInput) {
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "GenerateTwo",
+      // Args
+      {},
+      // Return value
+      {"o: T"},
+      // Attr def
+      {"T: {float, double}"},
+      // Nodes
+      {{{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+       {{"o"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}}});
+
+  GrapplerItem item;
+  constexpr char device[] = "/device:CPU:0";
+  item.graph = test::function::GDef(
+      {test::function::NDef("y", "GenerateTwo", {}, {}, device),
+       test::function::NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, device)},
+      // FunctionLib
+      {
+          func,
+      });
+
+  FunctionOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // For now we won't inline the function.
+  EXPECT_EQ(item.graph.DebugString(), output.DebugString());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

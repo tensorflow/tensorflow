@@ -308,6 +308,43 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
   }
 }
 
+TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "GenerateTwo",
+      // Args
+      {},
+      // Return value
+      {"o: T"},
+      // Attr def
+      {"T: {float, double}"},
+      // Nodes
+      {{{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+       {{"o"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}}});
+
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_FLOAT);
+  FunctionDefLibrary library;
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromFunctionDef(func, func_attr, library);
+
+  EXPECT_EQ(0, item->feed.size());
+  EXPECT_EQ(1, item->fetch.size());
+  EXPECT_EQ("o:0", item->fetch[0]);
+
+  EXPECT_EQ(2, item->graph.node_size());
+  const NodeDef &two = item->graph.node(0);
+  EXPECT_EQ("two", two.name());
+  EXPECT_EQ(0, two.input_size());
+  const NodeDef &cast = item->graph.node(1);
+  EXPECT_EQ("o", cast.name());
+  EXPECT_EQ(1, cast.input_size());
+  EXPECT_EQ("two:0", cast.input(0));
+
+  std::cout << item->graph.DebugString() << std::endl;
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

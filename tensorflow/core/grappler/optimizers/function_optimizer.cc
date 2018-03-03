@@ -126,9 +126,17 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   std::unordered_map<string, const FunctionDef*> functions;
   for (const FunctionDef& func : item.graph.library().function()) {
-    if (func.attr().count("_noinline") == 0) {
-      functions[func.signature().name()] = &func;
+    // Don't inline functions marked as noinline
+    if (func.attr().count("_noinline") != 0) {
+      continue;
     }
+    // Can't create IdentityN nodes with no input or output: skip these
+    // functions for now.
+    if (func.signature().input_arg_size() == 0 ||
+        func.signature().output_arg_size() == 0) {
+      continue;
+    }
+    functions[func.signature().name()] = &func;
   }
 
   // Nothing to do.
