@@ -521,6 +521,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_folding",
         ":graph_optimizer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
