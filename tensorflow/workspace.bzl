@@ -89,12 +89,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl_linux",
       urls = [
-      "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
+          "https://github.com/intel/mkl-dnn/releases/download/v0.12/mklml_lnx_2018.0.1.20171227.tgz",
       ],
       sha256 = "feacc3d82565c1231470359b42c696236fae873704e0b013436afba5fd4fd30f",
       strip_prefix = "mklml_lnx_2018.0.1.20171227",
       build_file = clean_dep("//third_party/mkl:mkl.BUILD")
-  ),
+  )
   mkl_repository(
       name = "mkl_windows",
       urls = [

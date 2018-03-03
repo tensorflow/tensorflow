@@ -1,7 +1,5 @@
 licenses(["notice"])  # 3-Clause BSD
 
-exports_files(["LICENSE"])
-
 config_setting(
     name = "using_mkl",
     values = {
@@ -15,34 +13,38 @@ load(
     "if_mkl",
 )
 
+filegroup(
+    name = "LICENSE",
+    visibility = ["//visibility:public"],
+    srcs = ["MKL_LICENSE"] + select({
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "@mkl_linux//:LICENSE",
+        ],
+        "@org_tensorflow//tensorflow:darwin": [
+            "@mkl_darwin//:LICENSE",
+        ],
+        "@org_tensorflow//tensorflow:windows": [
+            "@mkl_windows//:LICENSE",
+        ]
+    })
+)
+
 cc_library(
     name = "intel_binary_blob",
 
-    srcs = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "@mkl_linux//:libmklml_intel.so",
-            "@mkl_linux//:libiomp5.so",
-        ],
-        "@org_tensorflow//tensorflow:darwin": [
-            "@mkl_darwin//:libmklml_intel.so",
-            "@mkl_darwin//:libiomp5.so",
-        ],
-        "@org_tensorflow//tensorflow:windows": [
-            "@mkl_windows//:libmklml_intel.so",
-            "@mkl_windows//:libiomp5.so",
-        ]
-    }),
     visibility = ["//visibility:public"],
     deps = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
             "@mkl_linux//:mkl_headers",
+            "@mkl_linux//:mkl_libs_linux",
         ],
         "@org_tensorflow//tensorflow:darwin": [
             "@mkl_darwin//:mkl_headers",
+            "@mkl_darwin//:mkl_libs_darwin",
         ],
         "@org_tensorflow//tensorflow:windows": [
             "@mkl_windows//:mkl_headers",
+            "@mkl_windows//:mkl_libs_windows",
         ]
     })
-    # ["@mkl//:mkl_headers"],
 )

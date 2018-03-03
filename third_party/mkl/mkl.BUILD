@@ -17,22 +17,29 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "libmklml_intel.so",
-    srcs = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libmklml_intel.so"],
-        "@org_tensorflow//tensorflow:darwin": ["lib/libmklml.dylib"],
-        "@org_tensorflow//tensorflow:windows": ["lib/mklml.lib"]
-    }),
+cc_library(
+    name = "mkl_libs_linux",
+    srcs = [
+        "lib/libiomp5.so",
+        "lib/libmklml_intel.so"
+    ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "libiomp5.so",
-    srcs = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libiomp5.so"],
-        "@org_tensorflow//tensorflow:darwin": ["lib/libiomp5.dylib"],
-        "@org_tensorflow//tensorflow:windows": ["lib/libiomp5md.lib"]
-    }),
+cc_library(
+    name = "mkl_libs_darwin",
+    srcs = [
+        "lib/libiomp5.dylib",
+        "lib/libmklml.dylib"
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "mkl_libs_windows",
+    srcs = [
+        "lib/libiomp5md.lib",
+        "lib/mklml.lib"
+    ],
     visibility = ["//visibility:public"],
 )
