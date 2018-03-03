@@ -68,7 +68,8 @@ port::StatusOr<StreamExecutor*> PoplarPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> PoplarPlatform::ExecutorForDeviceWithPluginConfig(
+port::StatusOr<StreamExecutor*>
+PoplarPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -120,6 +121,18 @@ PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
   }
 
   return port::Status::OK();
+}
+
+port::Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
+  if (ordinal >= VisibleDeviceCount()) {
+    return port::Status(port::error::UNKNOWN, "Invalid ordinal value");
+  }
+
+  StreamExecutor *executor;
+  TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+
+  auto *e = static_cast<PoplarExecutor *>(executor->implementation());
+  return e->ClosePoplarDevice();
 }
 
 port::Status PoplarPlatform::GetCompilerReports(std::vector<std::string>& out) {

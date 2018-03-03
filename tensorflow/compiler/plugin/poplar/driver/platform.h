@@ -73,6 +73,8 @@ class PoplarPlatform : public Platform {
 
   port::Status ConfigurePoplarDevices(const tensorflow::IPUOptions& opts);
 
+  port::Status ClosePoplarDevice(int ordinal);
+
   port::Status GetCompilerReports(std::vector<std::string>& out);
 
  private:

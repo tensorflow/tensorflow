@@ -108,6 +108,7 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 
 PoplarExecutor::PoplarExecutor() :
     poplar_device_(poplar::Device::createCPUDevice()),
+    device_open_(true),
     profile_enabled_(false) {}
 
 PoplarExecutor::~PoplarExecutor() {}
@@ -241,7 +242,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
     int ordinal,
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
-  // TODO - if there is a previously configured device then close it
+  ClosePoplarDevice();
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
@@ -274,7 +275,18 @@ port::Status PoplarExecutor::InitializePoplarDevice(
               "unrecognized poplar device type for ordinal %d: %d", ordinal,
               type)};
   }
+
+  device_open_ = true;
   return port::Status::OK();
+}
+
+port::Status PoplarExecutor::ClosePoplarDevice() {
+  if (device_open_) {
+    //poplar_device_.release();
+    device_open_ = false;
+    return port::Status::OK();
+  }
+  return port::Status{port::error::INTERNAL, "Poplar device not open"};
 }
 
 port::Status PoplarExecutor::GetCompilerReports(std::vector<std::string>& out) {

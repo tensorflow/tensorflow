@@ -37,6 +37,27 @@ const char* const PLATFORM_NAME = "Poplar";
 constexpr std::array<DataType, 6> kIpuAllTypes =
         {{DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
 
+class IpuDevice : public XlaDevice {
+ public:
+  IpuDevice(const SessionOptions& options,
+            const DeviceAttributes& attrs, int device_ordinal,
+            const DeviceType& jit_device_name, se::Platform* platform) :
+      XlaDevice(options, attrs, device_ordinal, jit_device_name, platform),
+      ordinal_(device_ordinal) {}
+
+  virtual ~IpuDevice() {
+    auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
+    if (!platform.ok()) {
+      return;
+    }
+    auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+    p->ClosePoplarDevice(ordinal_);
+  }
+
+ private:
+  int ordinal_;
+};
+
 class XlaIpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
@@ -60,12 +81,23 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
   int visible_devices = p->VisibleDeviceCount();
   for (int ordinal=0; ordinal<visible_devices; ordinal++) {
-    std::unique_ptr<XlaDevice> device;
-    TF_RETURN_IF_ERROR(XlaDevice::Create(PLATFORM_NAME, DEVICE_XLA_IPU, ordinal,
-                                         DEVICE_IPU_XLA_JIT, options,
-                                         name_prefix, true, &device));
 
-    devices->push_back(device.release());
+    XlaOpRegistry::DeviceRegistration registration;
+    registration.compilation_device_name = DEVICE_IPU_XLA_JIT;
+    registration.requires_compilation = true;
+    registration.enable_jit_by_default = false;
+    registration.compile_resource_ops = true;
+    XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_IPU, registration);
+
+    const DeviceAttributes attrs = Device::BuildDeviceAttributes(
+        strings::StrCat(name_prefix, "/device:IPU:", ordinal),
+        DeviceType(DEVICE_XLA_IPU), Bytes(16ULL << 30), DeviceLocality(),
+        "IPU Device");
+
+    auto* device = new IpuDevice(options, attrs, ordinal,
+                                 DeviceType(DEVICE_IPU_XLA_JIT), p);
+
+    devices->push_back(device);
   }
 
   return Status::OK();

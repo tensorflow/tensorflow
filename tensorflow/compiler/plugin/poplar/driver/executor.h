@@ -204,6 +204,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
       int ordinal,
       const tensorflow::IPUOptions::DeviceConfig&);
 
+  port::Status ClosePoplarDevice();
+
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
   port::Status GetCompilerReports(std::vector<std::string>& out);
@@ -268,6 +270,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   std::shared_ptr<poplar::Engine> current_engine_;
 
   poplar::Device poplar_device_;
+
+  bool device_open_;
 
   std::list<TensorControl*> allocations_;
 
