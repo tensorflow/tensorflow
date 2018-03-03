@@ -21,7 +21,8 @@ filegroup(
     name = "libmklml_intel.so",
     srcs = select({
         "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libmklml_intel.so"],
-        "@org_tensorflow//tensorflow:darwin": ["lib/libmklml.dylib"]
+        "@org_tensorflow//tensorflow:darwin": ["lib/libmklml.dylib"],
+        "@org_tensorflow//tensorflow:windows": ["lib/mklml.lib"]
     }),
     visibility = ["//visibility:public"],
 )
@@ -30,7 +31,8 @@ filegroup(
     name = "libiomp5.so",
     srcs = select({
         "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libiomp5.so"],
-        "@org_tensorflow//tensorflow:darwin": ["lib/libiomp5.dylib"]
+        "@org_tensorflow//tensorflow:darwin": ["lib/libiomp5.dylib"],
+        "@org_tensorflow//tensorflow:windows": ["lib/libiomp5md.lib"]
     }),
     visibility = ["//visibility:public"],
 )
