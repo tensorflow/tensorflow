@@ -19,12 +19,18 @@ cc_library(
 
 filegroup(
     name = "libmklml_intel.so",
-    srcs = ["lib/libmklml_intel.so"],
+    srcs = select({
+        "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libmklml_intel.so"],
+        "@org_tensorflow//tensorflow:darwin": ["lib/libmklml.dylib"]
+    }),
     visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "libiomp5.so",
-    srcs = ["lib/libiomp5.so"],
+    srcs = select({
+        "@org_tensorflow//tensorflow:linux_x86_64": ["lib/libiomp5.so"],
+        "@org_tensorflow//tensorflow:darwin": ["lib/libiomp5.dylib"]
+    }),
     visibility = ["//visibility:public"],
 )
