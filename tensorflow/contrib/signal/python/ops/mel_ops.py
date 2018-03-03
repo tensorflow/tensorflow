@@ -64,14 +64,11 @@ def _hertz_to_mel(frequencies_hertz, name=None):
         1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
 
 
-def _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+def _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype):
   """Checks the inputs to linear_to_mel_weight_matrix."""
   if num_mel_bins <= 0:
     raise ValueError('num_mel_bins must be positive. Got: %s' % num_mel_bins)
-  if num_spectrogram_bins <= 0:
-    raise ValueError('num_spectrogram_bins must be positive. Got: %s' %
-                     num_spectrogram_bins)
   if sample_rate <= 0.0:
     raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
   if lower_edge_hertz < 0.0:
@@ -148,7 +145,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
-    _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+    _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype)
 
     # To preserve accuracy, we compute the matrix at float64 precision and then
