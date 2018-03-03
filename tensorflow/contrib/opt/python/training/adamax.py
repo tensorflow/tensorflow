@@ -29,13 +29,62 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdaMaxOptimizer")
 class AdaMaxOptimizer(adam.AdamOptimizer):
   """Optimizer that implements the AdaMax algorithm.
 
   See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
+
+  def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
+               use_locking=False, name="AdaMax"):
+    """Construct a new AdaMax optimizer.
+
+    Initialization:
+
+    ```
+    m_0 <- 0 (Initialize initial 1st moment vector)
+    v_0 <- 0 (Initialize the exponentially weighted infinity norm)
+    t <- 0 (Initialize timestep)
+    ```
+
+    The update rule for `variable` with gradient `g` uses an optimization
+    described at the end of section7.1 of the paper:
+
+    ```
+    t <- t + 1
+    lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+
+    m_t <- beta1 * m_{t-1} + (1 - beta1) * g
+    v_t <- max(beta2 * v_{t-1}, abs(g))
+    variable <- variable - lr_t / (1 - beta1^t) * m_t / (v_t + epsilon)
+    ```
+
+    Similar to AdamOptimizer, the epsilon is added for numerical stability
+    (especially to get rid of division by zero when v_t = 0).
+
+    Contrast to AdamOptimizer, the sparse implementation of this algorithm
+    (used when the gradient is an IndexedSlices object, typically because of
+    `tf.gather` or an embedding lookup in the forward pass) only updates
+    variable slices and corresponding `m_t`, `v_t` terms when that part of
+    the variable was used in the forward pass. This means that the sparse
+    behavior is contrast to the dense behavior (similar to some momentum
+    implementations which ignore momentum unless a variable slice was actually
+    used).
+
+    Args:
+      learning_rate: A Tensor or a floating point value.  The learning rate.
+      beta1: A float value or a constant float tensor.
+        The exponential decay rate for the 1st moment estimates.
+      beta2: A float value or a constant float tensor.
+        The exponential decay rate for the exponentially weighted infinity norm.
+      epsilon: A small constant for numerical stability.
+      use_locking: If True use locks for update operations.
+      name: Optional name for the operations created when applying gradients.
+        Defaults to "AdaMax".
+    """
+    super(AdaMaxOptimizer, self).__init__(learning_rate, beta1, beta2,
+                                          epsilon, use_locking, name)
 
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
