@@ -159,4 +159,4 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
   def _resource_apply_sparse(self, grad, var, indices):
     return self._apply_sparse_shared(
         grad, var, indices,
-	self._resource_scatter_add, self._resource_scatter_update)
+        self._resource_scatter_add, self._resource_scatter_update)
