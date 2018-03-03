@@ -145,6 +145,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
+    # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
+    # and the validation is already done in linspace (both in shape function
+    # and in kernel), there is no need to validate num_spectrogram_bins here.
     _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype)
 
