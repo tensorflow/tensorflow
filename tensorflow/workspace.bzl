@@ -121,11 +121,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "mkl_dnn",
       urls = [
-          "https://mirror.bazel.build/github.com/01org/mkl-dnn/archive/e0bfcaa7fcb2b1e1558f5f0676933c1db807a729.tar.gz",
-          "https://github.com/01org/mkl-dnn/archive/e0bfcaa7fcb2b1e1558f5f0676933c1db807a729.tar.gz",
+          "https://github.com/intel/mkl-dnn/archive/v0.12.tar.gz",
       ],
-      sha256 = "02e244f63dd95402691a361392504c143eede9a89043426f174836638a9cbf09",
-      strip_prefix = "mkl-dnn-e0bfcaa7fcb2b1e1558f5f0676933c1db807a729",
+      sha256 = "86fa2a8c12a56e3b725945acedeaa82492746be02545aba6d710f097e013e19e",
+      strip_prefix = "mkl-dnn-0.12",
       build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
   )
 
