@@ -35,7 +35,7 @@ from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
+import tensorflow as tf
 
 __all__ = [
     "ReparameterizationType",
@@ -410,13 +410,15 @@ class Distribution(_BaseDistribution):
       ValueError: if any member of graph_parents is `None` or not a `Tensor`.
     """
     graph_parents = [] if graph_parents is None else graph_parents
+    validate_args_default = tf.get_default_graph().validate_args_default
+
     for i, t in enumerate(graph_parents):
       if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
+    self._validate_args = validate_args_default or validate_args
     self._parameters = parameters or {}
     self._graph_parents = graph_parents
     self._name = name or type(self).__name__
