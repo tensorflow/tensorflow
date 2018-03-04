@@ -186,6 +186,10 @@ typedef struct EagerTensor {
   // This stores `_keras_mask` object and is set by Tensorflow layers.
   PyObject* keras_mask;
 
+  // This stores `_tensor_shape`, a cached `TensorShape` object, and is set the
+  // first time that `_EagerTensorBase`'s `shape` property is called.
+  PyObject* tensor_shape;
+
   // We store a status object here as an optimization to avoid allocating a new
   // Status objects on different functions that operate on EagerTensor and need
   // to use a TF_Status object. However note that accesses to `status` are not
@@ -201,6 +205,8 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
   self->keras_mask = Py_None;
+  Py_INCREF(Py_None);
+  self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
   PyObject* value;
   PyObject* context = nullptr;
@@ -333,6 +339,7 @@ void EagerTensor_dealloc(EagerTensor* self) {
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
   Py_DECREF(self->keras_mask);
+  Py_DECREF(self->tensor_shape);
   TFE_DeleteTensorHandle(self->handle);
   self->handle = nullptr;
   // We have the global interpreter lock, so use this chance to perform delayed
@@ -420,6 +427,19 @@ static int EagerTensor_setkeras_mask(EagerTensor* self, PyObject* value,
   self->keras_mask = value;
   return 0;
 }
+
+static PyObject* EagerTensor_tensor_shape(EagerTensor* self, void* unused) {
+  Py_INCREF(self->tensor_shape);
+  return self->tensor_shape;
+}
+
+static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
+                                       void* unused) {
+  Py_DECREF(self->tensor_shape);
+  Py_INCREF(value);
+  self->tensor_shape = value;
+  return 0;
+}
 // Function `_copy_to_device`.
 static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
@@ -484,6 +504,9 @@ static PyGetSetDef EagerTensor_getseters[] = {
     {const_cast<char*>("_keras_mask"), (getter)EagerTensor_keras_mask,
      (setter)EagerTensor_setkeras_mask, const_cast<char*>("_keras_mask"),
      nullptr},
+    {const_cast<char*>("_tensor_shape"), (getter)EagerTensor_tensor_shape,
+     (setter)EagerTensor_settensor_shape, const_cast<char*>("_tensor_shape"),
+     nullptr},
     {nullptr} /* Sentinel */
 };
 
@@ -520,16 +543,11 @@ PyTypeObject* EagerTensorType = nullptr;
 
 #if PY_MAJOR_VERSION >= 3
 static PyType_Slot EagerTensor_Type_slots[] = {
-    Py_tp_dealloc,
-    reinterpret_cast<void*>(EagerTensor_dealloc),
-    Py_tp_methods,
-    reinterpret_cast<void*>(EagerTensor_methods),
-    Py_tp_getset,
-    reinterpret_cast<void*>(EagerTensor_getseters),
-    Py_tp_init,
-    reinterpret_cast<void*>(EagerTensor_init),
-    0,
-    nullptr,
+    {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
+    {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
+    {0, nullptr},
 };
 
 PyType_Spec EagerTensor_Type_spec = {"EagerTensor", sizeof(EagerTensor), 0,
@@ -604,6 +622,8 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->handle_data = Py_None;
     Py_INCREF(Py_None);
     t->keras_mask = Py_None;
+    Py_INCREF(Py_None);
+    t->tensor_shape = Py_None;
     t->handle = handle;
     t->status = TF_NewStatus();
   }

@@ -62,6 +62,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:smart_cond",
         "//tensorflow/python:sparse_tensor",

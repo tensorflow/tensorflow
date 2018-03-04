@@ -29,7 +29,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        "//learning/tfx:__subpackages__",
+    ],
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",

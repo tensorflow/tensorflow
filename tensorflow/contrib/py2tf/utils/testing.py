@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility functions related to managing `tf.Variable`s."""
+"""Testing utilities."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-from tensorflow.contrib.bayesflow.python.ops.variable_utils_impl import *  # pylint: disable=wildcard-import,unused-wildcard-import,g-importing-member
-from tensorflow.python.util import all_util
+import imp
 
-_allowed_symbols = [
-    "externalize_variables_as_args",
-]
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 
-all_util.remove_undocumented(__name__, _allowed_symbols)
+
+def fake_tf():
+  """Creates a fake module that looks like TensorFlow, for testing."""
+  mod = imp.new_module('tensorflow')
+  mod_contents = dict()
+  mod_contents.update(math_ops.__dict__)
+  mod_contents.update(ops.__dict__)
+  mod_contents.update(mod.__dict__)
+  mod.__dict__.update(mod_contents)
+  return mod

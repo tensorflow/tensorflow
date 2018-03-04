@@ -178,6 +178,7 @@ class SimpleGraphView {
   Status Initialize(const GraphDef& graph, bool dedup_inputs,
                     bool dedup_outputs);
 
+  const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
   inline const int index(const string& node_name) const {
     const auto& it = name_to_index_.find(node_name);

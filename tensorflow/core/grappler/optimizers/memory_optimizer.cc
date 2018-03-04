@@ -413,7 +413,7 @@ void RecomputeSubgraph(
 }
 
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
-                                const string& recomputation_targets_name_prefix,
+                                const string& recomputation_targets_name_scope,
                                 GraphDef* graph, const GrapplerItem& item) {
   if (optimization_level != RewriterConfig::RECOMPUTATION_HEURISTICS &&
       optimization_level != RewriterConfig::HEURISTICS &&
@@ -438,15 +438,14 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
     feeds.insert(NodeName(feed.first));
   }
   std::function<bool(const NodeDef&)> is_target =
-      [&recomputation_targets_name_prefix](const NodeDef& node) {
-        // Nodes whose inputs we may want to recompute. Typically targets will
-        // be gradients (recomputation_targets_name_prefix="gradients/"),
-        // although the prefix is configurable since gradients may be created
-        // in a name scope.
-        // TODO(allenl): Use a static schedule
-        // (grappler::EstimateEarliestExecutionTimes) to recompute only nodes
-        // whose outputs will sit around for a while.
-        return node.name().find(recomputation_targets_name_prefix) == 0;
+      [&recomputation_targets_name_scope](const NodeDef& node) {
+        // Nodes whose inputs we may want to recompute. This matches node names
+        // that contain recomputation_targets_name_scope as a name scope,
+        // meaning it either begins with or contains the name scope.
+        // Defaults to "gradients/" which will match any node names that begins
+        // with "gradients/" or contains "/gradients/".
+        return node.name().find(recomputation_targets_name_scope) == 0 ||
+               node.name().find("/" + recomputation_targets_name_scope) != -1;
       };
 
   if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||
@@ -1225,8 +1224,8 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_prefix_,
-                             optimized_graph, item);
+                             recomputation_targets_name_scope_, optimized_graph,
+                             item);
 
   GrapplerItem optimized_item(item, std::move(*optimized_graph));
   std::unordered_set<string> skip_list;

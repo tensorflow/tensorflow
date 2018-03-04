@@ -185,7 +185,7 @@ class CallTreeTransformer(transformer.Base):
     """
     return templates.replace(template, func=node.func, original_args=node.args)
 
-  def _converted_call(self, node):
+  def _insert_dynamic_conversion(self, node):
     """Inlines a dynamic conversion for a dynamic function."""
     # TODO(mdan): Pass information on the statically compiled functions.
     # Having access to the statically compiled functions can help avoid
@@ -208,7 +208,10 @@ class CallTreeTransformer(transformer.Base):
     """
     call_expr = templates.replace(
         template, func=node.func, original_args=node.args)
-    return call_expr[0].value
+    new_call = call_expr[0].value
+    # TODO(mdan): Improve the template mechanism to better support this.
+    new_call.keywords = node.keywords
+    return new_call
 
   # pylint:disable=invalid-name
 
@@ -251,7 +254,7 @@ class CallTreeTransformer(transformer.Base):
         raise NotImplementedError('py_func with return values')
     else:
       if self.context.recursive:
-        node = self._converted_call(node)
+        node = self._insert_dynamic_conversion(node)
       else:
         # Unresolved functions are allowed in non-recursive mode.
         pass

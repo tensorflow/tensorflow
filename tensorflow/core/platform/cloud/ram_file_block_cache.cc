@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/file_block_cache.h"
+#include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
 #include <cstring>
 #include <memory>
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool FileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
+bool RamFileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
   mutex_lock l(block->mu);
   if (block->state != FetchState::FINISHED) {
     return true;  // No need to check for staleness.
@@ -30,7 +30,8 @@ bool FileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
   return env_->NowSeconds() - block->timestamp <= max_staleness_;
 }
 
-std::shared_ptr<FileBlockCache::Block> FileBlockCache::Lookup(const Key& key) {
+std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
+    const Key& key) {
   mutex_lock lock(mu_);
   auto entry = block_map_.find(key);
   if (entry != block_map_.end()) {
@@ -55,15 +56,15 @@ std::shared_ptr<FileBlockCache::Block> FileBlockCache::Lookup(const Key& key) {
 }
 
 // Remove blocks from the cache until we do not exceed our maximum size.
-void FileBlockCache::Trim() {
+void RamFileBlockCache::Trim() {
   while (!lru_list_.empty() && cache_size_ > max_bytes_) {
     RemoveBlock(block_map_.find(lru_list_.back()));
   }
 }
 
 /// Move the block to the front of the LRU list if it isn't already there.
-Status FileBlockCache::UpdateLRU(const Key& key,
-                                 const std::shared_ptr<Block>& block) {
+Status RamFileBlockCache::UpdateLRU(const Key& key,
+                                    const std::shared_ptr<Block>& block) {
   mutex_lock lock(mu_);
   if (block->timestamp == 0) {
     // The block was evicted from another thread. Allow it to remain evicted.
@@ -92,8 +93,8 @@ Status FileBlockCache::UpdateLRU(const Key& key,
   return Status::OK();
 }
 
-Status FileBlockCache::MaybeFetch(const Key& key,
-                                  const std::shared_ptr<Block>& block) {
+Status RamFileBlockCache::MaybeFetch(const Key& key,
+                                     const std::shared_ptr<Block>& block) {
   bool downloaded_block = false;
   auto reconcile_state =
       gtl::MakeCleanup([this, &downloaded_block, &key, &block] {
@@ -151,11 +152,11 @@ Status FileBlockCache::MaybeFetch(const Key& key,
     }
   }
   return errors::Internal(
-      "Control flow should never reach the end of FileBlockCache::Fetch.");
+      "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 
-Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
-                            char* buffer, size_t* bytes_transferred) {
+Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
+                               char* buffer, size_t* bytes_transferred) {
   *bytes_transferred = 0;
   if (n == 0) {
     return Status::OK();
@@ -216,12 +217,12 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
   return Status::OK();
 }
 
-size_t FileBlockCache::CacheSize() const {
+size_t RamFileBlockCache::CacheSize() const {
   mutex_lock lock(mu_);
   return cache_size_;
 }
 
-void FileBlockCache::Prune() {
+void RamFileBlockCache::Prune() {
   while (!WaitForNotificationWithTimeout(&stop_pruning_thread_, 1000000)) {
     mutex_lock lock(mu_);
     uint64 now = env_->NowSeconds();
@@ -238,7 +239,7 @@ void FileBlockCache::Prune() {
   }
 }
 
-void FileBlockCache::Flush() {
+void RamFileBlockCache::Flush() {
   mutex_lock lock(mu_);
   block_map_.clear();
   lru_list_.clear();
@@ -246,12 +247,12 @@ void FileBlockCache::Flush() {
   cache_size_ = 0;
 }
 
-void FileBlockCache::RemoveFile(const string& filename) {
+void RamFileBlockCache::RemoveFile(const string& filename) {
   mutex_lock lock(mu_);
   RemoveFile_Locked(filename);
 }
 
-void FileBlockCache::RemoveFile_Locked(const string& filename) {
+void RamFileBlockCache::RemoveFile_Locked(const string& filename) {
   Key begin = std::make_pair(filename, 0);
   auto it = block_map_.lower_bound(begin);
   while (it != block_map_.end() && it->first.first == filename) {
@@ -261,7 +262,7 @@ void FileBlockCache::RemoveFile_Locked(const string& filename) {
   }
 }
 
-void FileBlockCache::RemoveBlock(BlockMap::iterator entry) {
+void RamFileBlockCache::RemoveBlock(BlockMap::iterator entry) {
   // This signals that the block is removed, and should not be inadvertently
   // reinserted into the cache in UpdateLRU.
   entry->second->timestamp = 0;

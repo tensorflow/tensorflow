@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -363,6 +364,31 @@ class CheckpointsTest(test.TestCase):
         with self.assertRaises(ValueError):
           checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                                 {"useful_scope": "some_scope/"})
+
+  def testNoAdditionalReadOpsForResourceVariables(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.test_session() as session:
+      v1, _, _, _ = _create_checkpoints(session, checkpoint_dir)
+
+    # New graph and session.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as session:
+        my1 = resource_variable_ops.ResourceVariable([[0.0] * 10], name="my1")
+
+        with ops.name_scope("init_from_checkpoint"):
+          checkpoint_utils.init_from_checkpoint(checkpoint_dir, {"var1": my1})
+
+        # Basic sanity checks:
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(session.run(my1), v1)
+
+    ops_in_init_from_checkpoint_scope = [
+        op for op in g.get_operations()
+        if (op.name.startswith("init_from_checkpoint/") and
+            not op.name.startswith("init_from_checkpoint/checkpoint_initializer"
+                                  ) and op.type != "AssignVariableOp")
+    ]
+    self.assertEqual(ops_in_init_from_checkpoint_scope, [])
 
 
 if __name__ == "__main__":

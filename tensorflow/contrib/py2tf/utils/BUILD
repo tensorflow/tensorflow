@@ -26,6 +26,7 @@ py_library(
         "multiple_dispatch.py",
         "py_func.py",
         "tensor_list.py",
+        "testing.py",
         "type_check.py",
     ],
     srcs_version = "PY2AND3",

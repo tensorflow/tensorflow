@@ -346,7 +346,6 @@ TEST(CurlHttpRequestTest, GetRequest_Empty) {
 
 TEST(CurlHttpRequestTest, GetRequest_RangeOutOfBound) {
   FakeLibCurl libcurl("get response", 416);
-  libcurl.curl_easy_perform_result_ = CURLE_WRITE_ERROR;
   CurlHttpRequest http_request(&libcurl);
 
   std::vector<char> scratch;
@@ -377,10 +376,10 @@ TEST(CurlHttpRequestTest, GetRequest_503) {
   const auto& status = http_request.Send();
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
-      "Error executing an HTTP request (HTTP response code 503, "
-      "error code 23, error message '')",
+      "Error executing an HTTP request (error code 23, error message 'Failed "
+      "writing received data to disk/application')\n\tPerforming request. "
+      "Detailed error: ",
       status.error_message());
-  EXPECT_EQ(503, http_request.GetResponseCode());
 }
 
 TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
@@ -396,8 +395,9 @@ TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
   const auto& status = http_request.Send();
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
-      "Error executing an HTTP request (HTTP response code 0, "
-      "error code 28, error message 'Operation timed out')",
+      "Error executing an HTTP request (error code 28, error message 'Timeout "
+      "was reached')\n\tPerforming request. Detailed error: Operation timed "
+      "out",
       status.error_message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
@@ -628,8 +628,9 @@ TEST(CurlHttpRequestTest, ProgressIsStuck) {
   auto status = http_request.Send();
   EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_EQ(
-      "Error executing an HTTP request (HTTP response code 200, "
-      "error code 42, error message '')",
+      "Error executing an HTTP request (error code 42, error message "
+      "'Operation was aborted by an application callback')\n\tPerforming "
+      "request. Detailed error: ",
       status.error_message());
 }
 
