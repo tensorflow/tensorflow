@@ -34,7 +34,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -180,6 +182,18 @@ class TFETest(test_util.TensorFlowTestCase):
         b'Add', 1, inputs=[x, y],
         attrs=('T', x.dtype.as_datatype_enum))[0].cpu().numpy()
     self.assertEqual(3, result)
+
+  def testResourceTensorPlacement(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    with context.device('gpu:0'):
+      v = resource_variable_ops.ResourceVariable(1.0)
+    with context.device('cpu:0'):
+      # Check that even though we specified the cpu device we'll run the read op
+      # in the device where the handle is.
+      self.assertAllEqual(
+          gen_resource_variable_ops.read_variable_op(v.handle, v.dtype), 1.0)
 
   def testCopyBetweenDevices(self):
     if not context.context().num_gpus():

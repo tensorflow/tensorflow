@@ -30,12 +30,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.training import checkpointable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(object):
+class Metric(checkpointable.CheckpointableBase):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:
@@ -254,14 +254,21 @@ class Metric(object):
       else:
         collections = [ops.GraphKeys.LOCAL_VARIABLES]
       collections += [ops.GraphKeys.METRIC_VARIABLES]
-    v = variable_scope.get_variable(
-        name,
-        shape,
-        dtype,
-        initializer,
+    # Variables are Checkpointable dependencies of Metrics regardless of the
+    # global/local distinction. Users can avoid saving variables by not adding a
+    # dependency on the Metric.
+    v = self._add_variable_with_custom_getter(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
         trainable=False,
         collections=collections,
-        use_resource=True)
+        use_resource=True,
+        getter=variable_scope.get_variable,
+        # Raise duplicate variable exceptions from get_variable rather than
+        # Checkpointable.
+        overwrite=True)
     self._vars.append(v)
     if context.in_eager_mode():
       self._initial_values[v] = v.value()

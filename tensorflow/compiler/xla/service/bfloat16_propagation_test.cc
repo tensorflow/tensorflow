@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -119,6 +120,41 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSelectButNotAdd) {
   EXPECT_FALSE(OutputsBF16(a));
   EXPECT_FALSE(OutputsBF16(b));
   EXPECT_FALSE(OutputsBF16(c));
+}
+
+// Tests that if a constant is converted to BF16 then its literal must also be
+// converted.
+TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Array2D<float> array_a(4, 4);
+  array_a.FillUnique(1.0f);
+  Array2D<float> array_b(4, 4);
+  array_b.FillUnique(10.0f);
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateFromArray(array_a)));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateFromArray(array_b)));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, a, b));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_TRUE(OutputsBF16(dot->operand(0)));
+  EXPECT_TRUE(OutputsBF16(dot->operand(1)));
+  EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
+  EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
+  LiteralTestUtil::ExpectEqual(
+      dot->operand(0)->literal(),
+      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_a)));
+  LiteralTestUtil::ExpectEqual(
+      dot->operand(1)->literal(),
+      *LiteralTestUtil::ConvertF32ToBF16(*Literal::CreateFromArray(array_b)));
 }
 
 // Tests that BF16 can be propagated through nested tuples.
@@ -388,6 +424,197 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   EXPECT_FALSE(OutputsBF16(gte0));
   EXPECT_FALSE(OutputsBF16(gte1));
   EXPECT_TRUE(OutputsBF16(xpose));
+}
+
+// Tests that BF16 is propagated properly through while computations.
+TEST_F(BFloat16PropagationTest, PropagateThroughWhile) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
+
+  auto builder_cond = HloComputation::Builder("cond");
+  auto cond_param = builder_cond.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple->shape(), "cond_param"));
+  auto cond_lhs = builder_cond.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond_param, 0));
+  auto cond_rhs = builder_cond.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond_param, 1));
+  // This add should prevent RHS from using BF16
+  auto cond_add_rhs = builder_cond.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, cond_rhs, cond_rhs));
+  auto cond_dot = builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, cond_lhs, cond_add_rhs));
+  builder_cond.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond_dot, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond = module->AddEmbeddedComputation(builder_cond.Build());
+
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple->shape(), "body_param"));
+  auto body_lhs = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 0));
+  auto body_rhs = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 1));
+  auto body_dot = builder_body.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, body_lhs, body_rhs));
+  builder_body.AddInstruction(
+      HloInstruction::CreateTuple({body_dot, body_rhs}));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while_hlo = builder.AddInstruction(
+      HloInstruction::CreateWhile(tuple->shape(), cond, body, tuple));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, while_hlo, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, while_hlo, 1));
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, lhs, rhs));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_TRUE(OutputsBF16(lhs));
+  EXPECT_FALSE(OutputsBF16(rhs));
+  EXPECT_TRUE(OutputsBF16(body_dot));
+  EXPECT_TRUE(OutputsBF16(body_lhs));
+  EXPECT_FALSE(OutputsBF16(body_rhs));
+  EXPECT_TRUE(OutputsBF16(cond_lhs));
+  EXPECT_FALSE(OutputsBF16(cond_rhs));
+  EXPECT_TRUE(OutputsBF16(add0));
+  EXPECT_FALSE(OutputsBF16(add1));
+}
+
+// Tests that BF16 is not propagated through multiple whiles that invoke the
+// same computation as long as one while prevents the propagation.
+TEST_F(BFloat16PropagationTest, DoNotPropagateWhilesCallingSameComputation) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  HloInstruction* tuple0 =
+      builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
+  HloInstruction* tuple1 =
+      builder.AddInstruction(HloInstruction::CreateTuple({add2, add3}));
+
+  // Condition computation for the first while.
+  auto builder_cond0 = HloComputation::Builder("cond0");
+  auto cond0_param = builder_cond0.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple0->shape(), "cond0_param"));
+  auto cond0_lhs = builder_cond0.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond0_param, 0));
+  auto cond0_rhs = builder_cond0.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond0_param, 1));
+  // This add should prevent RHS from using BF16
+  auto cond0_add_rhs =
+      builder_cond0.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, cond0_rhs, cond0_rhs));
+  auto cond0_dot = builder_cond0.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, cond0_lhs, cond0_add_rhs));
+  builder_cond0.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond0.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond0_dot, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond0.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond0_dot, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond0 = module->AddEmbeddedComputation(builder_cond0.Build());
+
+  // Condition computation for the second while.
+  auto builder_cond1 = HloComputation::Builder("cond1");
+  auto cond1_param = builder_cond1.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple1->shape(), "cond1_param"));
+  auto cond1_lhs = builder_cond1.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond1_param, 0));
+  auto cond1_rhs = builder_cond1.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, cond1_param, 1));
+  // This add should prevent LHS from using BF16
+  auto cond1_add_lhs =
+      builder_cond1.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, cond1_lhs, cond1_lhs));
+  auto cond1_dot = builder_cond1.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot, cond1_add_lhs, cond1_rhs));
+  builder_cond1.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt,
+      builder_cond1.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond1_dot, {0, 0}, {1, 1}, {1, 1})),
+      builder_cond1.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {}), cond1_dot, {1, 1}, {2, 2}, {1, 1}))));
+  auto cond1 = module->AddEmbeddedComputation(builder_cond1.Build());
+
+  // Body computation shared by both whiles.
+  auto builder_body = HloComputation::Builder("body");
+  auto body_param = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple0->shape(), "body_param"));
+  auto body_lhs = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 0));
+  auto body_rhs = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 1));
+  auto body_dot = builder_body.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, body_lhs, body_rhs));
+  builder_body.AddInstruction(
+      HloInstruction::CreateTuple({body_dot, body_rhs}));
+  auto body = module->AddEmbeddedComputation(builder_body.Build());
+
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(tuple0->shape(), cond0, body, tuple0));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(tuple1->shape(), cond1, body, tuple1));
+
+  auto lhs = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot,
+      builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(shape, while0, 0)),
+      builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(shape, while0, 1))));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kDot,
+      builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(shape, while1, 0)),
+      builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(shape, while1, 1))));
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, lhs, rhs));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+  EXPECT_FALSE(OutputsBF16(body_dot));
+  EXPECT_FALSE(OutputsBF16(body_rhs));
+  EXPECT_FALSE(OutputsBF16(body_lhs));
+  EXPECT_FALSE(OutputsBF16(cond0_lhs));
+  EXPECT_FALSE(OutputsBF16(cond0_rhs));
+  EXPECT_FALSE(OutputsBF16(cond1_lhs));
+  EXPECT_FALSE(OutputsBF16(cond1_rhs));
+  EXPECT_TRUE(OutputsBF16(cond0_add_rhs));
+  EXPECT_TRUE(OutputsBF16(cond1_add_lhs));
+  EXPECT_EQ(computation->root_instruction(), dot);
 }
 
 }  // namespace xla

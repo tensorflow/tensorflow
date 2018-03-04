@@ -1646,6 +1646,59 @@ TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
   }
 }
 
+TEST_F(ConstantFoldingTest, IdenticalN) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({})));
+  Output c1 = ops::Const(scope.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(scope.WithOpName("c2"), 2.0f, {2, 2});
+  auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {c1, x, c2});
+  auto id0 = ops::Identity(scope.WithOpName("id0"), id_n[1]);
+  auto id1 = ops::Identity(scope.WithOpName("id1"), id_n[0]);
+  auto add0 = ops::Add(scope.WithOpName("add0"), id_n[0], id_n[1]);
+  auto add1 = ops::Add(scope.WithOpName("add1"), id_n[0], id_n[2]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("id0");
+  item.fetch.push_back("id1");
+  item.fetch.push_back("add0");
+  item.fetch.push_back("add1");
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(8, output.node_size());
+  // id_n should remain unchanged.
+  EXPECT_EQ("id_n", output.node(3).name());
+  EXPECT_EQ(3, output.node(3).input_size());
+  EXPECT_EQ("c1", output.node(3).input(0));
+  EXPECT_EQ("x", output.node(3).input(1));
+  EXPECT_EQ("c2", output.node(3).input(2));
+  // id0 is unchanged.
+  EXPECT_EQ("id0", output.node(4).name());
+  EXPECT_EQ(1, output.node(4).input_size());
+  // id1 should have the constant input forwarded to it,
+  // and a control dependency from id_n.
+  EXPECT_EQ("id1", output.node(5).name());
+  EXPECT_EQ(2, output.node(5).input_size());
+  EXPECT_EQ("c1", output.node(5).input(0));
+  EXPECT_EQ("^id_n", output.node(5).input(1));
+
+  EXPECT_EQ("add0", output.node(6).name());
+  EXPECT_EQ(2, output.node(6).input_size());
+  EXPECT_EQ("c1", output.node(6).input(0));
+  EXPECT_EQ("id_n:1", output.node(6).input(1));
+
+  EXPECT_EQ("add1", output.node(7).name());
+  EXPECT_EQ(3, output.node(7).input_size());
+  EXPECT_EQ("c1", output.node(7).input(0));
+  EXPECT_EQ("c2", output.node(7).input(1));
+  EXPECT_EQ("^id_n", output.node(7).input(2));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

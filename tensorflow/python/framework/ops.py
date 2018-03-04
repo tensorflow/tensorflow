@@ -782,7 +782,11 @@ class _EagerTensorBase(Tensor):
 
   @property
   def shape(self):
-    return tensor_shape.TensorShape(self._shape_tuple())
+    if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
+      # `_tensor_shape` is declared and defined in the definition of
+      # `EagerTensor`, in C.
+      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+    return self._tensor_shape
 
   def get_shape(self):
     """Alias of Tensor.shape."""

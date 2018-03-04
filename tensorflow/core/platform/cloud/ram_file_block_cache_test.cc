@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/file_block_cache.h"
+#include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
 #include <cstring>
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -25,8 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadCache(FileBlockCache* cache, const string& filename, size_t offset,
-                 size_t n, std::vector<char>* out) {
+Status ReadCache(RamFileBlockCache* cache, const string& filename,
+                 size_t offset, size_t n, std::vector<char>* out) {
   out->clear();
   out->resize(n, 0);
   size_t bytes_transferred = 0;
@@ -37,7 +37,7 @@ Status ReadCache(FileBlockCache* cache, const string& filename, size_t offset,
   return status;
 }
 
-TEST(FileBlockCacheTest, PassThrough) {
+TEST(RamFileBlockCacheTest, PassThrough) {
   const string want_filename = "foo/bar";
   const size_t want_offset = 42;
   const size_t want_n = 1024;
@@ -54,9 +54,9 @@ TEST(FileBlockCacheTest, PassThrough) {
     return Status::OK();
   };
   // If block_size, max_bytes, or both are zero, the cache is a pass-through.
-  FileBlockCache cache1(1, 0, 0, fetcher);
-  FileBlockCache cache2(0, 1, 0, fetcher);
-  FileBlockCache cache3(0, 0, 0, fetcher);
+  RamFileBlockCache cache1(1, 0, 0, fetcher);
+  RamFileBlockCache cache2(0, 1, 0, fetcher);
+  RamFileBlockCache cache3(0, 0, 0, fetcher);
   std::vector<char> out;
   TF_EXPECT_OK(ReadCache(&cache1, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 1);
@@ -66,7 +66,7 @@ TEST(FileBlockCacheTest, PassThrough) {
   EXPECT_EQ(calls, 3);
 }
 
-TEST(FileBlockCacheTest, BlockAlignment) {
+TEST(RamFileBlockCacheTest, BlockAlignment) {
   // Initialize a 256-byte buffer.  This is the file underlying the reads we'll
   // do in this test.
   const size_t size = 256;
@@ -89,7 +89,7 @@ TEST(FileBlockCacheTest, BlockAlignment) {
   for (size_t block_size = 2; block_size <= 4; block_size++) {
     // Make a cache of N-byte block size (1 block) and verify that reads of
     // varying offsets and lengths return correct data.
-    FileBlockCache cache(block_size, block_size, 0, fetcher);
+    RamFileBlockCache cache(block_size, block_size, 0, fetcher);
     for (size_t offset = 0; offset < 10; offset++) {
       for (size_t n = block_size - 2; n <= block_size + 2; n++) {
         std::vector<char> got;
@@ -117,7 +117,7 @@ TEST(FileBlockCacheTest, BlockAlignment) {
   }
 }
 
-TEST(FileBlockCacheTest, CacheHits) {
+TEST(RamFileBlockCacheTest, CacheHits) {
   const size_t block_size = 16;
   std::set<size_t> calls;
   auto fetcher = [&calls, block_size](const string& filename, size_t offset,
@@ -132,7 +132,7 @@ TEST(FileBlockCacheTest, CacheHits) {
     return Status::OK();
   };
   const uint32 block_count = 256;
-  FileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   out.resize(block_count, 0);
   // The cache has space for `block_count` blocks. The loop with i = 0 should
@@ -146,7 +146,7 @@ TEST(FileBlockCacheTest, CacheHits) {
   }
 }
 
-TEST(FileBlockCacheTest, OutOfRange) {
+TEST(RamFileBlockCacheTest, OutOfRange) {
   // Tests reads of a 24-byte file with block size 16.
   const size_t block_size = 16;
   const size_t file_size = 24;
@@ -172,7 +172,7 @@ TEST(FileBlockCacheTest, OutOfRange) {
     *bytes_transferred = bytes_to_copy;
     return Status::OK();
   };
-  FileBlockCache cache(block_size, block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, block_size, 0, fetcher);
   std::vector<char> out;
   // Reading the first 16 bytes should be fine.
   TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size, &out));
@@ -191,7 +191,7 @@ TEST(FileBlockCacheTest, OutOfRange) {
   EXPECT_EQ(out.size(), file_size - block_size);
 }
 
-TEST(FileBlockCacheTest, Inconsistent) {
+TEST(RamFileBlockCacheTest, Inconsistent) {
   // Tests the detection of interrupted reads leading to partially filled blocks
   // where we expected complete blocks.
   const size_t block_size = 16;
@@ -205,7 +205,7 @@ TEST(FileBlockCacheTest, Inconsistent) {
     *bytes_transferred = 1;
     return Status::OK();
   };
-  FileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
   std::vector<char> out;
   // Read the second block; this should yield an OK status and a single byte.
   TF_EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
@@ -216,7 +216,7 @@ TEST(FileBlockCacheTest, Inconsistent) {
   EXPECT_EQ(status.code(), error::INTERNAL);
 }
 
-TEST(FileBlockCacheTest, LRU) {
+TEST(RamFileBlockCacheTest, LRU) {
   const size_t block_size = 16;
   std::list<size_t> calls;
   auto fetcher = [&calls, block_size](const string& filename, size_t offset,
@@ -233,7 +233,7 @@ TEST(FileBlockCacheTest, LRU) {
     return Status::OK();
   };
   const uint32 block_count = 2;
-  FileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   // Read blocks from the cache, and verify the LRU behavior based on the
   // fetcher calls that the cache makes.
@@ -265,7 +265,7 @@ TEST(FileBlockCacheTest, LRU) {
   TF_EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
 }
 
-TEST(FileBlockCacheTest, MaxStaleness) {
+TEST(RamFileBlockCacheTest, MaxStaleness) {
   int calls = 0;
   auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
                           char* buffer, size_t* bytes_transferred) {
@@ -278,7 +278,7 @@ TEST(FileBlockCacheTest, MaxStaleness) {
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
-  FileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
+  RamFileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
   TF_EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
@@ -294,7 +294,7 @@ TEST(FileBlockCacheTest, MaxStaleness) {
   // as expected.
   calls = 0;
   env->SetNowSeconds(0);
-  FileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher, env.get());
+  RamFileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
   TF_EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
@@ -305,7 +305,7 @@ TEST(FileBlockCacheTest, MaxStaleness) {
   EXPECT_EQ(calls, 1);
 }
 
-TEST(FileBlockCacheTest, RemoveFile) {
+TEST(RamFileBlockCacheTest, RemoveFile) {
   int calls = 0;
   auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
                           char* buffer, size_t* bytes_transferred) {
@@ -321,7 +321,7 @@ TEST(FileBlockCacheTest, RemoveFile) {
   };
   // This cache has space for 4 blocks; we'll read from two files.
   const size_t n = 3;
-  FileBlockCache cache(8, 32, 0, fetcher);
+  RamFileBlockCache cache(8, 32, 0, fetcher);
   std::vector<char> out;
   std::vector<char> a(n, 'a');
   std::vector<char> b(n, 'b');
@@ -367,7 +367,7 @@ TEST(FileBlockCacheTest, RemoveFile) {
   EXPECT_EQ(calls, 6);
 }
 
-TEST(FileBlockCacheTest, Prune) {
+TEST(RamFileBlockCacheTest, Prune) {
   int calls = 0;
   auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
                           char* buffer, size_t* bytes_transferred) {
@@ -381,7 +381,7 @@ TEST(FileBlockCacheTest, Prune) {
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   uint64 now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
-  FileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());
+  RamFileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());
   // Read three blocks into the cache, and advance the timestamp by one second
   // with each read. Start with a block of "a" at the current timestamp `now`.
   TF_EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
@@ -426,7 +426,7 @@ TEST(FileBlockCacheTest, Prune) {
   EXPECT_EQ(cache.CacheSize(), 0);
 }
 
-TEST(FileBlockCacheTest, ParallelReads) {
+TEST(RamFileBlockCacheTest, ParallelReads) {
   // This fetcher won't respond until either `callers` threads are calling it
   // concurrently (at which point it will respond with success to all callers),
   // or 10 seconds have elapsed (at which point it will respond with an error).
@@ -444,7 +444,7 @@ TEST(FileBlockCacheTest, ParallelReads) {
     return Status::OK();
   };
   const int block_size = 8;
-  FileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
   std::vector<std::unique_ptr<Thread>> threads;
   for (int i = 0; i < callers; i++) {
     threads.emplace_back(
@@ -461,7 +461,7 @@ TEST(FileBlockCacheTest, ParallelReads) {
   // executed, or 10 seconds have passed).
 }
 
-TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
+TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
   // Concurrent reads to the same file blocks should be de-duplicated.
   const size_t block_size = 16;
   int num_requests = 0;
@@ -479,7 +479,7 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
     Env::Default()->SleepForMicroseconds(100000);  // 0.1 secs
     return Status::OK();
   };
-  FileBlockCache cache(block_size, block_size, 0, fetcher);
+  RamFileBlockCache cache(block_size, block_size, 0, fetcher);
   // Fork off thread for parallel read.
   std::unique_ptr<Thread> concurrent(
       Env::Default()->StartThread({}, "concurrent", [&cache, block_size] {
@@ -496,7 +496,7 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
   EXPECT_EQ(1, num_requests);
 }
 
-TEST(FileBlockCacheTest, Flush) {
+TEST(RamFileBlockCacheTest, Flush) {
   int calls = 0;
   auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
                           char* buffer, size_t* bytes_transferred) {
@@ -505,7 +505,7 @@ TEST(FileBlockCacheTest, Flush) {
     *bytes_transferred = n;
     return Status::OK();
   };
-  FileBlockCache cache(16, 32, 0, fetcher);
+  RamFileBlockCache cache(16, 32, 0, fetcher);
   std::vector<char> out;
   TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
   TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));

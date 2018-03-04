@@ -44,8 +44,14 @@ TF_Tensor* Int32Tensor(int32_t v);
 
 TF_Tensor* DoubleTensor(double v);
 
+TF_Tensor* FloatTensor(float v);
+
+// TODO(hongm): Change Placeholder() to take in a TF_DataType parameter, and
+// unify with PlaceholderFloat.
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed");
+TF_Operation* PlaceholderFloat(TF_Graph* graph, TF_Status* s,
+                               const char* name = "feed");
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
@@ -54,6 +60,9 @@ TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
 
 TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
+
+TF_Operation* ScalarConst(float v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
 
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,

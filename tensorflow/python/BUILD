@@ -2882,6 +2882,7 @@ py_library(
     srcs = ["training/checkpointable.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":io_ops_gen",
         ":ops",
@@ -3654,6 +3655,7 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":state_ops_gen",
+        ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
@@ -3944,7 +3946,10 @@ py_test(
     size = "small",
     srcs = ["training/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+    ],
     deps = [
         ":client",
         ":client_testlib",
@@ -3953,6 +3958,7 @@ py_test(
         ":partitioned_variables",
         ":platform",
         ":pywrap_tensorflow",
+        ":resource_variable_ops",
         ":state_ops",
         ":training",
         ":variable_scope",
@@ -4737,6 +4743,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "grappler",
+        "no_cuda_on_cpu_tap",
         "no_pip",
     ],
     deps = [

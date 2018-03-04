@@ -44,7 +44,7 @@ class DatasetsTest(test.TestCase):
 
     self._cluster_def = cluster_pb2.ClusterDef()
     worker_job = self._cluster_def.job.add()
-    worker_job.name = 'worker'
+    worker_job.name = 'tpu_worker'
     worker_job.tasks[0] = self._worker.target[len('grpc://'):]
     coord_job = self._cluster_def.job.add()
     coord_job.name = 'coordinator'
