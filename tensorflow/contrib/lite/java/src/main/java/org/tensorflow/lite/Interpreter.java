@@ -80,6 +80,9 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Runs model inference if the model takes only one input, and provides only one output.
    *
+   * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
+   * consider using {@link ByteBuffer} to feed input data for better performance.
+   *
    * @param input an array or multidimensional array, or a {@link ByteBuffer} of primitive types
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data. When {@link ByteBuffer} is used, its content should remain unchanged until
@@ -95,6 +98,9 @@ public final class Interpreter implements AutoCloseable {
 
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
+   *
+   * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
+   * consider using {@link ByteBuffer} to feed input data for better performance.
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
    *     model. Each input can be an array or multidimensional array, or a {@link ByteBuffer} of
@@ -159,6 +165,27 @@ public final class Interpreter implements AutoCloseable {
       throw new IllegalStateException("The Interpreter has already been closed.");
     }
     return wrapper.getOutputIndex(opName);
+  }
+
+  /**
+   * Returns native inference timing.
+   * <p>IllegalArgumentException will be thrown if the model is not initialized by the
+   * {@link Interpreter}.
+   */
+  public Long getLastNativeInferenceDurationNanoseconds() {
+    if (wrapper == null) {
+      throw new IllegalStateException("The interpreter has already been closed.");
+    }
+    return wrapper.getLastNativeInferenceDurationNanoseconds();
+  }
+
+  /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
+  public void setUseNNAPI(boolean useNNAPI) {
+    if (wrapper != null) {
+      wrapper.setUseNNAPI(useNNAPI);
+    } else {
+      throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
+    }
   }
 
   /** Release resources associated with the {@code Interpreter}. */

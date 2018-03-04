@@ -144,8 +144,8 @@ toolchain {
       flag_group {
         # All warnings are enabled. Maybe enable -Werror as well?
         flag: "-Wall"
-        # TODO(ngiraldo): Some parts of the codebase set -Werror and hit this 
-        # warning, so switch it off for now.
+        # Some parts of the codebase set -Werror and hit this warning, so
+        # switch it off for now.
         flag: "-Wno-invalid-partial-specialization"
       }
     }
@@ -303,7 +303,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu/c++/5.4.0"
   cxx_builtin_include_directory: "/usr/include/c++/5.4.0/backward"
   cxx_builtin_include_directory: "/usr/local/include"
-  cxx_builtin_include_directory: "/usr/local/lib/clang/6.0.0/include"
+  cxx_builtin_include_directory: "/usr/local/lib/clang/7.0.0/include"
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu"
   cxx_builtin_include_directory: "/usr/include"
 }

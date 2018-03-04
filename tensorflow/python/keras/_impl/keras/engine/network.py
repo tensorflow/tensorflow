@@ -38,6 +38,7 @@ from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary 
 from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -302,6 +303,13 @@ class Network(base_layer.Layer):
       if not is_graph_network:
         if value not in self._layers:
           self._layers.append(value)
+    if isinstance(value, checkpointable.CheckpointableBase):
+      # Layer (and therefore Network/Model) inherit from CheckpointableBase
+      # rather than Checkpointable, which means there is no Checkpointable
+      # __setattr__ override (it would be a performance issue for functional
+      # layers). Therefore Model tracks Checkpointable objects itself.
+      self._track_checkpointable(
+          checkpointable=value, name=name, overwrite=True)
     super(Network, self).__setattr__(name, value)
 
   def add_variable(self, name, shape, dtype=None, initializer=None,

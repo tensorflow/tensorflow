@@ -309,6 +309,229 @@ class TrainingTest(test.TestCase):
                     optimizer='rms')
 
 
+class LossWeightingTest(test.TestCase):
+
+  def test_class_weights(self):
+    num_classes = 5
+    batch_size = 5
+    weighted_class = 3
+    train_samples = 300
+    test_samples = 300
+    input_dim = 5
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(10, input_shape=(input_dim,)))
+    model.add(keras.layers.Activation('relu'))
+    model.add(keras.layers.Dense(num_classes))
+    model.add(keras.layers.Activation('softmax'))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+    np.random.seed(1337)
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=test_samples,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    int_y_test = y_test.copy()
+    int_y_train = y_train.copy()
+    # convert class vectors to binary class matrices
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
+    test_ids = np.where(int_y_test == np.array(weighted_class))[0]
+
+    class_weight = dict([(i, 1.) for i in range(num_classes)])
+    class_weight[weighted_class] = 4.
+
+    sample_weight = np.ones((y_train.shape[0]))
+    sample_weight[int_y_train == weighted_class] = 4.
+
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=2,
+        verbose=0,
+        class_weight=class_weight,
+        validation_data=(x_train, y_train, sample_weight))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=2,
+        verbose=0,
+        class_weight=class_weight)
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=2,
+        verbose=0,
+        class_weight=class_weight,
+        validation_split=0.1)
+
+    model.train_on_batch(
+        x_train[:batch_size], y_train[:batch_size], class_weight=class_weight)
+    ref_score = model.evaluate(x_test, y_test, verbose=0)
+    score = model.evaluate(
+        x_test[test_ids, :], y_test[test_ids, :], verbose=0)
+    self.assertLess(score, ref_score)
+
+  def test_sample_weights(self):
+    num_classes = 5
+    batch_size = 5
+    weighted_class = 3
+    train_samples = 300
+    test_samples = 300
+    input_dim = 5
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(10, input_shape=(input_dim,)))
+    model.add(keras.layers.Activation('relu'))
+    model.add(keras.layers.Dense(num_classes))
+    model.add(keras.layers.Activation('softmax'))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+    np.random.seed(43)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=test_samples,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    int_y_train = y_train.copy()
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+
+    class_weight = dict([(i, 1.) for i in range(num_classes)])
+    class_weight[weighted_class] = 4.
+
+    sample_weight = np.ones((y_train.shape[0]))
+    sample_weight[int_y_train == weighted_class] = 4.
+
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=2,
+        verbose=0,
+        sample_weight=sample_weight)
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=batch_size,
+        epochs=2,
+        verbose=0,
+        sample_weight=sample_weight,
+        validation_split=0.1)
+    model.train_on_batch(
+        x_train[:batch_size],
+        y_train[:batch_size],
+        sample_weight=sample_weight[:batch_size])
+    model.test_on_batch(
+        x_train[:batch_size],
+        y_train[:batch_size],
+        sample_weight=sample_weight[:batch_size])
+
+  def test_temporal_sample_weights(self):
+    num_classes = 5
+    weighted_class = 3
+    train_samples = 1000
+    test_samples = 1000
+    input_dim = 5
+    timesteps = 3
+
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(num_classes),
+            input_shape=(timesteps, input_dim)))
+    model.add(keras.layers.Activation('softmax'))
+
+    np.random.seed(1337)
+    (_, y_train), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=test_samples,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    int_y_train = y_train.copy()
+    # convert class vectors to binary class matrices
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+
+    class_weight = dict([(i, 1.) for i in range(num_classes)])
+    class_weight[weighted_class] = 2.
+
+    sample_weight = np.ones((y_train.shape[0]))
+    sample_weight[int_y_train == weighted_class] = 2.
+    with self.assertRaises(ValueError):
+      model.compile(
+          loss='binary_crossentropy',
+          optimizer=RMSPropOptimizer(learning_rate=0.001),
+          sample_weight_mode='temporal')
+
+  def test_class_weight_invalid_use_case(self):
+    num_classes = 5
+    train_samples = 1000
+    test_samples = 1000
+    input_dim = 5
+    timesteps = 3
+
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(num_classes),
+            input_shape=(timesteps, input_dim)))
+    model.add(keras.layers.Activation('softmax'))
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer=RMSPropOptimizer(learning_rate=0.001))
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=test_samples,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    # convert class vectors to binary class matrices
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    class_weight = dict([(i, 1.) for i in range(num_classes)])
+
+    del class_weight[1]
+    with self.assertRaises(ValueError):
+      model.fit(x_train, y_train,
+                epochs=0, verbose=0, class_weight=class_weight)
+
+    with self.assertRaises(ValueError):
+      model.compile(
+          loss='binary_crossentropy',
+          optimizer=RMSPropOptimizer(learning_rate=0.001),
+          sample_weight_mode=[])
+
+    # Build multi-output model
+    x = keras.Input((3,))
+    y1 = keras.layers.Dense(4, name='1')(x)
+    y2 = keras.layers.Dense(4, name='2')(x)
+    model = keras.models.Model(x, [y1, y2])
+    model.compile(optimizer=RMSPropOptimizer(learning_rate=0.001), loss='mse')
+    x_np = np.random.random((10, 3))
+    y_np = np.random.random((10, 4))
+    w_np = np.random.random((10,))
+    # This will work
+    model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': w_np})
+    # These will not
+    with self.assertRaises(ValueError):
+      model.fit(x_np, [y_np, y_np], epochs=1, sample_weight=[w_np])
+    with self.assertRaises(TypeError):
+      model.fit(x_np, [y_np, y_np], epochs=1, sample_weight=w_np)
+    with self.assertRaises(ValueError):
+      bad_w_np = np.random.random((11,))
+      model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
+    with self.assertRaises(ValueError):
+      bad_w_np = np.random.random((10, 2))
+      model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
+    with self.assertRaises(ValueError):
+      bad_w_np = np.random.random((10, 2, 2))
+      model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
+
+
 if __name__ == '__main__':
   # Bazel sets these environment variables to very long paths.
   # Tempfile uses them to create long paths, and in turn multiprocessing

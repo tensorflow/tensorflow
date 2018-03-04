@@ -295,7 +295,7 @@ def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
     row_ids = sp_tensor.indices[:, 0]
     column_ids = sp_tensor.indices[:, 1]
     column_ids += array_ops.ones_like(column_ids)
-    seq_length = (
+    seq_length = math_ops.to_int64(
         math_ops.segment_max(column_ids, segment_ids=row_ids) / num_elements)
     # If the last n rows do not have ids, seq_length will have shape
     # [batch_size - n]. Pad the remaining values with zeros.

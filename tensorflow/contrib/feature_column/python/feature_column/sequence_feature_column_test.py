@@ -221,8 +221,9 @@ class SequenceCategoricalColumnWithIdentityTest(test.TestCase):
     sequence_length = column._sequence_length(_LazyBuilder({'aaa': inputs}))
 
     with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+      sequence_length = sess.run(sequence_length)
+      self.assertAllEqual(expected_sequence_length, sequence_length)
+      self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_zeros(self):
     column = sfc.sequence_categorical_column_with_identity(
@@ -311,8 +312,9 @@ class SequenceEmbeddingColumnTest(test.TestCase):
         _LazyBuilder({'aaa': sparse_input}))
 
     with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+      sequence_length = sess.run(sequence_length)
+      self.assertAllEqual(expected_sequence_length, sequence_length)
+      self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""
@@ -423,8 +425,9 @@ class SequenceNumericColumnTest(test.TestCase):
         _LazyBuilder({'aaa': sparse_input}))
 
     with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+      sequence_length = sess.run(sequence_length)
+      self.assertAllEqual(expected_sequence_length, sequence_length)
+      self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_shape(self):
     """Tests _sequence_length with shape !=(1,)."""

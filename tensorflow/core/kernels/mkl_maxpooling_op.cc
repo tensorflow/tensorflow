@@ -69,7 +69,8 @@ class MklMaxPoolingOp : public OpKernel {
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
     // attribute value.
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -118,7 +119,6 @@ class MklMaxPoolingOp : public OpKernel {
                               mkl_out_shape);
 
     Tensor* workspace_tensor;
-    void* workspace_buf = nullptr;
 
     TensorShape workspace_shape;
     mkl_workspace_shape.SetMklTensor(false);
@@ -226,7 +226,8 @@ class MklMaxPoolingGradOp : public OpKernel {
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
     // attribute value.
-    context->GetAttr("workspace_enabled", &workspace_enabled_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("workspace_enabled", &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
