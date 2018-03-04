@@ -164,9 +164,9 @@ To implement a typical model function, you must do the following:
 * [Define the model](#define_the_model).
 * Specify additional calculations for each of
   the [three different modes](#modes):
-  * [Predict](#predict)
-  * [Evaluate](#evaluate)
-  * [Train](#train)
+    * [Predict](#predict)
+    * [Evaluate](#evaluate)
+    * [Train](#train)
 
 ## Define the model
 
@@ -546,8 +546,8 @@ In brief, here's what the three graphs tell you:
 
 * accuracy: The accuracy is recorded by the following two lines:
 
-  * `eval_metric_ops={'my_accuracy': accuracy})`, during evaluation.
-  * `tf.summary.scalar('accuracy', accuracy[1])`, during training.
+    * `eval_metric_ops={'my_accuracy': accuracy})`, during evaluation.
+    * `tf.summary.scalar('accuracy', accuracy[1])`, during training.
 
 These tensorboard graphs are one of the main reasons it's important to pass a
 `global_step` to your optimizer's `minimize` method. The model can't record
