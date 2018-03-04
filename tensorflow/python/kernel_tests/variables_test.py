@@ -687,7 +687,7 @@ class VariableContainerTest(test.TestCase):
         v1 = variables.Variable([1])
         with ops.container("l2"):
           v2 = variables.Variable([2])
-          special_v = gen_state_ops._variable(
+          special_v = gen_state_ops.variable(
               shape=[1],
               dtype=dtypes.float32,
               name="VariableInL3",

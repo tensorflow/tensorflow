@@ -393,6 +393,37 @@ message Window {
   repeated WindowDimension dimensions = 1;
 }
 
+// Describes the dimension numbers for a gather operation.
+//
+// See https://www.tensorflow.org/performance/xla/operation_semantics#gather for
+// more details.
+message GatherDimensionNumbers {
+  // "Window indices" is a term for a set of indices that index into the
+  // interior of a dynamic-slice from the input tensor, the starting indices for
+  // which were computed from output_gather_dims (see the operation semantic for
+  // how this is defined) and the gather_indices tensor.
+  //
+  // The window indices for a specific output index Out is computed as:
+  //
+  //  i = 0
+  //  for (k : [0, input_tensor_shape.rank))
+  //    window_indices[k] =
+  //      if k in elided_window_dims
+  //      then 0
+  //      else Out[output_window_dims[i++]]
+  repeated int64 output_window_dims = 1;
+  repeated int64 elided_window_dims = 2;
+
+  // This is interpreted as a map from i to gather_dims_to_operand_dims[i]. It
+  // transforms the gather index looked up from the gather_indices tensor into
+  // the starting index in the input space.
+  repeated int64 gather_dims_to_operand_dims = 3;
+
+  // The dimension in the gather_indices input that contains the starting
+  // indices.
+  int64 index_vector_dim = 4;
+}
+
 // Operation requests that are all collected as a tagged union with a oneof
 // field in OpRequest.
 
@@ -516,6 +547,20 @@ message CallRequest {
 message CustomCallRequest {
   string call_target_name = 2;
   repeated ComputationDataHandle operands = 3;
+  Shape shape = 4;
+}
+
+message HostComputeRequest {
+  // Operand to the HostCompute. Supports tuple.
+  repeated ComputationDataHandle operands = 1;
+
+  // Name used to identify HostSend/Recv channels.
+  string channel_name = 2;
+
+  // Cost estimate in nanoseconds.
+  int64 cost_estimate_ns = 3;
+
+  // The shape of any data returned by host.
   Shape shape = 4;
 }
 
@@ -880,6 +925,13 @@ message RecvRequest {
   ChannelHandle channel_handle = 2;
 }
 
+message GatherRequest {
+  ComputationDataHandle input = 1;
+  ComputationDataHandle gather_indices = 2;
+  GatherDimensionNumbers dimension_numbers = 3;
+  repeated int64 window_bounds = 4;
+}
+
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,
@@ -957,7 +1009,9 @@ message OpRequest {
     FftRequest fft_request = 41;
     ConvertRequest bitcast_convert_request = 42;
     ConditionalRequest conditional_request = 44;
-    // Next: 45
+    HostComputeRequest host_compute_request = 45;
+    GatherRequest gather_request = 46;
+    // Next: 47
   }
 }
 

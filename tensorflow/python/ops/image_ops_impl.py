@@ -166,6 +166,7 @@ def _Assert3DImage(image):
   return control_flow_ops.with_dependencies(
       _Check3DImage(image, require_static=False), image)
 
+
 def _AssertAtLeast3DImage(image):
   """Assert that we are working with a properly shaped image.
 
@@ -183,9 +184,10 @@ def _AssertAtLeast3DImage(image):
       If the shape of `image` could be verified statically, `image` is
       returned unchanged, otherwise there will be a control dependency
       added that asserts the correct dynamic shape.
-    """
+  """
   return control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
+
 
 def _CheckAtLeast3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
@@ -326,7 +328,7 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_left_right', [image]) as scope:
+  with ops.name_scope(None, 'flip_left_right', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
@@ -356,7 +358,7 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_up_down', [image]) as scope:
+  with ops.name_scope(None, 'flip_up_down', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
@@ -412,22 +414,24 @@ def _rot90_3D(image, k, name_scope):
     A 3-D tensor of the same type and shape as `image`.
 
   """
+
   def _rot90():
-    return array_ops.transpose(array_ops.reverse_v2(image, [1]),
-                               [1, 0, 2])
+    return array_ops.transpose(array_ops.reverse_v2(image, [1]), [1, 0, 2])
+
   def _rot180():
     return array_ops.reverse_v2(image, [0, 1])
+
   def _rot270():
-    return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
-                                [1])
-  cases = [(math_ops.equal(k, 1), _rot90),
-           (math_ops.equal(k, 2), _rot180),
+    return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]), [1])
+
+  cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
-                                 name=name_scope)
+  result = control_flow_ops.case(
+      cases, default=lambda: image, exclusive=True, name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
+
 
 def _rot90_4D(images, k, name_scope):
   """Rotate batch of images counter-clockwise by 90 degrees `k` times.
@@ -442,21 +446,20 @@ def _rot90_4D(images, k, name_scope):
     A 4-D tensor of the same type and shape as `images`.
 
   """
+
   def _rot90():
-    return array_ops.transpose(array_ops.reverse_v2(images, [2]),
-                               [0, 2, 1, 3])
+    return array_ops.transpose(array_ops.reverse_v2(images, [2]), [0, 2, 1, 3])
+
   def _rot180():
     return array_ops.reverse_v2(images, [1, 2])
   def _rot270():
-    return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]),
-                                [2])
+    return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]), [2])
 
-  cases = [(math_ops.equal(k, 1), _rot90),
-           (math_ops.equal(k, 2), _rot180),
+  cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(cases, default=lambda: images, exclusive=True,
-                                 name=name_scope)
+  result = control_flow_ops.case(
+      cases, default=lambda: images, exclusive=True, name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
   return result
@@ -480,7 +483,7 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'transpose_image', [image]) as scope:
+  with ops.name_scope(None, 'transpose_image', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
@@ -1110,10 +1113,8 @@ def adjust_contrast(images, contrast_factor):
     orig_dtype = images.dtype
     flt_images = convert_image_dtype(images, dtypes.float32)
 
-    # pylint: disable=protected-access
-    adjusted = gen_image_ops._adjust_contrastv2(
+    adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
-    # pylint: enable=protected-access
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1727,7 +1728,7 @@ def sample_distorted_bounding_box(image_size,
       Provide as input to `tf.image.draw_bounding_boxes`.
   """
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
-    return gen_image_ops._sample_distorted_bounding_box_v2(  # pylint: disable=protected-access
+    return gen_image_ops.sample_distorted_bounding_box_v2(
         image_size,
         bounding_boxes,
         seed=seed,
@@ -1781,10 +1782,8 @@ def non_max_suppression(boxes,
   """
   with ops.name_scope(name, 'non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
-    # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v2(boxes, scores, max_output_size,
-                                                 iou_threshold)
-    # pylint: enable=protected-access
+    return gen_image_ops.non_max_suppression_v2(boxes, scores, max_output_size,
+                                                iou_threshold)
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

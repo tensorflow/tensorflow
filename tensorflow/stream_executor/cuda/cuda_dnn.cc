@@ -2793,7 +2793,7 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
       parent_, scale_offset_desc, ToCudnnDataType(scale_data_type)};
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
 #if CUDNN_VERSION >= 7000
-  if (BatchnormSpatialPersistentEnabled()) {
+  if (BatchnormSpatialPersistentEnabled() && is_training) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
   }
 #endif

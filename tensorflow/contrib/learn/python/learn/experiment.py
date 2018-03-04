@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experiment class collecting information needed for a single training run."""
+"""Experiment class collecting information for a single training run (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +30,6 @@ import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
@@ -118,6 +122,10 @@ class _EvalAndExportListener(basic_session_run_hooks.CheckpointSaverListener):
 class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   After an experiment is created (by passing an Estimator and inputs for
   training and evaluation), an Experiment instance knows how to invoke training
   and eval loops in a sensible fashion for distributed training.
@@ -125,16 +133,8 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behavior.
-  @deprecated_args(
-      "2016-10-23",
-      "local_eval_frequency is deprecated as local_run will be renamed to "
-      "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
-      "instead. Note, however, that the default for min_eval_frequency is 1, "
-      "meaning models will be evaluated every time a new checkpoint is "
-      "available. In contrast, the default for local_eval_frequency is None, "
-      "resulting in evaluation occurring only after training has completed. "
-      "min_eval_frequency is ignored when calling the deprecated local_run.",
-      "local_eval_frequency")
+  @deprecated(None, "Please switch to tf.estimator.train_and_evaluate. You will"
+              " also have to convert to a tf.estimator.Estimator.")
   def __init__(self,
                estimator,
                train_input_fn,
@@ -152,7 +152,8 @@ class Experiment(object):
                export_strategies=None,
                train_steps_per_iteration=None,
                checkpoint_and_export=False,
-               saving_listeners=None):
+               saving_listeners=None,
+               check_interval_secs=5):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -190,8 +191,9 @@ class Experiment(object):
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
         If 0, the evaluation will only happen after training.
-        If None, defaults to 1, unless model_dir is on GCS, in which case the
-        default is 1000.
+        If None, defaults to 1. To avoid checking for new checkpoints too
+        frequent, the interval is further limited to be at least
+        check_interval_secs between checks.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: Iterable of `ExportStrategy`s, or a single one, or
@@ -215,7 +217,10 @@ class Experiment(object):
       saving_listeners: list of `CheckpointSaverListener` objects. Used by
         tf.estimator.Estimator for callbacks that run immediately before or
         after checkpoint savings.
-
+      check_interval_secs:
+        Minimum time between subsequent checks for a new checkpoint. This
+        mostly applies if both min_eval_frequency and the time spent per
+        training step is low.
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
         or if export_strategies has the wrong type.
@@ -261,13 +266,9 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
     self._saving_listeners = saving_listeners
-    # Using 1 on a non-cached file system requires a lot of overhead to
-    # read the checkpoint state file. This is particular bad on GCS, so
-    # we use a different default. This is a temporary band-aid, to be
-    # fixed holistically later (b/36498507).
-    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
     self._min_eval_frequency = min_eval_frequency if (
-        min_eval_frequency is not None) else default_min_eval_frequency
+        min_eval_frequency is not None) else 1
+    self._check_interval_secs = check_interval_secs
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -646,12 +647,19 @@ class Experiment(object):
         self._train_monitors += [saver_hook]
       else:
         if self._min_eval_frequency:
+          # Using low min_eval_frequency (default is 1) on a non-cached file
+          # system requires a lot of overhead to read the checkpoint state file.
+          # This is particular bad on GCS and CNS. See also b/36498507 for
+          # context. `check_interval_secs = 5` avoids polling a remote
+          # fileystem too often.
+
           self._train_monitors += [
               monitors.ValidationMonitor(
                   input_fn=self._eval_input_fn,
                   eval_steps=self._eval_steps,
                   metrics=self._eval_metrics,
                   every_n_steps=self._min_eval_frequency,
+                  check_interval_secs=self._check_interval_secs,
                   name=eval_dir_suffix,
                   hooks=self._eval_hooks)
           ]
@@ -928,7 +936,3 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
-
-
-def _is_gcs(model_dir):
-  return model_dir and model_dir.startswith("gs://")

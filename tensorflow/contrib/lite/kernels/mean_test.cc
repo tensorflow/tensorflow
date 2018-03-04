@@ -74,7 +74,7 @@ class MeanOpDynamicModel : public BaseMeanOpModel {
   }
 };
 
-TEST(ConstMeanOpTest, NotKeepDims) {
+TEST(ConstFloatMeanOpTest, NotKeepDims) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -86,7 +86,7 @@ TEST(ConstMeanOpTest, NotKeepDims) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({12, 13})));
 }
 
-TEST(ConstMeanOpTest, KeepDims) {
+TEST(ConstFloatMeanOpTest, KeepDims) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -99,7 +99,7 @@ TEST(ConstMeanOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
 
-TEST(DynamicMeanOpTest, NotKeepDims) {
+TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -114,7 +114,7 @@ TEST(DynamicMeanOpTest, NotKeepDims) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({12, 13})));
 }
 
-TEST(DynamicMeanOpTest, KeepDims) {
+TEST(DynamicFloatMeanOpTest, KeepDims) {
   std::initializer_list<float> data = {
       1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
       13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
@@ -128,6 +128,70 @@ TEST(DynamicMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
+}
+
+TEST(DynamicFloatMeanOpTest, Scale) {
+  std::initializer_list<float> data = {9.527};
+  MeanOpDynamicModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}},
+                       {TensorType_INT32, {1}}, true);
+  std::initializer_list<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
+}
+
+TEST(ConstUint8MeanOpTest, NotKeepDims) {
+  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                         9,  10, 11, 12, 13, 14, 15, 16,
+                                         17, 18, 19, 20, 21, 22, 23, 24};
+  MeanOpConstModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {2}},
+                     {4}, {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({12, 13}));
+}
+
+TEST(ConstUint8MeanOpTest, KeepDims) {
+  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                         9,  10, 11, 12, 13, 14, 15, 16,
+                                         17, 18, 19, 20, 21, 22, 23, 24};
+  MeanOpConstModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {3}},
+                     {2}, {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({10, 12, 14}));
+}
+
+TEST(DynamicUint8MeanOpTest, NotKeepDims) {
+  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                         9,  10, 11, 12, 13, 14, 15, 16,
+                                         17, 18, 19, 20, 21, 22, 23, 24};
+  MeanOpDynamicModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {2}},
+                       {TensorType_INT32, {4}}, false);
+  std::initializer_list<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({12, 13}));
+}
+
+TEST(DynamicUint8MeanOpTest, KeepDims) {
+  std::initializer_list<uint8_t> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                         9,  10, 11, 12, 13, 14, 15, 16,
+                                         17, 18, 19, 20, 21, 22, 23, 24};
+  MeanOpDynamicModel m({TensorType_UINT8, {4, 3, 2}}, {TensorType_UINT8, {3}},
+                       {TensorType_INT32, {2}}, true);
+  std::initializer_list<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({10, 12, 14}));
 }
 
 }  // namespace

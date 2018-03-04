@@ -221,41 +221,37 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
 }
 
 Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
-  std::vector<int64> bf16_operands;
-  std::vector<int64> f32_operands;
-  bool has_f32 = false;
-  bool has_bf16 = false;
+  int f32_count = 0;
+  int bf16_count = 1;
 
   for (int64 i = 0; i < hlo->operand_count(); ++i) {
     if (hlo->operand(i)->shape().element_type() == F32) {
-      f32_operands.push_back(i);
-      has_f32 = true;
+      f32_count += 1;
     } else if (hlo->operand(i)->shape().element_type() == BF16) {
-      bf16_operands.push_back(i);
-      has_bf16 = true;
+      bf16_count += 1;
     }
   }
 
   if (hlo->shape().element_type() == F32) {
-    has_f32 = true;
+    f32_count += 1;
   } else if (hlo->shape().element_type() == BF16) {
-    has_bf16 = true;
+    bf16_count += 1;
   }
 
   std::vector<HloComputation*> bf16_called_comps;
   for (auto* comp : hlo->called_computations()) {
     bool comp_has_bf16 = false;
     if (comp->root_instruction()->shape().element_type() == F32) {
-      has_f32 = true;
+      f32_count += 1;
     } else if (comp->root_instruction()->shape().element_type() == BF16) {
-      has_bf16 = true;
+      bf16_count += 1;
       comp_has_bf16 = true;
     }
     for (auto* param : comp->parameter_instructions()) {
       if (param->shape().element_type() == F32) {
-        has_f32 = true;
+        f32_count += 1;
       } else if (param->shape().element_type() == BF16) {
-        has_bf16 = true;
+        bf16_count += 1;
         comp_has_bf16 = true;
       }
     }
@@ -264,54 +260,69 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
     }
   }
 
-  if (!bfloat16_support_->SupportsMixedPrecisions(*hlo) && has_bf16 &&
-      has_f32) {
-    // Resolve unsupported mixed precision.
-    //
-    // See if we can change everything to BF16.
-    if (hlo->called_computations().empty() &&
-        hlo->shape().element_type() == BF16) {
-      bool can_use_bf16 = true;
-      for (int i : f32_operands) {
-        if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
-                                                                          i) &&
-            bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
-          continue;
-        }
-        can_use_bf16 = false;
-        break;
-      }
-      if (can_use_bf16) {
-        for (int i : f32_operands) {
-          TF_RETURN_IF_ERROR(
-              InsertConvertBeforeOperand(hlo, i, BF16, computation_));
-        }
-        return Status::OK();
-      }
-    }
-    if (hlo->shape().element_type() == BF16) {
-      TF_RETURN_IF_ERROR(
-          ChangeOutputTypeThenInsertConvertBack(hlo, F32, computation_));
-    }
-    for (int i : bf16_operands) {
+  // Resolve unsupported BF16 operands.
+  for (int i = 0; i < hlo->operand_count(); ++i) {
+    if (hlo->operand(i)->shape().element_type() == BF16 &&
+        !bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
       TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(hlo, i, F32, computation_));
-    }
-    return ConvertCalledComputations(hlo, bf16_called_comps);
-  }
-
-  for (int i : bf16_operands) {
-    if (!bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
-      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(hlo, i, F32, computation_));
+      bf16_count -= 1;
+      f32_count += 1;
     }
   }
 
+  // Resolve unsupported BF16 output.
   if (hlo->shape().element_type() == BF16 &&
       !bfloat16_support_->SupportsBF16Output(*hlo)) {
     TF_RETURN_IF_ERROR(
         ChangeOutputTypeThenInsertConvertBack(hlo, F32, computation_));
+    bf16_count -= 1;
+    f32_count += 1;
   }
 
-  return Status::OK();
+  // Resolve unsupported mixed precision after resolving unsupported BF16
+  // operands and output, because the numbers of BF16 operands/output and F32
+  // operands/output may have changed.
+  if (bfloat16_support_->SupportsMixedPrecisions(*hlo) || bf16_count == 0 ||
+      f32_count == 0) {
+    return Status::OK();
+  }
+  // See if we can change everything to BF16.
+  if (hlo->called_computations().empty() &&
+      hlo->shape().element_type() == BF16) {
+    bool can_use_bf16 = true;
+    for (int i = 0; i < hlo->operand_count(); ++i) {
+      if (hlo->operand(i)->shape().element_type() == BF16) {
+        continue;
+      }
+      if ((bfloat16_support_->EffectiveOperandPrecisionIsBF16(*hlo, i) ||
+           bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
+                                                                         i)) &&
+          bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
+        continue;
+      }
+      can_use_bf16 = false;
+      break;
+    }
+    if (can_use_bf16) {
+      for (int i = 0; i < hlo->operand_count(); ++i) {
+        if (hlo->operand(i)->shape().element_type() == F32) {
+          TF_RETURN_IF_ERROR(
+              InsertConvertBeforeOperand(hlo, i, BF16, computation_));
+        }
+      }
+      return Status::OK();
+    }
+  }
+  if (hlo->shape().element_type() == BF16) {
+    TF_RETURN_IF_ERROR(
+        ChangeOutputTypeThenInsertConvertBack(hlo, F32, computation_));
+  }
+  for (int i = 0; i < hlo->operand_count(); ++i) {
+    if (hlo->operand(i)->shape().element_type() == BF16) {
+      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(hlo, i, F32, computation_));
+    }
+  }
+  return ConvertCalledComputations(hlo, bf16_called_comps);
 }
 
 Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {

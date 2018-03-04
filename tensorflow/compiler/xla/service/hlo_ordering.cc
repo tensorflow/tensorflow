@@ -186,6 +186,22 @@ bool HloOrdering::UseIsBeforeValueDefinition(
     }
   }
 
+  if (use.instruction->opcode() == HloOpcode::kConditional) {
+    const HloInstruction* conditional = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->true_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in TRUE computation";
+      return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->false_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in FALSE computation";
+      return true;
+    }
+  }
+
   VLOG(4) << "  use is not before value";
   return false;
 }

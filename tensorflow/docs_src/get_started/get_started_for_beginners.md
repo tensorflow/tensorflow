@@ -91,11 +91,10 @@ a number.  Here's the representation scheme:
 
 A **model** is the relationship between features
 and the label.  For the Iris problem, the model defines the relationship
-between the sepal and petal measurements and the Iris species.
-Some simple models can be described with a few lines of algebra;
-more complex machine learning models
-contain such a large number of interlacing mathematical functions and
-parameters that they become hard to summarize mathematically.
+between the sepal and petal measurements and the predicted Iris species. Some
+simple models can be described with a few lines of algebra, but complex machine
+learning models have a large number of parameters that are difficult to
+summarize.
 
 Could you determine the relationship between the four features and the
 Iris species *without* using machine learning?  That is, could you use

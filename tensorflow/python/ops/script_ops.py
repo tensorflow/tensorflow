@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -218,18 +219,16 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   graph._cleanup_py_funcs_used_in_graph.append(cleanup)
   # pylint: enable=protected-access
 
-  # pylint: disable=protected-access
   if eager:
-    result = gen_script_ops._eager_py_func(
+    result = gen_script_ops.eager_py_func(
         input=inp, token=token, Tout=Tout, name=name)
   else:
     if stateful:
-      result = gen_script_ops._py_func(
+      result = gen_script_ops.py_func(
           input=inp, token=token, Tout=Tout, name=name)
     else:
-      result = gen_script_ops._py_func_stateless(
+      result = gen_script_ops.py_func_stateless(
           input=inp, token=token, Tout=Tout, name=name)
-  # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
 
@@ -318,6 +317,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
+  if context.in_eager_mode():
+    result = func(*[x.numpy() for x in inp])
+    result = nest.flatten(result)
+
+    return [x if x is None else ops.convert_to_tensor(x) for x in result]
+
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 

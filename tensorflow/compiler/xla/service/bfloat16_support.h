@@ -39,7 +39,7 @@ class BFloat16Support {
   // precisions (BF16 and F32).
   virtual bool SupportsMixedPrecisions(const HloInstruction& hlo) const;
 
-  // Returns whether the given HLO inherits its BF16 operand precision at the
+  // Returns whether the given HLO preserves its BF16 operand precision at the
   // given index, so even if the output is F32, elements in the output that
   // depend on the BF16 operand will still have BF16 effective precision even if
   // they have F32 format. Similarly, this also means if the output is BF16 then

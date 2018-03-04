@@ -62,6 +62,37 @@ string LogName(const Operator& op) {
   }
 }
 
+string ArrayDataTypeName(ArrayDataType data_type) {
+  switch (data_type) {
+    case ArrayDataType::kFloat:
+      return "Float";
+    case ArrayDataType::kInt8:
+      return "Int8";
+    case ArrayDataType::kUint8:
+      return "Uint8";
+    case ArrayDataType::kInt16:
+      return "Int16";
+    case ArrayDataType::kUint16:
+      return "Uint16";
+    case ArrayDataType::kInt32:
+      return "Int32";
+    case ArrayDataType::kUint32:
+      return "Uint32";
+    case ArrayDataType::kInt64:
+      return "Int64";
+    case ArrayDataType::kUint64:
+      return "Uint64";
+    case ArrayDataType::kString:
+      return "String";
+    case ArrayDataType::kBool:
+      return "Bool";
+    case ArrayDataType::kNone:
+      return "None";
+    default:
+      LOG(FATAL) << "Unhandled array data type " << static_cast<int>(data_type);
+  }
+}
+
 bool IsInputArray(const Model& model, const string& name) {
   for (const auto& input_array : model.flags.input_arrays()) {
     if (input_array.name() == name) {
@@ -126,6 +157,15 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
     return true;
   }
   return false;
+}
+
+void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+  for (const string& array_name : op->inputs) {
+    DeleteArrayIfUsedOnce(array_name, model);
+  }
+  auto op_it = FindOp(*model, op);
+  CHECK(op_it != model->operators.end());
+  model->operators.erase(op_it);
 }
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
@@ -316,6 +356,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
+    HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -363,48 +405,9 @@ void LogSummary(int log_level, const Model& model) {
 void LogArray(int log_level, const Model& model, const string& name) {
   const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
-  switch (array.data_type) {
-    case ArrayDataType::kNone:
-      VLOG(log_level) << "  Data type:";
-      break;
-    case ArrayDataType::kFloat:
-      VLOG(log_level) << "  Data type: kFloat";
-      break;
-    case ArrayDataType::kInt32:
-      VLOG(log_level) << "  Data type: kInt32";
-      break;
-    case ArrayDataType::kUint8:
-      VLOG(log_level) << "  Data type: kUint8";
-      break;
-    case ArrayDataType::kString:
-      VLOG(log_level) << "  Data type: kString";
-      break;
-    default:
-      VLOG(log_level) << "  Data type: other (numerical value: "
-                      << static_cast<int>(array.data_type) << ")";
-      break;
-  }
-  switch (array.final_data_type) {
-    case ArrayDataType::kNone:
-      VLOG(log_level) << "  Final type:";
-      break;
-    case ArrayDataType::kFloat:
-      VLOG(log_level) << "  Final type: kFloat";
-      break;
-    case ArrayDataType::kInt32:
-      VLOG(log_level) << "  Final type: kInt32";
-      break;
-    case ArrayDataType::kUint8:
-      VLOG(log_level) << "  Final type: kUint8";
-      break;
-    case ArrayDataType::kString:
-      VLOG(log_level) << "  Final type: kString";
-      break;
-    default:
-      VLOG(log_level) << "  Final type: other (numerical value: "
-                      << static_cast<int>(array.data_type) << ")";
-      break;
-  }
+  VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
+  VLOG(log_level) << "  Final type: "
+                  << ArrayDataTypeName(array.final_data_type);
   if (array.buffer) {
     VLOG(log_level) << "  Constant Buffer";
   }
@@ -819,9 +822,15 @@ void CheckEachArray(const Model& model) {
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
-    // If there is a buffer, its type should be consistent with data_type.
     if (array->buffer) {
+      // If there is a buffer, its type should be consistent with data_type.
       CHECK(array->buffer->type == array->data_type);
+      // The presence of a fixed buffer should imply the presence of a fixed
+      // shape.
+      CHECK(array->has_shape());
+      // The shape flat-size should agree with the buffer length.
+      CHECK_EQ(array->buffer->Length(),
+               RequiredBufferSizeForShape(array->shape()));
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
@@ -1201,7 +1210,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       << "This model does not define output arrays, so a "
          "--output_arrays flag must be given on the command-line.";
 
-  for (const auto& input_array_proto : model->flags.input_arrays()) {
+  for (auto& input_array_proto : *model->flags.mutable_input_arrays()) {
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
     if (input_array_proto.has_data_type()) {
       const ArrayDataType specified_type =
@@ -1244,6 +1253,11 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                  input_array_proto.shape().dims_size());
         for (int i = 0; i < input_array_dims.size(); i++) {
           CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
+      } else {
+        for (int i = 0; i < input_array.shape().dimensions_count(); i++) {
+          input_array_proto.mutable_shape()->add_dims(
+              input_array.shape().dims(i));
         }
       }
     }
@@ -1811,6 +1825,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat;
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
+    case QUANTIZED_INT16:
+      return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
     case INT64:
@@ -1842,9 +1858,17 @@ void UseArraysExtraInfo(Model* model) {
     QCHECK(model->HasArray(entry.name()))
         << "ArraysExtraInfo refers to non-existent array name: "
         << entry.name();
-    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
-    minmax.min = entry.min();
-    minmax.max = entry.max();
+    auto& array = model->GetArray(entry.name());
+    auto& minmax = array.GetOrCreateMinMax();
+    if (entry.has_min() || entry.has_max()) {
+      CHECK_EQ(entry.has_min(), entry.has_max());
+      minmax.min = entry.min();
+      minmax.max = entry.max();
+    }
+    if (entry.has_data_type()) {
+      array.final_data_type =
+          ConvertIODataTypeToArrayDataType(entry.data_type());
+    }
   }
 }
 

@@ -1073,9 +1073,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     tensorflow::gtl::ArraySlice<int64> dimension_mapping) {
-  // Can't insert bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) &&
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 
@@ -1106,9 +1107,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
                                               const Shape& output_shape) {
-  // Can't convert reshapes into bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) ||
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 

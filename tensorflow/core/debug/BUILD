@@ -298,6 +298,9 @@ tf_cc_test(
     size = "small",
     srcs = ["debug_grpc_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_oss",  # b/73962011
+    ],
     deps = [
         ":debug_graph_utils",
         ":debug_grpc_testlib",

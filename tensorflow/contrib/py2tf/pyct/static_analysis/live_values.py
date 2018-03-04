@@ -86,6 +86,7 @@ class LiveValueResolver(transformer.Base):
       if not hasattr(parent_object, node.attr):
         raise AttributeError('%s has no attribute %s' % (parent_object,
                                                          node.attr))
+      anno.setanno(node, 'parent_type', type(parent_object))
       anno.setanno(node, 'live_val', getattr(parent_object, node.attr))
       anno.setanno(node, 'fqn', anno.getanno(node.value, 'fqn') + (node.attr,))
     # TODO(mdan): Investigate the role built-in annotations can play here.
@@ -96,6 +97,7 @@ class LiveValueResolver(transformer.Base):
         # This would not hold for dynamic members like function attributes.
         # For the dynamic case, we simply leave the node without an annotation,
         # and let downstream consumers figure out what to do.
+        anno.setanno(node, 'parent_type', parent_type)
         anno.setanno(node, 'live_val', getattr(parent_type, node.attr))
         anno.setanno(node, 'fqn',
                      anno.getanno(node.value, 'type_fqn') + (node.attr,))

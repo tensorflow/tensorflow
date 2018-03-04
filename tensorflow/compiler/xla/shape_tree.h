@@ -53,7 +53,7 @@ struct ShapeTreeNode {
   ShapeTreeNode(const ShapeTreeNode& other)
       : data(other.data), children(other.children.size()) {
     for (size_t i = 0; i < children.size(); ++i) {
-      children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+      children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
     }
   }
 
@@ -62,7 +62,7 @@ struct ShapeTreeNode {
       data = other.data;
       children.resize(other.children.size());
       for (size_t i = 0; i < children.size(); ++i) {
-        children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+        children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
       }
     }
     return *this;
@@ -445,7 +445,7 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
     for (auto& node_and_index : stack_) {
       index.push_back(node_and_index.second);
     }
-    current_ = MakeUnique<value_type>(index, node_->data);
+    current_ = ::xla::MakeUnique<value_type>(index, node_->data);
     return *current_;
   }
 
@@ -492,7 +492,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
     : root_(),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
@@ -508,7 +508,7 @@ ShapeTree<T>::ShapeTree(const Shape* shape) : root_(), shape_(shape) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : root_(init_value),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
