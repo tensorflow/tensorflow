@@ -30,5 +30,5 @@ RUN pip install --upgrade numpy
 RUN pip install --upgrade termcolor
 
 # Install golang
-RUN add-apt-repository -y ppa:ubuntu-lxc/lxd-stable
-RUN apt-get install -y golang
+RUN apt-get install -t xenial-backports -y golang-1.9
+ENV PATH=${PATH}:/usr/lib/go-1.9/bin
