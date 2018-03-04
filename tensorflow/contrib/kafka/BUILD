@@ -16,21 +16,19 @@ tf_kernel_library(
     srcs = ["kernels/kafka_dataset_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:bounds_check_lib",
-        "//tensorflow/core/kernels:dataset",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/kernels:dataset_headers_lib",
+        "//tensorflow/core/kernels/data:dataset_headers_lib",
         "//third_party/eigen3",
         "@kafka",
+        "@nsync//:nsync_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
 tf_gen_op_libs(
     op_lib_names = ["kafka_ops"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = [],
 )
 
 tf_gen_op_wrapper_py(

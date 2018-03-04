@@ -1590,6 +1590,14 @@ cc_header_only_library(
     deps = [":lookup"],
 )
 
+cc_library(
+    name = "dataset_headers_lib",
+    hdrs = [
+        "dataset.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",
