@@ -80,8 +80,8 @@ need for a separate calibration step.
 TensorFlow can train models with quantization in the loop. Because training
 requires small gradient adjustments, floating point values are still used. To
 keep models as floating point while adding the quantization error in the training
-loop, @{$array_ops#Fake_quantization} nodes simulate the effect of quantization
-in the forward and backward passes.
+loop, @{$array_ops#Fake_quantization$fake quantization} nodes simulate the
+effect of quantization in the forward and backward passes.
 
 Since it's difficult to add these fake quantization operations to all the
 required locations in the model, there's a function available that rewrites the

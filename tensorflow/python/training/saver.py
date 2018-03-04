@@ -584,7 +584,10 @@ class BaseSaverBuilder(object):
       else:
         if context.in_graph_mode():
           if convert_variable_to_tensor:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            if isinstance(var, resource_variable_ops.ResourceVariable):
+              var = var._graph_element  # pylint: disable=protected-access
+            else:
+              var = ops.internal_convert_to_tensor(var, as_ref=True)
             if not BaseSaverBuilder._IsVariable(var):
               raise TypeError("Variable to save is not a Variable: %s" % var)
           if var.op.type == "ReadVariableOp":
@@ -674,7 +677,10 @@ class BaseSaverBuilder(object):
                              "mode is enabled, type: %s." % type(op))
           saveable = BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
         else:
-          variable = ops.internal_convert_to_tensor(op, as_ref=True)
+          if isinstance(op, resource_variable_ops.ResourceVariable):
+            variable = op._graph_element  # pylint: disable=protected-access
+          else:
+            variable = ops.internal_convert_to_tensor(op, as_ref=True)
           if not BaseSaverBuilder._IsVariable(variable):
             raise TypeError("names_to_saveables must be a dict mapping string "
                             "names to Tensors/Variables. Not a variable: %s" %

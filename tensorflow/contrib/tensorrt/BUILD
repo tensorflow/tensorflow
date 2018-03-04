@@ -120,6 +120,7 @@ tf_cuda_library(
 
 tf_gen_op_wrapper_py(
     name = "trt_engine_op",
+    gen_locally = True,
     deps = [
         ":trt_calib_op_op_lib",
         ":trt_engine_op_op_lib",

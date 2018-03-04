@@ -101,8 +101,9 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
+                   tensorflow::Device* op_device)
+      : t(t), d(d), op_device(op_device) {}
 
   tensorflow::Tensor t;
   // TODO(ashankar): d == nullptr iff local CPU
@@ -114,6 +115,10 @@ struct TFE_TensorHandle {
   // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
   tensorflow::Device* d;
+
+  // Device in which the op producing this tensor was executed. Equals to d for
+  // constant tensors.
+  tensorflow::Device* op_device;
 };
 
 struct TFE_Op {
@@ -130,6 +135,7 @@ struct TFE_Op {
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
   std::vector<tensorflow::Device*> input_devices;
+  std::vector<tensorflow::Device*> input_op_devices;
   tensorflow::Device* device;
   bool use_xla = false;
 };

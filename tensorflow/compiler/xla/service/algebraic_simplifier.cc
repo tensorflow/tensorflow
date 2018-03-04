@@ -1625,6 +1625,14 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
+
+  // If any dimension of update is 0, elide the DynamicUpdateSlice.  This
+  // optimization becomes invalid should we later prefer to warn about out of
+  // bound indices.
+  if (ShapeUtil::HasZeroElements(update->shape())) {
+    return ReplaceInstruction(dynamic_update_slice,
+                              dynamic_update_slice->mutable_operand(0));
+  }
   return Status::OK();
 }
 

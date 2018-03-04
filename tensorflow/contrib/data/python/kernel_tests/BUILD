@@ -168,6 +168,7 @@ py_test(
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_oss",
         "no_pip",
     ],

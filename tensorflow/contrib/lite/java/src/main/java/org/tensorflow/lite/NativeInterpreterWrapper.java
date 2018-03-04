@@ -35,6 +35,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
     interpreterHandle = createInterpreter(modelHandle, errorHandle);
+    isMemoryAllocated = true;
   }
 
   /**
@@ -47,6 +48,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
     interpreterHandle = createInterpreter(modelHandle, errorHandle);
+    isMemoryAllocated = true;
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -59,6 +61,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     modelByteBuffer = null;
     inputsIndexes = null;
     outputsIndexes = null;
+    isMemoryAllocated = false;
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -93,10 +96,19 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     }
     inferenceDurationNanoseconds = -1;
     long[] outputsHandles =
-        run(interpreterHandle, errorHandle, sizes, dataTypes, numsOfBytes, inputs, this);
+        run(
+            interpreterHandle,
+            errorHandle,
+            sizes,
+            dataTypes,
+            numsOfBytes,
+            inputs,
+            this,
+            isMemoryAllocated);
     if (outputsHandles == null || outputsHandles.length == 0) {
       throw new IllegalStateException("Interpreter has no outputs.");
     }
+    isMemoryAllocated = true;
     Tensor[] outputs = new Tensor[outputsHandles.length];
     for (int i = 0; i < outputsHandles.length; ++i) {
       outputs[i] = Tensor.fromHandle(outputsHandles[i]);
@@ -111,14 +123,17 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       int[] dtypes,
       int[] numsOfBytes,
       Object[] values,
-      NativeInterpreterWrapper wrapper);
+      NativeInterpreterWrapper wrapper,
+      boolean memoryAllocated);
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
-    resizeInput(interpreterHandle, errorHandle, idx, dims);
+    if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
+      isMemoryAllocated = false;
+    }
   }
 
-  private static native void resizeInput(
+  private static native boolean resizeInput(
       long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
 
   void setUseNNAPI(boolean useNNAPI) {
@@ -263,6 +278,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private Map<String, Integer> inputsIndexes;
 
   private Map<String, Integer> outputsIndexes;
+
+  private boolean isMemoryAllocated = false;
 
   private static native String[] getInputNames(long interpreterHandle);
 

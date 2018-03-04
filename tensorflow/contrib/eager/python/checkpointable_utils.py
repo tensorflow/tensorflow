@@ -549,7 +549,8 @@ class CheckpointableSaver(object):
     # `Checkpointable` objects save themselves.
     self._root_checkpointable_ref = root_checkpointable
     if context.in_graph_mode():
-      self._file_prefix_placeholder = constant_op.constant("model")
+      with ops.device("/cpu:0"):
+        self._file_prefix_placeholder = constant_op.constant("model")
     else:
       self._file_prefix_placeholder = None
 
@@ -601,14 +602,16 @@ class CheckpointableSaver(object):
       if session is None:
         session = ops.get_default_session()
       if self._object_graph_feed_tensor is None:
-        self._object_graph_feed_tensor = constant_op.constant(
-            "", dtype=dtypes.string)
+        with ops.device("/cpu:0"):
+          self._object_graph_feed_tensor = constant_op.constant(
+              "", dtype=dtypes.string)
       object_graph_tensor = self._object_graph_feed_tensor
       feed_additions = {object_graph_tensor: graph_proto.SerializeToString()}
     else:
       session = None
-      object_graph_tensor = constant_op.constant(
-          graph_proto.SerializeToString(), dtype=dtypes.string)
+      with ops.device("/cpu:0"):
+        object_graph_tensor = constant_op.constant(
+            graph_proto.SerializeToString(), dtype=dtypes.string)
       feed_additions = None
     assert _OBJECT_GRAPH_PROTO_KEY not in named_variables
     named_variables[_OBJECT_GRAPH_PROTO_KEY] = _NoRestoreSaveable(
@@ -627,12 +630,13 @@ class CheckpointableSaver(object):
         self._last_save_object_graph = graph_proto
     else:
       saver = self._last_save_saver
-    save_path = saver.save(
-        sess=_SessionWithFeedDictAdditions(
-            session=session, feed_additions=feed_additions),
-        save_path=file_prefix,
-        write_meta_graph=False,
-        global_step=checkpoint_number)
+    with ops.device("/cpu:0"):
+      save_path = saver.save(
+          sess=_SessionWithFeedDictAdditions(
+              session=session, feed_additions=feed_additions),
+          save_path=file_prefix,
+          write_meta_graph=False,
+          global_step=checkpoint_number)
     return save_path
 
   def _global_variable_names(self):
@@ -718,16 +722,18 @@ class CheckpointableSaver(object):
       file_prefix_feed_dict = {self._file_prefix_placeholder: save_path}
     else:
       session = None
-      file_prefix_tensor = constant_op.constant(save_path)
+      with ops.device("/cpu:0"):
+        file_prefix_tensor = constant_op.constant(save_path)
       file_prefix_feed_dict = None
     try:
       if not in_graph_mode or self._object_graph_restore_tensor is None:
-        object_graph_string, = io_ops.restore_v2(
-            prefix=file_prefix_tensor,
-            tensor_names=[_OBJECT_GRAPH_PROTO_KEY],
-            shape_and_slices=[""],
-            dtypes=[dtypes.string],
-            name="object_graph_proto_read")
+        with ops.device("/cpu:0"):
+          object_graph_string, = io_ops.restore_v2(
+              prefix=file_prefix_tensor,
+              tensor_names=[_OBJECT_GRAPH_PROTO_KEY],
+              shape_and_slices=[""],
+              dtypes=[dtypes.string],
+              name="object_graph_proto_read")
         if in_graph_mode:
           self._object_graph_restore_tensor = object_graph_string
       if in_graph_mode:
@@ -826,8 +832,9 @@ class Checkpoint(core_checkpointable.Checkpointable):
     """Create a save counter if it does not yet exist."""
     if self._save_counter is None:
       # Initialized to 0 and incremented before saving.
-      self._save_counter = add_variable(
-          self, name="save_counter", initializer=0, dtype=dtypes.int64)
+      with ops.device("/cpu:0"):
+        self._save_counter = add_variable(
+            self, name="save_counter", initializer=0, dtype=dtypes.int64)
 
   @property
   def save_counter(self):
@@ -843,10 +850,18 @@ class Checkpoint(core_checkpointable.Checkpointable):
 
   def save(self, file_prefix, session=None):
     """Save a checkpoint. Wraps `tfe.CheckpointableSaver.save`."""
-    assign_op = self.save_counter.assign_add(1)
-    if context.in_graph_mode():
+    in_graph_mode = context.in_graph_mode()
+    if in_graph_mode:
       if session is None:
         session = ops.get_default_session()
+      if self._save_counter is None:
+        # When graph building, if this is a new save counter variable then it
+        # needs to be initialized before assign_add. This is only an issue if
+        # restore() has not been called first.
+        session.run(self.save_counter.initializer)
+    with ops.colocate_with(self.save_counter):
+      assign_op = self.save_counter.assign_add(1)
+    if in_graph_mode:
       session.run(assign_op)
     return self._saver.save(
         file_prefix=file_prefix,

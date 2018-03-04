@@ -77,12 +77,12 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
+  if (optimizer == "loop") {
+    graph_optimizer.reset(new LoopOptimizer(cfg_.loop_optimization()));
+  }
   if (optimizer == "dependency") {
     graph_optimizer.reset(
         new DependencyOptimizer(cfg_.dependency_optimization()));
-  }
-  if (optimizer == "loop") {
-    graph_optimizer.reset(new LoopOptimizer(cfg_.loop_optimization()));
   }
   return graph_optimizer;
 }
@@ -119,7 +119,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
     if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
-      if (cfg_.memory_optimizer_target_node_name_prefix().empty()) {
+      if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
         optimizers.push_back(std::unique_ptr<GraphOptimizer>(
             // Use the default target node name prefix "gradients/"
             new MemoryOptimizer(cfg_.memory_optimization())));
@@ -127,7 +127,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         optimizers.push_back(
             std::unique_ptr<GraphOptimizer>(new MemoryOptimizer(
                 cfg_.memory_optimization(),
-                cfg_.memory_optimizer_target_node_name_prefix())));
+                cfg_.memory_optimizer_target_node_name_scope())));
       }
     }
     if (cfg_.auto_parallel().enable()) {
@@ -136,8 +136,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   } else {
     const std::set<string> available_optimizers = {
-        "pruning",      "constfold",  "layout",     "memory",
-        "autoparallel", "arithmetic", "dependency", "loop"};
+        "pruning",      "function",   "constfold", "layout",    "memory",
+        "autoparallel", "arithmetic", "loop",      "dependency"};
     std::vector<string> custom_optimizer_names;
     for (const auto& optimizer_name : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer_name) !=
@@ -233,9 +233,9 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
-         cfg.dependency_optimization() != RewriterConfig::OFF ||
-         cfg.loop_optimization() == RewriterConfig::ON ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
+         cfg.loop_optimization() == RewriterConfig::ON ||
+         cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          !cfg.optimizers().empty();
