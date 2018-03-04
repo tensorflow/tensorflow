@@ -125,6 +125,7 @@ from __future__ import print_function
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.training import saver as tf_saver
 
 __all__ = [
@@ -143,6 +144,7 @@ _USE_DEFAULT = 0
 def evaluate_once(master,
                   checkpoint_path,
                   logdir,
+                  write_version=saver_pb2.SaverDef.V2,
                   num_evals=1,
                   initial_op=None,
                   initial_op_feed_dict=None,
@@ -161,6 +163,7 @@ def evaluate_once(master,
     master: The BNS address of the TensorFlow master.
     checkpoint_path: The path to a checkpoint to use for evaluation.
     logdir: The directory where the TensorFlow summaries are written to.
+    write_version: The Saver version to use this checkpoint_path.
     num_evals: The number of times to run `eval_op`.
     initial_op: An operation run at the beginning of evaluation.
     initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
@@ -197,7 +200,8 @@ def evaluate_once(master,
 
   saver = None
   if variables_to_restore is not None:
-    saver = tf_saver.Saver(variables_to_restore)
+    saver = tf_saver.Saver(variables_to_restore,
+                           write_version=write_version)
 
   return evaluation.evaluate_once(
       checkpoint_path,
@@ -215,6 +219,7 @@ def evaluate_once(master,
 def evaluation_loop(master,
                     checkpoint_dir,
                     logdir,
+                    write_version=saver_pb2.SaverDef.V2,
                     num_evals=1,
                     initial_op=None,
                     initial_op_feed_dict=None,
@@ -237,6 +242,7 @@ def evaluation_loop(master,
     master: The BNS address of the TensorFlow master.
     checkpoint_dir: The directory where checkpoints are stored.
     logdir: The directory where the TensorFlow summaries are written to.
+    write_version: The Saver version to use this checkpoint_path.
     num_evals: The number of times to run `eval_op`.
     initial_op: An operation run at the beginning of evaluation.
     initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
@@ -282,7 +288,8 @@ def evaluation_loop(master,
 
   saver = None
   if variables_to_restore is not None:
-    saver = tf_saver.Saver(variables_to_restore)
+    saver = tf_saver.Saver(variables_to_restore,
+                           write_version=write_version)
 
   return evaluation.evaluate_repeatedly(
       checkpoint_dir,
