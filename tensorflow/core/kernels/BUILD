@@ -1596,6 +1596,9 @@ cc_library(
         "dataset.h",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/kernels/data:dataset_headers_lib",
+    ],
 )
 
 DATA_FLOW_DEPS = [

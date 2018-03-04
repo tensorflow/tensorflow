@@ -18,7 +18,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/kernels:dataset_headers_lib",
-        "//tensorflow/core/kernels/data:dataset_headers_lib",
         "//third_party/eigen3",
         "@kafka",
         "@nsync//:nsync_headers",
