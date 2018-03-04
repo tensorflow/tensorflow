@@ -54,6 +54,8 @@ absl::string_view FindLongestCommonPrefix(absl::string_view a,
                                           absl::string_view b);
 string LogName(const Operator& op);
 
+string ArrayDataTypeName(ArrayDataType data_type);
+
 bool IsInputArray(const Model& model, const string& name);
 bool IsArrayConsumed(const Model& model, const string& name);
 int CountTrueOutputs(const Model& model, const Operator& op);
@@ -62,14 +64,16 @@ int CountOpsWithInput(const Model& model, const string& array_name);
 bool DeleteArrayIfUnused(const string& array_name, Model* model);
 bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
+// Deletes the op and any of its input and output arrays if they are unused
+// after the op has been deleted.
+void DeleteOpAndArraysIfUnused(Model* model, Operator* op);
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);
 Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::iterator FindOpWithOutput(
     Model& model, const string& array_name);
-
-Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
     const Model& model, const string& array_name);

@@ -427,32 +427,73 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 string SanitizeFileName(string file_name);
 
 template <typename Container, typename Predicate>
-bool c_all_of(Container container, Predicate predicate) {
-  return std::all_of(std::begin(container), std::end(container), predicate);
+bool c_all_of(const Container& container, Predicate&& predicate) {
+  return std::all_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
+}
+
+template <typename Container, typename Predicate>
+bool c_any_of(const Container& container, Predicate&& predicate) {
+  return std::any_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
 }
 
 template <typename InputContainer, typename OutputIterator,
           typename UnaryOperation>
-OutputIterator c_transform(InputContainer input_container,
+OutputIterator c_transform(const InputContainer& input_container,
                            OutputIterator output_iterator,
-                           UnaryOperation unary_op) {
+                           UnaryOperation&& unary_op) {
   return std::transform(std::begin(input_container), std::end(input_container),
-                        output_iterator, unary_op);
+                        output_iterator,
+                        std::forward<UnaryOperation>(unary_op));
 }
 
 template <class InputContainer, class OutputIterator, class UnaryPredicate>
-OutputIterator c_copy_if(InputContainer input_container,
+OutputIterator c_copy_if(const InputContainer& input_container,
                          OutputIterator output_iterator,
-                         UnaryPredicate predicate) {
+                         UnaryPredicate&& predicate) {
   return std::copy_if(std::begin(input_container), std::end(input_container),
-                      output_iterator, predicate);
+                      output_iterator, std::forward<UnaryPredicate>(predicate));
+}
+
+template <class InputContainer, class OutputIterator>
+OutputIterator c_copy(const InputContainer& input_container,
+                      OutputIterator output_iterator) {
+  return std::copy(std::begin(input_container), std::end(input_container),
+                   output_iterator);
+}
+
+template <class InputContainer>
+void c_sort(InputContainer& input_container) {
+  std::sort(std::begin(input_container), std::end(input_container));
 }
 
 template <class InputContainer, class Comparator>
-void c_sort(InputContainer& input_container, Comparator comparator) {
-  std::sort(input_container.begin(), input_container.end(), comparator);
+void c_sort(InputContainer& input_container, Comparator&& comparator) {
+  std::sort(std::begin(input_container), std::end(input_container),
+            std::forward<Comparator>(comparator));
 }
 
+template <typename Sequence, typename T>
+bool c_binary_search(const Sequence& sequence, T&& value) {
+  return std::binary_search(std::begin(sequence), std::end(sequence),
+                            std::forward<T>(value));
+}
+
+template <typename C>
+bool c_is_sorted(const C& c) {
+  return std::is_sorted(std::begin(c), std::end(c));
+}
+
+template <typename C>
+auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+  return std::adjacent_find(std::begin(c), std::end(c));
+}
+
+template <typename C, typename Pred>
+auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

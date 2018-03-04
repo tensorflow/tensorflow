@@ -3,6 +3,9 @@
 This document explains how to save and restore
 @{$variables$variables} and models.
 
+Important: TensorFlow model files are code. Be careful with untrusted code.
+See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md)
+for details.
 
 ## Saving and restoring variables
 
@@ -694,15 +697,15 @@ executing the computation graph later. For example:
 $ saved_model_cli show --dir \
 /tmp/saved_model_dir --tag_set serve --signature_def serving_default
 The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
+  inputs['x'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: x:0
 The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
+  outputs['y'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: y:0
 Method name is: tensorflow/serving/predict
 ```
 
@@ -714,32 +717,32 @@ $ saved_model_cli show --dir /tmp/saved_model_dir --all
 MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
 signature_def['classify_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/classify
 
 ...
 
 signature_def['serving_default']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/predict
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['y'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/predict
 ```
 
 

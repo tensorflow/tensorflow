@@ -957,7 +957,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "session_debug_grpc_test",
-    size = "medium",
+    size = "large",
     srcs = ["lib/session_debug_grpc_test.py"],
     additional_deps = [
         ":debug_data",

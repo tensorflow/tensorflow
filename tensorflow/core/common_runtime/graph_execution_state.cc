@@ -73,6 +73,10 @@ GraphExecutionState::~GraphExecutionState() {
 /* static */ Status GraphExecutionState::MakeForBaseGraph(
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
+#ifndef __ANDROID__
+  VLOG(1) << "Graph proto is " << graph_def->DebugString();
+#endif  // __ANDROID__
+
   std::unique_ptr<GraphExecutionState> ret(
       new GraphExecutionState(graph_def, options));
 

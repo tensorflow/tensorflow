@@ -286,7 +286,10 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     std::vector<NodeDef*> input_nodes;
     for (int i = 0; i < num_inputs; ++i) {
       NodeDef* input_node = node_map_->GetNode(node->input(i));
-      CHECK_NE(input_node, nullptr);
+      if (input_node == nullptr) {
+        LOG(ERROR) << "Invalid input " << node->input(i);
+        return;
+      }
       input_nodes.push_back(input_node);
     }
 

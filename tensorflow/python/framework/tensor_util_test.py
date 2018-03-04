@@ -199,6 +199,25 @@ class TensorUtilTest(test.TestCase):
               dtype=nptype),
           a)
 
+  def testFloatMutateArray(self):
+    t = tensor_util.make_tensor_proto([10.0, 20.0, 30.0], dtype=dtypes.float32)
+    a = tensor_util.MakeNdarray(t)
+    a[0] = 5.0
+    self.assertEquals(np.float32, a.dtype)
+    self.assertAllClose(np.array([5.0, 20.0, 30.0], dtype=np.float32), a)
+    if sys.byteorder == "big":
+      self.assertProtoEquals("""
+        dtype: DT_FLOAT
+        tensor_shape { dim { size: 3 } }
+        tensor_content: "A \000\000A\240\000\000A\360\000\000"
+        """, t)
+    else:
+      self.assertProtoEquals("""
+        dtype: DT_FLOAT
+        tensor_shape { dim { size: 3 } }
+        tensor_content: "\000\000 A\000\000\240A\000\000\360A"
+        """, t)
+
   def testHalf(self):
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=np.float16))
     self.assertProtoEquals("""
@@ -215,6 +234,26 @@ class TensorUtilTest(test.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.float16, a.dtype)
     self.assertAllClose(np.array([10.0, 20.0], dtype=np.float16), a)
+
+  def testBfloat16(self):
+    test_type = dtypes.bfloat16.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: 16672 = 010000010(130) 0100000: (1+0/2+1/4) * 2^(130-127)
+    # 20.0: 16800 = 010000011(131) 0100000: (1+0/2+1/4) * 2^(131-127)
+    self.assertProtoEquals("""
+      dtype: DT_BFLOAT16
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      half_val: 16672
+      half_val: 16800
+      """, t)
+
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(test_type, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0], dtype=test_type), a)
 
   def testInt(self):
     t = tensor_util.make_tensor_proto(10)
@@ -749,7 +788,7 @@ class ConstantValueTest(test.TestCase):
     self.assertAllClose(np_val, tensor_util.constant_value(tf_val))
 
   def testUnknown(self):
-    tf_val = gen_state_ops._variable(
+    tf_val = gen_state_ops.variable(
         shape=[3, 4, 7],
         dtype=dtypes.float32,
         name="tf_val",

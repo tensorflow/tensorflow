@@ -60,7 +60,9 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
   for (int i = 0; i < passthru_op->inputs.size(); i++) {
     if (!model->GetArray(passthru_op->inputs[i]).buffer) {
       count_nonconstant_input_arrays++;
-      main_input_array_index = i;
+      if (count_nonconstant_input_arrays == 1) {
+        main_input_array_index = i;
+      }
     }
   }
 

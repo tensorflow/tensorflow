@@ -106,8 +106,10 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_ge = ir_builder->CreateFCmpOGE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_ge, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 
@@ -117,8 +119,10 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
     return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
   } else {
-    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
-                               {lhs_value->getType()}, ir_builder);
+    auto cmp_le = ir_builder->CreateFCmpOLE(lhs_value, rhs_value);
+    auto lhs_is_nan = ir_builder->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = ir_builder->CreateOr(cmp_le, lhs_is_nan);
+    return ir_builder->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
 }
 

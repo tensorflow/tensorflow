@@ -766,6 +766,31 @@ py_library(
 )
 
 py_library(
+    name = "smart_cond",
+    srcs = ["framework/smart_cond.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":tensor_util",
+    ],
+)
+
+py_test(
+    name = "smart_cond_test",
+    size = "small",
+    srcs = ["framework/smart_cond_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":framework_ops",
+        ":math_ops",
+        ":session",
+        ":smart_cond",
+    ],
+)
+
+py_library(
     name = "sparse_tensor",
     srcs = ["framework/sparse_tensor.py"],
     srcs_version = "PY2AND3",
@@ -2857,10 +2882,10 @@ py_library(
     srcs = ["training/checkpointable.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":io_ops_gen",
         ":ops",
-        ":pywrap_tensorflow",
         ":util",
         "//tensorflow/python/eager:context",
     ],
@@ -3630,6 +3655,7 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":state_ops_gen",
+        ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
@@ -3920,7 +3946,10 @@ py_test(
     size = "small",
     srcs = ["training/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+    ],
     deps = [
         ":client",
         ":client_testlib",
@@ -3929,6 +3958,7 @@ py_test(
         ":partitioned_variables",
         ":platform",
         ":pywrap_tensorflow",
+        ":resource_variable_ops",
         ":state_ops",
         ":training",
         ":variable_scope",
@@ -4092,6 +4122,7 @@ py_library(
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
         ":platform",
+        ":smart_cond",
         ":tensor_util",
         ":util",
         ":variable_scope",
@@ -4108,8 +4139,6 @@ py_library(
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
-        "layers/maxout.py",
-        "layers/network.py",
         "layers/normalization.py",
         "layers/pooling.py",
     ],
@@ -4163,25 +4192,6 @@ py_test(
 )
 
 py_test(
-    name = "layers_network_test",
-    size = "small",
-    srcs = ["layers/network_test.py"],
-    main = "layers/network_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":framework_test_lib",
-        ":layers",
-        ":layers_base",
-        ":sparse_ops",
-        "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "layers_core_test",
     size = "small",
     srcs = ["layers/core_test.py"],
@@ -4212,22 +4222,6 @@ py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
-        ":layers",
-        ":math_ops",
-        ":nn_ops",
-        ":random_ops",
-    ],
-)
-
-py_test(
-    name = "layers_maxout_test",
-    size = "small",
-    srcs = ["layers/maxout_test.py"],
-    main = "layers/maxout_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
         ":layers",
         ":math_ops",
         ":nn_ops",
@@ -4630,6 +4624,34 @@ py_test(
     ],
 )
 
+py_library(
+    name = "graph_placer",
+    srcs = [
+        "grappler/controller.py",
+        "grappler/graph_placer.py",
+        "grappler/hierarchical_controller.py",
+    ],
+    deps = [
+        ":python",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "graph_placer_test",
+    size = "large",
+    srcs = ["grappler/graph_placer_test.py"],
+    tags = [
+        "grappler",
+        "no_pip",  # graph_placer is not available in pip.
+    ],
+    deps = [
+        ":client_testlib",
+        ":graph_placer",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 py_test(
     name = "memory_optimizer_test",
     size = "medium",
@@ -4721,6 +4743,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "grappler",
+        "no_cuda_on_cpu_tap",
         "no_pip",
     ],
     deps = [
