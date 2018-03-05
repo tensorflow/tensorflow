@@ -106,6 +106,7 @@ tf_cc_test(
         ":bfloat16_normalization",
         ":bfloat16_support",
         ":hlo",
+        ":hlo_verifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
