@@ -24,6 +24,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import test_util
@@ -376,6 +377,22 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         keras.estimator.model_to_estimator(
             keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
+
+  def test_gpu_config(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
+    sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
+    self._config._session_config = sess_config
+    keras.estimator.model_to_estimator(
+        keras_model=keras_model, config=self._config)
+    self.assertEqual(keras.backend.get_session()
+                     ._config.gpu_options.per_process_gpu_memory_fraction,
+                     gpu_options.per_process_gpu_memory_fraction)
 
 
 if __name__ == '__main__':

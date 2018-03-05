@@ -296,10 +296,14 @@ def model_to_estimator(keras_model=None,
         'Given keras model has not been compiled yet. Please compile first '
         'before creating the estimator.')
 
-  keras_weights = keras_model.get_weights()
   keras_model_fn = _create_keras_model_fn(keras_model, custom_objects)
   est = estimator_lib.Estimator(
       keras_model_fn, model_dir=model_dir, config=config)
+  # Pass the config into keras backend's default session.
+  with session.Session(config=est._session_config) as sess:
+    K.set_session(sess)
+
+  keras_weights = keras_model.get_weights()
   # TODO(yifeif): move checkpoint initialization to scaffold.init_fn
   _save_first_checkpoint(keras_model, est, custom_objects, keras_weights)
   return est
