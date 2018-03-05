@@ -29,5 +29,5 @@ RUN pip install --upgrade numpy
 RUN pip install --upgrade termcolor
 
 # Install golang
-RUN add-apt-repository -y ppa:ubuntu-lxc/lxd-stable
+RUN apt-get install -y --no-install-recommends -t xenial-backports lxd lxd-client
 RUN apt-get install -y golang
