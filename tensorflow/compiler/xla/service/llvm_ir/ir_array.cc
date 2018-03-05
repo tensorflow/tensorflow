@@ -106,16 +106,13 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
   }
 }
 
-// Returns whether given linear index valid on given shape.
+// Returns whether the given linear index is valid on the given shape.
 bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
-  auto b = ShapeUtil::MakeShape(PRED /* irrelevant */, dims_);
+  auto b = ShapeUtil::MakeShape(a.element_type(), dims_);
   *b.mutable_layout() = layout_;
   return linear_ != nullptr &&
-         ContainersEqual(
-             ShapeUtil::StripDegenerateDimensions(a).dimensions(),
-             ShapeUtil::StripDegenerateDimensions(b).dimensions()) &&
-         LayoutUtil::Equal(ShapeUtil::StripDegenerateDimensions(a).layout(),
-                           ShapeUtil::StripDegenerateDimensions(b).layout());
+         ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
+         ShapeUtil::ReshapeIsBitcast(a, b);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
