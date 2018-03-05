@@ -312,7 +312,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   # control_flow may create new symbols and change scopes.
   node = _static_analysis_pass(node, ctx)
-  node = logical_expressions.transform(node)
+  node = logical_expressions.transform(node, ctx)
   node = side_effect_guards.transform(node, ctx)
   node = name_scopes.transform(node, ctx)
 
