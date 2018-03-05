@@ -41,7 +41,7 @@ installed on your system:
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
     the cuDNN DLL to your `%PATH%` environment variable.
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.5 or higher.  See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
     list of supported GPU cards.
 
