@@ -159,9 +159,9 @@ class AttentionWrapperTest(test.TestCase):
     elif attention_layers is not None:
       # Compute sum of attention_layers output depth.
       attention_depth = sum(
-          attention_layer._compute_output_shape(
+          attention_layer.compute_output_shape(
               [batch_size, cell_depth + encoder_output_depth])[-1].value
-          for attention_layer in attention_layers)  # pylint: disable=protected-access
+          for attention_layer in attention_layers)
     else:
       attention_depth = encoder_output_depth * len(create_attention_mechanisms)
 

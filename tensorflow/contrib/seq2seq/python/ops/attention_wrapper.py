@@ -1224,11 +1224,11 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
             "layer per attention_mechanism, saw: %d vs %d"
             % (len(self._attention_layers), len(attention_mechanisms)))
       self._attention_layer_size = sum(
-          layer._compute_output_shape(
+          layer.compute_output_shape(
               [None,
                cell.output_size + mechanism.values.shape[-1].value])[-1].value
           for layer, mechanism in zip(
-              self._attention_layers, attention_mechanisms))  # pylint: disable=protected-access
+              self._attention_layers, attention_mechanisms))
     else:
       self._attention_layers = None
       self._attention_layer_size = sum(
