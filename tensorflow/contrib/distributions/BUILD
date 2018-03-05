@@ -485,6 +485,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["noasan"],
 )
 
 cuda_py_test(
