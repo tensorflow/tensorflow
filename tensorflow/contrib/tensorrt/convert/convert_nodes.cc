@@ -1396,30 +1396,30 @@ tensorflow::Status ConvertConst(Converter& ctx,
       }
     }
     if (ctx.isFP16()) {
-      auto dtypeNew = tensorflow::DataType::DT_HALF;
-      size_t lenData = tensorflow::DataTypeSize(dtypeNew);
+      auto dtype_new = tensorflow::DataType::DT_HALF;
+      size_t len_data = tensorflow::DataTypeSize(dtype_new);
       for (int i = 0; i < scalar_shape.nbDims; i++)
-        lenData *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+        len_data *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
       void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
       tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
       auto half_tensor = temp_tensor.flat<Eigen::half>();
       Eigen::DefaultDevice defd;
       half_tensor.device(defd) =
           tensor.flat<float>().template cast<Eigen::half>();
-      memcpy(dst, half_tensor.data(), lenData);  // store into weight store
-      weights = TRT_ShapedWeights(dtypeNew, dst, scalar_shape);
+      memcpy(dst, half_tensor.data(), len_data);  // store into weight store
+      weights = TRT_ShapedWeights(dtype_new, dst, scalar_shape);
     } else {
-      size_t lenData = tensorflow::DataTypeSize(dtype);
+      size_t len_data = tensorflow::DataTypeSize(dtype);
       for (int i = 0; i < scalar_shape.nbDims; i++)
-        lenData *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+        len_data *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
       void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
       std::vector<float> tensor_data(
           weights_tensor.float_val().begin(),
           weights_tensor.float_val()
               .end());  //  make a local copy first to flatten
-      memcpy(dst, tensor_data.data(), lenData);  // store into weight store
+      memcpy(dst, tensor_data.data(), len_data);  // store into weight store
       weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
     }
   } else if (!weights_tensor.int_val().empty()) {
@@ -1452,11 +1452,11 @@ tensorflow::Status ConvertConst(Converter& ctx,
       }
     }
     if (ctx.isFP16()) {
-      auto dtypeNew = tensorflow::DataType::DT_HALF;
-      size_t lenData = tensorflow::DataTypeSize(dtypeNew);
+      auto dtype_new = tensorflow::DataType::DT_HALF;
+      size_t len_data = tensorflow::DataTypeSize(dtype_new);
       for (int i = 0; i < scalar_shape.nbDims; i++)
-        lenData *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+        len_data *= scalar_shape.d[i];
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
       void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
       tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
       TTypes<Eigen::half>::Flat half_tensor = temp_tensor.flat<Eigen::half>();
@@ -1488,22 +1488,22 @@ tensorflow::Status ConvertConst(Converter& ctx,
               " for FP16 conversion");
           break;
       };
-      memcpy(dst, half_tensor.data(), lenData);  // store into weight store
-      weights = TRT_ShapedWeights(dtypeNew, dst, scalar_shape);
+      memcpy(dst, half_tensor.data(), len_data);  // store into weight store
+      weights = TRT_ShapedWeights(dtype_new, dst, scalar_shape);
     } else {
-      size_t lenData = tensorflow::DataTypeSize(dtype);
+      size_t len_data = tensorflow::DataTypeSize(dtype);
       for (int i = 0; i < scalar_shape.nbDims; i++)
-        lenData *= scalar_shape.d[i];
-      size_t lenTensor = weights_tensor.int_val_size() * sizeof(int32);
-      lenData = std::max(lenData, lenTensor);
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+        len_data *= scalar_shape.d[i];
+      size_t len_tensor = weights_tensor.int_val_size() * sizeof(int32);
+      len_data = std::max(len_data, len_tensor);
+      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
       void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
       std::vector<int32> tensor_data(
           weights_tensor.int_val().begin(),
           weights_tensor.int_val()
               .end());  //  make a local copy first to flatten
                         //  doesn't have to be contigous
-      memcpy(dst, tensor_data.data(), lenTensor);  // store into weight store
+      memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
       weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
     }
   } else if (!weights_tensor.tensor_content().empty()) {
@@ -2028,13 +2028,13 @@ tensorflow::Status ConvertReshape(
   nvinfer1::IShuffleLayer* layer =
       ctx.network()->addShuffle(*const_cast<nvinfer1::ITensor*>(tensor));
 
-  nvinfer1::Dims reshapeDims;
+  nvinfer1::Dims reshape_dims;
   VLOG(2) << "new dimension: " << shape_num_dims - 1;
-  reshapeDims.nbDims = shape_num_dims - 1;
-  for (int32_t i = 0; i < reshapeDims.nbDims; ++i) {
-    reshapeDims.d[i] = shape_data[i + 1];
+  reshape_dims.nbDims = shape_num_dims - 1;
+  for (int32_t i = 0; i < reshape_dims.nbDims; ++i) {
+    reshape_dims.d[i] = shape_data[i + 1];
   }
-  layer->setReshapeDimensions(reshapeDims);
+  layer->setReshapeDimensions(reshape_dims);
   VLOG(2) << "new dimension: " << shape_num_dims - 1;
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -2096,35 +2096,35 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
     const auto node_id = tensorflow::str_util::Split(res_name, "_");
     engine_name += node_id.back();
   }
-  std::map<string, tensorflow::Node*> nodeMaps;
+  std::map<string, tensorflow::Node*> node_maps;
 
   for (auto n : graph.op_nodes()) {
-    nodeMaps.insert({n->name(), n});
+    node_maps.insert({n->name(), n});
   }
   VLOG(1) << "Output Nodes:";
   std::vector<tensorflow::DataType> out_types;
   std::vector<const tensorflow::Edge*> out_edges;
   for (auto& i : output_nodes) {
     auto node_port = tensorflow::str_util::Split(i, ":");
-    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
+    VLOG(1) << " " << i << " in graph " << node_maps.count(i);
     auto out_node_name = node_port.at(0);
     if (node_port.size() > 1) {
       VLOG(1) << "Multi port output" << node_port.at(0) << " "
               << node_port.at(1) << " size=" << node_port.size();
     }
-    auto nodeIt = nodeMaps.find(out_node_name);
-    if (nodeIt != nodeMaps.end()) {
-      tensorflow::Node* outNode = nodeIt->second;
+    auto node_it = node_maps.find(out_node_name);
+    if (node_it != node_maps.end()) {
+      tensorflow::Node* out_node = node_it->second;
       int port = 0;
       if (node_port.size() == 2) {
         port = std::strtoul(node_port.at(1).c_str(), nullptr, 10);
-        out_types.push_back(outNode->output_type(port));
+        out_types.push_back(out_node->output_type(port));
       } else {
-        out_types.push_back(outNode->output_type(0));
+        out_types.push_back(out_node->output_type(0));
       }
-      for (auto outEdge : outNode->out_edges()) {
-        if (outEdge->src_output() == port) {
-          out_edges.push_back(outEdge);
+      for (auto out_edge : out_node->out_edges()) {
+        if (out_edge->src_output() == port) {
+          out_edges.push_back(out_edge);
           break;
         }
       }
@@ -2134,7 +2134,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   }
   VLOG(1) << "Input Nodes:";
   for (auto& i : input_names) {
-    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
+    VLOG(1) << " " << i << " in graph " << node_maps.count(i);
   }
   auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto resmgr = trt_rm->getManager("TRTCalibOps");
@@ -2199,9 +2199,9 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   }
   VLOG(1) << "Segment nodes:";
   for (auto& i : segment_nodes) {
-    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
-    auto it = nodeMaps.find(i);
-    if (it != nodeMaps.end()) {
+    VLOG(1) << " " << i << " in graph " << node_maps.count(i);
+    auto it = node_maps.find(i);
+    if (it != node_maps.end()) {
       graph.RemoveNode(it->second);
     }
   }
