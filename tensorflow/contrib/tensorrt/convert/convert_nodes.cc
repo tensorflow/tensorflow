@@ -875,7 +875,6 @@ tensorflow::Status BinaryTensorOpWeight(
   // Maybe this part has to be moved into the block of rsqrt later
 
   // Check type consistency
-  auto dtype = TFAttrs(node_def).get<nvinfer1::DataType>("T");
   nvinfer1::DataType ttype;
   TF_CHECK_OK(ConvertDType(weights.type_, &ttype));
 
@@ -1007,7 +1006,6 @@ tensorflow::Status ConvertConv2DHelper(
 
   TFAttrs attrs(node_def);
 
-  int c_index = 1;
   int h_index = 2;
   int w_index = 3;
   auto data_format = attrs.get<string>("data_format");
@@ -1016,7 +1014,6 @@ tensorflow::Status ConvertConv2DHelper(
                                  {0, 3, 1, 2});
     h_index = 1;
     w_index = 2;
-    c_index = 3;
     // TODO(jie): transpose it
   }
 
@@ -1957,9 +1954,6 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
 
   // TODO(jie): transpose!
   TFAttrs attrs(node_def);
-
-  // tensor after transpose (NCHW)
-  auto tensor_dim = tensor->getDimensions();
 
   TRT_ShapedWeights weights_ck = inputs.at(1).weights();
   TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_ck);
