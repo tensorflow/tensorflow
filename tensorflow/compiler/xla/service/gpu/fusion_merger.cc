@@ -223,9 +223,10 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
-  if (!c_all_of(fusion->users(), [](const HloInstruction* instruction) {
-        return instruction->opcode() == HloOpcode::kFusion &&
-               instruction->fusion_kind() == HloInstruction::FusionKind::kLoop;
+  if (!c_all_of(fusion->users(), [](const HloInstruction* user) {
+        return user->opcode() == HloOpcode::kFusion &&
+               (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+                user->fusion_kind() == HloInstruction::FusionKind::kInput);
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
