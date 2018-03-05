@@ -197,12 +197,14 @@ def _check_static_batch_beam_maybe(shape, batch_size, beam_width):
       and (shape[0] != batch_size * beam_width
            or (shape.ndims >= 2 and shape[1].value is not None
                and (shape[0] != batch_size or shape[1] != beam_width)))):
-    raise ValueError("TensorArray reordering expects elements to be "
-                     "reshapable to %s which is incompatible with the "
-                     "current shape %s. Consider setting "
-                     "reorder_tensor_arrays to False to disable TensorArray "
-                     "reordering during the beam search."
-                     % (reshaped_shape, shape))
+    tf_logging.warn("TensorArray reordering expects elements to be "
+                    "reshapable to %s which is incompatible with the "
+                    "current shape %s. Consider setting "
+                    "reorder_tensor_arrays to False to disable TensorArray "
+                    "reordering during the beam search."
+                    % (reshaped_shape, shape))
+    return False
+  return True
 
 def _check_batch_beam(t, batch_size, beam_width):
   """Returns an Assert operation checking that the elements of the stacked
@@ -609,8 +611,9 @@ class BeamSearchDecoder(decoder.Decoder):
       return t
     shape = t._element_shape[0]
     # pylint: enable=protected-access
-    _check_static_batch_beam_maybe(
-        shape, tensor_util.constant_value(self._batch_size), self._beam_width)
+    if not _check_static_batch_beam_maybe(
+        shape, tensor_util.constant_value(self._batch_size), self._beam_width):
+      return t
     t = t.stack()
     with ops.control_dependencies(
         [_check_batch_beam(t, self._batch_size, self._beam_width)]):
