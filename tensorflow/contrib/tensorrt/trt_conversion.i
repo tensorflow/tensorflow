@@ -151,13 +151,13 @@ std::pair<string, string> calib_convert(string graph_def_string  //  const tenso
   tensorflow::GraphDef outGraph;
   tensorflow::Status conversion_status =
       tensorflow::tensorrt::convert::ConvertCalibGraphToInferGraph(graph_def,
-                                                   &outGraph);
+                                                                   &outGraph);
   if (!conversion_status.ok()) {
     auto retCode = (int)conversion_status.code();
     char buff[2000];
     snprintf(buff, 2000, "%d;%s", retCode,
              conversion_status.error_message().c_str());
-    out_status=buff;
+    out_status = buff;
     return std::pair<string, string>{out_status, ""};
   }
   string result;
@@ -165,7 +165,7 @@ std::pair<string, string> calib_convert(string graph_def_string  //  const tenso
     out_status = "InvalidArgument;Couldn't serialize output as a GraphDef";
     return std::pair<string, string>{out_status, ""};
   }
-  out_status="OK;All good!";
+  out_status = "OK;All good!";
   return std::pair<string, string>{out_status, result};
 #else
   // Returns FAILED_PRECONDITION.

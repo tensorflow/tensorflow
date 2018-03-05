@@ -36,23 +36,23 @@ namespace convert {
 
 struct SubGraphParams {
   SubGraphParams(
-      tensorflow::Graph& graph_, const std::set<int>& subgraph_node_ids_,
-      const std::vector<std::pair<int, int>>& input_inds_,
-      const std::vector<std::pair<int, int>>& output_inds_,
-      size_t max_batch_size_, size_t max_workspace_size_bytes_,
-      const tensorflow::grappler::GraphProperties& graph_properties_,
-      std::unordered_map<string, std::pair<int, string>>* output_edge_map_,
-      tensorflow::NodeDef* trt_node_, int precision_mode_ = 0)
-      : graph(graph_),
-        subgraph_node_ids(subgraph_node_ids_),
-        input_inds(input_inds_),
-        output_inds(output_inds_),
-        max_batch_size(max_batch_size_),
-        max_workspace_size_bytes(max_workspace_size_bytes_),
-        graph_properties(graph_properties_),
-        output_edge_map(output_edge_map_),
-        trt_node(trt_node_),
-        precision_mode(precision_mode_) {}
+      tensorflow::Graph& graph, const std::set<int>& subgraph_node_ids,
+      const std::vector<std::pair<int, int>>& input_inds,
+      const std::vector<std::pair<int, int>>& output_inds,
+      size_t max_batch_size, size_t max_workspace_size_bytes,
+      const tensorflow::grappler::GraphProperties& graph_properties,
+      std::unordered_map<string, std::pair<int, string>>* output_edge_map,
+      tensorflow::NodeDef* trt_node, int precision_mode_ = 0)
+      : graph(graph),
+        subgraph_node_ids(subgraph_node_ids),
+        input_inds(input_inds),
+        output_inds(output_inds),
+        max_batch_size(max_batch_size),
+        max_workspace_size_bytes(max_workspace_size_bytes),
+        graph_properties(graph_properties),
+        output_edge_map(output_edge_map),
+        trt_node(trt_node),
+        precision_mode(precision_mode) {}
 
   tensorflow::Graph& graph;
   const std::set<int>& subgraph_node_ids;
@@ -65,7 +65,7 @@ struct SubGraphParams {
   tensorflow::NodeDef* trt_node;
   const int precision_mode;
 };
-
+// TODO(sami): Replace references with const reference or pointers
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
 tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,

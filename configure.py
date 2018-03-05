@@ -1048,7 +1048,7 @@ def set_tf_tensorrt_install_path(environ_cp):
 
     for lib_file in possible_files:
       if is_compatible(lib_file, cuda_ver, cudnn_ver):
-        matches=nvinfer_pattern.search(lib_file)
+        matches = nvinfer_pattern.search(lib_file)
         if len(matches.groups()) == 0:
           continue
         ver_str = matches.group(1)
