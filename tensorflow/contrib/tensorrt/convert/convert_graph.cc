@@ -134,20 +134,20 @@ std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
 // TODO(sami): convert references to pointers
 struct ConvertGraphParams {
   ConvertGraphParams(
-      tensorflow::Graph& graph, const std::vector<string>& output_names,
-      const std::set<int>& subgraph_node_ids, size_t max_batch_size,
-      size_t max_workspace_size_bytes,
-      const tensorflow::grappler::GraphProperties& graph_properties,
-      std::unordered_map<string, std::pair<int, string>>* output_edge_map,
-      int precision_mode)
-      : graph(graph),
-        output_names(output_names),
-        subgraph_node_ids(subgraph_node_ids),
-        max_batch_size(max_batch_size),
-        max_workspace_size_bytes(max_workspace_size_bytes),
-        graph_properties(graph_properties),
-        output_edge_map(output_edge_map),
-        precision_mode(precision_mode) {}
+      tensorflow::Graph& inp_graph, const std::vector<string>& output_node_names,
+      const std::set<int>& subgraph_node_id_numbers, size_t max_supported_batch_size,
+      size_t max_consumed_workspace_size_bytes,
+      const tensorflow::grappler::GraphProperties& current_graph_properties,
+      std::unordered_map<string, std::pair<int, string>>* output_edges,
+      int engine_precision_mode)
+      : graph(inp_graph),
+        output_names(output_node_names),
+        subgraph_node_ids(subgraph_node_id_numbers),
+        max_batch_size(max_supported_batch_size),
+        max_workspace_size_bytes(max_consumed_workspace_size_bytes),
+        graph_properties(current_graph_properties),
+        output_edge_map(output_edges),
+        precision_mode(engine_precision_mode) {}
   tensorflow::Graph& graph;
   const std::vector<string>& output_names;
   const std::set<int>& subgraph_node_ids;
