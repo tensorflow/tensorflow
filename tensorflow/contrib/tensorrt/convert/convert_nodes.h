@@ -36,23 +36,23 @@ namespace convert {
 
 struct SubGraphParams {
   SubGraphParams(
-      tensorflow::Graph& graph, const std::set<int>& subgraph_node_ids,
-      const std::vector<std::pair<int, int>>& input_inds,
-      const std::vector<std::pair<int, int>>& output_inds,
-      size_t max_batch_size, size_t max_workspace_size_bytes,
-      const tensorflow::grappler::GraphProperties& graph_properties,
-      std::unordered_map<string, std::pair<int, string>>* output_edge_map,
-      tensorflow::NodeDef* trt_node, int precision_mode_ = 0)
-      : graph(graph),
-        subgraph_node_ids(subgraph_node_ids),
-        input_inds(input_inds),
-        output_inds(output_inds),
-        max_batch_size(max_batch_size),
-        max_workspace_size_bytes(max_workspace_size_bytes),
-        graph_properties(graph_properties),
-        output_edge_map(output_edge_map),
-        trt_node(trt_node),
-        precision_mode(precision_mode) {}
+      tensorflow::Graph& inp_graph, const std::set<int>& subgraph_node_id_numbers,
+      const std::vector<std::pair<int, int>>& input_indices,
+      const std::vector<std::pair<int, int>>& output_indices,
+      size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
+      const tensorflow::grappler::GraphProperties& current_graph_properties,
+      std::unordered_map<string, std::pair<int, string>>* output_edges,
+      tensorflow::NodeDef* constructed_trt_node, int engine_precision_mode = 0)
+      : graph(inp_graph),
+        subgraph_node_ids(subgraph_node_id_numbers),
+        input_inds(input_indices),
+        output_inds(output_indices),
+        max_batch_size(max_supported_batch_size),
+        max_workspace_size_bytes(max_consumed_workspace_size_bytes),
+        graph_properties(current_graph_properties),
+        output_edge_map(output_edges),
+        trt_node(constructed_trt_node),
+        precision_mode(engine_precision_mode) {}
 
   tensorflow::Graph& graph;
   const std::set<int>& subgraph_node_ids;
