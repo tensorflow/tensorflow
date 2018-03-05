@@ -6,6 +6,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
+import re
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
@@ -23,6 +25,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
 
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
@@ -42,6 +45,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
 
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
@@ -63,6 +67,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
         dev.enable_profile = True
+
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
 
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
@@ -85,6 +90,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
         dev.enable_profile = True
+
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
 
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
@@ -95,6 +101,34 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             self.assertAllClose(result, [[1.,0.],[-2.,-2.]])
 
             self.assertTrue(len(rep) == 2)
+
+    def testIpuModelDeviceMultipleIPUs(self):
+        with tf.device("/device:IPU:0"):
+            pa = tf.placeholder(tf.float32, [480], name="a")
+            pb = tf.placeholder(tf.float32, [480], name="b")
+            output = pa + pb
+
+        with tf.device('cpu'):
+            with tf.control_dependencies([output]):
+                report = gen_ipu_ops.ipu_summary()
+
+        opts = config_pb2.IPUOptions()
+        dev = opts.device_config.add()
+        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+        dev.enable_profile = True
+        dev.ipu_model_config.num_ipus = 2
+        dev.ipu_model_config.tiles_per_ipu = 4
+
+        with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+
+            fd = {pa: np.zeros([480]), pb: np.zeros([480])}
+            result, rep = sess.run([output, report], fd)
+            self.assertAllClose(result, np.zeros([480]))
+            self.assertTrue(len(rep) == 1)
+
+            l = rep[0].split("\n")
+            l = [x for x in l if re.search("Num tiles computing:  8", x)]
+            self.assertTrue(len(l) == 1)
 
 if __name__ == "__main__":
     googletest.main()

@@ -242,7 +242,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
     int ordinal,
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
-  ClosePoplarDevice();
+  TF_RETURN_IF_ERROR(ClosePoplarDevice());
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
@@ -261,6 +261,12 @@ port::Status PoplarExecutor::InitializePoplarDevice(
       poplar::IPUModel model;
       model.IPUExchangeType =
           poplar::IPUModel::ExchangeType::AGGRESSIVE_MULTICAST;
+      if (cfg.ipu_model_config().num_ipus() != 0) {
+        model.numIPUs = cfg.ipu_model_config().num_ipus();
+      }
+      if (cfg.ipu_model_config().tiles_per_ipu() != 0) {
+        model.tilesPerIPU = cfg.ipu_model_config().tiles_per_ipu();
+      }
       poplar_device_ = model.createDevice();
       profile_enabled_ = cfg.enable_profile();
       break;
@@ -284,9 +290,8 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   if (device_open_) {
     //poplar_device_.release();
     device_open_ = false;
-    return port::Status::OK();
   }
-  return port::Status{port::error::INTERNAL, "Poplar device not open"};
+  return port::Status::OK();
 }
 
 port::Status PoplarExecutor::GetCompilerReports(std::vector<std::string>& out) {
