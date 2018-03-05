@@ -184,7 +184,7 @@ def _sequence_embedding_column(
   ```python
   watches = sequence_categorical_column_with_identity(
       'watches', num_buckets=1000)
-  watches_embedding = embedding_column(watches, dimension=10)
+  watches_embedding = _sequence_embedding_column(watches, dimension=10)
   columns = [watches]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -209,7 +209,7 @@ def _sequence_embedding_column(
     trainable: Whether or not the embedding is trainable. Default is True.
 
   Returns:
-    A `_SequenceEmbeddingColumn`.
+    A `_SequenceCategoricalToDenseColumn`.
 
   Raises:
     ValueError: If `categorical_column` is not the right type.
@@ -219,7 +219,7 @@ def _sequence_embedding_column(
         'categorical_column must be of type _SequenceCategoricalColumn. '
         'Given (type {}): {}'.format(
             type(categorical_column), categorical_column))
-  return _SequenceEmbeddingColumn(
+  return _SequenceCategoricalToDenseColumn(
       fc.embedding_column(
           categorical_column,
           dimension=dimension,
@@ -228,6 +228,48 @@ def _sequence_embedding_column(
           tensor_name_in_ckpt=tensor_name_in_ckpt,
           max_norm=max_norm,
           trainable=trainable))
+
+
+# TODO(b/73160931): Merge with indicator_column
+def _sequence_indicator_column(categorical_column):
+  """Returns a feature column that represents sequences of multi-hot tensors.
+
+  Use this to convert sequence categorical data into dense representation for
+  input to sequence NN, such as RNN.
+
+  Example:
+
+  ```python
+  colors = sequence_categorical_column_with_vocabulary_list(
+      key='colors', vocabulary_list=('R', 'G', 'B', 'Y'))
+  colors_indicator = _sequence_indicator_column(colors)
+  columns = [colors]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    categorical_column: A `_SequenceCategoricalColumn` created with a
+      `sequence_cateogrical_column_with_*` function.
+
+  Returns:
+    A `_SequenceCategoricalToDenseColumn`.
+
+  Raises:
+    ValueError: If `categorical_column` is not the right type.
+  """
+  if not isinstance(categorical_column, _SequenceCategoricalColumn):
+    raise ValueError(
+        'categorical_column must be of type _SequenceCategoricalColumn. '
+        'Given (type {}): {}'.format(
+            type(categorical_column), categorical_column))
+  return _SequenceCategoricalToDenseColumn(
+      fc.indicator_column(categorical_column))
 
 
 def sequence_numeric_column(
@@ -358,33 +400,34 @@ class _SequenceCategoricalColumn(
     return _sequence_length_from_sparse_tensor(sparse_tensors.id_tensor)
 
 
-class _SequenceEmbeddingColumn(
+class _SequenceCategoricalToDenseColumn(
     _SequenceDenseColumn,
-    collections.namedtuple('_SequenceEmbeddingColumn', ['embedding_column'])):
-  """Represents sequences of embeddings."""
+    collections.namedtuple(
+        '_SequenceCategoricalToDenseColumn', ['dense_column'])):
+  """Densifies a _SequenceCategoricalColumn using the specified column."""
 
   @property
   def name(self):
-    return self.embedding_column.name
+    return self.dense_column.name
 
   @property
   def _parse_example_spec(self):
-    return self.embedding_column._parse_example_spec
+    return self.dense_column._parse_example_spec
 
   def _transform_feature(self, inputs):
-    return self.embedding_column._transform_feature(inputs)
+    return self.dense_column._transform_feature(inputs)
 
   @property
   def _variable_shape(self):
-    return self.embedding_column._variable_shape
+    return self.dense_column._variable_shape
 
   def _get_sequence_dense_tensor(
       self, inputs, weight_collections=None, trainable=None):
-    dense_tensor = self.embedding_column._get_dense_tensor(
+    dense_tensor = self.dense_column._get_dense_tensor(
         inputs=inputs,
         weight_collections=weight_collections,
         trainable=trainable)
-    sequence_length = self.embedding_column.categorical_column._sequence_length(
+    sequence_length = self.dense_column.categorical_column._sequence_length(
         inputs)
     return _SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
