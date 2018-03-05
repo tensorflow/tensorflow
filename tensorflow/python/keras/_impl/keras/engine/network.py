@@ -495,7 +495,10 @@ class Network(base_layer.Layer):
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
@@ -530,7 +533,10 @@ class Network(base_layer.Layer):
     if context.in_eager_mode():
       return losses
 
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
