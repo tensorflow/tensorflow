@@ -575,27 +575,6 @@ class FusedBatchNormOp : public OpKernel {
   bool is_training_;
 };
 
-namespace {
-
-template <typename Device>
-void FillZeros(Tensor* t);
-
-#if GOOGLE_CUDA
-template <>
-void FillZeros<GPUDevice>(Tensor* t) {
-  cudaMemset(const_cast<char*>(t->tensor_data().data()), 0,
-             t->tensor_data().size());
-}
-#endif
-
-template <>
-void FillZeros<CPUDevice>(Tensor* t) {
-  memset(const_cast<char*>(t->tensor_data().data()), 0,
-         t->tensor_data().size());
-}
-
-}  // namespace
-
 template <typename Device, typename T, typename U>
 class FusedBatchNormGradOp : public OpKernel {
  public:
@@ -659,11 +638,12 @@ class FusedBatchNormGradOp : public OpKernel {
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({}), &placeholder_1));
-    FillZeros<Device>(placeholder_1);
+    functor::SetZeroFunctor<Device, float> f;
+    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
-    FillZeros<Device>(placeholder_2);
+    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {

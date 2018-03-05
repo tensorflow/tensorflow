@@ -77,6 +77,14 @@ class HloComputation {
       return last_added_instruction_;
     }
 
+    Status ForEachInstruction(
+        const std::function<Status(const HloInstruction*)>& func) const {
+      for (const auto& instruction : instructions_) {
+        TF_RETURN_IF_ERROR(func(instruction.get()));
+      }
+      return Status::OK();
+    }
+
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
@@ -223,15 +231,6 @@ class HloComputation {
   HloInstruction* CreateFusionInstruction(
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
-
-  // Creates a fusion instruction that represents a backward convolution. This
-  // is similar to CreateFusionInstruction but takes window and conv_dnums which
-  // indicate the window and convolution dimension numbers of the backward
-  // convolution.
-  HloInstruction* CreateFusionInstructionForBackwardConvolution(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-      HloInstruction::FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added

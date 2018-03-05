@@ -21,27 +21,29 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
-def load_data(path='boston_housing.npz', seed=113, test_split=0.2):
+@tf_export('keras.datasets.boston_housing.load_data')
+def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
   """Loads the Boston Housing dataset.
 
   Arguments:
       path: path where to cache the dataset locally
           (relative to ~/.keras/datasets).
+      test_split: fraction of the data to reserve as test set.
       seed: Random seed for shuffling the data
           before computing the test split.
-      test_split: fraction of the data to reserve as test set.
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
   assert 0 <= test_split < 1
-  fh = 'f553886a1f8d56431e820c5b82552d9d95cfcb96d1e678153f8839538947dff5'
   path = get_file(
       path,
       origin='https://s3.amazonaws.com/keras-datasets/boston_housing.npz',
-      file_hash=fh)
+      file_hash=
+      'f553886a1f8d56431e820c5b82552d9d95cfcb96d1e678153f8839538947dff5')
   f = np.load(path)
   x = f['x']
   y = f['y']

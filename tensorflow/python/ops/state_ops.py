@@ -89,6 +89,7 @@ from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -98,8 +99,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   """Deprecated. Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
-  ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
-                                container=container, shared_name=shared_name)
+  ret = gen_state_ops.variable(shape=shape, dtype=dtype, name=name,
+                               container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
   #   wrapper?
   if set_shape:
@@ -126,11 +127,12 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
   Returns:
     A variable tensor.
   """
-  return gen_state_ops._variable_v2(shape=shape,
-                                    dtype=dtype,
-                                    name=name,
-                                    container=container,
-                                    shared_name=shared_name)
+  return gen_state_ops.variable_v2(
+      shape=shape,
+      dtype=dtype,
+      name=name,
+      container=container,
+      shared_name=shared_name)
 
 
 def init_variable(v, init, name="init"):
@@ -189,6 +191,7 @@ def is_variable_initialized(ref, name=None):
                                                            name=name)
 
 
+@tf_export("assign_sub")
 def assign_sub(ref, value, use_locking=None, name=None):
   """Update 'ref' by subtracting 'value' from it.
 
@@ -217,6 +220,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   return ref.assign_sub(value)
 
 
+@tf_export("assign_add")
 def assign_add(ref, value, use_locking=None, name=None):
   """Update 'ref' by adding 'value' to it.
 
@@ -245,6 +249,7 @@ def assign_add(ref, value, use_locking=None, name=None):
   return ref.assign_add(value)
 
 
+@tf_export("assign")
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   """Update 'ref' by assigning 'value' to it.
 
@@ -274,9 +279,10 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value)
+  return ref.assign(value, name=name)
 
 
+@tf_export("count_up_to")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -299,6 +305,7 @@ def count_up_to(ref, limit, name=None):
       ref.handle, limit, T=ref.dtype, name=name)
 
 
+@tf_export("scatter_update")
 def scatter_update(ref, indices, updates, use_locking=True, name=None):
   # pylint: disable=line-too-long
   r"""Applies sparse updates to a variable reference.
@@ -347,13 +354,12 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.scatter_update(ref, indices, updates,
                                         use_locking=use_locking, name=name)
-  with ops.control_dependencies(
-      [gen_resource_variable_ops.resource_scatter_update(
-          ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
-          name=name)]):
-    return ref.read_value()
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_update(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
+@tf_export("scatter_nd_update")
 def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
   r"""Applies sparse `updates` to individual values or slices in a Variable.
 

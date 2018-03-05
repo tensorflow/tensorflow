@@ -59,7 +59,7 @@ class SessionMgrTest : public ::testing::Test {
         return Status::OK();
       };
   SessionMgr mgr_;
-  WorkerSession* legacy_session_;
+  std::shared_ptr<WorkerSession> legacy_session_;
 };
 
 TEST_F(SessionMgrTest, CreateSessionSimple) {
@@ -69,7 +69,7 @@ TEST_F(SessionMgrTest, CreateSessionSimple) {
 
   string session_handle = "test_session_handle";
   TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def, true));
-  WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
+  auto session = mgr_.WorkerSessionForSession(session_handle);
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
   EXPECT_NE(mgr_.LegacySession(), session);
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
@@ -81,22 +81,22 @@ TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
   server_def.set_task_index(3);
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_1", server_def, false));
-  WorkerSession* session_1 = mgr_.WorkerSessionForSession("handle_1");
+  auto session_1 = mgr_.WorkerSessionForSession("handle_1");
   std::vector<Device*> devices_1 = session_1->device_mgr->ListDevices();
   EXPECT_EQ(1, devices_1.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_2", server_def, false));
-  WorkerSession* session_2 = mgr_.WorkerSessionForSession("handle_2");
+  auto session_2 = mgr_.WorkerSessionForSession("handle_2");
   std::vector<Device*> devices_2 = session_2->device_mgr->ListDevices();
   EXPECT_EQ(1, devices_2.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_3", server_def, true));
-  WorkerSession* session_3 = mgr_.WorkerSessionForSession("handle_3");
+  auto session_3 = mgr_.WorkerSessionForSession("handle_3");
   std::vector<Device*> devices_3 = session_3->device_mgr->ListDevices();
   EXPECT_EQ(1, devices_3.size());
 
   TF_EXPECT_OK(mgr_.CreateSession("handle_4", server_def, true));
-  WorkerSession* session_4 = mgr_.WorkerSessionForSession("handle_4");
+  auto session_4 = mgr_.WorkerSessionForSession("handle_4");
   std::vector<Device*> devices_4 = session_4->device_mgr->ListDevices();
   EXPECT_EQ(1, devices_4.size());
 
@@ -109,7 +109,7 @@ TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
 TEST_F(SessionMgrTest, LegacySession) {
   ServerDef server_def;
   string session_handle = "";
-  WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
+  auto session = mgr_.WorkerSessionForSession(session_handle);
   EXPECT_EQ(mgr_.LegacySession(), session);
 
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));

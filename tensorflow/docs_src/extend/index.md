@@ -14,9 +14,6 @@ TensorFlow:
     add support for your own shared or distributed filesystem.
   * @{$new_data_formats$Custom Data Readers}, which details how to add support
     for your own file and record formats.
-  * @{$extend/estimators$Creating Estimators in tf.contrib.learn}, which explains how
-    to write your own custom Estimator.  For example, you could build your
-    own Estimator to implement some variation on standard linear regression.
 
 Python is currently the only language supported by TensorFlow's API stability
 promises.  However, TensorFlow also provides functionality in C++, Java, and Go,

@@ -1,8 +1,9 @@
 path: "tensorflow.keras.layers.StackedRNNCells"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.recurrent.StackedRNNCells\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -118,15 +119,19 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'states\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'states\', \'constants\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
@@ -154,7 +159,7 @@ tf_class {
   }
   member_method {
     name: "get_losses_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_output_at"

@@ -251,8 +251,17 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
     const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
@@ -300,8 +309,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
-    const Shape* shape_with_layout) {
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
+    ErrorSpec error, const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
                ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
@@ -357,7 +375,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   VLOG(1) << "expected: " << expected_literal->ToString();
   VLOG(1) << "actual:   " << actual->ToString();
 
-  EXPECT_EQ(expected, actual->u8s_string());
+  EXPECT_EQ(expected, actual->GetR1U8AsString());
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
@@ -369,7 +387,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqualTuple(expected, *actual);
+  LiteralTestUtil::ExpectEqual(expected, *actual);
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
@@ -381,7 +399,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectNearTuple(expected, *actual, error);
+  LiteralTestUtil::ExpectNear(expected, *actual, error);
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
@@ -508,6 +526,15 @@ std::unique_ptr<GlobalData>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64 parameter_number, const Literal& literal, const string& name,
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  return CreateParameterAndTransferLiteral(parameter_number, literal, name,
+                                           nullptr, builder, data_handle);
+}
+
+std::unique_ptr<GlobalData>
+ClientLibraryTestBase::CreateParameterAndTransferLiteral(
+    int64 parameter_number, const Literal& literal, const string& name,
+    const DeviceHandle* device_handle, ComputationBuilder* builder,
+    ComputationDataHandle* data_handle) {
   const Literal* param_literal = &literal;
   std::unique_ptr<Literal> converted_literal;
   if (use_bfloat16_) {
@@ -515,10 +542,19 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     param_literal = converted_literal.get();
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*param_literal).ConsumeValueOrDie();
+      client_->TransferToServer(*param_literal, device_handle)
+          .ConsumeValueOrDie();
   *data_handle =
       builder->Parameter(parameter_number, param_literal->shape(), name);
   return data;
+}
+
+ComputationDataHandle ClientLibraryTestBase::AddParam(
+    const Literal& argument, ComputationBuilder* builder) {
+  ComputationDataHandle data_handle;
+  arguments_.push_back(CreateParameterAndTransferLiteral(
+      arguments_.size(), argument, "", builder, &data_handle));
+  return data_handle;
 }
 
 ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(

@@ -31,6 +31,7 @@ from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -77,6 +78,7 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
   return gen_linalg_ops.cholesky(gramian)
 
 
+@tf_export('cholesky_solve', 'linalg.cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
@@ -119,6 +121,7 @@ def cholesky_solve(chol, rhs, name=None):
     return x
 
 
+@tf_export('eye', 'linalg.eye')
 def eye(num_rows,
         num_columns=None,
         batch_shape=None,
@@ -188,6 +191,7 @@ def eye(num_rows,
       return array_ops.matrix_set_diag(zero_matrix, diag_ones)
 
 
+@tf_export('matrix_solve_ls', 'linalg.lstsq')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
 
@@ -244,7 +248,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
     and l2_regularizer != 0 due to poor accuracy.
   """
 
-  # pylint: disable=protected-access,long-lambda
+  # pylint: disable=long-lambda
   def _use_composite_impl(fast, tensor_shape):
     """Determines whether to use the composite or specialized CPU kernel.
 
@@ -319,11 +323,11 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   if _use_composite_impl(fast, tensor_shape):
     return _composite_impl(matrix, rhs, l2_regularizer)
   else:
-    return gen_linalg_ops._matrix_solve_ls(
+    return gen_linalg_ops.matrix_solve_ls(
         matrix, rhs, l2_regularizer, fast=fast, name=name)
-  # pylint: enable=protected-access
 
 
+@tf_export('self_adjoint_eig', 'linalg.eigh')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
 
@@ -341,11 +345,11 @@ def self_adjoint_eig(tensor, name=None):
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
-  # pylint: disable=protected-access
-  e, v = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=True, name=name)
+  e, v = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=True, name=name)
   return e, v
 
 
+@tf_export('self_adjoint_eigvals', 'linalg.eigvalsh')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
@@ -363,11 +367,11 @@ def self_adjoint_eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  # pylint: disable=protected-access
-  e, _ = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=False, name=name)
+  e, _ = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=False, name=name)
   return e
 
 
+@tf_export('svd', 'linalg.svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.
 
@@ -428,10 +432,8 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   ````
   @end_compatibility
   """
-  # pylint: disable=protected-access
-  s, u, v = gen_linalg_ops._svd(
+  s, u, v = gen_linalg_ops.svd(
       tensor, compute_uv=compute_uv, full_matrices=full_matrices, name=name)
-  # pylint: enable=protected-access
   if compute_uv:
     return math_ops.real(s), u, v
   else:
@@ -439,6 +441,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
+@tf_export('norm', 'linalg.norm')
 @deprecation.deprecated_args(
     None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
 def norm(tensor,

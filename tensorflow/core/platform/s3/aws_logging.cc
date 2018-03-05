@@ -48,6 +48,7 @@ void AWSLogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
 
 void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
                               const std::string& message) {
+  if (message == "Initializing Curl library") return;
   switch (log_level) {
     case Aws::Utils::Logging::LogLevel::Info:
       LOG(INFO) << message;
@@ -95,7 +96,7 @@ Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
 
   return log_level;
 }
-}
+}  // namespace
 
 static bool initialized = false;
 static mutex s3_logging_mutex(LINKER_INITIALIZED);

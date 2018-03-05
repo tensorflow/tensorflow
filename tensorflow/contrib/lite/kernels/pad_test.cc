@@ -25,52 +25,87 @@ using ::testing::ElementsAreArray;
 
 class PadOpModel : public SingleOpModel {
  public:
-  PadOpModel(std::initializer_list<int> input_shape,
-             std::initializer_list<int> before_padding,
-             std::initializer_list<int> after_padding) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(
-        BuiltinOperator_PAD, BuiltinOptions_PadOptions,
-        CreatePadOptions(builder_, builder_.CreateVector<int>(before_padding),
-                         builder_.CreateVector<int>(after_padding))
-            .Union());
-    BuildInterpreter({input_shape});
-  }
-
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor<float>(input_, data);
+  }
+
+  void SetPaddings(std::initializer_list<int> paddings) {
+    PopulateTensor<int>(paddings_, paddings);
   }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
- private:
+ protected:
   int input_;
   int output_;
+  int paddings_;
+};
+
+// Tests case where paddings is a const tensor.
+//
+// Example usage is as follows:
+//    PadOpDynamicModel m(input_shape, paddings_shape, paddings_data);
+//    m.SetInput(input_data);
+//    m.Invoke();
+class PadOpConstModel : public PadOpModel {
+ public:
+  PadOpConstModel(std::initializer_list<int> input_shape,
+                  std::initializer_list<int> paddings_shape,
+                  std::initializer_list<int> paddings) {
+    input_ = AddInput(TensorType_FLOAT32);
+    paddings_ = AddConstInput(TensorType_INT32, paddings, paddings_shape);
+    output_ = AddOutput(TensorType_FLOAT32);
+
+    SetBuiltinOp(BuiltinOperator_PAD, BuiltinOptions_PadOptions,
+                 CreatePadOptions(builder_).Union());
+    BuildInterpreter({input_shape});
+  }
+};
+
+// Test case where paddings is a non-const tensor.
+//
+// Example usage is as follows:
+//    PadOpDynamicModel m(input_shape, paddings_shape);
+//    m.SetInput(input_data);
+//    m.SetPaddings(paddings_data);
+//    m.Invoke();
+class PadOpDynamicModel : public PadOpModel {
+ public:
+  PadOpDynamicModel(std::initializer_list<int> input_shape,
+                    std::initializer_list<int> paddings_shape) {
+    input_ = AddInput(TensorType_FLOAT32);
+    paddings_ = AddInput(TensorType_INT32);
+    output_ = AddOutput(TensorType_FLOAT32);
+
+    SetBuiltinOp(BuiltinOperator_PAD, BuiltinOptions_PadOptions,
+                 CreatePadOptions(builder_).Union());
+    BuildInterpreter({input_shape, paddings_shape});
+  }
 };
 
 TEST(PadOpTest, TooManyDimensions) {
   EXPECT_DEATH(
-      PadOpModel({1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 2, 3, 4, 5, 6, 7, 8, 9},
-                 {1, 2, 3, 4, 5, 6, 7, 8, 9}),
+      PadOpConstModel({1, 2, 3, 4, 5, 6, 7, 8, 9}, {9, 2},
+                      {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}),
       "dims != 4");
 }
 
-// TODO(nupurgarg): Test case where before padding and after padding arrays
-// don't contain the same number of dimensions.
 TEST(PadOpTest, UnequalDimensions) {
-  EXPECT_DEATH(PadOpModel({1, 1, 2, 1}, {1, 2, 3}, {1, 2, 3}),
-               "dims != op_context.params->num_dimensions");
+  EXPECT_DEATH(PadOpConstModel({1, 1, 2, 1}, {3, 2}, {1, 1, 2, 2, 3, 3}),
+               "3 != 4");
 }
 
 TEST(PadOpTest, InvalidPadValue) {
-  EXPECT_DEATH(PadOpModel({1, 1, 2, 1}, {0, 1, 2, 0}, {0, -1, -1, 0}),
-               "Pad value has to be greater than equal to 0.");
+  EXPECT_DEATH(
+      PadOpConstModel({1, 1, 2, 1}, {4, 2}, {0, 0, 1, -1, 2, -1, 0, 0}),
+      "Pad value has to be greater than equal to 0.");
 }
 
-TEST(PadOpTest, SimpleTest) {
-  PadOpModel m({1, 2, 2, 1}, {0, 1, 1, 0}, {0, 1, 1, 0});
+TEST(PadOpTest, SimpleConstTest) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadOpConstModel m({1, 2, 2, 1}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0});
   m.SetInput({1, 2, 3, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
@@ -78,10 +113,30 @@ TEST(PadOpTest, SimpleTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
-TEST(PadOpTest, AdvancedTest) {
-  // The padding is input in the order of batch, height, width, depth.
-  PadOpModel m({1, 2, 3, 1}, {0, 0, 1, 0}, {0, 2, 3, 0});
+TEST(PadOpTest, SimpleDynamicTest) {
+  PadOpDynamicModel m({1, 2, 2, 1}, {4, 2});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadOpTest, AdvancedConstTest) {
+  PadOpConstModel m({1, 2, 3, 1}, {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0});
   m.SetInput({1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(PadOpTest, AdvancedDynamicTest) {
+  PadOpDynamicModel m({1, 2, 3, 1}, {4, 2});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,

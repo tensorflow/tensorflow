@@ -147,6 +147,18 @@ class ConstantInitializersTest(test.TestCase):
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
 
+  def testConstantTupleInitializer(self):
+    with self.test_session(use_gpu=True):
+      shape = [3]
+      x = variable_scope.get_variable(
+          "x",
+          shape=shape,
+          dtype=dtypes.int32,
+          initializer=init_ops.constant_initializer((10, 20, 30)))
+      x.initializer.run()
+      self.assertEqual(x.dtype.base_dtype, dtypes.int32)
+      self.assertAllEqual(x.eval(), [10, 20, 30])
+
   def _testNDimConstantInitializer(self, name, value, shape, expected):
     with self.test_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)

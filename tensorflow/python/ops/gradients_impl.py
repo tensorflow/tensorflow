@@ -35,7 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -44,13 +44,14 @@ from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
-
+from tensorflow.python.util.tf_export import tf_export
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -85,17 +86,19 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.constant_value(value.dense_shape)
-  if dense_shape_value is not None:
-    num_elements = np.prod(dense_shape_value)
-    if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+  if context.in_graph_mode():
+    dense_shape_value = tensor_util.constant_value(value.dense_shape)
+    if dense_shape_value is not None:
+      num_elements = np.prod(dense_shape_value)
+      if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+        warnings.warn(
+            "Converting sparse IndexedSlices to a dense Tensor with %d "
+            "elements. This may consume a large amount of memory." %
+            num_elements)
+    else:
       warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor with %d elements. "
-          "This may consume a large amount of memory." % num_elements)
-  else:
-    warnings.warn(
-        "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-        "This may consume a large amount of memory.")
+          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
+          "This may consume a large amount of memory.")
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
@@ -234,9 +237,10 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
           raise TypeError(
               "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
               y.dtype)
-        new_grad_ys.append(array_ops.fill(
-            array_ops.shape(y), constant_op.constant(
-                1, dtype=y.dtype, name="grad_ys_%d" % i)))
+        new_grad_ys.append(
+            array_ops.fill(
+                array_ops.shape(y),
+                constant_op.constant(1, dtype=y.dtype, name="grad_ys_%d" % i)))
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
@@ -352,7 +356,7 @@ def _SymGrad(op, out_grads):
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
   # pylint: disable=protected-access
-  in_grads = functional_ops._symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   # pylint: enable=protected-access
   return in_grads
 
@@ -394,6 +398,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
     return grad_fn()
 
 
+@tf_export("gradients")
 def gradients(ys,
               xs,
               grad_ys=None,
@@ -490,11 +495,12 @@ def gradients(ys,
       name, "gradients",
       list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
-          else x
-          for x in xs]
-    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(xs, name="x",
-                                                            as_ref=True)
+    xs = [
+        x.handle if resource_variable_ops.is_resource_variable(x) else x
+        for x in xs
+    ]
+    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
+        xs, name="x", as_ref=True)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
     # The approach we take here is as follows: Create a list of all ops in the
@@ -511,9 +517,8 @@ def gradients(ys,
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     stop_gradient_ops = [t.op for t in stop_gradients]
-    pending_count, loop_state = _PendingCount(ops.get_default_graph(), to_ops,
-                                              from_ops,
-                                              colocate_gradients_with_ops)
+    pending_count, loop_state = _PendingCount(
+        ops.get_default_graph(), to_ops, from_ops, colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
     #
@@ -586,9 +591,8 @@ def gradients(ys,
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if (not isinstance(out_grad, ops.Tensor) and
-                not out_grad) and ((not grad_fn and is_func_call) or
-                                   _IsTrainable(op.outputs[i])):
+            if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
+                (not grad_fn and is_func_call) or _IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -605,17 +609,17 @@ def gradients(ys,
               if grad_fn:
                 # If grad_fn was found, do not use SymbolicGradient even for
                 # functions.
-                in_grads = _MaybeCompile(
-                    grad_scope, op, func_call, lambda: grad_fn(op, *out_grads))
+                in_grads = _MaybeCompile(grad_scope, op, func_call,
+                                         lambda: grad_fn(op, *out_grads))
               else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
-                in_grads = _MaybeCompile(
-                    grad_scope, op, func_call, lambda: _SymGrad(op, out_grads))
+                in_grads = _MaybeCompile(grad_scope, op, func_call,
+                                         lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
-              if gate_gradients and len(
-                  [x for x in in_grads if x is not None]) > 1:
+              if gate_gradients and len([x for x in in_grads
+                                         if x is not None]) > 1:
                 with ops.device(None):
                   with ops.colocate_with(None, ignore_existing=True):
                     in_grads = control_flow_ops.tuple(in_grads)
@@ -635,8 +639,8 @@ def gradients(ys,
                     "Incompatible shapes between op input and calculated "
                     "input gradient.  Forward operation: %s.  Input index: %d. "
                     "Original input shape: %s.  "
-                    "Calculated input gradient shape: %s"
-                    % (op.name, i, t_in.shape, in_grad.shape))
+                    "Calculated input gradient shape: %s" %
+                    (op.name, i, t_in.shape, in_grad.shape))
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)
@@ -668,8 +672,8 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
     pending_count[x.op._id] -= 1
     ready = (pending_count[x.op._id] == 0)
     if loop_state and not ready:
-      ready = (pending_count[x.op._id] > 0 and
-               control_flow_util.IsLoopSwitch(x.op))
+      ready = (
+          pending_count[x.op._id] > 0 and control_flow_util.IsLoopSwitch(x.op))
     # pylint: enable=protected-access
     if ready:
       if control_flow_util.IsLoopExit(x.op):
@@ -723,8 +727,8 @@ def _GetGrad(grads, t):
   if not op_grads:
     return None
   t_grad = op_grads[t.value_index]
-  assert not isinstance(t_grad, list), (
-      "gradients list should have been aggregated by now.")
+  assert not isinstance(
+      t_grad, list), ("gradients list should have been aggregated by now.")
   return t_grad
 
 
@@ -743,9 +747,8 @@ def _HandleNestedIndexedSlices(grad):
   else:
     assert isinstance(grad.values, ops.IndexedSlices)
     g = _HandleNestedIndexedSlices(grad.values)
-    return ops.IndexedSlices(g.values,
-                             array_ops.gather(grad.indices, g.indices),
-                             g.dense_shape)
+    return ops.IndexedSlices(g.values, array_ops.gather(
+        grad.indices, g.indices), g.dense_shape)
 
 
 def _AccumulatorShape(inputs):
@@ -799,6 +802,7 @@ def _MultiDeviceAddN(tensor_list):
   return math_ops.add_n(summands)
 
 
+@tf_export("AggregationMethod")
 class AggregationMethod(object):
   """A class listing aggregation methods used to combine gradients.
 
@@ -846,8 +850,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
       AggregationMethod.ADD_N, AggregationMethod.EXPERIMENTAL_TREE,
       AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
   ]:
-    raise ValueError("Invalid aggregation_method specified %s." %
-                     aggregation_method)
+    raise ValueError(
+        "Invalid aggregation_method specified %s." % aggregation_method)
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if loop_state:
@@ -856,7 +860,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections.Sequence) and not all([
-        isinstance(g, (ops.Tensor, ops.IndexedSlices)) for g in out_grad
+        isinstance(g, (ops.Tensor, ops.IndexedSlices))
+        for g in out_grad
         if g is not None
     ])):
       raise TypeError("gradients have to be either all Tensors "
@@ -900,8 +905,8 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         else:
           used = "add_n"
           out_grads[i] = _MultiDeviceAddN(out_grad)
-        logging.vlog(2, "  _AggregatedGrads %d x %s using %s",
-                     len(out_grad), tensor_shape, used)
+        logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
+                     tensor_shape, used)
       else:
         out_grad = math_ops._as_indexed_slices_list(
             [g for g in out_grad if g is not None])
@@ -964,15 +969,21 @@ def _hessian_vector_product(ys, xs, v):
   assert len(grads) == length
   elemwise_products = [
       math_ops.multiply(grad_elem, array_ops.stop_gradient(v_elem))
-      for grad_elem, v_elem in zip(grads, v) if grad_elem is not None
+      for grad_elem, v_elem in zip(grads, v)
+      if grad_elem is not None
   ]
 
   # Second backprop
   return gradients(elemwise_products, xs)
 
 
-def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
-            gate_gradients=False, aggregation_method=None):
+@tf_export("hessians")
+def hessians(ys,
+             xs,
+             name="hessians",
+             colocate_gradients_with_ops=False,
+             gate_gradients=False,
+             aggregation_method=None):
   """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
   `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
@@ -1000,9 +1011,9 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   """
   xs = _AsList(xs)
   kwargs = {
-      'colocate_gradients_with_ops': colocate_gradients_with_ops,
-      'gate_gradients': gate_gradients,
-      'aggregation_method': aggregation_method
+      "colocate_gradients_with_ops": colocate_gradients_with_ops,
+      "gate_gradients": gate_gradients,
+      "aggregation_method": aggregation_method
   }
   # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
@@ -1027,8 +1038,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     )
 
     _shape = array_ops.shape(x)
-    _reshaped_hessian = array_ops.reshape(
-        hessian.stack(), array_ops.concat((_shape, _shape), 0)
-    )
+    _reshaped_hessian = array_ops.reshape(hessian.stack(),
+                                          array_ops.concat((_shape, _shape), 0))
     hessians.append(_reshaped_hessian)
   return hessians

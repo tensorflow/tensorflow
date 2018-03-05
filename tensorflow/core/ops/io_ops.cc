@@ -81,21 +81,7 @@ REGISTER_OP("SaveV2")
       // TODO(mrry): Attempt to parse the shapes_and_slices values and use
       // them to constrain the shape of the remaining inputs.
       return Status::OK();
-    })
-    .Doc(R"doc(
-Saves tensors in V2 checkpoint format.
-
-By default, saves the named tensors in full.  If the caller wishes to save
-specific slices of full tensors, "shape_and_slices" should be non-empty strings
-and correspondingly well-formed.
-
-prefix: Must have a single element. The prefix of the V2 checkpoint to which we
-  write the tensors.
-tensor_names: shape {N}. The names of the tensors to be saved.
-shape_and_slices: shape {N}.  The slice specs of the tensors to be saved.
-  Empty strings indicate that they are non-partitioned tensors.
-tensors: `N` tensors to save.
-)doc");
+    });
 
 REGISTER_OP("RestoreV2")
     .Input("prefix: string")
@@ -141,33 +127,7 @@ REGISTER_OP("RestoreV2")
       } else {
         return UnknownShape(c);
       }
-    })
-    .Doc(R"doc(
-Restores tensors from a V2 checkpoint.
-
-For backward compatibility with the V1 format, this Op currently allows
-restoring from a V1 checkpoint as well:
-  - This Op first attempts to find the V2 index file pointed to by "prefix", and
-    if found proceed to read it as a V2 checkpoint;
-  - Otherwise the V1 read path is invoked.
-Relying on this behavior is not recommended, as the ability to fall back to read
-V1 might be deprecated and eventually removed.
-
-By default, restores the named tensors in full.  If the caller wishes to restore
-specific slices of stored tensors, "shape_and_slices" should be non-empty
-strings and correspondingly well-formed.
-
-Callers must ensure all the named tensors are indeed stored in the checkpoint.
-
-prefix: Must have a single element.  The prefix of a V2 checkpoint.
-tensor_names: shape {N}.  The names of the tensors to be restored.
-shape_and_slices: shape {N}.  The slice specs of the tensors to be restored.
-  Empty strings indicate that they are non-partitioned tensors.
-dtypes: shape {N}.  The list of expected dtype for the tensors.  Must match
-  those stored in the checkpoint.
-tensors: shape {N}.  The restored tensors, whose shapes are read from the
-  checkpoint directly.
-)doc");
+    });
 
 REGISTER_OP("MergeV2Checkpoints")
     .Input("checkpoint_prefixes: string")
@@ -179,23 +139,7 @@ REGISTER_OP("MergeV2Checkpoints")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-V2 format specific: merges the metadata files of sharded checkpoints.  The
-result is one logical checkpoint, with one physical metadata file and renamed
-data files.
-
-Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
-
-If delete_old_dirs is true, attempts to delete recursively the dirname of each
-path in the input checkpoint_prefixes.  This is useful when those paths are non
-user-facing temporary locations.
-
-checkpoint_prefixes: prefixes of V2 checkpoints to merge.
-destination_prefix: scalar.  The desired final prefix.  Allowed to be the same
-  as one of the checkpoint_prefixes.
-delete_old_dirs: see above.
-)doc");
+    });
 
 REGISTER_OP("Save")
     .Input("filename: string")
@@ -217,20 +161,7 @@ REGISTER_OP("Save")
           c->WithValue(c->Dim(s, 0), c->num_inputs() - 2, &unused_dim));
 
       return Status::OK();
-    })
-    .Doc(R"doc(
-Saves the input tensors to disk.
-
-The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
-is written to `filename` with name `tensor_names[i]`.
-
-See also `SaveSlices`.
-
-filename: Must have a single element. The name of the file to which we write
-  the tensor.
-tensor_names: Shape `[N]`. The names of the tensors to be saved.
-data: `N` tensors to save.
-)doc");
+    });
 
 REGISTER_OP("SaveSlices")
     .Input("filename: string")
@@ -256,39 +187,7 @@ REGISTER_OP("SaveSlices")
       // TODO(mrry): Attempt to parse the shapes_and_slices values and use
       // them to constrain the shape of the remaining inputs.
       return Status::OK();
-    })
-    .Doc(R"doc(
-Saves input tensors slices to disk.
-
-This is like `Save` except that tensors can be listed in the saved file as being
-a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
-larger tensor and the slice that this tensor covers. `shapes_and_slices` must
-have as many elements as `tensor_names`.
-
-Elements of the `shapes_and_slices` input must either be:
-
-*  The empty string, in which case the corresponding tensor is
-   saved normally.
-*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
-   `dimI` are the dimensions of the larger tensor and `slice-spec`
-   specifies what part is covered by the tensor to save.
-
-`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
-where each `sliceI` is either:
-
-*  The string `-` meaning that the slice covers all indices of this dimension
-*  `start,length` where `start` and `length` are integers.  In that
-   case the slice covers `length` indices starting at `start`.
-
-See also `Save`.
-
-filename: Must have a single element. The name of the file to which we write the
-  tensor.
-tensor_names: Shape `[N]`. The names of the tensors to be saved.
-shapes_and_slices: Shape `[N]`.  The shapes and slice specifications to use when
-  saving the tensors.
-data: `N` tensors to save.
-)doc");
+    });
 
 REGISTER_OP("Restore")
     .Input("file_pattern: string")
@@ -303,36 +202,7 @@ REGISTER_OP("Restore")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    })
-    .Doc(R"doc(
-Restores a tensor from checkpoint files.
-
-Reads a tensor stored in one or several files. If there are several files (for
-instance because a tensor was saved as slices), `file_pattern` may contain
-wildcard symbols (`*` and `?`) in the filename portion only, not in the
-directory portion.
-
-If a `file_pattern` matches several files, `preferred_shard` can be used to hint
-in which file the requested tensor is likely to be found. This op will first
-open the file at index `preferred_shard` in the list of matching files and try
-to restore tensors from that file.  Only if some tensors or tensor slices are
-not found in that first file, then the Op opens all the files. Setting
-`preferred_shard` to match the value passed as the `shard` input
-of a matching `Save` Op may speed up Restore.  This attribute only affects
-performance, not correctness.  The default value -1 means files are processed in
-order.
-
-See also `RestoreSlice`.
-
-file_pattern: Must have a single element. The pattern of the files from
-  which we read the tensor.
-tensor_name: Must have a single element. The name of the tensor to be
-  restored.
-tensor: The restored tensor.
-dt: The type of the tensor to be restored.
-preferred_shard: Index of file to open first if multiple files match
-  `file_pattern`.
-)doc");
+    });
 
 REGISTER_OP("RestoreSlice")
     .Input("file_pattern: string")
@@ -371,48 +241,20 @@ REGISTER_OP("RestoreSlice")
         c->set_output(0, c->UnknownShape());
       }
       return Status::OK();
-    })
-    .Doc(R"doc(
-Restores a tensor from checkpoint files.
-
-This is like `Restore` except that restored tensor can be listed as filling
-only a slice of a larger tensor.  `shape_and_slice` specifies the shape of the
-larger tensor and the slice that the restored tensor covers.
-
-The `shape_and_slice` input has the same format as the
-elements of the `shapes_and_slices` input of the `SaveSlices` op.
-
-file_pattern: Must have a single element. The pattern of the files from
-  which we read the tensor.
-tensor_name: Must have a single element. The name of the tensor to be
-  restored.
-shape_and_slice: Scalar. The shapes and slice specifications to use when
-  restoring a tensors.
-tensor: The restored tensor.
-dt: The type of the tensor to be restored.
-preferred_shard: Index of file to open first if multiple files match
-  `file_pattern`. See the documentation for `Restore`.
-)doc");
+    });
 
 REGISTER_OP("ShardedFilename")
     .Input("basename: string")
     .Input("shard: int32")
     .Input("num_shards: int32")
     .Output("filename: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Generate a sharded filename. The filename is printf formatted as
-   %s-%05d-of-%05d, basename, shard, num_shards.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("ShardedFilespec")
     .Input("basename: string")
     .Input("num_shards: int32")
     .Output("filename: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Generate a glob pattern matching all sharded file names.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 // Reader source ops ----------------------------------------------------------
 
@@ -421,40 +263,15 @@ REGISTER_OP("WholeFileReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs the entire contents of a file as a value.
-
-To use, enqueue filenames in a Queue.  The output of ReaderRead will
-be a filename (key) and the contents of that file (value).
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .SetShapeFn(TwoElementOutput);
 
 REGISTER_OP("WholeFileReaderV2")
     .Output("reader_handle: resource")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A Reader that outputs the entire contents of a file as a value.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-To use, enqueue filenames in a Queue.  The output of ReaderRead will
-be a filename (key) and the contents of that file (value).
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
-
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TextLineReader")
     .Output("reader_handle: Ref(string)")
     .Attr("skip_header_lines: int = 0")
@@ -462,16 +279,7 @@ REGISTER_OP("TextLineReader")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs the lines of a file delimited by '\n'.
-
-reader_handle: The handle to reference the Reader.
-skip_header_lines: Number of lines to skip from the beginning of every file.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Deprecated(26, "Use TextLineReaderV2");
 
 REGISTER_OP("TextLineReaderV2")
     .Output("reader_handle: resource")
@@ -479,19 +287,8 @@ REGISTER_OP("TextLineReaderV2")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A Reader that outputs the lines of a file delimited by '\n'.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-reader_handle: The handle to reference the Reader.
-skip_header_lines: Number of lines to skip from the beginning of every file.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
-
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("FixedLengthRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("header_bytes: int = 0")
@@ -502,20 +299,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs fixed-length records from a file.
-
-reader_handle: The handle to reference the Reader.
-header_bytes: Number of bytes in the header, defaults to 0.
-record_bytes: Number of bytes in the record.
-footer_bytes: Number of bytes in the footer, defaults to 0.
-hop_bytes: Number of bytes to hop before each read. Default of 0 means using
-        record_bytes.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Deprecated(26, "Use FixedLengthRecordReaderV2");
 
 REGISTER_OP("FixedLengthRecordReaderV2")
     .Output("reader_handle: resource")
@@ -527,25 +311,8 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .Attr("shared_name: string = ''")
     .Attr("encoding: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A Reader that outputs fixed-length records from a file.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-reader_handle: The handle to reference the Reader.
-header_bytes: Number of bytes in the header, defaults to 0.
-record_bytes: Number of bytes in the record.
-footer_bytes: Number of bytes in the footer, defaults to 0.
-hop_bytes: Number of bytes to hop before each read. Default of 0 means using
-        record_bytes.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-encoding: The type of encoding for the file. Currently ZLIB and GZIP
-        are supported. Defaults to none.
-)doc");
-
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TFRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
@@ -553,15 +320,7 @@ REGISTER_OP("TFRecordReader")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs the records from a TensorFlow Records file.
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Deprecated(26, "Use TFRecordReaderV2");
 
 REGISTER_OP("TFRecordReaderV2")
     .Output("reader_handle: resource")
@@ -569,70 +328,29 @@ REGISTER_OP("TFRecordReaderV2")
     .Attr("shared_name: string = ''")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A Reader that outputs the records from a TensorFlow Records file.
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("LMDBReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs the records from a LMDB file.
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .SetShapeFn(TwoElementOutput);
 
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("IdentityReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
-    .Doc(R"doc(
-A Reader that outputs the queued work as both the key and value.
-
-To use, enqueue strings in a Queue.  ReaderRead will take the front
-work string and output (work, work).
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Deprecated(26, "Use IdentityReaderV2");
 
 REGISTER_OP("IdentityReaderV2")
     .Output("reader_handle: resource")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A Reader that outputs the queued work as both the key and value.
-
-To use, enqueue strings in a Queue.  ReaderRead will take the front
-work string and output (work, work).
-
-reader_handle: The handle to reference the Reader.
-container: If non-empty, this reader is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this reader is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 // Ops that operate on Readers ------------------------------------------------
 
@@ -641,38 +359,14 @@ REGISTER_OP("ReaderRead")
     .Input("queue_handle: Ref(string)")
     .Output("key: string")
     .Output("value: string")
-    .SetShapeFn(TwoElementVectorAndScalarOutputs)
-    .Doc(R"doc(
-Returns the next record (key, value pair) produced by a Reader.
-
-Will dequeue from the input queue if necessary (e.g. when the
-Reader needs to start reading from a new file since it has finished
-with the previous file).
-
-reader_handle: Handle to a Reader.
-queue_handle: Handle to a Queue, with string work items.
-key: A scalar.
-value: A scalar.
-)doc");
+    .SetShapeFn(TwoElementVectorAndScalarOutputs);
 
 REGISTER_OP("ReaderReadV2")
     .Input("reader_handle: resource")
     .Input("queue_handle: resource")
     .Output("key: string")
     .Output("value: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Returns the next record (key, value pair) produced by a Reader.
-
-Will dequeue from the input queue if necessary (e.g. when the
-Reader needs to start reading from a new file since it has finished
-with the previous file).
-
-reader_handle: Handle to a Reader.
-queue_handle: Handle to a Queue, with string work items.
-key: A scalar.
-value: A scalar.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("ReaderReadUpTo")
     .Input("reader_handle: Ref(string)")
@@ -689,21 +383,7 @@ REGISTER_OP("ReaderReadUpTo")
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Returns up to `num_records` (key, value) pairs produced by a Reader.
-
-Will dequeue from the input queue if necessary (e.g. when the
-Reader needs to start reading from a new file since it has finished
-with the previous file).
-It may return less than `num_records` even before the last batch.
-
-reader_handle: Handle to a `Reader`.
-queue_handle: Handle to a `Queue`, with string work items.
-num_records: number of records to read from `Reader`.
-keys: A 1-D tensor.
-values: A 1-D tensor.
-)doc");
+    });
 
 REGISTER_OP("ReaderReadUpToV2")
     .Input("reader_handle: resource")
@@ -720,93 +400,37 @@ REGISTER_OP("ReaderReadUpToV2")
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Returns up to `num_records` (key, value) pairs produced by a Reader.
-
-Will dequeue from the input queue if necessary (e.g. when the
-Reader needs to start reading from a new file since it has finished
-with the previous file).
-It may return less than `num_records` even before the last batch.
-
-reader_handle: Handle to a `Reader`.
-queue_handle: Handle to a `Queue`, with string work items.
-num_records: number of records to read from `Reader`.
-keys: A 1-D tensor.
-values: A 1-D tensor.
-)doc");
+    });
 
 REGISTER_OP("ReaderNumRecordsProduced")
     .Input("reader_handle: Ref(string)")
     .Output("records_produced: int64")
-    .SetShapeFn(TwoElementVectorAndScalarOutputs)
-    .Doc(R"doc(
-Returns the number of records this Reader has produced.
-
-This is the same as the number of ReaderRead executions that have
-succeeded.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(TwoElementVectorAndScalarOutputs);
 
 REGISTER_OP("ReaderNumRecordsProducedV2")
     .Input("reader_handle: resource")
     .Output("records_produced: int64")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Returns the number of records this Reader has produced.
-
-This is the same as the number of ReaderRead executions that have
-succeeded.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("ReaderNumWorkUnitsCompleted")
     .Input("reader_handle: Ref(string)")
     .Output("units_completed: int64")
-    .SetShapeFn(TwoElementVectorAndScalarOutputs)
-    .Doc(R"doc(
-Returns the number of work units this Reader has finished processing.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(TwoElementVectorAndScalarOutputs);
 
 REGISTER_OP("ReaderNumWorkUnitsCompletedV2")
     .Input("reader_handle: resource")
     .Output("units_completed: int64")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Returns the number of work units this Reader has finished processing.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("ReaderSerializeState")
     .Input("reader_handle: Ref(string)")
     .Output("state: string")
-    .SetShapeFn(TwoElementVectorAndScalarOutputs)
-    .Doc(R"doc(
-Produce a string tensor that encodes the state of a Reader.
-
-Not all Readers support being serialized, so this can produce an
-Unimplemented error.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(TwoElementVectorAndScalarOutputs);
 
 REGISTER_OP("ReaderSerializeStateV2")
     .Input("reader_handle: resource")
     .Output("state: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Produce a string tensor that encodes the state of a Reader.
-
-Not all Readers support being serialized, so this can produce an
-Unimplemented error.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("ReaderRestoreState")
     .Input("reader_handle: Ref(string)")
@@ -820,17 +444,7 @@ REGISTER_OP("ReaderRestoreState")
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Restore a reader to a previously saved state.
-
-Not all Readers support being restored, so this can produce an
-Unimplemented error.
-
-reader_handle: Handle to a Reader.
-state: Result of a ReaderSerializeState of a Reader with type
-  matching reader_handle.
-)doc");
+    });
 
 REGISTER_OP("ReaderRestoreStateV2")
     .Input("reader_handle: resource")
@@ -840,45 +454,22 @@ REGISTER_OP("ReaderRestoreStateV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Restore a reader to a previously saved state.
-
-Not all Readers support being restored, so this can produce an
-Unimplemented error.
-
-reader_handle: Handle to a Reader.
-state: Result of a ReaderSerializeState of a Reader with type
-  matching reader_handle.
-)doc");
+    });
 
 REGISTER_OP("ReaderReset")
     .Input("reader_handle: Ref(string)")
-    .SetShapeFn(TwoElementVectorAndScalarOutputs)
-    .Doc(R"doc(
-Restore a Reader to its initial clean state.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(TwoElementVectorAndScalarOutputs);
 
 REGISTER_OP("ReaderResetV2")
     .Input("reader_handle: resource")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Restore a Reader to its initial clean state.
-
-reader_handle: Handle to a Reader.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 // Other input Ops ----------------------------------------------------------
 
 REGISTER_OP("ReadFile")
     .Input("filename: string")
     .Output("contents: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Reads and outputs the entire contents of the input filename.
-)doc");
+    .SetShapeFn(ScalarInputsAndOutputs);
 
 REGISTER_OP("WriteFile")
     .Input("filename: string")
@@ -888,14 +479,7 @@ REGISTER_OP("WriteFile")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Writes contents to the file at input filename. Creates file and recursively
-creates directory if not existing.
-
-filename: scalar. The name of the file to which we write the contents.
-contents: scalar. The content to be written to the output file.
-)doc");
+    });
 
 REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
@@ -905,15 +489,6 @@ REGISTER_OP("MatchingFiles")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
-    })
-    .Doc(R"doc(
-Returns the set of files matching one or more glob patterns.
-
-Note that this routine only supports wildcard characters in the
-basename portion of the pattern, not in the directory portion.
-
-pattern: Shell wildcard pattern(s). Scalar or vector of type string.
-filenames: A vector of matching filenames.
-)doc");
+    });
 
 }  // namespace tensorflow

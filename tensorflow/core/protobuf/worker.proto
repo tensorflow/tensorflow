@@ -292,7 +292,10 @@ message RecvTensorRequest {
   // into a RunGraph call on the same WorkerService.
   int64 step_id = 1;
 
-  // A key that identifies the tensor to be received.
+  // A key identifying the channel to receive tensors from. A RecvTensor request
+  // retrieves one tensor from the channel, but multiple tensors can be sent and
+  // received over the same channel with multiple RecvTensor requests. See
+  // rendezvous.h for details.
   string rendezvous_key = 2;
 
   // If true, use an out-of-band DMA mechanism to transfer the
@@ -307,6 +310,16 @@ message RecvTensorRequest {
 
   // Optional information needed by the RPC subsystem.
   google.protobuf.Any transport_options = 6;
+
+  // Unique identifier for this request. Every RecvTensorRequest must have a
+  // unique request_id, and retried RecvTensorRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  //
+  // Retried RecvTensorRequests are problematic because a RecvTensor with no
+  // corresponding sender will wait forever, and the tensor may have been
+  // delivered to a previous retry. Workers use request_ids to reject retried
+  // RecvTensor requests instead of waiting forever.
+  int64 request_id = 7;
 }
 
 message RecvTensorResponse {

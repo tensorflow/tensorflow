@@ -20,8 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops.gen_array_ops import _broadcast_args
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.ops.gen_array_ops import broadcast_args
 from tensorflow.python.platform import test
 
 
@@ -29,7 +29,7 @@ class BcastOpsTest(test.TestCase):
 
   def _GetBroadcastShape(self, xs, ys):
     with self.test_session() as sess:
-      return sess.run(_broadcast_args(xs, ys))
+      return sess.run(broadcast_args(xs, ys))
 
   def _GetGradientArgs(self, xs, ys):
     with self.test_session() as sess:

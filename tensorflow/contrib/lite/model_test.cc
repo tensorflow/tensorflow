@@ -20,7 +20,6 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string>
 
 #include "tensorflow/contrib/lite/model.h"
 
@@ -245,14 +244,6 @@ TEST(BasicFlatBufferModel, TestNullErrorReporter) {
   TrivialResolver resolver;
   InterpreterBuilder(*model, resolver)(&interpreter);
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
-}
-
-// Test what happens if we cannot bind any of the ops.
-TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
-  std::string corrupted_data = "123";
-  auto model = FlatBufferModel::BuildFromBuffer(corrupted_data.c_str(),
-                                                corrupted_data.length());
-  ASSERT_FALSE(model);
 }
 
 // Test that loading model directly from a Model flatbuffer works.

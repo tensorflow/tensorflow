@@ -51,37 +51,40 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
       shape_(target_array.GetShape()),
       ir_builder_(ir_builder) {}
 
+static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutputFusion(
+    const ElementGenerator& target_element_generator,
+    const std::vector<IrArray>& target_arrays, llvm::IRBuilder<>* ir_builder) {
+  return [=](const llvm_ir::IrArray::Index array_index) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
+                        target_element_generator(array_index));
+    CHECK(target_element->getType()->isStructTy())
+        << "This BodyEmitter is for multi-output fusion, but target element "
+           "generator does not produce values of struct type.";
+    CHECK_EQ(target_element->getType()->getStructNumElements(),
+             target_arrays.size());
+
+    for (int64 i = 0; i < target_arrays.size(); ++i) {
+      target_arrays[i].EmitWriteArrayElement(
+          array_index, ir_builder->CreateExtractValue(target_element, i),
+          ir_builder);
+    }
+    return Status::OK();
+  };
+}
+
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          tensorflow::gtl::ArraySlice<IrArray> target_arrays,
                          llvm::IRBuilder<>* ir_builder)
-    : body_emitter_([=](const llvm_ir::IrArray::Index array_index)
-                        -> ::tensorflow::Status {
-        // Convert target_element_generator to a BodyEmitter.
-        TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                            target_element_generator(array_index));
-        if (target_arrays.size() == 1) {
-          target_arrays[0].EmitWriteArrayElement(array_index, target_element,
-                                                 ir_builder);
-          return tensorflow::Status::OK();
-        }
-
-        for (int64 i = 0; i < target_arrays.size(); ++i) {
-          target_arrays[i].EmitWriteArrayElement(
-              array_index, ir_builder_->CreateExtractValue(target_element, i),
-              ir_builder);
-        }
-        return tensorflow::Status::OK();
-      }),
+    : body_emitter_(MakeBodyEmitterForMultiOutputFusion(
+          target_element_generator,
+          std::vector<IrArray>(target_arrays.begin(), target_arrays.end()),
+          ir_builder)),
+      shape_(target_arrays[0].GetShape()),
       ir_builder_(ir_builder) {
-  if (target_arrays.size() > 1) {
-    // The sanity check for multiple outputs.
-    shape_ = target_arrays[0].GetShape();
-    for (int64 i = 1; i < target_arrays.size(); ++i) {
-      const Shape& element_shape = target_arrays[i].GetShape();
-      CHECK(ShapeUtil::SameDimensions(shape_, element_shape));
-    }
-  } else {
-    shape_ = target_arrays[0].GetShape();
+  // Sanity check: In multi-output fusion, all shapes produced must have the
+  // same dimensions.
+  for (const IrArray& array : target_arrays) {
+    CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()));
   }
 }
 

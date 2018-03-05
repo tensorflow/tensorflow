@@ -21,6 +21,7 @@ import gzip
 import os
 import zlib
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import constant_op
@@ -270,6 +271,24 @@ class FixedLengthRecordReaderTest(test.TestCase):
         for i in range(self._num_records):
           self.assertEqual(self._record(j, i), sess.run(iterator.get_next()))
       with self.assertRaises(errors.OutOfRangeError):
+        sess.run(iterator.get_next())
+
+  def testFixedLengthRecordDatasetWrongSize(self):
+    test_filenames = self._createFiles()
+    dataset = readers.FixedLengthRecordDataset(
+        test_filenames,
+        self._record_bytes + 1,  # Incorrect record length.
+        self._header_bytes,
+        self._footer_bytes,
+        buffer_size=10)
+    iterator = dataset.make_one_shot_iterator()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"Excluding the header \(5 bytes\) and footer \(2 bytes\), input "
+          r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
+          r"which is not an exact multiple of the record length \(4 bytes\)."):
         sess.run(iterator.get_next())
 
   def _iterator_checkpoint_path(self):
@@ -718,12 +737,43 @@ class TFRecordDatasetTest(test.TestCase):
     one_mebibyte = 2**20
     d = readers.TFRecordDataset(self.test_filenames, buffer_size=one_mebibyte)
     iterator = d.make_one_shot_iterator()
+    next_element = iterator.get_next()
     with self.test_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), sess.run(iterator.get_next()))
+          self.assertAllEqual(self._record(j, i), sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(iterator.get_next())
+        sess.run(next_element)
+
+  def testReadFromDatasetOfFiles(self):
+    files = dataset_ops.Dataset.from_tensor_slices(self.test_filenames)
+    d = readers.TFRecordDataset(files)
+    iterator = d.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    with self.test_session() as sess:
+      for j in range(self._num_files):
+        for i in range(self._num_records):
+          self.assertAllEqual(self._record(j, i), sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testReadTenEpochsFromDatasetOfFilesInParallel(self):
+    files = dataset_ops.Dataset.from_tensor_slices(
+        self.test_filenames).repeat(10)
+    d = readers.TFRecordDataset(files, num_parallel_reads=4)
+    iterator = d.make_one_shot_iterator()
+    next_element = iterator.get_next()
+    expected = []
+    actual = []
+    with self.test_session() as sess:
+      for _ in range(10):
+        for j in range(self._num_files):
+          for i in range(self._num_records):
+            expected.append(self._record(j, i))
+            actual.append(sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+      self.assertEqual(sorted(expected), sorted(actual))
 
 
 if __name__ == "__main__":

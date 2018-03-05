@@ -56,6 +56,10 @@ class VirtualClusterTest : public ::testing::Test {
   std::unique_ptr<VirtualCluster> cluster_;
 };
 
+TEST_F(VirtualClusterTest, ClusterType) {
+  CHECK_EQ("virtual", cluster_->type());
+}
+
 TEST_F(VirtualClusterTest, CostModel) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
                                           cluster_->GetDeviceNames());

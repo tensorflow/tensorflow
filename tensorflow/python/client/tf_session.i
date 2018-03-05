@@ -485,6 +485,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %unignore tensorflow;
 %unignore TF_Run;
 %unignore EqualGraphDefWrapper;
+%unignore EqualAttrValueWrapper;
 
 // Include the wrapper for TF_PRunSetup from tf_session_helper.h.
 
@@ -717,6 +718,8 @@ def TF_Reset(target, containers=None, config=None):
   Py_DECREF(seq);
   $1 = &types_local;
 }
+
+%unignore SetRequireShapeInferenceFns;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

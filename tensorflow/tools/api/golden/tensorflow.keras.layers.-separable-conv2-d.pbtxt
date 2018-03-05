@@ -2,10 +2,11 @@ path: "tensorflow.keras.layers.SeparableConv2D"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.SeparableConv2D\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional.Conv2D\'>"
+  is_instance: "<class \'tensorflow.python.layers.convolutional._SeparableConv\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -126,6 +127,10 @@ tf_class {
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

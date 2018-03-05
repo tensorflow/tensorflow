@@ -77,10 +77,8 @@ Status MaybeInitializeStack(xla::ComputationBuilder* builder,
     // Stack has not been initialized.
     xla::ComputationDataHandle zero =
         XlaHelpers::Zero(builder, resource->type());
-    TF_RETURN_IF_ERROR(resource->SetValue(
-        dtype,
-        builder->Tuple({builder->Broadcast(zero, stack_shape.dim_sizes()),
-                        builder->ConstantR0<int32>(0)})));
+    TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
+    TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
   } else {
     // Checks the expected shape matches the actual shape.
     TensorShape actual_shape;
@@ -107,7 +105,9 @@ class StackOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, size >= 0,
         errors::InvalidArgument(
-            "XLA compilation requires a fixed stack size upper bound."));
+            "XLA compilation requires a fixed stack size upper bound. If "
+            "you are using tf.while_loop, set the maximum_iterations parameter "
+            "to fix this issue."));
 
     // We defer initializing the Stack resource until we see the first push.
     // Otherwise we do not know the shape of the stack elements.
@@ -117,8 +117,8 @@ class StackOp : public XlaOpKernel {
     string name = strings::StrCat("Stack: ", stack_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
-                               value, &resource));
-    resource->set_tensor_array_size(size);
+                               TensorShape(), value, /*tensor_array_size=*/size,
+                               /*tensor_array_gradients=*/{}, &resource));
     ctx->SetResourceOutput(0, resource);
   }
 
@@ -162,11 +162,9 @@ class StackPushOp : public XlaOpKernel {
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    OP_REQUIRES_OK(
-        ctx,
-        resource->SetValue(
-            dtype_, b->Tuple({b->DynamicUpdateSlice(ta, update, start_indices),
-                              b->Add(index, b->ConstantR0<int32>(1))})));
+    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple(
+                            {b->DynamicUpdateSlice(ta, update, start_indices),
+                             b->Add(index, b->ConstantR0<int32>(1))})));
 
     ctx->SetOutput(0, value);
   }
@@ -206,7 +204,7 @@ class StackPopOp : public XlaOpKernel {
     xla::ComputationDataHandle index = b->GetTupleElement(state, 1);
 
     index = b->Sub(index, b->ConstantR0<int32>(1));
-    OP_REQUIRES_OK(ctx, resource->SetValue(dtype_, b->Tuple({ta, index})));
+    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple({ta, index})));
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =

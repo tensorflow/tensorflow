@@ -36,12 +36,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 
 
+@tf_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(collections.namedtuple(
     'ServingInputReceiver',
     ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
@@ -118,6 +120,63 @@ class ServingInputReceiver(collections.namedtuple(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
+@tf_export('estimator.export.TensorServingInputReceiver')
+class TensorServingInputReceiver(collections.namedtuple(
+    'TensorServingInputReceiver',
+    ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
+  """A return type for a serving_input_receiver_fn.
+
+  This is for use with models that expect a single `Tensor` or `SparseTensor`
+  as an input feature, as opposed to a dict of features.
+
+  The normal `ServingInputReceiver` always returns a feature dict, even if it
+  contains only one entry, and so can be used only with models that accept such
+  a dict.  For models that accept only a single raw feature, the
+  `serving_input_receiver_fn` provided to `Estimator.export_savedmodel()` should
+  return this `TensorServingInputReceiver` instead.  See:
+  https://github.com/tensorflow/tensorflow/issues/11674
+
+  Note that the receiver_tensors and receiver_tensor_alternatives arguments
+  will be automatically converted to the dict representation in either case,
+  because the SavedModel format requires each input `Tensor` to have a name
+  (provided by the dict key).
+
+  The expected return values are:
+    features: A single `Tensor` or `SparseTensor`, representing the feature
+      to be passed to the model.
+    receiver_tensors: a `Tensor`, or a dict of string to `Tensor`, specifying
+      input nodes where this receiver expects to be fed by default.  Typically,
+      this is a single placeholder expecting serialized `tf.Example` protos.
+    receiver_tensors_alternatives: a dict of string to additional
+      groups of receiver tensors, each of which may be a `Tensor` or a dict of
+      string to `Tensor`.  These named receiver tensor alternatives generate
+      additional serving signatures, which may be used to feed inputs at
+      different points within the input receiver subgraph.  A typical usage is
+      to allow feeding raw feature `Tensor`s *downstream* of the
+      tf.parse_example() op.  Defaults to None.
+  """
+
+  def __new__(cls, features, receiver_tensors,
+              receiver_tensors_alternatives=None):
+    if features is None:
+      raise ValueError('features must be defined.')
+    if not (isinstance(features, ops.Tensor)
+            or isinstance(features, sparse_tensor.SparseTensor)):
+      raise ValueError('feature must be a Tensor or SparseTensor.')
+
+    receiver = ServingInputReceiver(
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=receiver_tensors_alternatives)
+
+    return super(TensorServingInputReceiver, cls).__new__(
+        cls,
+        features=receiver.features[_SINGLE_FEATURE_DEFAULT_NAME],
+        receiver_tensors=receiver.receiver_tensors,
+        receiver_tensors_alternatives=receiver.receiver_tensors_alternatives)
+
+
+@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -146,6 +205,7 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
   return serving_input_receiver_fn
 
 
+@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 

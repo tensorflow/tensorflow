@@ -59,7 +59,11 @@ _summary_type_map = {
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
-  This Estimator is backed by TFGAN.
+  This Estimator is backed by TFGAN. The network functions follow the TFGAN API
+  except for one exception: if either `generator_fn` or `discriminator_fn` have
+  an argument called `mode`, then the tf.Estimator mode is passed in for that
+  argument. This helps with operations like batch normalization, which have
+  different train and evaluation behavior.
 
   Example:
 
@@ -233,9 +237,11 @@ def _gan_model_fn(
 def _make_gan_model(generator_fn, discriminator_fn, real_data,
                     generator_inputs, generator_scope, add_summaries, mode):
   """Make a `GANModel`, and optionally pass in `mode`."""
-  # If `generator_fn` has an argument `mode`, pass mode to it.
+  # If network functions have an argument `mode`, pass mode to it.
   if 'mode' in inspect.getargspec(generator_fn).args:
     generator_fn = functools.partial(generator_fn, mode=mode)
+  if 'mode' in inspect.getargspec(discriminator_fn).args:
+    discriminator_fn = functools.partial(discriminator_fn, mode=mode)
   gan_model = tfgan_train.gan_model(
       generator_fn,
       discriminator_fn,

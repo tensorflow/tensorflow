@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""IMDB movie review sentiment classification dataset.
+"""IMDB sentiment classification dataset.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -21,11 +21,14 @@ from __future__ import print_function
 import json
 
 import numpy as np
-from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.keras._impl.keras.preprocessing.sequence import _remove_long_seq
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.imdb.load_data')
 def load_data(path='imdb.npz',
               num_words=None,
               skip_top=0,
@@ -33,7 +36,8 @@ def load_data(path='imdb.npz',
               seed=113,
               start_char=1,
               oov_char=2,
-              index_from=3):
+              index_from=3,
+              **kwargs):
   """Loads the IMDB dataset.
 
   Arguments:
@@ -50,6 +54,7 @@ def load_data(path='imdb.npz',
       oov_char: words that were cut out because of the `num_words`
           or `skip_top` limit will be replaced with this character.
       index_from: index actual words with this index and higher.
+      **kwargs: Used for backwards compatibility.
 
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
@@ -64,22 +69,29 @@ def load_data(path='imdb.npz',
   Words that were not seen in the training set but are in the test set
   have simply been skipped.
   """
+  # Legacy support
+  if 'nb_words' in kwargs:
+    logging.warning('The `nb_words` argument in `load_data` '
+                    'has been renamed `num_words`.')
+    num_words = kwargs.pop('nb_words')
+  if kwargs:
+    raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
+
   path = get_file(
       path,
       origin='https://s3.amazonaws.com/text-datasets/imdb.npz',
       file_hash='599dadb1135973df5b59232a0e9a887c')
-  f = np.load(path)
-  x_train, labels_train = f['x_train'], f['y_train']
-  x_test, labels_test = f['x_test'], f['y_test']
-  f.close()
+  with np.load(path) as f:
+    x_train, labels_train = f['x_train'], f['y_train']
+    x_test, labels_test = f['x_test'], f['y_test']
 
   np.random.seed(seed)
-  indices = np.arrange(len(x_train))
+  indices = np.arange(len(x_train))
   np.random.shuffle(indices)
   x_train = x_train[indices]
   labels_train = labels_train[indices]
 
-  indices = np.arrange(len(x_test))
+  indices = np.arange(len(x_test))
   np.random.shuffle(indices)
   x_test = x_test[indices]
   labels_test = labels_test[indices]
@@ -93,14 +105,7 @@ def load_data(path='imdb.npz',
     xs = [[w + index_from for w in x] for x in xs]
 
   if maxlen:
-    new_xs = []
-    new_labels = []
-    for x, y in zip(xs, labels):
-      if len(x) < maxlen:
-        new_xs.append(x)
-        new_labels.append(y)
-    xs = new_xs
-    labels = new_labels
+    xs, labels = _remove_long_seq(maxlen, xs, labels)
     if not xs:
       raise ValueError('After filtering for sequences shorter than maxlen=' +
                        str(maxlen) + ', no sequence was kept. '
@@ -112,27 +117,20 @@ def load_data(path='imdb.npz',
   # reserve 'index_from' (=3 by default) characters:
   # 0 (padding), 1 (start), 2 (OOV)
   if oov_char is not None:
-    xs = [[oov_char if (w >= num_words or w < skip_top) else w for w in x]
-          for x in xs]
+    xs = [
+        [w if (skip_top <= w < num_words) else oov_char for w in x] for x in xs
+    ]
   else:
-    new_xs = []
-    for x in xs:
-      nx = []
-      for w in x:
-        if skip_top <= w < num_words:
-          nx.append(w)
-      new_xs.append(nx)
-    xs = new_xs
+    xs = [[w for w in x if skip_top <= w < num_words] for x in xs]
 
-  x_train = np.array(xs[:len(x_train)])
-  y_train = np.array(labels[:len(x_train)])
-
-  x_test = np.array(xs[len(x_train):])
-  y_test = np.array(labels[len(x_train):])
+  idx = len(x_train)
+  x_train, y_train = np.array(xs[:idx]), np.array(labels[:idx])
+  x_test, y_test = np.array(xs[idx:]), np.array(labels[idx:])
 
   return (x_train, y_train), (x_test, y_test)
 
 
+@tf_export('keras.datasets.imdb.get_word_index')
 def get_word_index(path='imdb_word_index.json'):
   """Retrieves the dictionary mapping word indices back to words.
 
@@ -144,8 +142,7 @@ def get_word_index(path='imdb_word_index.json'):
   """
   path = get_file(
       path,
-      origin='https://s3.amazonaws.com/text-datasets/imdb_word_index.json')
-  f = open(path)
-  data = json.load(f)
-  f.close()
-  return data
+      origin='https://s3.amazonaws.com/text-datasets/imdb_word_index.json',
+      file_hash='bfafd718b763782e994055a2d397834f')
+  with open(path) as f:
+    return json.load(f)

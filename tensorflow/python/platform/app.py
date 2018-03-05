@@ -23,6 +23,7 @@ import sys as _sys
 
 from tensorflow.python.platform import flags
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _usage(shorthelp):
@@ -108,6 +109,7 @@ def _define_help_flags():
     _define_help_flags_called = True
 
 
+@tf_export('app.run')
 def run(main=None, argv=None):
   """Runs the program with an optional 'main' function and 'argv' list."""
 

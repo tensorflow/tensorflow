@@ -3,6 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.layers.convolutional.Conv3D\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -107,6 +108,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

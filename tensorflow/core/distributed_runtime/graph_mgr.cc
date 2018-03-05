@@ -271,7 +271,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       skip_cost_models_ = false;
     }
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, subgraph.release(), &unit->root));
+        NewLocalExecutor(params, std::move(subgraph), &unit->root));
   }
   return Status::OK();
 }

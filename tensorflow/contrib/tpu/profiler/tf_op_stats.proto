@@ -61,6 +61,11 @@ message OpMetricsResult {
 message OpMetricsDbResult {
   // A bunch of OpMetricsResults.
   repeated OpMetricsResult metrics_db = 1;
+  // The total host infeed-enqueue duration in picoseconds.
+  optional uint64 total_host_infeed_enq_duration_ps = 2;
+  // The total of the difference between the start times of two
+  // consecutive infeed-enqueues (per host) in picoseconds.
+  optional uint64 total_host_infeed_enq_start_timestamp_ps_diff = 3;
 }
 
 // Result proto for StepInfo.
@@ -72,6 +77,8 @@ message StepInfoResult {
   // The infeed duration in picoseconds.
   // Can turn into a map if we want a variable number of ops.
   optional uint64 infeed_duration_ps = 3;
+  // The start time of this step in picoseconds.
+  optional uint64 begin_ps = 4;
 }
 
 // Result proto for a sequence of steps.
@@ -150,6 +157,54 @@ message RunEnvironmentResult {
   repeated HostDependentJobInfoResult host_dependent_job_info = 6;
 }
 
+// The types of host operations that are tracked.
+enum HostOp {
+  // Invalid host op.
+  kINVALIDHostOp = 0;
+  // Each of host op type has two parts:
+  // (1) the stage where the op happens and (2) the op name.
+  // stage = Input Data Producer, op = Get Next Batch.
+  kInputDataProducerGetNextBatch = 1;
+  // stage = Input Data Producer, op = Session Run.
+  kInputDataProducerSessionRun = 2;
+  // stage = Input Data Producer, op = Forward Batch.
+  kInputDataProducerForwardBatch = 3;
+  // stage = Infeed Thread, op = Get Next Batch.
+  kInfeedThreadGetNextBatch = 4;
+  // stage = Infeed Thread, op = Session Run.
+  kInfeedThreadSessionRun = 5;
+  // stage = Infeed Thread, op = Forward Batch.
+  kInfeedThreadForwardBatch = 6;
+  // stage = Outfeed Thread, op = Get Next Batch.
+  kOutfeedThreadGetNextBatch = 7;
+  // stage = Outfeed Thread, op = Session Run.
+  kOutfeedThreadSessionRun = 8;
+  // stage = Outfeed Thread, op = Forward Batch.
+  kOutfeedThreadForwardBatch = 9;
+}
+
+// Result proto for the host ops per TPU step.
+message HostOpsPerTpuStep {
+  // Whether the data in this message is valid.
+  optional bool valid = 1 [default = false];
+  // The current TPU step number.
+  optional uint32 tpu_step_num = 2;
+  // The beginning time of the current TPU step on the device in picoseconds.
+  optional uint64 tpu_step_begin_ps = 3;
+  // The ending time of the current TPU step on the device in picoseconds.
+  optional uint64 tpu_step_end_ps = 4;
+  // For each possible host operation, maps to the difference between the TPU
+  // step number that the host op targets and the current TPU step number.
+  // The key is HostOp, value is the step difference.
+  map<int32, int32> step_diffs = 5;
+}
+
+// Result proto for the host ops for all TPU steps.
+message HostOpsResult {
+  // A sequence of HostOpsPerTpuStep (one for each TPU step)
+  repeated HostOpsPerTpuStep host_op_sequence = 1;
+}
+
 // Result proto for TfStatsHelper.
 message TfOpStats {
   // The result for the TF-metric database.
@@ -166,4 +221,6 @@ message TfOpStats {
   optional double matrix_unit_utilization_percent = 6;
   // The run environment of this profiling session.
   optional RunEnvironmentResult run_environment = 7;
+  // The result for the host operations.
+  optional HostOpsResult host_ops = 8;
 }

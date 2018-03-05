@@ -199,12 +199,10 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
-  // Return a vector containing all BufferAliases of the given logical buffer
-  // This trivially includes the BufferAlias with same instruction and index as
-  // the logical buffer itself, so the returned vector is never empty.  The
-  // buffer alias set is the inverse of the points-to set. That is,
-  // LogicalBuffer B is in the points-to set of instruction I at index N iff
-  // instruction I, index N is a BufferAlias of B.
+  // Return a (possibly empty) vector containing all BufferAliases of the given
+  // logical buffer The buffer alias set is the inverse of the points-to set.
+  // That is, LogicalBuffer B is in the points-to set of instruction I at index
+  // N iff instruction I, index N is a BufferAlias of B.
   using BufferAliasVector = tensorflow::gtl::InlinedVector<BufferAlias, 1>;
   const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 

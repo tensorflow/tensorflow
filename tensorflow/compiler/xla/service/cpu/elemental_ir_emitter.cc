@@ -33,8 +33,14 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
   switch (op->opcode()) {
     case HloOpcode::kTanh: {
       PrimitiveType element_type = op->shape().element_type();
+      bool cast_result_to_fp16 = false;
       string function_name;
       switch (element_type) {
+        case F16:
+          cast_result_to_fp16 = true;
+          operand_value = ir_builder_->CreateFPCast(operand_value,
+                                                    ir_builder_->getFloatTy());
+          TF_FALLTHROUGH_INTENDED;
         case F32:
           function_name = "tanhf";
           break;
@@ -44,7 +50,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
         default:
           return Unimplemented("tanh");
       }
-      // Create function declaration for 'tanhf'.
+      // Create a function declaration.
       llvm::Function* function =
           llvm::cast<llvm::Function>(module_->getOrInsertFunction(
               llvm_ir::AsStringRef(function_name), operand_value->getType(),
@@ -52,8 +58,12 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
       function->setCallingConv(llvm::CallingConv::C);
       function->setDoesNotThrow();
       function->setDoesNotAccessMemory();
-      // Create instruction to call 'tanhf'.
-      return ir_builder_->CreateCall(function, operand_value);
+      // Create an instruction to call the function.
+      llvm::Value* result = ir_builder_->CreateCall(function, operand_value);
+      if (cast_result_to_fp16) {
+        result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+      }
+      return result;
     }
     default:
       return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
@@ -63,7 +73,13 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
 StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
   string function_name;
+  bool cast_result_to_fp16 = false;
   switch (prim_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      lhs = ir_builder_->CreateFPCast(lhs, ir_builder_->getFloatTy());
+      rhs = ir_builder_->CreateFPCast(rhs, ir_builder_->getFloatTy());
+      TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "atan2f";
       break;
@@ -73,7 +89,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     default:
       return Unimplemented("atan2");
   }
-  // Create function declaration for 'atan2'.
+  // Create a function declaration.
   llvm::Function* function =
       llvm::cast<llvm::Function>(module_->getOrInsertFunction(
           llvm_ir::AsStringRef(function_name), lhs->getType(), lhs->getType(),
@@ -81,8 +97,12 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();
-  // Create instruction to call 'atan2'.
-  return ir_builder_->CreateCall(function, {lhs, rhs});
+  // Create an instruction to call the function.
+  llvm::Value* result = ir_builder_->CreateCall(function, {lhs, rhs});
+  if (cast_result_to_fp16) {
+    result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+  }
+  return result;
 }
 
 llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(

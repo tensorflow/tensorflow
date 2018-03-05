@@ -22,6 +22,14 @@ _SINGLE_URL_WHITELIST = depset([
 def _is_windows(ctx):
   return ctx.os.name.lower().find("windows") != -1
 
+def _wrap_bash_cmd(ctx, cmd):
+  if _is_windows(ctx):
+    bazel_sh = _get_env_var(ctx, "BAZEL_SH")
+    if not bazel_sh:
+      fail("BAZEL_SH environment variable is not set")
+    cmd = [bazel_sh, "-l", "-c", " ".join(cmd)]
+  return cmd
+
 def _get_env_var(ctx, name):
   if name in ctx.os.environ:
     return ctx.os.environ[name]
@@ -46,12 +54,8 @@ def _apply_patch(ctx, patch_file):
   # Don't check patch on Windows, because patch is only available under bash.
   if not _is_windows(ctx) and not ctx.which("patch"):
     fail("patch command is not found, please install it")
-  cmd = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
-  if _is_windows(ctx):
-    bazel_sh = _get_env_var(ctx, "BAZEL_SH")
-    if not bazel_sh:
-      fail("BAZEL_SH environment variable is not set")
-    cmd = [bazel_sh, "-c", " ".join(cmd)]
+  cmd = _wrap_bash_cmd(
+    ctx, ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)])
   _execute_and_check_ret_code(ctx, cmd)
 
 def _apply_delete(ctx, paths):
@@ -60,8 +64,8 @@ def _apply_delete(ctx, paths):
       fail("refusing to rm -rf path starting with '/': " + path)
     if ".." in path:
       fail("refusing to rm -rf path containing '..': " + path)
-  _execute_and_check_ret_code(
-      ctx, ["rm", "-rf"] + [ctx.path(path) for path in paths])
+  cmd = _wrap_bash_cmd(ctx, ["rm", "-rf"] + [ctx.path(path) for path in paths])
+  _execute_and_check_ret_code(ctx, cmd)
 
 def _tf_http_archive(ctx):
   if ("mirror.bazel.build" not in ctx.attr.urls[0] or

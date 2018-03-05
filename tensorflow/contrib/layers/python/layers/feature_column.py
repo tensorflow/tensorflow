@@ -154,6 +154,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
 
 
 # Imports the core `InputLayer` symbol in contrib during development.
@@ -554,27 +555,69 @@ def sparse_column_with_integerized_feature(column_name,
 class _SparseColumnHashed(_SparseColumn):
   """See `sparse_column_with_hash_bucket`."""
 
+  def __new__(cls,
+              column_name,
+              is_integerized=False,
+              bucket_size=None,
+              lookup_config=None,
+              combiner="sum",
+              dtype=dtypes.string,
+              hash_keys=None):
+    if hash_keys is not None:
+      if not isinstance(hash_keys, list) or not hash_keys:
+        raise ValueError("hash_keys must be a non-empty list.")
+      if (any([not isinstance(key_pair, list) for key_pair in hash_keys]) or
+          any([len(key_pair) != 2 for key_pair in hash_keys]) or
+          any([not isinstance(key, int) for key in nest.flatten(hash_keys)])):
+        raise ValueError(
+            "Each element of hash_keys must be a pair of integers.")
+    obj = super(_SparseColumnHashed, cls).__new__(
+        cls,
+        column_name,
+        is_integerized=is_integerized,
+        bucket_size=bucket_size,
+        lookup_config=lookup_config,
+        combiner=combiner,
+        dtype=dtype)
+    obj.hash_keys = hash_keys
+    return obj
+
   def _do_transform(self, input_tensor):
     if self.dtype.is_integer:
       sparse_values = string_ops.as_string(input_tensor.values)
     else:
       sparse_values = input_tensor.values
 
-    sparse_id_values = string_ops.string_to_hash_bucket_fast(
-        sparse_values, self.bucket_size, name="lookup")
-    return sparse_tensor_py.SparseTensor(input_tensor.indices, sparse_id_values,
-                                         input_tensor.dense_shape)
+    if self.hash_keys:
+      result = []
+      for key in self.hash_keys:
+        sparse_id_values = string_ops.string_to_hash_bucket_strong(
+            sparse_values, self.bucket_size, key)
+        result.append(
+            sparse_tensor_py.SparseTensor(input_tensor.indices,
+                                          sparse_id_values,
+                                          input_tensor.dense_shape))
+      return sparse_ops.sparse_concat(axis=1, sp_inputs=result, name="lookup")
+    else:
+      sparse_id_values = string_ops.string_to_hash_bucket_fast(
+          sparse_values, self.bucket_size, name="lookup")
+      return sparse_tensor_py.SparseTensor(
+          input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
                                    hash_bucket_size,
                                    combiner="sum",
-                                   dtype=dtypes.string):
+                                   dtype=dtypes.string,
+                                   hash_keys=None):
   """Creates a _SparseColumn with hashed bucket configuration.
 
   Use this when your sparse features are in string or integer format, but you
   don't have a vocab file that maps each value to an integer ID.
   output_id = Hash(input_feature_string) % bucket_size
+
+  When hash_keys is set, multiple integer IDs would be created with each key
+  pair in the `hash_keys`. This is useful to reduce the collision of hashed ids.
 
   Args:
     column_name: A string defining sparse column name.
@@ -588,6 +631,9 @@ def sparse_column_with_hash_bucket(column_name,
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
     dtype: The type of features. Only string and integer types are supported.
+    hash_keys: The hash keys to use. It is a list of lists of two uint64s. If
+      None, simple and fast hashing algorithm is used. Otherwise, multiple
+      strong hash ids would be produced with each two unit64s in this argument.
 
   Returns:
     A _SparseColumn with hashed bucket configuration
@@ -600,7 +646,8 @@ def sparse_column_with_hash_bucket(column_name,
       column_name,
       bucket_size=hash_bucket_size,
       combiner=combiner,
-      dtype=dtype)
+      dtype=dtype,
+      hash_keys=hash_keys)
 
 
 class _SparseColumnKeys(_SparseColumn):
@@ -751,6 +798,10 @@ class _WeightedSparseColumn(
     config.update(
         {self.weight_column_name: parsing_ops.VarLenFeature(self.dtype)})
     return config
+
+  @property
+  def lookup_config(self):
+    return self.sparse_id_column.lookup_config
 
   @property
   def key(self):

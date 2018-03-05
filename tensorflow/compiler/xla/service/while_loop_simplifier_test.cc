@@ -418,5 +418,32 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedOperand) {
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
 }
 
+TEST_F(WhileLoopSimplifierTest, BodyHasNonTupleRoot) {
+  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+
+  HloComputation* while_body = [&]() {
+    HloComputation::Builder builder(TestName() + ".passthrough");
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, while_shape, "param"));
+    HloComputation* result = module().AddEmbeddedComputation(builder.Build());
+
+    result->AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    return result;
+  }();
+
+  HloComputation::Builder builder(TestName());
+  auto* init_value = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+  builder.AddInstruction(HloInstruction::CreateWhile(
+      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
+      while_body, init_value));
+  module().AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopSimplifier{}.Run(&module()));
+  EXPECT_FALSE(simplified_loop);
+}
+
 }  // namespace
 }  // namespace xla

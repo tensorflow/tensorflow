@@ -27,6 +27,8 @@ function cp_external() {
   for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
+  mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
+  cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
@@ -135,8 +137,8 @@ function main() {
         fi
       fi
     fi
-    # Install toco as a binary in aux-bin.
     mkdir "${TMPDIR}/tensorflow/aux-bin"
+    # Install toco as a binary in aux-bin.
     cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
   fi
 

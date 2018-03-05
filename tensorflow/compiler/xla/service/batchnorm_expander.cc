@@ -153,6 +153,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -286,9 +287,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    HloSharding operand_sharding =
+        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(operand_sharding);
       } else {
         inst->set_sharding(HloSharding::Replicate());
       }
@@ -332,6 +335,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -417,6 +421,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_inst->set_metadata(batch_norm->metadata());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -578,9 +583,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    HloSharding activation_sharding =
+        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(activation_sharding);
       } else {
         inst->set_sharding(HloSharding::Replicate());
       }

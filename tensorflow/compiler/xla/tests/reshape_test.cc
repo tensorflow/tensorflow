@@ -566,14 +566,15 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
 XLA_TEST_P(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     ComputationBuilder b(client_, TestName());
-    auto input_literal = Literal::CreateR1<float>({83.0f});
     std::vector<int64> ones(rank, 1);  // this is {1, ..., 1}.
     std::vector<int64> dimensions(rank);
     std::iota(dimensions.begin(), dimensions.end(), 0);
-    *input_literal->mutable_shape() = ShapeUtil::MakeShape(F32, ones);
+    Literal input_literal(ShapeUtil::MakeShape(F32, ones));
+    std::vector<int64> zeros(rank, 0);  // this is {0, ..., 0}.
+    input_literal.Set<float>(zeros, 83.0f);
 
     ComputationDataHandle parameter;
-    auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
+    auto input = CreateParameterAndTransferLiteral(0, input_literal, "input",
                                                    &b, &parameter);
     b.Reshape(parameter, dimensions, {});
 
@@ -818,11 +819,9 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   // data.
   if (use_bfloat16()) {
     auto expected = LiteralTestUtil::ConvertF32ToBF16(*input_literal);
-    EXPECT_EQ(tensorflow::gtl::ArraySlice<bfloat16>(expected->bf16s()),
-              tensorflow::gtl::ArraySlice<bfloat16>(output_literal->bf16s()));
+    EXPECT_EQ(expected->data<bfloat16>(), output_literal->data<bfloat16>());
   } else {
-    EXPECT_EQ(tensorflow::gtl::ArraySlice<float>(input_literal->f32s()),
-              tensorflow::gtl::ArraySlice<float>(output_literal->f32s()));
+    EXPECT_EQ(input_literal->data<float>(), output_literal->data<float>());
   }
 }
 

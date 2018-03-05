@@ -58,7 +58,7 @@ def _is_in_placeholders(op, func_arg_placeholders):
 
 
 def _get_node_def(op):
-  return op._node_def  # pylint: disable=protected-access
+  return op.node_def  # pylint: disable=protected-access
 
 
 def _get_op_def(op):

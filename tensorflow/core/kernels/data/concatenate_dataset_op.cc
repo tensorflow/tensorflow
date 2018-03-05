@@ -127,14 +127,23 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        } else {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impl_uninitialized"), ""));
+        }
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        if (reader->Contains(full_name("input_impl_uninitialized"))) {
+          input_impl_.reset();
+          return Status::OK();
+        }
         if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
           return errors::InvalidArgument("i_ must be in range [0, 2].");
         if (i_ == 1) {

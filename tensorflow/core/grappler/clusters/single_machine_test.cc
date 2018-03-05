@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
@@ -44,6 +45,7 @@ class SingleMachineTest : public ::testing::Test {
 #endif
     cluster_.reset(
         new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
+    TF_CHECK_OK(cluster_->EnablePeakMemoryStats(true));
     TF_CHECK_OK(cluster_->Provision());
   }
 
@@ -57,6 +59,10 @@ class SingleMachineTest : public ::testing::Test {
  protected:
   std::unique_ptr<SingleMachine> cluster_;
 };
+
+TEST_F(SingleMachineTest, ClusterType) {
+  CHECK_EQ("single_machine", cluster_->type());
+}
 
 TEST_F(SingleMachineTest, CostModel) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
@@ -461,60 +467,18 @@ TEST_F(SingleMachineTest, PersistentMemory) {
       found_hashtable = true;
       // Persistent memory usage should be 0 since it's recorded as part of the
       // initialize_table op.
-      EXPECT_EQ(0, node.host_persistent_memory_size());
-      EXPECT_EQ(0, node.device_persistent_memory_size());
+      EXPECT_EQ(0, node.persistent_memory_size());
     } else if (node.name() == "initialize_table") {
       found_table_init = true;
       // Persistent memory should hold 2 keys and 2 values.
-      EXPECT_LE(4 * sizeof(int64), node.host_persistent_memory_size());
-      EXPECT_EQ(0, node.device_persistent_memory_size());
+      EXPECT_LE(4 * sizeof(int64), node.persistent_memory_size());
     }
   }
   EXPECT_TRUE(found_table_init);
   EXPECT_TRUE(found_hashtable);
 }
 
-#if defined(PLATFORM_GOOGLE)
-namespace {
-
-SessionOptions GetSessionOption(int num_cpu_cores, int num_gpus) {
-  SessionOptions options;
-  // Copied from single_machine.h
-  (*options.config.mutable_device_count())["CPU"] = 1;
-  if (num_gpus > 0) {
-    (*options.config.mutable_device_count())["GPU"] = num_gpus;
-  }
-  CHECK_GE(num_cpu_cores, 1);
-  options.config.set_intra_op_parallelism_threads(num_cpu_cores);
-  options.config.add_session_inter_op_thread_pool()->set_num_threads(
-      num_cpu_cores);
-  return options;
-}
-
-Status GetDeviceMemoryStats(
-    const SessionOptions& session_option,
-    std::unordered_map<string, AllocatorStats>* allocator_stats_by_device) {
-  std::vector<Device*> devices;
-  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(session_option,
-                                               "" /* name_prefix */, &devices));
-  allocator_stats_by_device->clear();
-  for (Device* device : devices) {
-    AllocatorStats stats;
-    auto* allocator = device->GetAllocator(AllocatorAttributes());
-    if (!allocator->TracksAllocationSizes()) {
-      return Status(error::INVALID_ARGUMENT,
-                    "Tracking allocation is not enabled.");
-    }
-    allocator->GetStats(&stats);
-    (*allocator_stats_by_device)[device->name()] = stats;
-    delete device;
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
-TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
+GrapplerItem CreateGrapplerItemWithResourceMemory() {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   // Add a variable and initializer.
@@ -561,36 +525,88 @@ TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
   item.fetch.push_back("var_matmul");
   item.fetch.push_back("dequeue");
 
-  // Run the graph
-  TF_CHECK_OK(cluster_->Initialize(item));
-  EnableCPUAllocatorStats(true);
+  return item;
+}
 
-  SessionOptions options =
-      GetSessionOption(3 /* cpu cores */, 0 /* num gpus */);
-  std::unordered_map<string, AllocatorStats> device_memory_before;
-  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory_before));
-  EXPECT_EQ(device_memory_before.size(), 1);
+#if defined(PLATFORM_GOOGLE)
+TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
+  GrapplerItem item = CreateGrapplerItemWithResourceMemory();
+  TF_CHECK_OK(cluster_->Initialize(item));
+
+  std::unordered_map<string, uint64> device_peak_memory_before;
+  TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory_before));
+  EXPECT_EQ(device_peak_memory_before.size(), 1);
+  // There might be a bit memory used before session's running anything.
+  EXPECT_LT(device_peak_memory_before.begin()->second, 200);
 
   RunMetadata metadata;
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
 
   // Check there is memory that is not released.
-  std::unordered_map<string, AllocatorStats> device_memory;
-  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory));
-  EXPECT_EQ(device_memory.size(), 1);
-  EXPECT_GT(device_memory.begin()->second.bytes_in_use, 0);
+  std::unordered_map<string, uint64> device_peak_memory;
+  TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory));
+  EXPECT_EQ(device_peak_memory.size(), 1);
+  EXPECT_GT(device_peak_memory.begin()->second, 0);
 
-  // Shutting down the cluster_ would release all memory.
+  // Reprovisioning the cluster would release all memory.
   TF_CHECK_OK(cluster_->Shutdown());
-  cluster_.reset();
-  std::unordered_map<string, AllocatorStats> device_memory_after;
-  TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory_after));
+  TF_CHECK_OK(cluster_->Provision());
+  std::unordered_map<string, uint64> device_peak_memory_after;
+  TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory_after));
+  TF_CHECK_OK(cluster_->Shutdown());
 
   // Check memory used by resources are released after cluster destruction.
-  EXPECT_EQ(device_memory_before.size(), 1);
-  EXPECT_EQ(device_memory_after.size(), 1);
-  EXPECT_EQ(device_memory_before.begin()->second.bytes_in_use, 0);
-  EXPECT_EQ(device_memory_after.begin()->second.bytes_in_use, 0);
+  EXPECT_EQ(device_peak_memory_before.size(), 1);
+  EXPECT_EQ(device_peak_memory_after.size(), 1);
+  EXPECT_LT(device_peak_memory_before.begin()->second, 200);
+  EXPECT_LT(device_peak_memory_after.begin()->second, 200);
+}
+
+TEST_F(SingleMachineTest, PeakMemory) {
+  GrapplerItem item = CreateGrapplerItemWithResourceMemory();
+  TF_CHECK_OK(cluster_->Initialize(item));
+
+  RunMetadata metadata;
+  TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
+
+  std::unordered_map<string, uint64> device_peak_memory;
+  TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory));
+  ASSERT_NE(
+      device_peak_memory.find("/job:localhost/replica:0/task:0/device:CPU:0"),
+      device_peak_memory.end());
+  uint64 cpu_memory =
+      device_peak_memory["/job:localhost/replica:0/task:0/device:CPU:0"];
+  EXPECT_GT(cpu_memory, 0);
+
+  TF_CHECK_OK(cluster_->Shutdown());
+  TF_CHECK_OK(cluster_->Provision());
+  device_peak_memory.clear();
+  TF_CHECK_OK(cluster_->GetPeakMemoryUsage(&device_peak_memory));
+  TF_CHECK_OK(cluster_->Shutdown());
+  ASSERT_NE(
+      device_peak_memory.find("/job:localhost/replica:0/task:0/device:CPU:0"),
+      device_peak_memory.end());
+  cpu_memory =
+      device_peak_memory["/job:localhost/replica:0/task:0/device:CPU:0"];
+  EXPECT_LT(cpu_memory, 100);
+}
+
+TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
+  GrapplerItem item = CreateGrapplerItemWithResourceMemory();
+
+  TF_CHECK_OK(cluster_->Shutdown());
+  cluster_.reset();
+  SingleMachine cluster(60 /* timout_s */, 3 /* num_cpu_cores */,
+                        0 /* num_gpus */);
+
+  TF_CHECK_OK(cluster.Provision());
+  TF_CHECK_OK(cluster.Initialize(item));
+
+  std::unordered_map<string, uint64> device_peak_memory;
+  Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
+  TF_CHECK_OK(cluster.Shutdown());
+  ASSERT_FALSE(s.ok());
+  EXPECT_EQ(s.code(), errors::Code::INVALID_ARGUMENT);
 }
 #endif
 

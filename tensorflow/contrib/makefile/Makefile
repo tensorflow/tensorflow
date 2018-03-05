@@ -374,12 +374,72 @@ $(MARCH_OPTION) \
 	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
 		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
 	endif
-	
-	OBJDIR := $(OBJDIR)android_$(ANDROID_ARCH)/
-	LIBDIR := $(LIBDIR)android_$(ANDROID_ARCH)/
-	BINDIR := $(BINDIR)android_$(ANDROID_ARCH)/
-	DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
 
+	ifeq ($(BUILD_FOR_TEGRA),1)
+		NVCC := $(JETPACK)/cuda/bin/nvcc
+		NVCCFLAGS := -x=cu -D__CUDACC__ -DNVCC -DANDROID_TEGRA -ccbin $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++ --std c++11 --expt-relaxed-constexpr -m64 -gencode arch=compute_53,\"code=sm_53\" -gencode arch=compute_62,\"code=sm_62\" -DEIGEN_AVOID_STL_ARRAY -DTENSORFLOW_USE_EIGEN_THREADPOOL -DLANG_CXX11 -DEIGEN_HAS_C99_MATH -DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=5.3
+		CXXFLAGS4NVCC =\
+-DIS_SLIM_BUILD \
+-DANDROID_TEGRA \
+-fno-exceptions \
+-DNDEBUG $(OPTFLAGS) \
+-march=armv8-a \
+-fPIE \
+-D__ANDROID_TYPES_FULL__ \
+--sysroot $(NDK_ROOT)/platforms/android-21/arch-arm64
+
+		CXXFLAGS +=\
+-DGOOGLE_CUDA=1 \
+-D__ANDROID_TYPES_FULL__ \
+-DANDROID_TEGRA \
+-DEIGEN_AVOID_STL_ARRAY \
+-DEIGEN_HAS_C99_MATH \
+-DLANG_CXX11 -DTENSORFLOW_USE_EIGEN_THREADPOOL -DTF_EXTRA_CUDA_CAPABILITIES=5.3
+
+		INCLUDES += \
+-Itensorflow/core/kernels \
+-I$(MAKEFILE_DIR)/downloads/cub \
+-I$(MAKEFILE_DIR)/downloads/cub/cub_archive/cub/device \
+-Ithird_party/toolchains/gpus/cuda \
+-I$(JETPACK)/cuda/include \
+-I$(JETPACK) \
+-I$(JETPACK)/cuDNN/aarch64 \
+-I$(JETPACK)/cuda/extras/CUPTI/include
+
+
+		CUDA_LIBS := \
+-ltfcuda \
+-lcudart_static \
+-lcudnn \
+-lcublas_static \
+-lcufftw_static \
+-lcusolver_static \
+-lcusparse_static \
+-lcufft \
+-lcuda \
+-lculibos \
+-lcurand_static
+
+		OBJDIR := $(OBJDIR)android_arm64-v8a/
+		LIBDIR := $(LIBDIR)android_arm64-v8a/
+		BINDIR := $(BINDIR)android_arm64-v8a/
+		DEPDIR := $(DEPDIR)android_arm64-v8a/
+
+		TEGRA_LIBS := \
+-L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib \
+-L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib/stubs \
+-L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib64 \
+-L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib64/stubs \
+-L$(JETPACK)/cuDNN/aarch64/cuda/lib64 \
+-L$(LIBDIR)
+
+		CUDA_LIB_DEPS := $(LIBDIR)libtfcuda.a
+	else
+		OBJDIR := $(OBJDIR)android_$(ANDROID_ARCH)/
+		LIBDIR := $(LIBDIR)android_$(ANDROID_ARCH)/
+		BINDIR := $(BINDIR)android_$(ANDROID_ARCH)/
+		DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
+	endif # ifeq ($(BUILD_FOR_TEGRA),1)
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
@@ -546,7 +606,8 @@ $(wildcard tensorflow/core/util/*/*.cc) \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
-CORE_CC_EXCLUDE_SRCS := \
+
+CORE_CC_EXCLUDE_SRCS_NON_GPU := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
 $(wildcard tensorflow/core/*/*testlib*) \
@@ -566,29 +627,57 @@ $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
 $(wildcard tensorflow/core/util/reporter.*) \
-$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
-$(wildcard tensorflow/core/platform/default/stream_executor.*) \
 $(wildcard tensorflow/core/platform/default/test_benchmark.*) \
-$(wildcard tensorflow/core/platform/cuda.h) \
-$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/cloud/*) \
 $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
 $(wildcard tensorflow/core/platform/s3/*) \
-$(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
-$(wildcard tensorflow/core/user_ops/*.cu.cc) \
-$(wildcard tensorflow/core/common_runtime/gpu/*) \
-$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
-$(wildcard tensorflow/core/grappler/clusters/single_machine.*)
+$(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
+tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+
+CORE_CC_EXCLUDE_SRCS := \
+$(CORE_CC_EXCLUDE_SRCS_NON_GPU) \
+$(wildcard tensorflow/core/platform/stream_executor.*) \
+$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
+$(wildcard tensorflow/core/platform/cuda.h) \
+$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
+$(wildcard tensorflow/core/user_ops/*.cu.cc) \
+$(wildcard tensorflow/core/common_runtime/gpu/*) \
+$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*)
+
+ifeq ($(BUILD_FOR_TEGRA),1)
+CORE_CC_ALL_SRCS := $(CORE_CC_ALL_SRCS) \
+tensorflow/core/kernels/concat_lib_gpu.cc \
+tensorflow/core/kernels/cuda_solvers.cc \
+tensorflow/core/kernels/cudnn_pooling_gpu.cc \
+tensorflow/core/kernels/dense_update_functor.cc \
+tensorflow/core/kernels/fractional_avg_pool_op.cc \
+tensorflow/core/kernels/fractional_max_pool_op.cc \
+tensorflow/core/kernels/fractional_pool_common.cc \
+tensorflow/core/kernels/pooling_ops_3d.cc \
+tensorflow/core/kernels/sparse_fill_empty_rows_op.cc \
+tensorflow/core/kernels/list_kernels.cc \
+$(wildcard tensorflow/core/common_runtime/gpu/*.cc) \
+$(wildcard tensorflow/stream_executor/*.cc) \
+$(wildcard tensorflow/stream_executor/*/*.cc)
+
+CORE_CC_EXCLUDE_SRCS := \
+$(CORE_CC_EXCLUDE_SRCS_NON_GPU)
+
+CUDA_CC_SRCS := $(wildcard tensorflow/core/kernels/*.cu.cc)
+CUDA_CC_OBJS := $(addprefix $(OBJDIR), $(CUDA_CC_SRCS:.cc=.o))
+endif  # TEGRA
+
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
 TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
+TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_id_manager.cc
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
@@ -637,11 +726,23 @@ $(LIB_PATH): $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
-$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH)
+$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH) $(CUDA_LIB_DEPS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_NAME) $(BENCHMARK_OBJS) \
-	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(TEGRA_LIBS) $(LIB_PATH) $(LDFLAGS) $(LIBS) $(CUDA_LIBS)
+
+# NVCC compilation rules for Tegra
+ifeq ($(BUILD_FOR_TEGRA),1)
+$(OBJDIR)%.cu.o: %.cu.cc
+	@mkdir -p $(dir $@)
+	@mkdir -p $(dir $(DEPDIR)$*)
+	$(NVCC) $(NVCCFLAGS) -Xcompiler "$(CXXFLAGS4NVCC) $(DEPFLAGS)" $(INCLUDES) -c $< -o $@
+
+$(LIBDIR)libtfcuda.a: $(CUDA_CC_OBJS)
+	@mkdir -p $(dir $@)
+	$(AR) $(ARFLAGS) $@ $(CUDA_CC_OBJS)
+endif
 
 # Matches on the normal hand-written TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
@@ -730,6 +831,7 @@ clean_except_protobuf_libs:
 cleantarget:
 	rm -rf $(OBJDIR)
 	rm -rf $(BINDIR)
+	rm -rf $(LIBDIR)
 
 $(DEPDIR)/%.d: ;
 .PRECIOUS: $(DEPDIR)/%.d

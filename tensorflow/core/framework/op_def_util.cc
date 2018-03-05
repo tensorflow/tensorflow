@@ -170,20 +170,20 @@ const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                          \
-  do {                                                               \
-    if (!(EXPR)) {                                                   \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
-                                     ProtoShortDebugString(op_def)); \
-    }                                                                \
+#define VALIDATE(EXPR, ...)                                            \
+  do {                                                                 \
+    if (!(EXPR)) {                                                     \
+      return errors::InvalidArgument(                                  \
+          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
+    }                                                                  \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                           bool output, std::set<string>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
-  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()), "Duplicate name: ",
-           arg.name());
+  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()),
+           "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -250,8 +250,8 @@ Status ValidateOpDef(const OpDef& op_def) {
   std::set<string> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
-    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()), "Duplicate name: ",
-             attr.name());
+    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()),
+             "Duplicate name: ", attr.name());
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");
@@ -447,6 +447,11 @@ bool MoreRestrictive(const OpDef::AttrDef& old_attr,
 string AllowedStr(const OpDef::AttrDef& attr) {
   if (!attr.has_allowed_values()) return "no restriction";
   return SummarizeAttrValue(attr.allowed_values());
+}
+
+string DefaultAttrStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_default_value()) return "no default";
+  return SummarizeAttrValue(attr.default_value());
 }
 
 bool HigherMinimum(const OpDef::AttrDef& old_attr,
@@ -675,8 +680,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
       return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(), "' in op: ",
-                                     SummarizeOpDef(new_op));
+                                     penultimate_attr.name(),
+                                     "' in op: ", SummarizeOpDef(new_op));
     }
 
     // Actually test that the attr's default value hasn't changed.
@@ -686,6 +691,32 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
           "Can't change default value for attr '", penultimate_attr.name(),
           "' from ", SummarizeAttrValue(penultimate_attr.default_value()),
           " in op: ", SummarizeOpDef(new_op));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
+  AttrMap new_attrs, old_attrs;
+  FillAttrMap(old_op, &old_attrs);
+  FillAttrMap(new_op, &new_attrs);
+
+  for (const auto& old_attr : old_op.attr()) {
+    const OpDef::AttrDef* new_attr =
+        gtl::FindPtrOrNull(new_attrs, old_attr.name());
+    if (new_attr == nullptr) continue;
+    if (old_attr.has_default_value() != new_attr->has_default_value()) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has added/removed it's default; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+    }
+    if (old_attr.has_default_value() &&
+        !AreAttrValuesEqual(old_attr.default_value(),
+                            new_attr->default_value())) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has changed it's default value; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
     }
   }
 

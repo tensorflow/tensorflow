@@ -16,7 +16,10 @@
 """Help include git hash in tensorflow bazel build.
 
 This creates symlinks from the internal git repository directory so
-that the build system can see changes in the version state.
+that the build system can see changes in the version state. We also
+remember what branch git was on so when the branch changes we can
+detect that the ref file is no longer correct (so we can suggest users
+run ./configure again).
 
 NOTE: this script is only used in opensource.
 
@@ -218,14 +221,13 @@ def generate(arglist):
   if not data["git"]:
     git_version = b"unknown"
   else:
-    old_branch = data["branch"]		
+    old_branch = data["branch"]
     new_branch = parse_branch_ref(head_symlink)
     if new_branch != old_branch:
-      print("Warning, run ./configure again, to get __git_version__ to record "
-            "correct version")
-      git_version = get_git_version(data["path"])+'-inconsistent-git-version'
-    else:
-      git_version = get_git_version(data["path"])
+      raise RuntimeError(
+          "Run ./configure again, branch was '%s' but is now '%s'" %
+          (old_branch, new_branch))
+    git_version = get_git_version(data["path"])
   write_version_info(dest_file, git_version)
 
 

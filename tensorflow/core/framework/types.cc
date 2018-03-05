@@ -47,11 +47,8 @@ const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
 #endif  // TENSORFLOW_USE_SYCL
 
-string DataTypeString(DataType dtype) {
-  if (IsRefType(dtype)) {
-    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
-    return strings::StrCat(DataTypeString(non_ref), "_ref");
-  }
+namespace {
+string DataTypeStringInternal(DataType dtype) {
   switch (dtype) {
     case DT_INVALID:
       return "INVALID";
@@ -105,6 +102,15 @@ string DataTypeString(DataType dtype) {
       LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
       return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
+}
+}  // end namespace
+
+string DataTypeString(DataType dtype) {
+  if (IsRefType(dtype)) {
+    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
+    return strings::StrCat(DataTypeStringInternal(non_ref), "_ref");
+  }
+  return DataTypeStringInternal(dtype);
 }
 
 bool DataTypeFromString(StringPiece sp, DataType* dt) {
@@ -205,176 +211,12 @@ string DataTypeSliceString(const DataTypeSlice types) {
   return out;
 }
 
-DataTypeVector AllTypes() {
-  return {DT_FLOAT,   DT_DOUBLE, DT_INT32,   DT_UINT8,     DT_INT16,
-          DT_UINT16,  DT_INT8,   DT_STRING,  DT_COMPLEX64, DT_COMPLEX128,
-          DT_INT64,   DT_BOOL,   DT_QINT8,   DT_QUINT8,    DT_QINT16,
-          DT_QUINT16, DT_QINT32, DT_HALF,    DT_RESOURCE,  DT_VARIANT,
-          DT_UINT32,  DT_UINT64, DT_BFLOAT16};
-}
-
-#if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
-
-DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,  DT_UINT8,  DT_INT16,
-          DT_INT8,  DT_UINT16, DT_HALF,  DT_UINT32, DT_UINT64, DT_BFLOAT16};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_DOUBLE,  DT_INT32,  DT_INT64, DT_UINT8,
-          DT_UINT16, DT_UINT16,  DT_INT8,   DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF,  DT_BFLOAT16};
-}
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT,  DT_DOUBLE,  DT_INT64,  DT_INT32,     DT_UINT8,
-          DT_UINT16, DT_INT16,   DT_INT8,   DT_COMPLEX64, DT_COMPLEX128,
-          DT_QINT8,  DT_QUINT8,  DT_QINT32, DT_HALF,      DT_UINT32,
-          DT_UINT64, DT_BFLOAT16};
-}
-
-#elif defined(__ANDROID_TYPES_FULL__)
-
-DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_INT32, DT_INT64, DT_HALF};
-}
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT,  DT_INT32,  DT_INT64, DT_QINT8,
-          DT_QUINT8, DT_QINT32, DT_HALF};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_INT32,   DT_INT64,  DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF};
-}
-
-#else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
-
-DataTypeVector RealNumberTypes() { return {DT_FLOAT, DT_INT32}; }
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT, DT_INT32, DT_QINT8, DT_QUINT8, DT_QINT32};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_INT32,   DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-#endif  // defined(IS_MOBILE_PLATFORM)
-
-// TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
-// is_simple<T> in tensor.cc (and possible choose a more general name?)
-bool DataTypeCanUseMemcpy(DataType dt) {
-  switch (dt) {
-    case DT_FLOAT:
-    case DT_DOUBLE:
-    case DT_INT32:
-    case DT_UINT32:
-    case DT_UINT8:
-    case DT_UINT16:
-    case DT_INT16:
-    case DT_INT8:
-    case DT_COMPLEX64:
-    case DT_COMPLEX128:
-    case DT_INT64:
-    case DT_UINT64:
-    case DT_BOOL:
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_QINT32:
-    case DT_BFLOAT16:
-    case DT_HALF:
-      return true;
-    default:
-      return false;
-  }
-}
-
 bool DataTypeAlwaysOnHost(DataType dt) {
   // Includes DT_STRING and DT_RESOURCE.
   switch (dt) {
     case DT_STRING:
     case DT_STRING_REF:
     case DT_RESOURCE:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsFloating(DataType dt) {
-  switch (dt) {
-    case DT_HALF:
-    case DT_BFLOAT16:
-    case DT_FLOAT:
-    case DT_DOUBLE:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsComplex(DataType dt) {
-  switch (dt) {
-    case DT_COMPLEX64:
-    case DT_COMPLEX128:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsQuantized(DataType dt) {
-  switch (dt) {
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_QINT32:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsInteger(DataType dt) {
-  switch (dt) {
-    case DT_INT8:
-    case DT_UINT8:
-    case DT_INT16:
-    case DT_UINT16:
-    case DT_INT32:
-    case DT_UINT32:
-    case DT_INT64:
-    case DT_UINT64:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsUnsigned(DataType dt) {
-  switch (dt) {
-    case DT_UINT8:
-    case DT_UINT16:
-    case DT_UINT32:
-    case DT_UINT64:
       return true;
     default:
       return false;

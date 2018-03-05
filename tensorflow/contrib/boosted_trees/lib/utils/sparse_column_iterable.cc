@@ -51,7 +51,7 @@ class IndicesRowIterator
     return tmp;
   }
 
-  reference operator*() { return iter_->ix()(row_idx_, 0); }
+  reference operator*() const { return iter_->ix()(row_idx_, 0); }
 
   pointer operator->() { return &iter_->ix()(row_idx_, 0); }
 

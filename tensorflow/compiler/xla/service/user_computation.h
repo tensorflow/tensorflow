@@ -133,6 +133,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddConvolveInstruction(
       const ConvolveRequest& convolve_request);
 
+  // Enqueues an FFT instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddFftInstruction(
+      const FftRequest& fft_request);
+
   // Enqueues a cross replica sum instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCrossReplicaSumInstruction(
       const CrossReplicaSumRequest& cross_replica_sum_request);
@@ -142,7 +146,12 @@ class UserComputation {
       const InfeedRequest& infeed_request);
 
   // Enqueues an outfeed instruction onto this user computation.
-  Status AddOutfeedInstruction(const OutfeedRequest& outfeed_request);
+  StatusOr<ComputationDataHandle> AddOutfeedInstruction(
+      const OutfeedRequest& outfeed_request);
+
+  // Enqueues a host compute instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddHostComputeInstruction(
+      const HostComputeRequest& host_compute_request);
 
   // Enqueues a call instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCallInstruction(
@@ -227,11 +236,16 @@ class UserComputation {
       const UserComputation& false_computation);
 
   // Enqueues a Send instruction onto this user computation.
-  Status AddSendInstruction(const SendRequest& send_request);
+  StatusOr<ComputationDataHandle> AddSendInstruction(
+      const SendRequest& send_request);
 
   // Enqueues a Recv instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddRecvInstruction(
       const RecvRequest& recv_request);
+
+  // Enqueues a Gather instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddGatherInstruction(
+      const GatherRequest& gather_request);
 
   // Returns the user-provided name of this user computation, which is provided
   // via the XLA computation-building API.
@@ -316,6 +330,23 @@ class UserComputation {
   // in the serialization / de-serialization process.
   SessionComputation CloneSessionComputation(
       VersionedComputationHandle::Version version) const;
+
+  // Warning: typically we don't want to look up computation data handles until
+  // the computation is finished being built, for consistency purposes. We
+  // expose this routine for error reporting purposes so that we can provide
+  // more meaningful error messages from the XLA service layer.
+  //
+  // Returns the operation request that the handle comes from.
+  StatusOr<const OperationRequest*> LookUpRequestForErrorReporting(
+      const ComputationDataHandle& handle) const;
+
+  // Retrieves the parameter metadata for the given parameter number.
+  //
+  // If the parameter number is invalid for this computation, nullopt is
+  // returned. When the return value has_value(), nullptr will never be
+  // the held value.
+  tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
+      int parameter_number) const;
 
  private:
   // Warning: dangerous mutating operation that doesn't respect versioning.

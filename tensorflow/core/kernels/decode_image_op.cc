@@ -294,6 +294,7 @@ class DecodeImageOp : public OpKernel {
 
     // Decode GIF, allocating tensor once the size is known.
     Tensor* output = nullptr;
+    string error_string;
     OP_REQUIRES(
         context,
         gif::Decode(input.data(), input.size(),
@@ -320,8 +321,10 @@ class DecodeImageOp : public OpKernel {
                         return nullptr;
                       }
                       return output->flat<uint8>().data();
-                    }),
-        errors::InvalidArgument("Invalid GIF data, size ", input.size()));
+                    },
+                    &error_string),
+        errors::InvalidArgument("Invalid GIF data (size ", input.size(), "), ",
+                                error_string));
   }
 
  private:

@@ -35,7 +35,11 @@ bool IsAdd(const NodeDef& node) {
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
 
+bool IsAll(const NodeDef& node) { return node.op() == "All"; }
+
 bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
+
+bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
   return node.op() == "RealDiv" || node.op() == "Div" ||
@@ -61,6 +65,8 @@ bool IsBiasAdd(const NodeDef& node) {
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
+
+bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
@@ -132,6 +138,10 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHistogramSummary(const NodeDef& node) {
+  return node.op() == "HistogramSummary";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";
@@ -166,14 +176,26 @@ bool IsMatMul(const NodeDef& node) {
          op == "SparseMatMul";
 }
 
+bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
+
 bool IsMaximum(const NodeDef& node) { return node.op() == "Maximum"; }
+
+bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Merge" || op == "RefMerge";
 }
 
+bool IsMin(const NodeDef& node) { return node.op() == "Min"; }
+
 bool IsMinimum(const NodeDef& node) { return node.op() == "Minimum"; }
+
+bool IsMirrorPad(const NodeDef& node) { return node.op() == "MirrorPad"; }
+
+bool IsMirrorPadGrad(const NodeDef& node) {
+  return node.op() == "MirrorPadGrad";
+}
 
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
@@ -188,7 +210,10 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
-bool IsPad(const NodeDef& node) { return node.op() == "Pad"; }
+bool IsPad(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Pad" || op == "PadV2";
+}
 
 bool IsPlaceholder(const NodeDef& node) {
   const auto& op = node.op();
@@ -200,6 +225,8 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
+bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -208,7 +235,9 @@ bool IsReciprocalGrad(const NodeDef& node) {
   return node.op() == "ReciprocalGrad";
 }
 
-bool IsRecv(const NodeDef& node) { return node.op() == "_Recv"; }
+bool IsRecv(const NodeDef& node) {
+  return node.op() == "_Recv" || node.op() == "_HostRecv";
+}
 
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
@@ -227,6 +256,10 @@ bool IsRestore(const NodeDef& node) {
           node.op() == "RestoreSlice");
 }
 
+bool IsReverse(const NodeDef& node) {
+  return node.op() == "Reverse" || node.op() == "ReverseV2";
+}
+
 bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
@@ -235,11 +268,17 @@ bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
-bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
+bool IsSend(const NodeDef& node) {
+  return node.op() == "_Send" || node.op() == "_HostSend";
+}
 
 bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
 bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
+
+bool IsShuffle(const NodeDef& node) {
+  return node.op() == "Shuffle" || node.op() == "RandomShuffle";
+}
 
 bool IsSigmoidGrad(const NodeDef& node) { return node.op() == "SigmoidGrad"; }
 
@@ -261,9 +300,28 @@ bool IsSquaredDifference(const NodeDef& node) {
 
 bool IsSqueeze(const NodeDef& node) { return node.op() == "Squeeze"; }
 
+bool IsStackOp(const NodeDef& node) {
+  return node.op() == "Stack" || node.op() == "StackV2";
+}
+bool IsStackCloseOp(const NodeDef& node) {
+  return node.op() == "StackClose" || node.op() == "StackCloseV2";
+}
+bool IsStackPushOp(const NodeDef& node) {
+  return node.op() == "StackPush" || node.op() == "StackPushV2";
+}
+bool IsStackPopOp(const NodeDef& node) {
+  return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
+}
+
+bool IsStridedSlice(const NodeDef& node) { return node.op() == "StridedSlice"; }
+
+bool IsStridedSliceGrad(const NodeDef& node) {
+  return node.op() == "StridedSliceGrad";
 }
 
 bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }
@@ -276,6 +334,8 @@ bool IsSwitch(const NodeDef& node) {
 }
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
+
+bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
 
 bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 
@@ -297,13 +357,18 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }
 }  // namespace
 
+bool IsPersistent(const NodeDef& node) {
+  return IsConstant(node) || IsVariable(node);
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  const string& op_name = node.op();
+  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -317,7 +382,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace")) {
+  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
+      StringPiece(op_name).starts_with("Inplace")) {
     return false;
   }
   return true;

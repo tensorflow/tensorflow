@@ -372,7 +372,7 @@ class TopoQueue {
   // use their id to ensure they're sorted topologically.
   struct CompareNodes {
     bool operator()(const Node* lhs, const Node* rhs) const {
-      return lhs->id() > rhs->id();
+      return lhs->id() < rhs->id();
     }
   };
   std::set<const Node*, CompareNodes> queue_;
@@ -693,6 +693,10 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   InferenceContext* c = shape_refiner->GetContext(node);
   CHECK_NE(c, nullptr);
 
+  ShapeHandle out1;
+  TF_RETURN_IF_ERROR(c->WithRank(c->output(1), 0, &out1));
+  c->set_output(1, out1);
+
   ShapeHandle out;
   bool out_initialized = false;
   for (const Edge* e : node->in_edges()) {
@@ -727,7 +731,6 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
 
   if (!shape_refiner->EquivalentShapes(out, c->output(0))) {
     c->set_output(0, out);
-    c->set_output(1, c->Scalar());
     new_shapes->push(node);
   }
 

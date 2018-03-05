@@ -83,7 +83,7 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.h
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.cc
-        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${tensorflow_source_dir}/tensorflow/cc/ops/op_gen_overrides.pbtxt ${cc_ops_include_internal} ${tensorflow_source_dir}/tensorflow/core/api_def/base_api
+        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${cc_ops_include_internal} ${tensorflow_source_dir}/tensorflow/core/api_def/base_api
         DEPENDS ${tf_cc_op_lib_name}_gen_cc create_cc_ops_header_dir
     )
 
@@ -149,7 +149,11 @@ add_library(tf_cc OBJECT ${tf_cc_srcs})
 add_dependencies(tf_cc tf_cc_framework tf_cc_ops)
 
 if (WIN32)
-  set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib")
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib")
+  else()
+    set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.lib")
+  endif()
 else (WIN32)
   set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so")
 endif (WIN32)

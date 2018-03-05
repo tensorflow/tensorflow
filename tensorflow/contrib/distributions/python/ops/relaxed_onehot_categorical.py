@@ -278,7 +278,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
                       * math_ops.log(self.temperature))
     # compute the unnormalized density
     log_softmax = nn_ops.log_softmax(logits_2d - x_2d * self._temperature_2d)
-    log_unnorm_prob = math_ops.reduce_sum(log_softmax, [-1], keep_dims=False)
+    log_unnorm_prob = math_ops.reduce_sum(log_softmax, [-1], keepdims=False)
     # combine unnormalized density with normalization constant
     log_prob = log_norm_const + log_unnorm_prob
     # Reshapes log_prob to be consistent with shape of user-supplied logits

@@ -25,6 +25,7 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/core/kernels:bounds_check_lib",
+        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -39,6 +40,7 @@ tf_kernel_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
     ],
 )
 

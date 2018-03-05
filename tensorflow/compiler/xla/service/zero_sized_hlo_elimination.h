@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -29,4 +29,4 @@ class ZeroSizedHloElimination : public HloPassInterface {
   }
 };
 }  // namespace xla
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_

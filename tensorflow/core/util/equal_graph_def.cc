@@ -148,7 +148,10 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
       first_control_input = i;
       break;
     }
-    if (actual.input(i) != expected.input(i)) {
+    // Special case for inputs: "tensor" is equivalent to "tensor:0"
+    if (actual.input(i) != expected.input(i) &&
+        actual.input(i) != strings::StrCat(expected.input(i), ":0") &&
+        strings::StrCat(actual.input(i), ":0") != expected.input(i)) {
       if (diff != nullptr) {
         *diff = strings::StrCat("Node named '", actual.name(), "' has input ",
                                 i, " '", actual.input(i),

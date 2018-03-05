@@ -25,8 +25,11 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -36,6 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
@@ -49,7 +53,13 @@ def tearDownModule():
   file_io.delete_recursively(test.get_temp_dir())
 
 
+@test_util.with_c_api
 class SavedModelTest(test.TestCase):
+
+  def _get_export_dir(self, label):
+    if ops._USE_C_API:
+      label += "_c_api"
+    return os.path.join(test.get_temp_dir(), label)
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.Variable(variable_value, name=variable_name)
@@ -118,8 +128,7 @@ class SavedModelTest(test.TestCase):
     self.assertFalse(loader.maybe_saved_model_directory(base_path))
 
   def testBadSavedModelFileFormat(self):
-    export_dir = os.path.join(test.get_temp_dir(),
-                              "test_bad_saved_model_file_format")
+    export_dir = self._get_export_dir("test_bad_saved_model_file_format")
     # Attempt to load a SavedModel from an export directory that does not exist.
     with self.test_session(graph=ops.Graph()) as sess:
       with self.assertRaisesRegexp(IOError,
@@ -152,8 +161,7 @@ class SavedModelTest(test.TestCase):
         loader.load(sess, ["foo"], export_dir)
 
   def testVerifySessionGraphUsage(self):
-    export_dir = os.path.join(test.get_temp_dir(),
-                              "test_verify_session_graph_usage")
+    export_dir = self._get_export_dir("test_verify_session_graph_usage")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -173,7 +181,7 @@ class SavedModelTest(test.TestCase):
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testSequence(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_sequence")
+    export_dir = self._get_export_dir("test_sequence")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Expect an assertion error since add_meta_graph_and_variables() should be
@@ -190,7 +198,7 @@ class SavedModelTest(test.TestCase):
                         sess, ["baz"])
 
   def testTags(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_tags")
+    export_dir = self._get_export_dir("test_tags")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable. SavedModel invoked to:
@@ -279,7 +287,7 @@ class SavedModelTest(test.TestCase):
                         export_dir)
 
   def testVariables(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_variables")
+    export_dir = self._get_export_dir("test_variables")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with two variables. SavedModel invoked to:
@@ -331,7 +339,7 @@ class SavedModelTest(test.TestCase):
                         export_dir)
 
   def testGraphWithoutVariables(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_graph_has_variables")
+    export_dir = self._get_export_dir("test_graph_has_variables")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with no variables.
@@ -366,7 +374,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(30.0, sess.run(c))
 
   def testNoOverwrite(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_no_overwrite")
+    export_dir = self._get_export_dir("test_no_overwrite")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable. SavedModel invoked to:
@@ -390,7 +398,7 @@ class SavedModelTest(test.TestCase):
                       export_dir)
 
   def testSaveAsText(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_astext")
+    export_dir = self._get_export_dir("test_astext")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable. SavedModel invoked to:
@@ -421,7 +429,7 @@ class SavedModelTest(test.TestCase):
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testCollections(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_collections")
+    export_dir = self._get_export_dir("test_collections")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable added to a collection. SavedModel invoked to:
@@ -471,7 +479,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(len(ops.get_collection("foo_vars")), 0)
 
   def testSignatureDefs(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_signature_defs")
+    export_dir = self._get_export_dir("test_signature_defs")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable and a single entry in the signature def map.
@@ -531,8 +539,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual("foo_new", bar_signature["foo_key"].method_name)
 
   def testSignatureDefValidation(self):
-    export_dir = os.path.join(test.get_temp_dir(),
-                              "test_signature_def_validation")
+    export_dir = self._get_export_dir("test_signature_def_validation")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     tensor_without_name = meta_graph_pb2.TensorInfo()
@@ -550,7 +557,7 @@ class SavedModelTest(test.TestCase):
     self._validate_outputs_tensor_info(builder, tensor_empty)
 
   def testAssets(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_assets")
+    export_dir = self._get_export_dir("test_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -583,7 +590,7 @@ class SavedModelTest(test.TestCase):
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
   def testCustomMainOp(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_main_op")
+    export_dir = self._get_export_dir("test_main_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -618,7 +625,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
   def testLegacyInitOp(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_legacy_init_op")
+    export_dir = self._get_export_dir("test_legacy_init_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -652,8 +659,8 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
   def testLegacyInitOpWithNonEmptyCollection(self):
-    export_dir = os.path.join(test.get_temp_dir(),
-                              "test_legacy_init_op_with_non_empty_collection")
+    export_dir = self._get_export_dir(
+        "test_legacy_init_op_with_non_empty_collection")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -680,7 +687,7 @@ class SavedModelTest(test.TestCase):
             sess, ["foo"], legacy_init_op=legacy_init_op)
 
   def testMultipleAssets(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_multiple_assets")
+    export_dir = self._get_export_dir("test_multiple_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -722,7 +729,7 @@ class SavedModelTest(test.TestCase):
                                       "asset_file_tensor:0")
 
   def testDuplicateAssets(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_duplicate_assets")
+    export_dir = self._get_export_dir("test_duplicate_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=ops.Graph()) as sess:
@@ -770,7 +777,7 @@ class SavedModelTest(test.TestCase):
                                       "asset_file_tensor:0")
 
   def testOp(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_op")
+    export_dir = self._get_export_dir("test_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with session.Session(
@@ -813,7 +820,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
   def testCustomSaveable(self):
-    export_dir = os.path.join(test.get_temp_dir(), "custom_saveable")
+    export_dir = self._get_export_dir("custom_saveable")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with session.Session(
@@ -842,7 +849,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(3.0, v1.values().eval())
 
   def testClearDevices(self):
-    export_dir = os.path.join(test.get_temp_dir(), "test_clear_devices")
+    export_dir = self._get_export_dir("test_clear_devices")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Specify a device and save a variable.
@@ -864,6 +871,148 @@ class SavedModelTest(test.TestCase):
       loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+  def testStripDefaultAttrs(self):
+    export_dir = self._get_export_dir("test_strip_default_attrs")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Add a graph with two float32 variables and a Complex Op composing them
+    # with strip_default_attrs enabled.
+    with session.Session(graph=ops.Graph()) as sess:
+      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], strip_default_attrs=True)
+
+    # Add a graph with the same float32 variables and a Complex Op composing
+    # them with strip_default_attrs disabled.
+    with session.Session(graph=ops.Graph()) as sess:
+      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph(["bar"], strip_default_attrs=False)
+
+    # Save the SavedModel to disk in text format.
+    builder.save(as_text=True)
+
+    # Loading graph "foo" via the loader must restore the defaults for the
+    # "Complex" node based on the "Complex" OpDef in the Op registry.
+    sess = session.Session(graph=ops.Graph())
+    meta_graph_def = loader.load(sess, ["foo"], export_dir)
+    complex_node = test_util.get_node_def_from_graph("complex",
+                                                     meta_graph_def.graph_def)
+    self.assertIn("T", complex_node.attr)
+    self.assertIn("Tout", complex_node.attr)
+
+    # Load graph "foo" from disk as-is to verify default attrs are stripped.
+    # pylint: disable=protected-access
+    saved_model_pb = loader_impl._parse_saved_model(export_dir)
+    self.assertIsNotNone(saved_model_pb)
+    # pylint: enable=protected-access
+
+    meta_graph_foo_def = None
+    meta_graph_bar_def = None
+    for meta_graph_def in saved_model_pb.meta_graphs:
+      if set(meta_graph_def.meta_info_def.tags) == set(["foo"]):
+        meta_graph_foo_def = meta_graph_def
+      elif set(meta_graph_def.meta_info_def.tags) == set(["bar"]):
+        meta_graph_bar_def = meta_graph_def
+
+    self.assertIsNotNone(meta_graph_foo_def)
+    self.assertIsNotNone(meta_graph_bar_def)
+
+    # "Complex" Op has 2 attributes with defaults:
+    #   o "T"    : float32.   (input type)
+    #   o "Tout" : complex64. (output type)
+
+    # "Complex" Op in graph "foo" shouldn't have attributes "T" and "Tout".
+    # Graph "foo" was saved with strip_default_attrs set to True.
+    node_def = test_util.get_node_def_from_graph("complex",
+                                                 meta_graph_foo_def.graph_def)
+    self.assertNotIn("T", node_def.attr)
+    self.assertNotIn("Tout", node_def.attr)
+
+    # "Complex" Op in graph "bar" must have attributes "T" and "Tout".
+    # Graph "bar" was saved with strip_default_attrs set to False.
+    node_def = test_util.get_node_def_from_graph("complex",
+                                                 meta_graph_bar_def.graph_def)
+    self.assertIn("T", node_def.attr)
+    self.assertIn("Tout", node_def.attr)
+
+  # Tests the behavior of loading SavedModels that having missing attrs or attrs
+  # with incorrect types.
+  def testInconsistentConsumerDefaultAttrs(self):
+    export_dir = self._get_export_dir(
+        "test_strip_default_attrs_no_consumer_defaults")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Add a graph with a single variable and a test op with a defaultless
+    # float32 attr, "test_attr".
+    with session.Session(graph=ops.Graph()) as sess:
+      variables.Variable(1.0, dtype=dtypes.float64, name="var")
+      test_ops.test_attr(T=dtypes.float32, name="test_attr")
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk in text format.
+    builder.save(as_text=True)
+
+    # Rewrite the SavedModel to remove the T attr from "test_attr".
+    saved_model_file = os.path.join(
+        export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
+    with open(saved_model_file) as f:
+      original_saved_model = f.read()
+
+    no_attr_saved_model = original_saved_model.replace("""
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }""", "")
+    with open(saved_model_file, "w") as f:
+      f.write(no_attr_saved_model)
+
+    # Loading the SavedModel via the loader must fail because the SavedModel
+    # does not have any attr values for the "TestAttr" node, and there is no
+    # default specified in the TestAttr OpDef.
+    sess = session.Session(graph=ops.Graph())
+    if ops._USE_C_API:
+      error_message = "NodeDef missing attr 'T' from Op<name=TestAttr"
+    else:
+      error_message = ("Expected one attr with name .*T(out)?.* in name: "
+                       "\"test_attr\".*")
+    with self.assertRaisesRegexp(ValueError, error_message):
+      loader.load(sess, ["foo"], export_dir)
+
+    # Rewrite the SavedModel to change the type of the T attr in "test_attr"
+    bad_type_saved_model = original_saved_model.replace("""
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }""", """
+      attr {
+        key: "T"
+        value {
+          type: DT_DOUBLE
+        }
+      }""")
+    with open(saved_model_file, "w") as f:
+      f.write(bad_type_saved_model)
+
+    # Loading the SavedModel via the loader must fail because there is no
+    # OpKernel registered to handle T = double.
+    sess = session.Session(graph=ops.Graph())
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        ".*No OpKernel was registered to support Op \'TestAttr\' with these "
+        "attrs..*"):
+      loader.load(sess, ["foo"], export_dir)
 
 
 if __name__ == "__main__":

@@ -15,14 +15,15 @@ limitations under the License.
 #include <unistd.h>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -34,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kRecurrentWeightsTensor = 2;
 constexpr int kBiasTensor = 3;
-constexpr int KHiddenStateTensor = 0;
+constexpr int kHiddenStateTensor = 0;
 constexpr int kOutputTensor = 1;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -51,8 +52,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
-  const int batch_size = input->dims->data[0];
-  const int max_time = input->dims->data[1];
+  auto* params = reinterpret_cast<TfLiteSequenceRNNParams*>(node->builtin_data);
+  const bool time_major = params->time_major;
+  const int batch_size =
+      (time_major) ? input->dims->data[1] : input->dims->data[0];
+  const int max_time =
+      (time_major) ? input->dims->data[0] : input->dims->data[1];
   const int num_units = input_weights->dims->data[0];
   TF_LITE_ASSERT_EQ(input->dims->data[2], input_weights->dims->data[1]);
   TF_LITE_ASSERT_EQ(input_weights->dims->data[0], bias->dims->data[0]);
@@ -60,7 +65,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[1], bias->dims->data[0]);
 
   TfLiteTensor* hidden_state =
-      &context->tensors[node->outputs->data[KHiddenStateTensor]];
+      &context->tensors[node->outputs->data[kHiddenStateTensor]];
   TfLiteTensor* output = &context->tensors[node->outputs->data[kOutputTensor]];
 
   // Resize state.
@@ -75,17 +80,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Resize output.
   TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(3);
-  output_size_array->data[0] = batch_size;
-  output_size_array->data[1] = max_time;
+  output_size_array->data[0] = (time_major) ? max_time : batch_size;
+  output_size_array->data[1] = (time_major) ? batch_size : max_time;
   output_size_array->data[2] = num_units;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, output,
-                                                   output_size_array));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size_array));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteRNNParams*>(node->builtin_data);
+  auto* params = reinterpret_cast<TfLiteSequenceRNNParams*>(node->builtin_data);
 
   TfLiteTensor* input = &context->tensors[node->inputs->data[kInputTensor]];
   TfLiteTensor* input_weights =
@@ -94,61 +99,55 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       &context->tensors[node->inputs->data[kRecurrentWeightsTensor]];
   TfLiteTensor* bias = &context->tensors[node->inputs->data[kBiasTensor]];
   TfLiteTensor* hidden_state =
-      &context->tensors[node->outputs->data[KHiddenStateTensor]];
+      &context->tensors[node->outputs->data[kHiddenStateTensor]];
   TfLiteTensor* output = &context->tensors[node->outputs->data[kOutputTensor]];
 
   // Initialize the pointer bias.
   const float* bias_ptr = bias->data.f;
 
-  const int batch_size = input->dims->data[0];
-  const int max_time = input->dims->data[1];
+  const bool time_major = params->time_major;
+  const int batch_size =
+      (time_major) ? input->dims->data[1] : input->dims->data[0];
+  const int max_time =
+      (time_major) ? input->dims->data[0] : input->dims->data[1];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[2];
-  const int input_weights_stride = input_weights->dims->data[1];
-  const int recurrent_weights_stride = recurrent_weights->dims->data[1];
 
-  // For each batch
-  for (int b = 0; b < batch_size; b++) {
+  // Initialize input_weights and recurrent_weights.
+  const float* input_weights_ptr = input_weights->data.f;
+  const float* recurrent_weights_ptr = recurrent_weights->data.f;
+
+  if (time_major) {
     // Initialize the pointer to hidden state.
-    float* hidden_state_ptr_batch = hidden_state->data.f + b * num_units;
+    float* hidden_state_ptr_batch = hidden_state->data.f;
+    // Unroll the sequence and use batch batch operations for efficiency.
     for (int s = 0; s < max_time; s++) {
       // Initialize the pointer to input and output.
       const float* input_ptr_batch =
-          input->data.f + b * input_size * max_time + s * input_size;
-     float* output_ptr_batch =
-         output->data.f + b * num_units * max_time + s * num_units;
+          input->data.f + s * input_size * batch_size;
+      float* output_ptr_batch = output->data.f + s * num_units * batch_size;
 
-      // Initialize input_weights and recurrent_weights.
-      const float* input_weights_ptr = input_weights->data.f;
-      const float* recurrent_weights_ptr = recurrent_weights->data.f;
+      kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
+                                 recurrent_weights_ptr, bias_ptr, input_size,
+                                 num_units, batch_size, params->activation,
+                                 hidden_state_ptr_batch, output_ptr_batch);
+    }
+  } else {
+    // For each batch
+    for (int b = 0; b < batch_size; b++) {
+      // Initialize the pointer to hidden state.
+      float* hidden_state_ptr_batch = hidden_state->data.f + b * num_units;
+      for (int s = 0; s < max_time; s++) {
+        // Initialize the pointer to input and output.
+        const float* input_ptr_batch =
+            input->data.f + b * input_size * max_time + s * input_size;
+        float* output_ptr_batch =
+            output->data.f + b * num_units * max_time + s * num_units;
 
-      // Output = bias
-      for (int o = 0; o < num_units; o++) {
-        output_ptr_batch[o] = bias_ptr[o];
-      }
-
-      // Output += input * input_weights
-      for (int o = 0; o < num_units; o++) {
-        for (int i = 0; i < input_size; i++) {
-          output_ptr_batch[o] += input_ptr_batch[i] * input_weights_ptr[i];
-        }
-        input_weights_ptr += input_weights_stride;
-      }
-
-      // Output += recurrent_weights * hidden_state
-      for (int o = 0; o < num_units; o++) {
-        for (int h = 0; h < num_units; h++) {
-          output_ptr_batch[o] +=
-              hidden_state_ptr_batch[h] * recurrent_weights_ptr[h];
-        }
-        recurrent_weights_ptr += recurrent_weights_stride;
-      }
-
-      // Output = activation(Output) and update hidden_state
-      for (int o = 0; o < num_units; o++) {
-        output_ptr_batch[o] =
-            (ActivationFunctor(params->activation))(output_ptr_batch[o]);
-        hidden_state_ptr_batch[o] = output_ptr_batch[o];
+        kernel_utils::RnnBatchStep(
+            input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+            input_size, num_units, /*batch_size=*/1, params->activation,
+            hidden_state_ptr_batch, output_ptr_batch);
       }
     }
   }

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_
 
 #include <memory>
 
@@ -32,7 +32,7 @@ class SqliteQueryConnection : public QueryConnection {
   Status Open(const string& data_source_name, const string& query,
               const DataTypeVector& output_types) override;
   Status Close() override;
-  Status GetNext(std::vector<Tensor>* out_tensors,
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) override;
 
  private:
@@ -42,7 +42,7 @@ class SqliteQueryConnection : public QueryConnection {
   // `stmt_`.
   void FillTensorWithResultSetEntry(const DataType& data_type, int column_index,
                                     Tensor* tensor);
-  std::shared_ptr<Sqlite> db_ = nullptr;
+  Sqlite* db_ = nullptr;
   SqliteStatement stmt_;
   int column_count_ = 0;
   string query_;
@@ -53,4 +53,4 @@ class SqliteQueryConnection : public QueryConnection {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_

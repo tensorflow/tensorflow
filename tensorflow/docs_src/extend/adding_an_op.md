@@ -1,6 +1,6 @@
 # Adding a New Op
 
-Note: By default [tensorflow.org](http://tensorflow.org) shows docs for the
+Note: By default [www.tensorflow.org](https://www.tensorflow.org) shows docs for the
 most recent stable version. The instructions in this doc require building from
 source. You will probably want to build from the `master` version of tensorflow.
 You should, as a result, be sure you are following the

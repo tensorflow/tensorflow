@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
 
 #include <map>
 #include <set>
@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -915,4 +915,4 @@ bool IsCanonicalDevice(const string& device);
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_

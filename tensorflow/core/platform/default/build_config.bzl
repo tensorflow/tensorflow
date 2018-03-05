@@ -67,16 +67,14 @@ def pyx_library(
       pxd_srcs.append(src)
 
   # Invoke cython to produce the shared object libraries.
-  cpp_outs = [src.split(".")[0] + ".cpp" for src in pyx_srcs]
-  native.genrule(
-      name = name + "_cython_translation",
-      srcs = pyx_srcs,
-      outs = cpp_outs,
-      cmd = ("PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)"
-             # Rename outputs to expected location.
-             + """ && python -c 'import shutil, sys; n = len(sys.argv); [shutil.copyfile(src.split(".")[0] + ".cpp", dst) for src, dst in zip(sys.argv[1:], sys.argv[1+n//2:])]' $(SRCS) $(OUTS)"""),
-      tools = ["@cython//:cython_binary"] + pxd_srcs,
-  )
+  for filename in pyx_srcs:
+    native.genrule(
+        name = filename + "_cython_translation",
+        srcs = [filename],
+        outs = [filename.split(".")[0] + ".cpp"],
+        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        tools = ["@cython//:cython_binary"] + pxd_srcs,
+    )
 
   shared_objects = []
   for src in pyx_srcs:
@@ -380,6 +378,14 @@ def tf_protos_all():
       extra_deps=tf_protos_all_impl(),
       otherwise=["//tensorflow/core:protos_all_cc"])
 
+def tf_protos_grappler_impl():
+  return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
+
+def tf_protos_grappler():
+  return if_static(
+      extra_deps=tf_protos_grappler_impl(),
+      otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
+
 def tf_env_time_hdrs():
   return [
       "platform/env_time.h",
@@ -512,6 +518,7 @@ def tf_additional_cloud_kernel_deps():
 def tf_lib_proto_parsing_deps():
   return [
       ":protos_all_cc",
+      "//third_party/eigen3",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
 
@@ -532,6 +539,9 @@ def tf_additional_gdr_lib_defines():
       "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
       "//conditions:default": [],
   })
+
+def tf_py_clif_cc(name, visibility=None, **kwargs):
+  pass
 
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):

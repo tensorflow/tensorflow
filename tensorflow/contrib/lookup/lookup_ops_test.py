@@ -187,6 +187,11 @@ class HashTableOpTest(test.TestCase):
           lookup.KeyValueTensorInitializer(keys, values), default_val)
       table.init.run()
 
+      # Ref types do not produce a lookup signature mismatch.
+      input_string_ref = variables.Variable("brain")
+      variables.global_variables_initializer().run()
+      self.assertEqual(0, table.lookup(input_string_ref).eval())
+
       input_string = constant_op.constant([1, 2, 3], dtypes.int64)
       with self.assertRaises(TypeError):
         table.lookup(input_string)
@@ -628,6 +633,17 @@ class MutableHashTableOpTest(test.TestCase):
 
       table.insert(keys, values).run()
       self.assertAllEqual(3, table.size().eval())
+
+      input_string_ref = variables.Variable("brain")
+      input_int64_ref = variables.Variable(-1, dtype=dtypes.int64)
+      variables.global_variables_initializer().run()
+
+      # Ref types do not produce an insert signature mismatch.
+      table.insert(input_string_ref, input_int64_ref).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      # Ref types do not produce a lookup signature mismatch.
+      self.assertEqual(-1, table.lookup(input_string_ref).eval())
 
       # lookup with keys of the wrong type
       input_string = constant_op.constant([1, 2, 3], dtypes.int64)
@@ -1640,23 +1656,22 @@ class InitializeTableFromFileOpTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInitializeStringTable(self):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
+    default_value = -1
+    table = lookup.HashTable(
+        lookup.TextFileInitializer(vocabulary_file, dtypes.string,
+                                   lookup.TextFileIndex.WHOLE_LINE,
+                                   dtypes.int64,
+                                   lookup.TextFileIndex.LINE_NUMBER),
+        default_value)
+    self.evaluate(table.init)
 
-    with self.test_session():
-      default_value = -1
-      table = lookup.HashTable(
-          lookup.TextFileInitializer(vocabulary_file, dtypes.string,
-                                     lookup.TextFileIndex.WHOLE_LINE,
-                                     dtypes.int64,
-                                     lookup.TextFileIndex.LINE_NUMBER),
-          default_value)
-      table.init.run()
+    output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
 
-      output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
-
-      result = output.eval()
-      self.assertAllEqual([0, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
 
   def testInitializeInt64Table(self):
     vocabulary_file = self._createVocabFile(

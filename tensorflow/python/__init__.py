@@ -60,7 +60,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
-from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -84,6 +84,7 @@ from tensorflow.python.feature_column import feature_column_lib as feature_colum
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
@@ -115,6 +116,7 @@ from tensorflow.python.platform import test
 
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util.tf_export import tf_export
 
 # Import modules whose docstrings contribute, for use by remove_undocumented
 # below.
@@ -166,18 +168,39 @@ _allowed_symbols = [
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
+# Export protos
+# pylint: disable=undefined-variable
+tf_export('AttrValue')(AttrValue)
+tf_export('ConfigProto')(ConfigProto)
+tf_export('Event', 'summary.Event')(Event)
+tf_export('GPUOptions')(GPUOptions)
+tf_export('GraphDef')(GraphDef)
+tf_export('GraphOptions')(GraphOptions)
+tf_export('HistogramProto')(HistogramProto)
+tf_export('LogMessage')(LogMessage)
+tf_export('MetaGraphDef')(MetaGraphDef)
+tf_export('NameAttrList')(NameAttrList)
+tf_export('NodeDef')(NodeDef)
+tf_export('OptimizerOptions')(OptimizerOptions)
+tf_export('RunMetadata')(RunMetadata)
+tf_export('RunOptions')(RunOptions)
+tf_export('SessionLog', 'summary.SessionLog')(SessionLog)
+tf_export('Summary', 'summary.Summary')(Summary)
+tf_export('summary.SummaryDescription')(SummaryDescription)
+tf_export('SummaryMetadata')(SummaryMetadata)
+tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
+tf_export('TensorInfo')(TensorInfo)
+# pylint: enable=undefined-variable
+
+
 # The following symbols are kept for compatibility. It is our plan
 # to remove them in the future.
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'mul',  # use tf.multiply instead.
-    'neg',  # use tf.negative instead.
-    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
-    'list_diff',  # Use tf.listdiff instead.
     'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
@@ -241,6 +264,7 @@ _allowed_symbols.extend([
     'linalg',
     'logging',
     'losses',
+    'manip',
     'metrics',
     'newaxis',
     'nn',

@@ -116,7 +116,29 @@ non_tuple
   | rank2345
   ;
 rank2345
-  : shape nested_array
+  : shape sparse_or_nested_array
+  ;
+sparse_or_nested_array
+  : sparse_array
+  | nested_array
+  ;
+sparse_array
+  : '{' sparse_array1 '}'
+  ;
+sparse_array1
+  : sparse_array_item
+  | sparse_array1 ',' sparse_array_item
+  ;
+sparse_array_item
+  : multi_index ':' scalar
+  ;
+multi_index
+  : kInt
+  | '[' multi_index1 ']'
+  ;
+multi_index1
+  : kInt
+  | multi_index1 ',' kInt
   ;
 
 ```

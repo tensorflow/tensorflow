@@ -103,6 +103,7 @@ class DfsHloVisitorBase {
     return HandleElementwiseBinary(hlo);
   }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
+  virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
@@ -189,6 +190,7 @@ class DfsHloVisitorBase {
 
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
+  virtual Status HandleHostCompute(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
@@ -212,6 +214,7 @@ class DfsHloVisitorBase {
   virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
   virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGather(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 

@@ -327,7 +327,7 @@ class VectorDistributionTestHelpers(object):
       num_samples=int(1e5),
       seed=24,
       rtol=1e-2,
-      atol=0.,
+      atol=0.1,
       cov_rtol=None,
       cov_atol=None):
     """Tests that sample/mean/covariance are consistent with each other.

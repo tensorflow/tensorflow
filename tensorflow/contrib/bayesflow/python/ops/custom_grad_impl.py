@@ -31,8 +31,7 @@ __all__ = [
 ]
 
 
-def custom_gradient(fx, gx, x, axis=(),
-                    fx_gx_manually_stopped=False,
+def custom_gradient(fx, gx, x, axis=(), fx_gx_manually_stopped=False,
                     name=None):
   """Enables specifying a custom gradient.
 
@@ -43,7 +42,8 @@ def custom_gradient(fx, gx, x, axis=(),
   h(x) = x * stop_gradient(g(x)) + stop_gradient(f(x) - x * g(x))
   ```
 
-  is such that `h(x) = stop_gradient(f(x))` and `grad[h(x), x] = stop_gradient(g(x)).`
+  is such that `h(x) = stop_gradient(f(x))` and `grad[h(x), x] =
+  stop_gradient(g(x)).`
 
   In addition to scalar-domain/scalar-range functions, this function also
   supports tensor-domain/scalar-range functions. However, in the latter case it

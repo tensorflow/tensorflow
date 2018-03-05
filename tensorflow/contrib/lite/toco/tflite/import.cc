@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/contrib/lite/toco/tooling_util.h"
 
 namespace toco {
 
@@ -63,6 +64,9 @@ void ImportTensors(const ::tflite::Model& input_model, Model* model) {
 
     auto shape = input_tensor->shape();
     if (shape) {
+      // If the shape is 0-dimensional, make sure to record it as such,
+      // as oppose to leaving the array without a shape.
+      array.mutable_shape()->mutable_dims()->clear();
       for (int i = 0; i < shape->Length(); ++i) {
         auto d = shape->Get(i);
         array.mutable_shape()->mutable_dims()->push_back(d);
@@ -119,8 +123,16 @@ void ImportOperators(
     auto inputs = input_op->inputs();
     for (int i = 0; i < inputs->Length(); i++) {
       auto input_index = inputs->Get(i);
-      const string& input_name = tensors_table.at(input_index);
-      op->inputs.push_back(input_name);
+      // input_index == -1 indicates optional tensor.
+      if (input_index != -1) {
+        const string& input_name = tensors_table.at(input_index);
+        op->inputs.push_back(input_name);
+      } else {
+        const string& tensor_name =
+            toco::AvailableArrayName(*model, "OptionalTensor");
+        model->CreateOptionalArray(tensor_name);
+        op->inputs.push_back(tensor_name);
+      }
     }
     auto outputs = input_op->outputs();
     for (int i = 0; i < outputs->Length(); i++) {

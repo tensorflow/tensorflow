@@ -32,18 +32,20 @@ mkdir -p "$TMPDIR"
 # Set bash path
 export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
+export PYTHON_BASE_PATH="${PYTHON_DIRECTORY:-Program Files/Anaconda3}"
+
 # Set Python path for ./configure
-export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python.exe"
-export PYTHON_LIB_PATH="C:/Program Files/Anaconda3/lib/site-packages"
+export PYTHON_BIN_PATH="C:/${PYTHON_BASE_PATH}/python.exe"
+export PYTHON_LIB_PATH="C:/${PYTHON_BASE_PATH}/lib/site-packages"
 
 # Add python into PATH, it's needed because gen_git_source.py uses
 # '/usr/bin/env python' as a shebang
-export PATH="/c/Program Files/Anaconda3:$PATH"
+export PATH="/c/${PYTHON_BASE_PATH}:$PATH"
 
 # Make sure we have pip in PATH
-export PATH="/c/Program Files/Anaconda3/Scripts:$PATH"
+export PATH="/c/${PYTHON_BASE_PATH}/Scripts:$PATH"
 
 # Add Cuda and Cudnn dll directories into PATH
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/bin:$PATH"
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPTI/libx64:$PATH"
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/bin:$PATH"
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/extras/CUPTI/libx64:$PATH"
 export PATH="/c/tools/cuda/bin:$PATH"

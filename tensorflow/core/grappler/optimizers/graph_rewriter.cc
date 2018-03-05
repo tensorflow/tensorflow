@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
@@ -61,15 +62,28 @@ void GraphRewriter::ForwardInputs(
     const NodeDef& original_node,
     const std::unordered_set<const NodeDef*>& nodes_to_delete,
     NodeDef* new_node) {
-  ForwardInputsInternal(original_node, nodes_to_delete, new_node);
+  ForwardInputsInternal(original_node, nodes_to_delete, false, new_node);
   if (!new_node->name().empty()) {
     optimized_nodes_[new_node->name()] = new_node;
   }
+  // Reorder inputs such that control inputs come after regular inputs.
+  int pos = 0;
+  for (int i = 0; i < new_node->input_size(); ++i) {
+    if (!IsControlInput(new_node->input(i))) {
+      new_node->mutable_input()->SwapElements(pos, i);
+      ++pos;
+    }
+  }
+  DedupControlInputs(new_node);
 }
 
 bool GraphRewriter::DrivesControlDependency(const NodeDef& node) const {
   return control_dependency_drivers_.find(&node) !=
          control_dependency_drivers_.end();
+}
+
+bool GraphRewriter::FeedsMerge(const NodeDef& node) const {
+  return merge_feeders_.find(&node) != merge_feeders_.end();
 }
 
 bool GraphRewriter::IsDrivenByControlDependency(const NodeDef& node) const {
@@ -94,12 +108,27 @@ bool GraphRewriter::ReceivesRefValue(const NodeDef& node) const {
   return ref_receivers_.find(&node) != ref_receivers_.end();
 }
 
+bool GraphRewriter::IsDrivenBySwitch(const NodeDef& node) const {
+  return switch_receivers_.find(&node) != switch_receivers_.end();
+}
+
+bool GraphRewriter::RemovalIncreasesEdgeCount(const NodeDef& node) const {
+  const int in_degree = node.input_size();
+  auto itr = nodes_.find(node.name());
+  if (itr == nodes_.end()) {
+    return true;
+  }
+  const int out_degree = itr->second->out_degree;
+  return in_degree * out_degree > in_degree + out_degree;
+}
+
 void GraphRewriter::RecordConnectivity(
     const NodeDef& node, const std::unordered_set<string>& function_names) {
   const bool is_function =
       function_names.find(node.op()) != function_names.end();
 
   bool ref_receiver = false;
+  bool switch_receiver = false;
   for (const auto& input : node.input()) {
     int position = 0;
     string input_node_name = ParseNodeName(input, &position);
@@ -107,8 +136,14 @@ void GraphRewriter::RecordConnectivity(
     if (itr == nodes_.end()) {
       continue;
     }
-    const NodeInfo* fanin_info = itr->second.get();
+
+    NodeInfo* fanin_info = itr->second.get();
     const NodeDef* fanin = fanin_info->def;
+    if (IsMerge(node)) {
+      merge_feeders_.insert(fanin);
+    }
+    // Update out_degree of fanin.
+    ++fanin_info->out_degree;
     if (position < 0) {
       // This is a control edge
       control_dependency_drivers_.insert(fanin);
@@ -120,7 +155,9 @@ void GraphRewriter::RecordConnectivity(
       if (is_function) {
         function_neighbors_.insert(fanin);
       }
-
+      if (IsSwitch(*fanin)) {
+        switch_receiver = true;
+      }
       if (position < fanin_info->outputs.size() &&
           IsRefType(fanin_info->outputs[position])) {
         ref_receiver = true;
@@ -134,34 +171,41 @@ void GraphRewriter::RecordConnectivity(
   if (ref_receiver) {
     ref_receivers_.insert(&node);
   }
+  if (switch_receiver) {
+    switch_receivers_.insert(&node);
+  }
 }
 
 void GraphRewriter::ForwardInputsInternal(
     const NodeDef& node,
     const std::unordered_set<const NodeDef*>& nodes_to_delete,
-    NodeDef* new_node) {
+    bool add_as_control, NodeDef* new_node) {
   // To speed things up, use the optimized version of the node if
   // available.
   auto itr = optimized_nodes_.find(node.name());
   if (itr != optimized_nodes_.end()) {
     for (const string& input : itr->second->input()) {
-      *new_node->add_input() = input;
+      *new_node->add_input() =
+          add_as_control ? AsControlDependency(NodeName(input)) : input;
     }
     return;
   }
   for (const auto& input : node.input()) {
-    string input_node_name = NodeName(input);
+    const string input_node_name = NodeName(input);
     auto itr = nodes_.find(input_node_name);
     if (itr == nodes_.end()) {
       // Invalid input, preserve it as is.
-      *new_node->add_input() = input;
+      *new_node->add_input() =
+          add_as_control ? AsControlDependency(NodeName(input)) : input;
       continue;
     }
     const NodeDef* input_node = itr->second->def;
     if (nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
-      ForwardInputsInternal(*input_node, nodes_to_delete, new_node);
+      ForwardInputsInternal(*input_node, nodes_to_delete,
+                            add_as_control || IsControlInput(input), new_node);
     } else {
-      *new_node->add_input() = input;
+      *new_node->add_input() =
+          add_as_control ? AsControlDependency(NodeName(input)) : input;
     }
   }
 }

@@ -52,6 +52,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _eager_reshape(tensor, shape, ctx):
@@ -59,7 +60,6 @@ def _eager_reshape(tensor, shape, ctx):
   attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
   attr_tshape, (shape,) = execute.args_to_matching_eager(
       [shape], ctx, dtypes.int32)
-  attr_tshape = attr_tshape
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
   result, = execute.execute(
@@ -131,6 +131,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
 
 
+@tf_export("constant")
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 

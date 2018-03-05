@@ -62,7 +62,7 @@ namespace {
 //                                &tagged_instructions));
 //
 // Instructions that are "tagged" with a context-specific string will
-// be returned in 'tagged_instructions' for further procesing (i.e. parsing
+// be returned in 'tagged_instructions' for further processing (i.e. parsing
 // constants or recording the tuple_index).
 //
 class ExprTree {

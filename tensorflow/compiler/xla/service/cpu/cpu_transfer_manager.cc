@@ -98,7 +98,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
 
   if (!ShapeUtil::IsTuple(shape)) {
     int64 size = GetByteSizeRequirement(shape);
-    return TransferBufferToInfeed(executor, size, literal.InternalData());
+    return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
 
   if (ShapeUtil::IsNestedTuple(shape)) {
@@ -111,20 +111,20 @@ Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   // enqueue the resulting destination device addresses with the
   // infeed manager.
   std::vector<cpu::runtime::XfeedBuffer*> buffers;
-  buffers.reserve(literal.tuple_literals_size());
+  buffers.reserve(ShapeUtil::TupleElementCount(shape));
   auto cleanup = tensorflow::gtl::MakeCleanup([&buffers]() {
     for (cpu::runtime::XfeedBuffer* b : buffers) {
       b->Done(Cancelled("Failed to infeed buffer to device."));
     }
   });
 
-  for (const auto& tuple_element : literal.tuple_literals()) {
-    const Shape& tuple_element_shape = tuple_element.shape();
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
     int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
     TF_ASSIGN_OR_RETURN(
         cpu::runtime::XfeedBuffer * buffer,
         TransferBufferToInfeedInternal(executor, tuple_element_size,
-                                       tuple_element.InternalData()));
+                                       literal.untyped_data({i})));
     buffers.push_back(buffer);
   }
 
@@ -187,14 +187,14 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
         literal_shape.element_type(), dimensions));
     TF_ASSIGN_OR_RETURN(Shape received_shape,
                         TransferArrayBufferFromOutfeed(
-                            executor, literal->MutableInternalData(), size));
+                            executor, literal->untyped_data(), size));
     TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal->shape()))
         << "Shape received from outfeed "
         << ShapeUtil::HumanString(received_shape)
         << " did not match the shape that was requested for outfeed: "
         << ShapeUtil::HumanString(literal_shape);
     TF_RET_CHECK(size == GetByteSizeRequirement(received_shape));
-    *literal->mutable_shape() = received_shape;
+    *literal->mutable_shape_do_not_use() = received_shape;
     return Status::OK();
   }
 
@@ -217,7 +217,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
     auto empty = Literal::CreateFromDimensions(
         tuple_element_shape.element_type(), dimensions);
     int64 size = GetByteSizeRequirement(tuple_element_shape);
-    buffer_data.push_back({empty->MutableInternalData(), size});
+    buffer_data.push_back({empty->untyped_data(), size});
     elements.push_back(std::move(empty));
   }
 
@@ -233,7 +233,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
                GetByteSizeRequirement(received_shape));
 
   for (int64 i = 0; i < literal_shape.tuple_shapes_size(); ++i) {
-    *elements[i]->mutable_shape() = received_shape.tuple_shapes(i);
+    *elements[i]->mutable_shape_do_not_use() = received_shape.tuple_shapes(i);
   }
   *literal = std::move(*Literal::MakeTupleOwned(std::move(elements)));
   TF_RET_CHECK(ShapeUtil::Equal(literal->shape(), literal_shape));

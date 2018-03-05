@@ -226,7 +226,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (primitive_util::IsIntegralType(to_type)) {
         return ir_builder_->CreateIntCast(
             operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_),
-            primitive_util::IsSignedIntegralType(to_type));
+            primitive_util::IsSignedIntegralType(from_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == BF16) {
@@ -428,7 +428,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           llvm::Intrinsic::round, {operand_value}, {operand_value->getType()},
           ir_builder_);
     case HloOpcode::kSign: {
-      // TODO(b/32151903): Ensure consistent sign behavior for -0.0
+      // TODO(b/32151903): Ensure consistent sign behavior for -0.0.
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = ir_builder_->CreateFCmpOEQ(operand_value, zero);
@@ -870,7 +870,10 @@ llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
                                                       llvm::Value* x) const {
   if (prim_type != F32) {
-    return Unimplemented("inverse erf only implemented for F32 (b/34339814)");
+    // TODO(b/34339814): Implement inverse erf for F64.
+    return Unimplemented(
+        "Inverse erf is only implemented for element "
+        "type F32.");
   }
   auto getFloat = [&](const float f) {
     return llvm::ConstantFP::get(ir_builder_->getFloatTy(), f);
@@ -1000,6 +1003,30 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
                                   ir_builder_);
 }
 
+static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* ir_builder,
+                                             llvm::Value* lhs, llvm::Value* rhs,
+                                             llvm::Value* shift_result,
+                                             bool saturate_to_sign_bit) {
+  llvm::IntegerType* integer_type =
+      llvm::cast<llvm::IntegerType>(lhs->getType());
+  unsigned integer_bitsize = integer_type->getBitWidth();
+  llvm::ConstantInt* integer_bitsize_constant =
+      llvm::ConstantInt::get(integer_type, integer_bitsize);
+  llvm::ConstantInt* zero = llvm::ConstantInt::get(integer_type, 0);
+  llvm::ConstantInt* minus_one = llvm::ConstantInt::get(integer_type, -1);
+  llvm::Value* saturated_value;
+  if (saturate_to_sign_bit) {
+    saturated_value = ir_builder->CreateSelect(
+        ir_builder->CreateICmpSLT(lhs, zero), minus_one, zero);
+  } else {
+    saturated_value = zero;
+  }
+  llvm::Value* shift_amt_in_range =
+      ir_builder->CreateICmpULT(rhs, integer_bitsize_constant, "shft.chk");
+  return ir_builder->CreateSelect(shift_amt_in_range, shift_result,
+                                  saturated_value);
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -1040,31 +1067,58 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
           is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE,
           lhs_value, rhs_value, ir_builder_);
     case HloOpcode::kMinimum:
-      return ir_builder_->CreateSelect(
-          ir_builder_->CreateICmp(
-              is_signed ? llvm::ICmpInst::ICMP_SLE : llvm::ICmpInst::ICMP_ULE,
-              lhs_value, rhs_value),
-          lhs_value, rhs_value);
+      return EmitIntegralMin(lhs_value, rhs_value, is_signed);
     case HloOpcode::kMaximum:
-      return ir_builder_->CreateSelect(
-          ir_builder_->CreateICmp(
-              is_signed ? llvm::ICmpInst::ICMP_SGE : llvm::ICmpInst::ICMP_UGE,
-              lhs_value, rhs_value),
-          lhs_value, rhs_value);
+      return EmitIntegralMax(lhs_value, rhs_value, is_signed);
     case HloOpcode::kAnd:
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
-    case HloOpcode::kShiftLeft:
-      return ir_builder_->CreateShl(lhs_value, rhs_value);
+
+    // Shifting out bits >= the number of bits in the type being shifted
+    // produces a poison value in LLVM which is basically "deferred undefined
+    // behavior" -- doing something observable with such a value precipitates
+    // UB.  We replace the poison value with a constant to avoid this deferred
+    // UB.
     case HloOpcode::kShiftRightArithmetic:
-      return ir_builder_->CreateAShr(lhs_value, rhs_value);
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateAShr(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/true);
+    case HloOpcode::kShiftLeft:
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateShl(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/false);
     case HloOpcode::kShiftRightLogical:
-      return ir_builder_->CreateLShr(lhs_value, rhs_value);
+      return SaturateShiftIfNecessary(
+          ir_builder_, lhs_value, rhs_value,
+          ir_builder_->CreateLShr(lhs_value, rhs_value),
+          /*saturate_to_sign_bit=*/false);
     default:
       return Unimplemented("binary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
   }
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegralMax(llvm::Value* lhs_value,
+                                                 llvm::Value* rhs_value,
+                                                 bool is_signed) const {
+  return ir_builder_->CreateSelect(
+      ir_builder_->CreateICmp(
+          is_signed ? llvm::ICmpInst::ICMP_SGE : llvm::ICmpInst::ICMP_UGE,
+          lhs_value, rhs_value),
+      lhs_value, rhs_value);
+}
+
+llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
+                                                 llvm::Value* rhs_value,
+                                                 bool is_signed) const {
+  return ir_builder_->CreateSelect(
+      ir_builder_->CreateICmp(
+          is_signed ? llvm::ICmpInst::ICMP_SLE : llvm::ICmpInst::ICMP_ULE,
+          lhs_value, rhs_value),
+      lhs_value, rhs_value);
 }
 
 llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
@@ -1264,28 +1318,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
                             get_next_uniform_float())));
         return ir_builder_->CreateFAdd(ir_builder_->CreateFMul(r, s), m);
       }
-      case RNG_BERNOULLI: {
-        TF_ASSIGN_OR_RETURN(llvm::Value * p,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        PrimitiveType element_type = hlo->shape().element_type();
-        llvm::Value* zero;
-        llvm::Value* one;
-        llvm::Type* result_ir_type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        if (primitive_util::IsFloatingPointType(element_type)) {
-          zero = llvm::ConstantFP::get(result_ir_type, 0.0);
-          one = llvm::ConstantFP::get(result_ir_type, 1.0);
-        } else if (primitive_util::IsIntegralType(element_type)) {
-          zero = llvm::ConstantInt::get(result_ir_type, 0);
-          one = llvm::ConstantInt::get(result_ir_type, 1);
-        } else {
-          return Unimplemented(
-              "Rng Bernoulli unimplemented for requested type!");
-        }
-
-        return ir_builder_->CreateSelect(
-            ir_builder_->CreateFCmpOLT(get_next_uniform_float(), p), one, zero);
-      }
       default:
         return InvalidArgument(
             "unhandled distribution %s",
@@ -1385,7 +1417,18 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         TF_ASSIGN_OR_RETURN(llvm::Value * max_value,
                             operand_to_generator.at(hlo->operand(2))(
                                 ElementwiseSourceIndex(index, *hlo, 2)));
-        return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
+        PrimitiveType prim_type = hlo->shape().element_type();
+        if (primitive_util::IsFloatingPointType(prim_type)) {
+          return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
+        } else if (primitive_util::IsIntegralType(prim_type)) {
+          bool is_signed = primitive_util::IsSignedIntegralType(prim_type);
+          return EmitIntegralMin(
+              max_value, EmitIntegralMax(min_value, arg_value, is_signed),
+              is_signed);
+        } else {
+          return Unimplemented("Clamp unimplemented for %s",
+                               PrimitiveType_Name(prim_type).c_str());
+        }
       };
     case HloOpcode::kReducePrecision:
       return [this, hlo, &operand_to_generator](
