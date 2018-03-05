@@ -762,6 +762,8 @@ def cast(x, dtype, name=None):
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
   """
+  if x.dtype.is_complex and dtype.is_floating:
+    logging.warn("Casting complex to real discards imaginary part.")
   base_type = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -826,8 +828,6 @@ def to_float(x, name="ToFloat"):
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
   """
-  if x.dtype.is_complex:
-    logging.warn("Casting complex to real discards imaginary part.")
   return cast(x, dtypes.float32, name=name)
 
 
