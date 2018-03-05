@@ -24,6 +24,7 @@ py_library(
         "python/training/moving_average_optimizer.py",
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
+        "python/training/weight_decay_optimizers.py",
         "python/training/powersign.py",
         "python/training/reg_adagrad_optimizer.py",
         "python/training/sign_decay.py",
@@ -178,6 +179,25 @@ py_test(
 py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "weight_decay_optimizers_test",
+    srcs = ["python/training/weight_decay_optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
