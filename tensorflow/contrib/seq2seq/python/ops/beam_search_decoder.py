@@ -206,7 +206,8 @@ def _check_static_batch_beam_maybe(shape, batch_size, beam_width):
 
 def _check_batch_beam(t, batch_size, beam_width):
   """Returns an Assert operation checking that the elements of the stacked
-  TensorArray can be reshaped to [batch_size, beam_size, -1].
+  TensorArray can be reshaped to [batch_size, beam_size, -1]. At this point,
+  the TensorArray elements have a known rank of at least 1.
   """
   error_message = ("TensorArray reordering expects elements to be "
                    "reshapable to [batch_size, beam_size, -1] which is "
@@ -214,17 +215,17 @@ def _check_batch_beam(t, batch_size, beam_width):
                    "Consider setting reorder_tensor_arrays to False to disable "
                    "TensorArray reordering during the beam search."
                    % (t.name))
-  return control_flow_ops.Assert(
-      math_ops.logical_and(
-          array_ops.rank(t) >= 2,
-          math_ops.logical_or(
-              math_ops.equal(array_ops.shape(t)[1], batch_size * beam_width),
-              math_ops.logical_and(
-                  array_ops.rank(t) > 2,
-                  math_ops.logical_and(
-                      math_ops.equal(array_ops.shape(t)[1], batch_size),
-                      math_ops.equal(array_ops.shape(t)[2], beam_width))))),
-      [error_message])
+  rank = t.shape.ndims
+  shape = array_ops.shape(t)
+  if rank == 2:
+    condition = math_ops.equal(shape[1], batch_size * beam_width)
+  else:
+    condition = math_ops.logical_or(
+        math_ops.equal(shape[1], batch_size * beam_width),
+        math_ops.logical_and(
+            math_ops.equal(shape[1], batch_size),
+            math_ops.equal(shape[2], beam_width)))
+  return control_flow_ops.Assert(condition, [error_message])
 
 
 

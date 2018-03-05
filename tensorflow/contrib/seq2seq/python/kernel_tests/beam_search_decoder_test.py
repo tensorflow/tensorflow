@@ -27,6 +27,7 @@ from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
@@ -131,6 +132,38 @@ class TestGatherTree(test.TestCase):
 
   def test_gather_tree_from_array_2d(self):
     self._test_gather_tree_from_array(depth_ndims=2)
+
+
+class TestArrayShapeChecks(test.TestCase):
+
+  def _test_array_shape_dynamic_checks(self, static_shape, dynamic_shape,
+                                       batch_size, beam_width, is_valid=True):
+    t = array_ops.placeholder_with_default(
+        np.random.randn(*static_shape).astype(np.float32),
+        shape=dynamic_shape)
+
+    batch_size = array_ops.constant(batch_size)
+    check_op = beam_search_decoder._check_batch_beam(t, batch_size, beam_width)  # pylint: disable=protected-access
+
+    with self.test_session() as sess:
+      if is_valid:
+        sess.run(check_op)
+      else:
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(check_op)
+
+  def test_array_shape_dynamic_checks(self):
+    self._test_array_shape_dynamic_checks(
+        (8, 4, 5, 10), (None, None, 5, 10), 4, 5, is_valid=True)
+    self._test_array_shape_dynamic_checks(
+        (8, 20, 10), (None, None, 10), 4, 5, is_valid=True)
+    self._test_array_shape_dynamic_checks(
+        (8, 21, 10), (None, None, 10), 4, 5, is_valid=False)
+    self._test_array_shape_dynamic_checks(
+        (8, 4, 6, 10), (None, None, None, 10), 4, 5, is_valid=False)
+    self._test_array_shape_dynamic_checks(
+        (8, 4), (None, None), 4, 5, is_valid=False)
+
 
 class TestEosMasking(test.TestCase):
   """Tests EOS masking used in beam search."""
