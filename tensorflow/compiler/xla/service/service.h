@@ -265,11 +265,14 @@ class Service : public ServiceInterface {
   static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
 
   // Resolves the given argument handles in the allocation tracker and returns
-  // the corresponding allocations. The function also verifies that each
-  // allocation matches the execution platform and device ordinal.
-  StatusOr<std::vector<const ShapedBuffer*>> ResolveAndValidateArguments(
+  // the corresponding allocations for every replica. The function also verifies
+  // that each allocation matches the execution platform and device ordinal of
+  // the corresponding replica.
+  StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+  ResolveAndValidateArguments(
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      int device_ordinal);
+      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+          stream_executors);
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
@@ -314,16 +317,17 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      Backend* backend, perftools::gputools::StreamExecutor* executor,
-      const string& result_tag, ExecutionProfile* profile);
+      const tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>>
+          arguments,
+      Backend* backend, const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
   // from the tracker are returned.
   StatusOr<std::vector<GlobalDataHandle>> ExecuteParallelAndRegisterResult(
       tensorflow::gtl::ArraySlice<Executable*> executables,
-      tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>> arguments,
+      tensorflow::gtl::ArraySlice<std::vector<std::vector<const ShapedBuffer*>>>
+          arguments,
       Backend* backend,
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags,
