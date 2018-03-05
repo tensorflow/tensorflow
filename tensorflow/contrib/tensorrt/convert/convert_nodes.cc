@@ -2224,7 +2224,6 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     }
   }
   // topological order is needed to build TRT network
-  VLOG(2) << "BUILDING 1";
   static int static_id = 0;
   string subgraph_name_scope;
   if (!order.empty()) {
@@ -2239,11 +2238,9 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   string engine_name =
       tensorflow::strings::StrCat(subgraph_name_scope, "my_trt_op", static_id);
   static_id++;
-  VLOG(2) << "BUILDING 2";
   auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
   auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
   auto op_res = new tensorflow::tensorrt::TRTCalibrationResource();
-  VLOG(1) << "SAMI Creating calibresource " << calib_op_name << " @ " << op_res;
   TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
   op_res->logger_ = new tensorflow::tensorrt::Logger();
   op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
@@ -2253,27 +2250,21 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
         "failed to create TensorRT builder object");
   }
 
-  VLOG(2) << "BUILDING 3";
-
   op_res->network_ = op_res->builder_->createNetwork();
   if (!op_res->network_) {
     return tensorflow::errors::Internal(
         "failed to create TensorRT network object");
   }
 
-  VLOG(2) << "BUILDING 4";
-
   // Build the network
   auto weight_rmgr = trt_rmgr->getManager("WeightStore");
   auto ws = new tensorflow::tensorrt::TRTWeightStore();
   TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
   Converter converter(op_res->network_, ws, s.precision_mode == 1);
-
-  VLOG(2) << "BUILDING 5";
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (const std::pair<int, int>& input : s.input_inds) {
-    VLOG(2) << "parsing input!!!!!";
+    VLOG(2) << "parsing input. Node id= "<< input.first;
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);
