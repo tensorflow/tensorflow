@@ -146,10 +146,10 @@ single input number into a four-element vector. Therefore, the model now can
 learn _four individual weights_ rather than just one; four weights creates a
 richer model than one weight. More importantly, bucketizing enables the model
 to clearly distinguish between different year categories since only one of the
-elements is set (1) and the other three elements are cleared (0). When we just
-use a single number (a year) as input, the model can only learn a linear
-relationship. So, bucketing provides the model with additional flexibility that
-the model can use to learn.
+elements is set (1) and the other three elements are cleared (0). For example,
+when we just use a single number (a year) as input, a linear model can only
+learn a linear relationship. So, bucketing provides the model with additional
+flexibility that the model can use to learn.
 
 The following code demonstrates how to create a bucketized feature:
 
@@ -242,7 +242,7 @@ on an explicit vocabulary list. For example:
 # the elements in the vocabulary list.
 vocabulary_feature_column =
     tf.feature_column.categorical_column_with_vocabulary_list(
-        key="a feature returned by input_fn()",
+        key=feature_name_from_input_fn,
         vocabulary_list=["kitchenware", "electronics", "sports"])
 ```
 
@@ -259,7 +259,7 @@ you place the vocabulary words in a separate file. For example:
 # the elements in the vocabulary file
 vocabulary_feature_column =
     tf.feature_column.categorical_column_with_vocabulary_file(
-        key="a feature returned by input_fn()",
+        key=feature_name_from_input_fn,
         vocabulary_file="product_class.txt",
         vocabulary_size=3)
 ```
@@ -461,8 +461,8 @@ permitting a richer palette of numbers for every cell, an embedding column
 contains far fewer cells than an indicator column.
 
 Let's look at an example comparing indicator and embedding columns. Suppose our
-input examples consists of different words from a limited palette of only 81
-words. Further suppose that the data set provides provides the following input
+input examples consist of different words from a limited palette of only 81
+words. Further suppose that the data set provides the following input
 words in 4 separate examples:
 
 * `"dog"`

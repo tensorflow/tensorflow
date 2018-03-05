@@ -16,7 +16,7 @@ This document focuses on checkpoints. For details on SavedModel, see the
 ## Sample code
 
 This document relies on the same
-[https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py](Iris classification example) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
+[Iris classification example](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
 To download and access the example, invoke the following two commands:
 
 ```shell
@@ -154,7 +154,7 @@ classifier = tf.estimator.DNNClassifier(
 
 The first time you call an Estimator's `train` method, TensorFlow saves a
 checkpoint to the `model_dir`. Each subsequent call to the Estimator's
-`train`, `eval`, or `predict` method causes the following:
+`train`, `evaluate`, or `predict` method causes the following:
 
 1.  The Estimator builds the model's
     [graph](https://developers.google.com/machine-learning/glossary/#graph)
@@ -222,7 +222,7 @@ does not match the shape stored in checkpoint: [20]
 
 To run experiments in which you train and compare slightly different
 versions of a model, save a copy of the code that created each
-`model-dir`, possibly by creating a separate git branch for each version.
+`model_dir`, possibly by creating a separate git branch for each version.
 This separation will keep your checkpoints recoverable.
 
 ## Summary

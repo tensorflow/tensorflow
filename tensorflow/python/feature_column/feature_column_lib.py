@@ -29,6 +29,7 @@ _allowed_symbols = [
     'linear_model',
     'make_parse_example_spec',
     'embedding_column',
+    'shared_embedding_columns',
     'crossed_column',
     'numeric_column',
     'bucketized_column',

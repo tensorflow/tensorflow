@@ -30,7 +30,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -44,8 +44,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     OP_REQUIRES(context, logits_in.IsSameSize(labels_in),
                 errors::InvalidArgument(
                     "logits and labels must be same size: logits_size=",
-                    logits_in.shape().DebugString(), " labels_size=",
-                    labels_in.shape().DebugString()));
+                    logits_in.shape().DebugString(),
+                    " labels_size=", labels_in.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
                 errors::InvalidArgument("logits must be 2-dimensional"));
     // As we already tested that both inputs have the same shape no need to
@@ -67,10 +67,12 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     // Try to reuse the logits_in buffer for the backprop output.
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 1, logits_in.shape(), &back_out));
-    functor::XentFunctor<Device, T> functor;
-    functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-            labels_in.matrix<T>(), scratch.matrix<T>(), loss_out->vec<T>(),
-            back_out->matrix<T>());
+    if (logits_in.dim_size(0) > 0) {
+      functor::XentFunctor<Device, T> functor;
+      functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
+              labels_in.matrix<T>(), scratch.matrix<T>(), loss_out->vec<T>(),
+              back_out->matrix<T>());
+    }
   }
 };
 
@@ -85,7 +87,7 @@ struct XentFunctorBase {
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
     XentEigenImpl<Device, T>::Compute(d, logits, labels, scratch, loss,
-                                         backprop);
+                                      backprop);
   }
 };
 
@@ -95,7 +97,7 @@ struct XentFunctor<CPUDevice, T> : XentFunctorBase<CPUDevice, T> {};
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
 struct XentFunctor<SYCLDevice, T> : XentFunctorBase<SYCLDevice, T> {};
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER_CPU(T)                                         \
@@ -127,6 +129,6 @@ REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<float>("T"),
                         SoftmaxXentWithLogitsOp<SYCLDevice, float>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

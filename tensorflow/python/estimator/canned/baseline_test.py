@@ -1075,7 +1075,7 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
           metric_keys.MetricKeys.AUC: 0.,
-          metric_keys.MetricKeys.AUC_PR: 1.,
+          metric_keys.MetricKeys.AUC_PR: 0.5,
       }
     else:
       # Multi classes: loss = 1 * -log ( softmax(logits)[label] )
@@ -1136,7 +1136,7 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           metric_keys.MetricKeys.LABEL_MEAN: 0.5,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
           metric_keys.MetricKeys.AUC: 0.5,
-          metric_keys.MetricKeys.AUC_PR: 0.75,
+          metric_keys.MetricKeys.AUC_PR: 0.25,
       }
     else:
       # Expand logits since batch_size=2
@@ -1212,7 +1212,7 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           metric_keys.MetricKeys.ACCURACY_BASELINE: (
               max(label_mean, 1-label_mean)),
           metric_keys.MetricKeys.AUC: 0.5,
-          metric_keys.MetricKeys.AUC_PR: 2. / (1. + 2.),
+          metric_keys.MetricKeys.AUC_PR: 0.16666645,
       }
     else:
       # Multi classes: unweighted_loss = 1 * -log ( soft_max(logits)[label] )

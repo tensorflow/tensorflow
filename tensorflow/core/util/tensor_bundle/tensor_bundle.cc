@@ -144,7 +144,11 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
         buffered_file->ReadNBytes(string_length, &buffer[0], &bytes_read));
     *actual_crc32c = crc32c::Extend(*actual_crc32c, buffer.data(), bytes_read);
     VariantTensorDataProto proto;
-    proto.ParseFromString(buffer);
+    if (!proto.ParseFromString(buffer)) {
+      return errors::DataLoss("Unable to parse VariantTensorDataProto from ",
+                              "buffer of size ", string_length, ". ",
+                              "Bundle entry offset: ", offset, " size: ", size);
+    }
     Variant v = proto;
     if (!DecodeUnaryVariant(&v)) {
       return errors::Internal("Could not decode variant with type_name: \"",
@@ -282,7 +286,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     TF_RETURN_IF_ERROR(out->Append(len));
     *crc32c = crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&elem_size),
                              sizeof(uint64));
-    *bytes_written += sizeof(uint64);
+    *bytes_written += len.size();
 
     // Write the serialized variant.
     TF_RETURN_IF_ERROR(out->Append(elem));
@@ -689,13 +693,6 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   return status;
 }
 
-// TODO(b/64763924): Remove after Jan 1st 2018.
-bool GetLenientNames() {
-  const char* lenient_names_str = std::getenv("TF_SAVER_LENIENT_NAMES");
-  return lenient_names_str != nullptr &&
-         std::strcmp(lenient_names_str, "") != 0;
-}
-
 // Interface for reading a tensor bundle.
 
 BundleReader::BundleReader(Env* env, StringPiece prefix)
@@ -741,7 +738,6 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
-  lenient_names_ = GetLenientNames();
 }
 
 BundleReader::~BundleReader() {
@@ -764,23 +760,6 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_CHECK_OK(status_);
   Seek(key);
   if (!iter_->Valid() || iter_->key() != key) {
-    if (lenient_names_ && !key.ends_with(":0")) {
-      // TODO(b/64763924): Remove after Jan 1st 2018.
-      // Try appending ":0" to the key.
-      const string key_with_colon_zero = key.ToString() + ":0";
-      Status status = GetBundleEntryProto(key_with_colon_zero, entry);
-      if (status.ok()) {
-        LOG(WARNING) << "Key " << key << " was not found; using key "
-                     << key_with_colon_zero << " instead. This lenient naming "
-                     << "behavior will be removed on Jan 1st 2018, so please "
-                     << "update your checkpoint file.";
-        return status;
-      } else if (status.code() != error::NOT_FOUND) {
-        return status;
-      }
-      LOG(INFO) << "Looked for both " << key << " and " << key_with_colon_zero
-                << " in checkpoint.";
-    }
     return errors::NotFound("Key ", key, " not found in checkpoint");
   }
 
@@ -934,8 +913,8 @@ Status BundleReader::LookupSlice(StringPiece full_tensor_key,
 Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
-  using checkpoint::TensorSliceSet;
   using checkpoint::RegisterTensorSlice;
+  using checkpoint::TensorSliceSet;
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));

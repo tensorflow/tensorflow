@@ -24,12 +24,12 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <fcntl.h>
-#include <getopt.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
+#include <fcntl.h>      // NOLINT(build/include_order)
+#include <getopt.h>     // NOLINT(build/include_order)
+#include <sys/time.h>   // NOLINT(build/include_order)
+#include <sys/types.h>  // NOLINT(build/include_order)
+#include <sys/uio.h>    // NOLINT(build/include_order)
+#include <unistd.h>     // NOLINT(build/include_order)
 
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -89,7 +89,7 @@ void RunInference(Settings* s) {
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
@@ -148,14 +148,22 @@ void RunInference(Settings* s) {
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  if (s->input_floating) {
-    downsize<float>(interpreter->typed_tensor<float>(input), in, image_height,
+  switch (interpreter->tensor(input)->type) {
+    case kTfLiteFloat32:
+      s->input_floating = true;
+      resize<float>(interpreter->typed_tensor<float>(input), in, image_height,
                     image_width, image_channels, wanted_height, wanted_width,
                     wanted_channels, s);
-  } else {
-    downsize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
+      break;
+    case kTfLiteUInt8:
+      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
                       image_height, image_width, image_channels, wanted_height,
                       wanted_width, wanted_channels, s);
+      break;
+    default:
+      LOG(FATAL) << "cannot handle input type "
+                 << interpreter->tensor(input)->type << " yet";
+      exit(-1);
   }
 
   struct timeval start_time, stop_time;
@@ -177,13 +185,21 @@ void RunInference(Settings* s) {
 
   std::vector<std::pair<float, int>> top_results;
 
-  if (s->input_floating) {
-    get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                     num_results, threshold, &top_results, s->input_floating);
-  } else {
-    get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
-                       output_size, num_results, threshold, &top_results,
-                       s->input_floating);
+  int output = interpreter->outputs()[0];
+  switch (interpreter->tensor(output)->type) {
+    case kTfLiteFloat32:
+      get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
+                       num_results, threshold, &top_results, true);
+      break;
+    case kTfLiteUInt8:
+      get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
+                         output_size, num_results, threshold, &top_results,
+                         false);
+      break;
+    default:
+      LOG(FATAL) << "cannot handle output type "
+                 << interpreter->tensor(input)->type << " yet";
+      exit(-1);
   }
 
   std::vector<string> labels;
@@ -203,13 +219,11 @@ void display_usage() {
   LOG(INFO) << "label_image\n"
             << "--accelerated, -a: [0|1], use Android NNAPI or note\n"
             << "--count, -c: loop interpreter->Invoke() for certain times\n"
-            << "--input_floating, -f: [0|1] type of input layer is floating "
-               "point numbers\n"
             << "--input_mean, -b: input mean\n"
             << "--input_std, -s: input standard deviation\n"
             << "--image, -i: image_name.bmp\n"
             << "--labels, -l: labels for the model\n"
-            << "--tflite_mode, -m: model_name.tflite\n"
+            << "--tflite_model, -m: model_name.tflite\n"
             << "--threads, -t: number of threads\n"
             << "--verbose, -v: [0|1] print more information\n"
             << "\n";
@@ -223,7 +237,6 @@ int Main(int argc, char** argv) {
     static struct option long_options[] = {
         {"accelerated", required_argument, 0, 'a'},
         {"count", required_argument, 0, 'c'},
-        {"input_floating", required_argument, 0, 'f'},
         {"verbose", required_argument, 0, 'v'},
         {"image", required_argument, 0, 'i'},
         {"labels", required_argument, 0, 'l'},
@@ -244,17 +257,15 @@ int Main(int argc, char** argv) {
 
     switch (c) {
       case 'a':
-        s.accel = strtol(optarg, (char**)NULL, 10);
+        s.accel = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'b':
         s.input_mean = strtod(optarg, NULL);
         break;
       case 'c':
-        s.loop_count = strtol(optarg, (char**)NULL, 10);
-        break;
-      case 'f':
-        s.input_floating = strtol(optarg, (char**)NULL, 10);
-        s.input_layer_type = "float";
+        s.loop_count = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'i':
         s.input_bmp_name = optarg;
@@ -269,10 +280,12 @@ int Main(int argc, char** argv) {
         s.input_std = strtod(optarg, NULL);
         break;
       case 't':
-        s.number_of_threads = strtol(optarg, (char**)NULL, 10);
+        s.number_of_threads = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'v':
-        s.verbose = strtol(optarg, (char**)NULL, 10);
+        s.verbose = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'h':
       case '?':

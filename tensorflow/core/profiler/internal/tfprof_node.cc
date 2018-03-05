@@ -133,18 +133,21 @@ void ExecStep::AddMemoryStats(const string& dev,
   exec_mem.set_output_bytes(total_output_bytes);
 
   if (step_stat.has_memory_stats()) {
-    exec_mem.set_host_temp_bytes(
-        exec_mem.host_temp_bytes() +
-        step_stat.memory_stats().host_temp_memory_size());
-    exec_mem.set_host_persistent_bytes(
-        exec_mem.host_persistent_bytes() +
-        step_stat.memory_stats().host_persistent_memory_size());
-    exec_mem.set_accelerator_temp_bytes(
-        exec_mem.accelerator_temp_bytes() +
-        step_stat.memory_stats().device_temp_memory_size());
-    exec_mem.set_accelerator_persistent_bytes(
-        exec_mem.accelerator_persistent_bytes() +
-        step_stat.memory_stats().device_persistent_memory_size());
+    if (IsPlacedOnCPU(dev)) {
+      // Currently we assume ops placed on gpu only allocate memory on gpu.
+      exec_mem.set_host_temp_bytes(exec_mem.host_temp_bytes() +
+                                   step_stat.memory_stats().temp_memory_size());
+      exec_mem.set_host_persistent_bytes(
+          exec_mem.host_persistent_bytes() +
+          step_stat.memory_stats().persistent_memory_size());
+    } else {
+      exec_mem.set_accelerator_temp_bytes(
+          exec_mem.accelerator_temp_bytes() +
+          step_stat.memory_stats().temp_memory_size());
+      exec_mem.set_accelerator_persistent_bytes(
+          exec_mem.accelerator_persistent_bytes() +
+          step_stat.memory_stats().persistent_memory_size());
+    }
   }
 
   // TODO(xpan): Make this more accurate:

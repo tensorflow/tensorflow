@@ -355,8 +355,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
 }
 
 // Test true and false computations that return a tuple of arrays.
-// TODO(b/71715476): Returning tuples from Conditional fails in GPU backend.
-XLA_TEST_F(ConditionalOpTest, DISABLED_ON_GPU(ReturnTupleOfArrays)) {
+XLA_TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
   ComputationBuilder builder(client_, TestName());
   auto pred = builder.ConstantR0<bool>(true);
   auto operands = builder.Tuple({builder.ConstantR1<float>({12.2f, 15.8f}),
@@ -373,9 +372,7 @@ XLA_TEST_F(ConditionalOpTest, DISABLED_ON_GPU(ReturnTupleOfArrays)) {
 
 // Test true and false computations that return a tuple of a predicate, a
 // scalar, and an array.
-// TODO(b/71715476): Returning tuples from Conditional fails in GPU backend.
-XLA_TEST_F(ConditionalOpTest,
-           DISABLED_ON_GPU(ReturnTupleofPredicateScalarArray)) {
+XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
   ComputationBuilder true_builder(client_, TestName() + ".true");
   {
     true_builder.Parameter(0, empty_tuple_, "tuple");
@@ -413,8 +410,7 @@ XLA_TEST_F(ConditionalOpTest,
 }
 
 // Test true and false computations that return a nested tuple.
-// TODO(b/71715476): Returning tuples from Conditional fails in GPU backend.
-XLA_TEST_F(ConditionalOpTest, DISABLED_ON_GPU(ReturnNestedTuple)) {
+XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
   ComputationBuilder true_builder(client_, TestName() + ".true");
   {
     true_builder.Parameter(0, empty_tuple_, "tuple");
@@ -528,6 +524,32 @@ XLA_TEST_F(ConditionalOpTest, NestedConditionals) {
   builder.Conditional(pred1, tuple_operand,
                       inner_builder_result.ConsumeValueOrDie(), operand3,
                       CreateR0IdentityComputation());
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+XLA_TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
+  ComputationBuilder inner_builder(client_, TestName() + ".inner_conditional");
+  {
+    Shape r0bool = ShapeUtil::MakeShape(PRED, {});
+    Shape tuple_shape = ShapeUtil::MakeTupleShape({r0bool, r0f32_, r0f32_});
+    auto param0 = inner_builder.Parameter(0, tuple_shape, "param0");
+    auto pred_cond = inner_builder.GetTupleElement(param0, 0);
+    auto true_operand = inner_builder.GetTupleElement(param0, 1);
+    auto false_operand = inner_builder.GetTupleElement(param0, 2);
+    inner_builder.Conditional(pred_cond, true_operand,
+                              CreateR0CeilComputation(), false_operand,
+                              CreateR0FloorComputation());
+  }
+  auto inner_builder_result = inner_builder.Build();
+  EXPECT_IS_OK(inner_builder_result.status());
+
+  ComputationBuilder builder(client_, TestName());
+  auto pred2 = builder.ConstantR0<bool>(false);
+  auto operand1 = builder.ConstantR0<float>(1.1f);
+  auto operand2 = builder.ConstantR0<float>(12.2f);
+  auto tuple_operand = builder.Tuple({pred2, operand1, operand2});
+  builder.Call(inner_builder_result.ConsumeValueOrDie(), {tuple_operand});
 
   ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
 }

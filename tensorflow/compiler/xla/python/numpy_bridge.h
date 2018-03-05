@@ -56,15 +56,15 @@ bool NumpyTypeIsValid(int np_type);
 // The return value is a new reference.
 PyObject* PyShapeInfoFromXlaShape(const Shape& shape);
 
-// Returns the outcome of a best-effort check that the Python object
-// is a pair of the form (numpy dtype, dimensions), as produced by
-// PyShapeInfoFromXlaShape.
-Status CheckPyShapeInfo(PyObject* o);
-
-// Performs the inverse conversion to that of PyShapeInfoFromXlaShape.
+// Converts a Python object with a method interface mathing that of
+// xla_client.Shape into an XLA Shape object.
 //
 // The return value is a new reference.
-Shape XlaShapeFromPyShapeInfo(PyObject* o);
+StatusOr<Shape> XlaShapeFromPyShape(PyObject* o);
+
+// Converts a PyObject that represents operation metadata into protocol buffer
+// form.
+StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o);
 
 // Converts an XLA literal to a Python object, either a Numpy ndarray
 // or a nested Python tuple thereof.

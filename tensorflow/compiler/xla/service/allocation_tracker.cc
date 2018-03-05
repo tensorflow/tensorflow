@@ -109,7 +109,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   TF_RET_CHECK(ShapeUtil::IsTuple(shaped_buffer->on_device_shape()));
 
   if (ShapeUtil::IsNestedTuple(shaped_buffer->on_device_shape())) {
-    return Unimplemented("deconstructing nested tuples not yet supported");
+    return Unimplemented("Deconstructing nested tuples is not implemented.");
   }
 
   std::vector<GlobalDataHandle> element_handles;

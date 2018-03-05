@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/kernels/ops_util.h"
@@ -93,20 +93,20 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
+struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
                   int row_stride, int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
-    functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
+    functor::SpatialConvolutionBackwardFilter<CPUDevice, T>()(
         d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), filter_backprop->dim_size(0),
-        filter_backprop->dim_size(1), row_stride, col_stride);
+        out_backprop.tensor<T, 4>(), row_stride, col_stride,
+        /*row_dilation=*/1, /*col_dilation=*/1);
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, class T>
 struct LaunchXsmmBackwardFilter {
   bool operator()(OpKernelContext* context, const Device& d,
@@ -243,7 +243,8 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
       return;
     }
 
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(
@@ -273,7 +274,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     }
 #endif
 
-    LaunchConv2DBackpropInputOp<Device, T>()(
+    LaunchConv2DBackpropFilterOp<Device, T>()(
         context, false, false, out_backprop, input, dims.spatial_dims[0].stride,
         dims.spatial_dims[1].stride, padding_, filter_backprop, data_format_);
   }
@@ -371,7 +372,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
             dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
             dims.spatial_dims[1].stride, padding_,
             &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     if (pad_left == pad_right && pad_top == pad_bottom) {
       if (LaunchXsmmBackwardFilter<Device, T>()(
               context, context->eigen_device<Device>(), input.tensor<T, 4>(),
@@ -602,7 +604,6 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       f(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;
     }
-
 
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).

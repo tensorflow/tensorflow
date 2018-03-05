@@ -582,7 +582,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
-              ContainsRegex("invalid number of arguments"));
+              ContainsRegex("Invalid number of arguments"));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
@@ -598,7 +598,7 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
-              ContainsRegex("invalid argument shape"))
+              ContainsRegex("Invalid argument shape"))
       << execute_status.status();
 }
 

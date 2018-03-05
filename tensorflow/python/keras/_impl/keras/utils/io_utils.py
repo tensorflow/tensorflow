@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-import-not-at-top
 """Utilities related to disk I/O."""
 from __future__ import absolute_import
 from __future__ import division
@@ -21,14 +22,16 @@ from collections import defaultdict
 import sys
 
 import numpy as np
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
-  import h5py  # pylint:disable=g-import-not-at-top
+  import h5py
 except ImportError:
   h5py = None
 
 
+@tf_export('keras.utils.HDF5Matrix')
 class HDF5Matrix(object):
   """Representation of HDF5 dataset to be used instead of a Numpy array.
 
@@ -63,11 +66,11 @@ class HDF5Matrix(object):
                         'HDF5 and h5py installed.')
 
     if datapath not in list(self.refs.keys()):
-      self._f = h5py.File(datapath)
-      self.refs[datapath] = self._f
+      f = h5py.File(datapath)
+      self.refs[datapath] = f
     else:
-      self._f = self.refs[datapath]
-    self.data = self._f[dataset]
+      f = self.refs[datapath]
+    self.data = f[dataset]
     self.start = start
     if end is None:
       self.end = self.data.shape[0]
@@ -77,9 +80,6 @@ class HDF5Matrix(object):
 
   def __len__(self):
     return self.end - self.start
-
-  def __del__(self):
-    self._f.close()
 
   def __getitem__(self, key):
     if isinstance(key, slice):

@@ -116,7 +116,7 @@ class SqlDatasetOp : public DatasetOpKernel {
         }
       }
 
-      Status GetNextInternal(IteratorContext* /*ctx*/,
+      Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
@@ -132,7 +132,7 @@ class SqlDatasetOp : public DatasetOpKernel {
             return s;
           }
         }
-        return query_connection_->GetNext(out_tensors, end_of_sequence);
+        return query_connection_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
      private:

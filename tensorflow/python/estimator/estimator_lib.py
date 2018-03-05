@@ -41,6 +41,8 @@ from tensorflow.python.estimator.run_config import RunConfig
 from tensorflow.python.estimator.training import EvalSpec
 from tensorflow.python.estimator.training import train_and_evaluate
 from tensorflow.python.estimator.training import TrainSpec
+from tensorflow.python.estimator.warm_starting_util import VocabInfo
+from tensorflow.python.estimator.warm_starting_util import WarmStartSettings
 
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -76,6 +78,10 @@ _allowed_symbols = [
     'Exporter',
     'LatestExporter',
     'FinalExporter',
+
+    # Warm-starting
+    'WarmStartSettings',
+    'VocabInfo',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

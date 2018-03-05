@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/java/src/gen/cc/source_writer.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -54,9 +54,7 @@ TEST(AppendTest, MultiLineTextWithPrefix) {
 
 TEST(AppendTest, MultiLineTextWithIndentAndPrefix) {
   SourceBufferWriter writer;
-  writer.Indent(2)
-        .Prefix("--")
-        .Append("You say goodbye\nand I say hello!");
+  writer.Indent(2).Prefix("--").Append("You say goodbye\nand I say hello!");
 
   const char* expected = "  --You say goodbye\nand I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -96,9 +94,7 @@ TEST(WriteTest, MultiLineTextWithPrefix) {
 
 TEST(WriteTest, MultiLineTextWithIndentAndPrefix) {
   SourceBufferWriter writer;
-  writer.Indent(2)
-        .Prefix("--")
-        .Write("You say goodbye\nand I say hello!");
+  writer.Indent(2).Prefix("--").Write("You say goodbye\nand I say hello!");
 
   const char* expected = "  --You say goodbye\n  --and I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -115,9 +111,9 @@ TEST(MarginTest, Basic) {
 TEST(MarginTest, Indent) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Indent(2)
-        .Append("and I say hello!");
+      .EndLine()
+      .Indent(2)
+      .Append("and I say hello!");
 
   const char* expected = "You say goodbye\n  and I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -126,12 +122,12 @@ TEST(MarginTest, Indent) {
 TEST(MarginTest, IndentAndOutdent) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Indent(2)
-        .Append("and I say hello!")
-        .EndLine()
-        .Indent(-2)
-        .Append("Hello, hello!");
+      .EndLine()
+      .Indent(2)
+      .Append("and I say hello!")
+      .EndLine()
+      .Indent(-2)
+      .Append("Hello, hello!");
 
   const char* expected = "You say goodbye\n  and I say hello!\nHello, hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -140,9 +136,9 @@ TEST(MarginTest, IndentAndOutdent) {
 TEST(MarginTest, Prefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Prefix("--")
-        .Append("and I say hello!");
+      .EndLine()
+      .Prefix("--")
+      .Append("and I say hello!");
 
   const char* expected = "You say goodbye\n--and I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -151,12 +147,12 @@ TEST(MarginTest, Prefix) {
 TEST(MarginTest, PrefixAndRemovePrefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Prefix("--")
-        .Append("and I say hello!")
-        .EndLine()
-        .Prefix("")
-        .Append("Hello, hello!");
+      .EndLine()
+      .Prefix("--")
+      .Append("and I say hello!")
+      .EndLine()
+      .Prefix("")
+      .Append("Hello, hello!");
 
   const char* expected = "You say goodbye\n--and I say hello!\nHello, hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -165,14 +161,14 @@ TEST(MarginTest, PrefixAndRemovePrefix) {
 TEST(MarginTest, IndentAndPrefixAndOutdentAndRemovePrefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Indent(2)
-        .Prefix("--")
-        .Append("and I say hello!")
-        .EndLine()
-        .Indent(-2)
-        .Prefix("")
-        .Append("Hello, hello!");
+      .EndLine()
+      .Indent(2)
+      .Prefix("--")
+      .Append("and I say hello!")
+      .EndLine()
+      .Indent(-2)
+      .Prefix("")
+      .Append("Hello, hello!");
 
   const char* expected = "You say goodbye\n  --and I say hello!\nHello, hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -181,9 +177,9 @@ TEST(MarginTest, IndentAndPrefixAndOutdentAndRemovePrefix) {
 TEST(MarginTest, NegativeIndent) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Indent(-10)
-        .Append("and I say hello!");
+      .EndLine()
+      .Indent(-10)
+      .Append("and I say hello!");
 
   const char* expected = "You say goodbye\nand I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -192,12 +188,12 @@ TEST(MarginTest, NegativeIndent) {
 TEST(MarginTest, CumulativeIndent) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Indent(2)
-        .Append("and I say hello!")
-        .EndLine()
-        .Indent(2)
-        .Append("Hello, hello!");
+      .EndLine()
+      .Indent(2)
+      .Append("and I say hello!")
+      .EndLine()
+      .Indent(2)
+      .Append("Hello, hello!");
 
   const char* expected =
       "You say goodbye\n  and I say hello!\n    Hello, hello!";
@@ -207,9 +203,9 @@ TEST(MarginTest, CumulativeIndent) {
 TEST(MarginTest, EmptyPrefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
-        .EndLine()
-        .Prefix("")
-        .Append("and I say hello!");
+      .EndLine()
+      .Prefix("")
+      .Append("and I say hello!");
 
   const char* expected = "You say goodbye\nand I say hello!";
   ASSERT_STREQ(expected, writer.str().data());

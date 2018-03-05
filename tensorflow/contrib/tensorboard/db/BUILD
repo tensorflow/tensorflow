@@ -40,7 +40,6 @@ cc_library(
     hdrs = ["summary_db_writer.h"],
     copts = tf_copts(),
     deps = [
-        ":schema",
         ":summary_converter",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

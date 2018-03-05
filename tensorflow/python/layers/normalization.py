@@ -39,8 +39,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.BatchNormalization')
 class BatchNormalization(base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -92,8 +94,8 @@ class BatchNormalization(base.Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
@@ -491,6 +493,7 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
+    in_eager_mode = context.in_eager_mode()
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -593,6 +596,9 @@ class BatchNormalization(base.Layer):
                                             axis=1, keep_dims=True)
 
       def _do_update(var, value):
+        if in_eager_mode and not self.trainable:
+          return
+
         return moving_averages.assign_moving_average(
             var, value, self.momentum, zero_debias=False)
 
@@ -629,6 +635,7 @@ class BatchNormalization(base.Layer):
     return input_shape
 
 
+@tf_export('layers.batch_normalization')
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,
@@ -722,8 +729,8 @@ def batch_normalization(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
       which means batch normalization is performed across the whole batch. When
       `virtual_batch_size` is not `None`, instead perform "Ghost Batch

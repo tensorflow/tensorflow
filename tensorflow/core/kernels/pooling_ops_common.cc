@@ -222,7 +222,7 @@ void DnnPoolingOp<T>::Compute(
                                       output_desc, &output_data)
                     .ok();
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+              errors::Internal("cudnn PoolForward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC

@@ -286,6 +286,23 @@ while True:
     break
 ```
 
+If the `Dataset` depends on stateful operations you may need to
+initialize the iterator before using it, as shown below:
+
+``` python
+r = tf.random_normal([10,3])
+dataset = tf.data.Dataset.from_tensor_slices(r)
+iterator = dataset.make_initializable_iterator()
+next_row = iterator.get_next()
+
+sess.run(iterator.initializer)
+while True:
+  try:
+    print(sess.run(next_row))
+  except tf.errors.OutOfRangeError:
+    break
+```
+
 For more details on Datasets and Iterators see: @{$programmers_guide/datasets}.
 
 ## Layers
@@ -295,7 +312,7 @@ the same input.  @{tf.layers$Layers} are the preferred way to add trainable
 parameters to a graph.
 
 Layers package together both the variables and the operations that act
-on them, . For example a
+on them. For example a
 [densely-connected layer](https://developers.google.com/machine-learning/glossary/#fully_connected_layer)
 performs a weighted sum across all inputs
 for each output and applies an optional
@@ -478,7 +495,7 @@ good. Here's what we got; your own output will almost certainly differ:
  [ 0.10527515]]
 ```
 
-### loss
+### Loss
 
 To optimize a model, you first need to define the loss. We'll use the mean
 square error, a standard loss for regression problems.
@@ -504,7 +521,7 @@ TensorFlow provides
 [**optimizers**](https://developers.google.com/machine-learning/glossary/#optimizer)
 implementing standard optimization algorithms. These are implemented as
 sub-classes of @{tf.train.Optimizer}. They incrementally change each
-variable in order to minimizethe loss. The simplest optimization algorithm is
+variable in order to minimize the loss. The simplest optimization algorithm is
 [**gradient descent**](https://developers.google.com/machine-learning/glossary/#gradient_descent),
 implemented by @{tf.train.GradientDescentOptimizer}. It modifies each
 variable according to the magnitude of the derivative of loss with respect to

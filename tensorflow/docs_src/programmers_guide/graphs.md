@@ -125,14 +125,14 @@ an operation:
   @{tf.Tensor} accepts an optional `name` argument. For example,
   `tf.constant(42.0, name="answer")` creates a new @{tf.Operation} named
   `"answer"` and returns a @{tf.Tensor} named `"answer:0"`. If the default graph
-  already contained an operation named `"answer"`, the TensorFlow would append
+  already contains an operation named `"answer"`, then TensorFlow would append
   `"_1"`, `"_2"`, and so on to the name, in order to make it unique.
 
 * The @{tf.name_scope} function makes it possible to add a **name scope** prefix
   to all operations created in a particular context. The current name scope
   prefix is a `"/"`-delimited list of the names of all active @{tf.name_scope}
   context managers. If a name scope has already been used in the current
-  context, TensorFlow appens `"_1"`, `"_2"`, and so on. For example:
+  context, TensorFlow appends `"_1"`, `"_2"`, and so on. For example:
 
   ```python
   c_0 = tf.constant(0, name="c")  # => operation named "c"

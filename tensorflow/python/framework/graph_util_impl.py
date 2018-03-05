@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 _VARIABLE_OPS = {
     "Assign",
@@ -49,6 +50,7 @@ def _is_variable_op(op):
   return op in _VARIABLE_OPS
 
 
+@tf_export("graph_util.must_run_on_cpu")
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
 
@@ -147,6 +149,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
   return nodes_to_keep
 
 
+@tf_export("graph_util.extract_sub_graph")
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
 
@@ -184,6 +187,7 @@ def extract_sub_graph(graph_def, dest_nodes):
   return out
 
 
+@tf_export("graph_util.tensor_shape_from_node_def_name")
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
   # To get a tensor, the name must be in the form <input>:<port>, for example
@@ -198,6 +202,7 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
+@tf_export("graph_util.convert_variables_to_constants")
 def convert_variables_to_constants(sess,
                                    input_graph_def,
                                    output_node_names,
@@ -230,7 +235,7 @@ def convert_variables_to_constants(sess,
   variable_names = []
   variable_dict_names = []
   for node in inference_graph.node:
-    if node.op in ["Variable", "VariableV2"]:
+    if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
       if ((variable_names_whitelist is not None and
            variable_name not in variable_names_whitelist) or
@@ -238,7 +243,10 @@ def convert_variables_to_constants(sess,
            variable_name in variable_names_blacklist)):
         continue
       variable_dict_names.append(variable_name)
-      variable_names.append(variable_name + ":0")
+      if node.op == "VarHandleOp":
+        variable_names.append(variable_name + "/Read/ReadVariableOp:0")
+      else:
+        variable_names.append(variable_name + ":0")
   if variable_names:
     returned_variables = sess.run(variable_names)
   else:
@@ -261,6 +269,17 @@ def convert_variables_to_constants(sess,
               tensor=tensor_util.make_tensor_proto(
                   data, dtype=dtype.type, shape=data.shape)))
       how_many_converted += 1
+    elif input_node.op == "ReadVariableOp" and (
+        input_node.input[0] in found_variables):
+      # The preceding branch converts all VarHandleOps of ResourceVariables to
+      # constants, so we need to convert the associated ReadVariableOps to
+      # Identity ops.
+      output_node.op = "Identity"
+      output_node.name = input_node.name
+      output_node.input.extend([input_node.input[0]])
+      output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
+      if "_class" in input_node.attr:
+        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
@@ -270,6 +289,7 @@ def convert_variables_to_constants(sess,
   return output_graph_def
 
 
+@tf_export("graph_util.remove_training_nodes")
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
 

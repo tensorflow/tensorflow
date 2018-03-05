@@ -138,6 +138,7 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/62863147
     deps = [
         ":extenders",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -163,12 +164,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
+        "//tensorflow/python:nn",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:summary",
@@ -177,7 +179,6 @@ py_library(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/estimator:util",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
     ],
@@ -192,6 +193,7 @@ py_test(
         ":head",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

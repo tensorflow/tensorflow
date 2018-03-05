@@ -168,12 +168,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   // Fill in feed nodes from config, if any provided.
   for (const auto& feed_node : cfg.feed_nodes) {
     const string feed_name = NodeName(feed_node);
-    if (feed_name.empty()) {
-      LOG(ERROR) << "Invalid feed node name " << feed_node
-                 << ", skipping this input.";
-      return nullptr;
-    }
-    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -182,17 +176,75 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const CollectionDef& nodes = meta_graph.collection_def().at("train_op");
     if (nodes.has_node_list()) {
       for (const auto& node : nodes.node_list().value()) {
-        const string name = NodeName(node);
-        if (name.empty()) {
-          LOG(ERROR) << "Invalid fetch node name " << node
-                     << ", skipping this input";
-          return nullptr;
-        }
-        VLOG(1) << "Will use fetch node " << name;
-        new_item->fetch.push_back(name);
+        new_item->fetch.push_back(NodeName(node));
       }
     }
   }
+
+  // Detect feed and fetch nodes from signature defs.
+  for (const auto& name_and_signature : meta_graph.signature_def()) {
+    for (const auto& name_and_input : name_and_signature.second.inputs()) {
+      const TensorInfo& input = name_and_input.second;
+      if (input.has_coo_sparse()) {
+        // Define the shapes following the comment of CooSparse.
+        PartialTensorShape partial_shape_1d({-1});
+        PartialTensorShape partial_shape_2d({-1, -1});
+        TensorShape shape_1d;
+        TensorShape shape_2d;
+        if (!partial_shape_1d.AsTensorShape(&shape_1d) ||
+            !partial_shape_2d.AsTensorShape(&shape_2d)) {
+          LOG(ERROR) << "Internal error when constructing tensor shapes.";
+          return nullptr;
+        }
+
+        new_item->feed.emplace_back(
+            NodeName(input.coo_sparse().values_tensor_name()),
+            Tensor(input.dtype(), shape_1d));
+        new_item->feed.emplace_back(
+            NodeName(input.coo_sparse().indices_tensor_name()),
+            Tensor(DT_INT64, shape_2d));
+        new_item->feed.emplace_back(
+            NodeName(input.coo_sparse().dense_shape_tensor_name()),
+            Tensor(DT_INT64, shape_1d));
+      } else {
+        new_item->feed.emplace_back(
+            NodeName(input.name()),
+            Tensor(input.dtype(), input.tensor_shape()));
+      }
+    }
+    for (const auto& name_and_output : name_and_signature.second.outputs()) {
+      const TensorInfo& output = name_and_output.second;
+      if (output.has_coo_sparse()) {
+        new_item->fetch.push_back(
+            NodeName(output.coo_sparse().values_tensor_name()));
+        new_item->fetch.push_back(
+            NodeName(output.coo_sparse().indices_tensor_name()));
+        new_item->fetch.push_back(
+            NodeName(output.coo_sparse().dense_shape_tensor_name()));
+      } else {
+        new_item->fetch.push_back(NodeName(output.name()));
+      }
+    }
+  }
+
+  for (const auto& feed : new_item->feed) {
+    if (feed.first.empty()) {
+      LOG(ERROR) << "Invalid feed node name skipping this input";
+      return nullptr;
+    } else {
+      VLOG(1) << "Will use feed node " << feed.first;
+    }
+  }
+
+  for (const auto& fetch : new_item->fetch) {
+    if (fetch.empty()) {
+      LOG(ERROR) << "Invalid fetch node name skipping this input";
+      return nullptr;
+    } else {
+      VLOG(1) << "Will use fetch node " << fetch;
+    }
+  }
+
   if (new_item->fetch.empty()) {
     LOG(ERROR) << "Failed to detect the fetch node(s), skipping this input";
     return nullptr;
@@ -293,6 +345,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         return nullptr;
       }
       new_item->queue_runners.push_back(queue_runner);
+    }
+  }
+
+  // Add each node referenced in a collection to the list of nodes to keep.
+  for (const auto& col : meta_graph.collection_def()) {
+    const CollectionDef& collection = col.second;
+    for (const string& node : collection.node_list().value()) {
+      new_item->keep_ops.push_back(NodeName(node));
     }
   }
 
@@ -507,104 +567,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       return nullptr;
     }
   }
-  return new_item;
-}
-
-std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const string& id, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr) {
-  if (id.empty()) {
-    LOG(ERROR) << "id must be non-empty.";
-    return nullptr;
-  }
-  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
-  new_item->id = id;
-
-  std::unordered_map<string, string> port_map;
-
-  // Add the function inputs as placeholder
-  for (const auto& inp : func.signature().input_arg()) {
-    NodeDef* ph = new_item->graph.add_node();
-    ph->set_name(inp.name());
-    ph->set_op("Placeholder");
-    if (inp.type() != DT_INVALID) {
-      (*ph->mutable_attr())["T"].set_type(inp.type());
-    } else {
-      auto it = func_attr.find(inp.type_attr());
-      if (it == func_attr.end()) {
-        LOG(ERROR) << "Unknown type attribute " << inp.type_attr()
-                   << " for function input " << inp.name();
-        return nullptr;
-      } else {
-        (*ph->mutable_attr())["T"] = it->second;
-      }
-    }
-    port_map[inp.name()] = inp.name();
-  }
-
-  // Add the function body to the graph.
-  for (const NodeDef& node : func.node_def()) {
-    NodeDef* new_node = new_item->graph.add_node();
-    *new_node = node;
-    // Replace the placeholder attribute values with the specified value.
-    for (auto& attr : *new_node->mutable_attr()) {
-      const string& ph_name = attr.second.placeholder();
-      auto it = func_attr.find(ph_name);
-      if (it != func_attr.end()) {
-        attr.second = it->second;
-      }
-    }
-
-    // Functions use a custom format to encode connectivity. Map these custom
-    // strings to regular ones.
-    const OpDef* op_def = nullptr;
-    Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
-    if (!status.ok()) {
-      LOG(ERROR) << "Op " << node.op() << " not registered: " << status;
-      return nullptr;
-    }
-    tensorflow::NameRangeMap inputs;
-    tensorflow::NameRangeMap outputs;
-    status = tensorflow::NameRangesForNode(node, *op_def, &inputs, &outputs);
-    if (!status.ok()) {
-      LOG(ERROR) << "Op " << node.op() << " invalid: " << status;
-      return nullptr;
-    }
-    for (const auto& name_range : outputs) {
-      string port_prefix =
-          strings::StrCat(node.name(), ":", name_range.first, ":");
-      int index_start = name_range.second.first;
-      int index_end = name_range.second.second;
-      for (int i = index_start; i < index_end; ++i) {
-        string port_id = strings::StrCat(port_prefix, i - index_start);
-        string port_name = strings::StrCat(node.name(), ":", i);
-        port_map[port_id] = port_name;
-      }
-    }
-  }
-
-  for (auto& node : *new_item->graph.mutable_node()) {
-    // Rewrite the inputs to use the normal naming convention.
-    for (int i = 0; i < node.input_size(); ++i) {
-      const string& input = node.input(i);
-      auto it = port_map.find(input);
-      if (it == port_map.end()) {
-        LOG(ERROR) << "Unknown input: " << input;
-        return nullptr;
-      }
-      node.set_input(i, it->second);
-    }
-  }
-
-  // Add the function outputs to the list of fetch nodes.
-  for (const auto& out : func.signature().output_arg()) {
-    new_item->fetch.emplace_back(out.name());
-  }
-  // Add the function inputs to the list of feeds.
-  for (const auto& inp : func.signature().input_arg()) {
-    new_item->feed.emplace_back(inp.name(), Tensor());
-  }
-
   return new_item;
 }
 

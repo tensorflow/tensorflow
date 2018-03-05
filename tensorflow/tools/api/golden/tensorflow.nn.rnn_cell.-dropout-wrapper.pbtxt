@@ -3,6 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapper\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -86,6 +87,10 @@ tf_class {
   }
   member {
     name: "weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "wrapped_cell"
     mtype: "<type \'property\'>"
   }
   member_method {

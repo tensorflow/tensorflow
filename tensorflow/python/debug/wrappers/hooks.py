@@ -35,10 +35,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
   """
 
-  def __init__(self,
-               ui_type="curses",
-               dump_root=None,
-               thread_name_filter=None):
+  def __init__(self, ui_type="curses", dump_root=None, thread_name_filter=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
@@ -62,7 +59,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
     """Add a tensor filter.
 
     See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
-    Override default behavior to accommodate the possibility of this method being
+    Override default behavior to accommodate the possibility of this method
+    being
     called prior to the initialization of the underlying
     `LocalCLIDebugWrapperSession` object.
 
@@ -137,9 +135,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # pylint: enable=protected-access
 
       with stepper.NodeStepper(
-          run_context.session,
-          run_context.original_args.
-          fetches,
+          run_context.session, run_context.original_args.fetches,
           run_context.original_args.feed_dict) as node_stepper:
         self._session_wrapper.invoke_node_stepper(
             node_stepper, restore_variable_values_on_exit=True)
@@ -149,8 +145,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     # Adapt run_context and run_values to OnRunEndRequest and invoke superclass
     # on_run_end()
-    on_run_end_request = framework.OnRunEndRequest(
-        self._performed_action, run_values.run_metadata)
+    on_run_end_request = framework.OnRunEndRequest(self._performed_action,
+                                                   run_values.run_metadata)
     self._session_wrapper.on_run_end(on_run_end_request)
 
 
@@ -260,8 +256,8 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
     self._thread_name_filter = thread_name_filter
     self._grpc_debug_server_addresses = (
         grpc_debug_server_addresses
-        if isinstance(grpc_debug_server_addresses, list)
-        else [grpc_debug_server_addresses])
+        if isinstance(grpc_debug_server_addresses, list) else
+        [grpc_debug_server_addresses])
 
     self._watch_fn = watch_fn
     self._log_usage = log_usage
@@ -334,6 +330,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
       log_usage: Whether the usage of this class is to be logged (if
         applicable).
     """
+
     def _gated_grpc_watch_fn(fetches, feeds):
       del fetches, feeds  # Unused.
       return framework.WatchOptions(
@@ -348,6 +345,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._send_traceback_and_source_code = send_traceback_and_source_code
     self._sent_graph_version = -1
+    grpc_wrapper.register_signal_handler()
 
   def before_run(self, run_context):
     if self._send_traceback_and_source_code:

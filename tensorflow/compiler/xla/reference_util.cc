@@ -30,52 +30,48 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::TransposeArray2D(
-    const Array2D<float>& operand) {
-  auto result = MakeUnique<Array2D<float>>(operand.width(), operand.height());
-  for (int64 w = 0; w < operand.width(); ++w) {
-    for (int64 h = 0; h < operand.height(); ++h) {
-      (*result)(w, h) = operand(h, w);
-    }
-  }
+namespace {
 
+template <typename T>
+std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
+    const Array2D<T>& lhs, const Array2D<T>& rhs,
+    const std::function<void(
+        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
+        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
+  CHECK_EQ(lhs.width(), rhs.height());
+  int m = lhs.height();
+  int n = rhs.width();
+  int k = lhs.width();
+  auto result = MakeUnique<Array2D<T>>(m, n);
+  // Because Eigen is a header-oriented library, make sure that the Eigen code
+  // is the same as the code used by the CPU backend (otherwise the linker will
+  // randomly pick *some* definition).
+  impl_fn(
+      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
+      k,
+      /*transpose_lhs=*/0,
+      /*transpose_rhs=*/0);
   return result;
+}
+
+}  // namespace
+
+/* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
+    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
+  return MatmulArray2DImpl<Eigen::half>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = MakeUnique<Array2D<float>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
+  return MatmulArray2DImpl<float>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = MakeUnique<Array2D<double>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  __xla_cpu_runtime_EigenSingleThreadedMatMulF64(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
+  return MatmulArray2DImpl<double>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(
@@ -276,6 +272,51 @@ ReferenceUtil::ReduceWindow1DAdd(
         }
       }
       (*result)(i0, i1) = val;
+    }
+  }
+  return result;
+}
+
+/* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
+    const Array3D<float>& operand, float init,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
+  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
+
+  std::vector<int64> window_counts(window.size(), 0);
+  std::vector<int64> pad_low(window.size(), 0);
+  for (int64 i = 0; i < window.size(); ++i) {
+    window_counts[i] =
+        WindowCount(dim_lengths[i], window[i], stride[i], padding);
+    pad_low[i] = padding_both[i].first;
+  }
+  auto result = MakeUnique<Array3D<float>>(window_counts[0], window_counts[1],
+                                           window_counts[2]);
+
+  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
+    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
+      for (int64 i2 = 0; i2 < window_counts[2]; ++i2) {
+        int64 i0_base = i0 * stride[0] - pad_low[0];
+        int64 i1_base = i1 * stride[1] - pad_low[1];
+        int64 i2_base = i2 * stride[2] - pad_low[2];
+
+        float val = init;
+        for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
+          for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
+            for (int64 i2_win = 0; i2_win < window[2]; ++i2_win) {
+              if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
+                  i2_base + i2_win >= 0 && i0_base + i0_win < operand.n1() &&
+                  i1_base + i1_win < operand.n2() &&
+                  i2_base + i2_win < operand.n3()) {
+                val += operand(i0_base + i0_win, i1_base + i1_win,
+                               i2_base + i2_win);
+              }
+            }
+          }
+        }
+        (*result)(i0, i1, i2) = val;
+      }
     }
   }
   return result;

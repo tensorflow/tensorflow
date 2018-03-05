@@ -390,9 +390,9 @@ TEST_F(SessionDebugMinusAXTest,
   debug_gateway.SetNodeValueCallback(
       [this, &mu, &val_callback_count, &a_debug_identity_node_name,
        &x_debug_identity_node_name, &y_debug_identity_node_name,
-       &debug_identity_tensor_vals, &callbacks_done, &kConcurrentRuns](
-           const string& node_name, const int output_slot,
-           const Tensor& tensor_value, const bool is_ref) {
+       &debug_identity_tensor_vals, &callbacks_done,
+       &kConcurrentRuns](const string& node_name, const int output_slot,
+                         const Tensor& tensor_value, const bool is_ref) {
         mutex_lock l(mu);
 
         if (node_name == a_debug_identity_node_name && output_slot == 0) {
@@ -560,21 +560,21 @@ TEST_F(SessionDebugOutputSlotWithoutOutgoingEdgeTest,
   Notification callbacks_done;
 
   std::vector<Tensor> debug_identity_tensor_vals;
-  debug_gateway.SetNodeValueCallback([this, &mu, &callbacks_done,
-                                      &debug_identity_node_name,
-                                      &debug_identity_tensor_vals](
-      const string& node_name, const int output_slot,
-      const Tensor& tensor_value, const bool is_ref) {
-    mutex_lock l(mu);
+  debug_gateway.SetNodeValueCallback(
+      [this, &mu, &callbacks_done, &debug_identity_node_name,
+       &debug_identity_tensor_vals](
+          const string& node_name, const int output_slot,
+          const Tensor& tensor_value, const bool is_ref) {
+        mutex_lock l(mu);
 
-    if (node_name == debug_identity_node_name && output_slot == 0) {
-      debug_identity_tensor_vals.push_back(tensor_value);
+        if (node_name == debug_identity_node_name && output_slot == 0) {
+          debug_identity_tensor_vals.push_back(tensor_value);
 
-      if (!callbacks_done.HasBeenNotified()) {
-        callbacks_done.Notify();
-      }
-    }
-  });
+          if (!callbacks_done.HasBeenNotified()) {
+            callbacks_done.Notify();
+          }
+        }
+      });
 
   // Add DebugIdentity watch on c:0, which does not have an outgoing edge.
   RunOptions run_opts;

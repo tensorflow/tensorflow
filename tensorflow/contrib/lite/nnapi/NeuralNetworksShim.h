@@ -370,7 +370,7 @@ enum {
    * Looks up items from a given tensor.
    *
    * Each item in the output is a raw copy of the corresponding item in
-   * the input “values”. If the the given “lookup” indices are out of bounds,
+   * the input “values”. If the given “lookup” indices are out of bounds,
    * the op will fail and an error will be reported.
    *
    * Inputs:
@@ -1571,7 +1571,7 @@ inline int ANeuralNetworksModel_addOperation(ANeuralNetworksModel* model,
 }
 
 /**
- * Specfifies which operands will be the model's inputs and outputs.
+ * Specifies which operands will be the model's inputs and outputs.
  *
  * An operand cannot be used for both input and output. Doing so will
  * return an error.

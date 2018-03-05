@@ -17,19 +17,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
+from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/64974358): Increase default buffer size to 256 MB.
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 
 
-class TextLineDataset(Dataset):
+@tf_export("data.TextLineDataset")
+class TextLineDataset(dataset_ops.Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -71,7 +77,7 @@ class TextLineDataset(Dataset):
     return dtypes.string
 
 
-class TFRecordDataset(Dataset):
+class _TFRecordDataset(dataset_ops.Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -84,7 +90,7 @@ class TFRecordDataset(Dataset):
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes in the read buffer. 0 means no buffering.
     """
-    super(TFRecordDataset, self).__init__()
+    super(_TFRecordDataset, self).__init__()
     # Force the type to string even if filenames is an empty list.
     self._filenames = ops.convert_to_tensor(
         filenames, dtypes.string, name="filenames")
@@ -115,7 +121,159 @@ class TFRecordDataset(Dataset):
     return dtypes.string
 
 
-class FixedLengthRecordDataset(Dataset):
+class ParallelInterleaveDataset(dataset_ops.Dataset):
+  """A `Dataset` that maps a function over its input and flattens the result."""
+
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               sloppy, buffer_output_elements, prefetch_input_elements):
+    """See `tf.contrib.data.parallel_interleave()` for details."""
+    super(ParallelInterleaveDataset, self).__init__()
+    self._input_dataset = input_dataset
+
+    @function.Defun(*nest.flatten(
+        sparse.as_dense_types(input_dataset.output_types,
+                              input_dataset.output_classes)))
+    def tf_map_func(*args):
+      """A wrapper for Defun that facilitates shape inference."""
+      # Pass in shape information from the input_dataset.
+      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
+                                            input_dataset.output_classes)
+      for arg, shape in zip(args, nest.flatten(dense_shapes)):
+        arg.set_shape(shape)
+
+      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
+      nested_args = sparse.deserialize_sparse_tensors(
+          nested_args, input_dataset.output_types, input_dataset.output_shapes,
+          input_dataset.output_classes)
+      if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
+        dataset = map_func(*nested_args)
+      else:
+        dataset = map_func(nested_args)
+
+      if not isinstance(dataset, dataset_ops.Dataset):
+        raise TypeError("`map_func` must return a `Dataset` object.")
+
+      self._output_classes = dataset.output_classes
+      self._output_types = dataset.output_types
+      self._output_shapes = dataset.output_shapes
+
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+    self._map_func = tf_map_func
+    self._map_func.add_to_graph(ops.get_default_graph())
+
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
+    self._sloppy = ops.convert_to_tensor(
+        sloppy, dtype=dtypes.bool, name="sloppy")
+    self._buffer_output_elements = convert.optional_param_to_tensor(
+        "buffer_output_elements",
+        buffer_output_elements,
+        argument_default=2 * block_length)
+    self._prefetch_input_elements = convert.optional_param_to_tensor(
+        "prefetch_input_elements",
+        prefetch_input_elements,
+        argument_default=2 * cycle_length)
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.parallel_interleave_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._map_func.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func,
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+
+@tf_export("data.TFRecordDataset")
+class TFRecordDataset(dataset_ops.Dataset):
+  """A `Dataset` comprising records from one or more TFRecord files."""
+
+  def __init__(self, filenames, compression_type=None, buffer_size=None,
+               num_parallel_reads=None):
+    """Creates a `TFRecordDataset` to read for one or more TFRecord files.
+
+    NOTE: The `num_parallel_reads` argument can be used to improve performance
+    when reading from a remote filesystem.
+
+    Args:
+      filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
+        more filenames.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
+      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
+        bytes in the read buffer. 0 means no buffering.
+      num_parallel_reads: (Optional.) A `tf.int64` scalar representing the
+        number of files to read in parallel. Defaults to reading files
+        sequentially.
+
+    Raises:
+      TypeError: If any argument does not have the expected type.
+      ValueError: If any argument does not have the expected shape.
+    """
+    super(TFRecordDataset, self).__init__()
+    if isinstance(filenames, dataset_ops.Dataset):
+      if filenames.output_types != dtypes.string:
+        raise TypeError(
+            "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")
+      if not filenames.output_shapes.is_compatible_with(tensor_shape.scalar()):
+        raise ValueError(
+            "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
+            "elements.")
+    else:
+      filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
+      filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
+      filenames = dataset_ops.Dataset.from_tensor_slices(filenames)
+
+    def read_one_file(filename):
+      return _TFRecordDataset(filename, compression_type, buffer_size)
+
+    if num_parallel_reads is None:
+      self._impl = filenames.flat_map(read_one_file)
+    else:
+      self._impl = ParallelInterleaveDataset(
+          filenames, read_one_file, cycle_length=num_parallel_reads,
+          block_length=1, sloppy=False, buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+  def _as_variant_tensor(self):
+    return self._impl._as_variant_tensor()  # pylint: disable=protected-access
+
+  @property
+  def output_classes(self):
+    return self._impl.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._impl.output_shapes
+
+  @property
+  def output_types(self):
+    return self._impl.output_types
+
+
+@tf_export("data.FixedLengthRecordDataset")
+class FixedLengthRecordDataset(dataset_ops.Dataset):
   """A `Dataset` of fixed-length records from one or more binary files."""
 
   def __init__(self,

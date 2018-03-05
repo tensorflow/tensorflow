@@ -252,21 +252,17 @@ def _graph_callable_internal(func, shape_and_dtypes):
     Callable graph object.
   """
   container = tf_ops.get_default_graph()._container  # pylint: disable=protected-access
-  container_prefix = tf_ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
+  graph_key = tf_ops.get_default_graph()._graph_key  # pylint: disable=protected-access
   with context.graph_mode():
     # This graph will store both the initialization and the call version of the
     # wrapped function. It will later be used by the backprop code to build the
     # backprop graph, if necessary.
     captures = {}
     tmp_graph = function.CapturingGraph(captures)
-    # Inherit the container from the original graph to create resources at user
-    # expected containers. Also inherits the container prefix, since this is
-    # used for error checking when isolating Eager execution (the container
-    # prefix at creation must match the container prefix when used, and
-    # variables returned from the graph callable will be used in the outside
-    # context).
+    # Inherit the graph key from the original graph to ensure optimizers don't
+    # misbehave.
     tmp_graph._container = container  # pylint: disable=protected-access
-    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
+    tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
     with tmp_graph.as_default():
       # Placeholders for the non-variable inputs.
       func_inputs = _get_graph_callable_inputs(shape_and_dtypes)
@@ -283,9 +279,12 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # scope's view of which variables exist.
       variable_captures = _VariableCapturingScope()
       with variable_captures.initializing_scope(), function.capture_tensors(
-          captures):
+          captures), function.AutomaticControlDependencies() as a:
         func_outputs = func(*func_inputs)
-      outputs_list = nest.flatten(func_outputs)
+        outputs_list = nest.flatten(func_outputs)
+        for i, x in enumerate(outputs_list):
+          if x is not None:
+            outputs_list[i] = a.mark_as_return(x)
       if len(outputs_list) == 1 and outputs_list[0] is None:
         outputs_list = []
       output_shapes = [x.shape for x in outputs_list]
@@ -298,9 +297,12 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # knows about all variables.
       tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
-          captures):
+          captures), function.AutomaticControlDependencies() as a:
         captured_outputs = func(*func_inputs)
       captured_outlist = nest.flatten(captured_outputs)
+      for i, x in enumerate(captured_outlist):
+        if x is not None:
+          captured_outlist[i] = a.mark_as_return(x)
       capturing_operations = tmp_graph.get_operations()[
           len(initializing_operations):]
 

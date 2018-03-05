@@ -50,8 +50,8 @@ class PredictorFactoriesTest(test.TestCase):
   def testFromContribEstimator(self):
     estimator = testing_common.get_arithmetic_estimator(core=False)
     input_fn = testing_common.get_arithmetic_input_fn(core=False)
-    predictor_factories.from_contrib_estimator(estimator, input_fn,
-        output_alternative_key='sum')
+    predictor_factories.from_contrib_estimator(
+        estimator, input_fn, output_alternative_key='sum')
 
   def testFromContribEstimatorWithCoreEstimatorRaises(self):
     estimator = testing_common.get_arithmetic_estimator(core=True)

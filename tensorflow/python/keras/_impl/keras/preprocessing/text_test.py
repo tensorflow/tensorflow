@@ -76,6 +76,22 @@ class TestText(test.TestCase):
     self.assertLessEqual(np.max(encoded), 4)
     self.assertGreaterEqual(np.min(encoded), 1)
 
+  def test_tokenizer_oov_flag(self):
+    x_train = ['This text has only known words']
+    x_test = ['This text has some unknown words']  # 2 OOVs: some, unknown
+
+    # Defalut, without OOV flag
+    tokenizer = keras.preprocessing.text.Tokenizer()
+    tokenizer.fit_on_texts(x_train)
+    x_test_seq = tokenizer.texts_to_sequences(x_test)
+    assert len(x_test_seq[0]) == 4  # discards 2 OOVs
+
+    # With OOV feature
+    tokenizer = keras.preprocessing.text.Tokenizer(oov_token='<unk>')
+    tokenizer.fit_on_texts(x_train)
+    x_test_seq = tokenizer.texts_to_sequences(x_test)
+    assert len(x_test_seq[0]) == 6  # OOVs marked in place
+
 
 if __name__ == '__main__':
   test.main()

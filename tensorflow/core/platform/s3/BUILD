@@ -45,8 +45,8 @@ tf_cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "@aws//:aws",
-        "@curl//:curl",
+        "@aws",
+        "@curl",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -62,7 +62,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@aws//:aws",
+        "@aws",
         "@boringssl//:crypto",
     ],
     alwayslink = 1,
@@ -79,7 +79,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@aws//:aws",
+        "@aws",
     ],
     alwayslink = 1,
 )
@@ -97,7 +97,7 @@ cc_library(
         ":s3_crypto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@aws//:aws",
+        "@aws",
     ],
     alwayslink = 1,
 )
@@ -117,6 +117,6 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@aws//:aws",
+        "@aws",
     ],
 )

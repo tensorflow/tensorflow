@@ -212,4 +212,20 @@ An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running.
 )doc");
 
-}  // namespace tensorflow
+REGISTER_OP("SessionStatus")
+    .Input("fetch_start_timestamp: double")
+    .Output("status: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Not for public usage.
+
+Returns messages from the current session as a serialized SessionStatusProto.
+
+This includes the current state of the compiler, along with any critical
+logging or warning messages.
+
+fetch_start_timestamp: any messages earlier than this will be excluded from the
+returned proto.
+)doc");
+
+}  // end namespace tensorflow

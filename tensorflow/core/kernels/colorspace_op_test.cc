@@ -224,34 +224,34 @@ class HSVToRGBOpTest : public OpsTestBase {
   }
 };
 
-#define TEST_COLORSPACE(test, dt)                               \
-  TEST_F(test, CheckBlack) {                                    \
-    MakeOp(dt);                                                 \
-    CheckBlack(dt);                                             \
-  }                                                             \
-  TEST_F(test, CheckGray) {                                     \
-    MakeOp(dt);                                                 \
-    CheckGray(dt);                                              \
-  }                                                             \
-  TEST_F(test, CheckWhite) {                                    \
-    MakeOp(dt);                                                 \
-    CheckWhite(dt);                                             \
-  }                                                             \
-  TEST_F(test, CheckRedMax) {                                   \
-    MakeOp(dt);                                                 \
-    CheckRedMax(dt);                                            \
-  }                                                             \
-  TEST_F(test, CheckGreenMax) {                                 \
-    MakeOp(dt);                                                 \
-    CheckGreenMax(dt);                                          \
-  }                                                             \
-  TEST_F(test, CheckBlueMax) {                                  \
-    MakeOp(dt);                                                 \
-    CheckBlueMax(dt);                                           \
-  }                                                             \
-  TEST_F(test, CheckNegativeDifference) {                       \
-    MakeOp(dt);                                                 \
-    CheckNegativeDifference(dt);                                \
+#define TEST_COLORSPACE(test, dt)         \
+  TEST_F(test, CheckBlack) {              \
+    MakeOp(dt);                           \
+    CheckBlack(dt);                       \
+  }                                       \
+  TEST_F(test, CheckGray) {               \
+    MakeOp(dt);                           \
+    CheckGray(dt);                        \
+  }                                       \
+  TEST_F(test, CheckWhite) {              \
+    MakeOp(dt);                           \
+    CheckWhite(dt);                       \
+  }                                       \
+  TEST_F(test, CheckRedMax) {             \
+    MakeOp(dt);                           \
+    CheckRedMax(dt);                      \
+  }                                       \
+  TEST_F(test, CheckGreenMax) {           \
+    MakeOp(dt);                           \
+    CheckGreenMax(dt);                    \
+  }                                       \
+  TEST_F(test, CheckBlueMax) {            \
+    MakeOp(dt);                           \
+    CheckBlueMax(dt);                     \
+  }                                       \
+  TEST_F(test, CheckNegativeDifference) { \
+    MakeOp(dt);                           \
+    CheckNegativeDifference(dt);          \
   }
 
 typedef RGBToHSVOpTest<float> rgb_to_hsv_float;

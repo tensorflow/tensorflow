@@ -679,8 +679,9 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
 
     const int dims = resized_shape.dims();
     OP_REQUIRES(
-        context, TensorShapeUtils::IsMatrix(paddings.shape()) &&
-                     paddings.dim_size(1) == 2,
+        context,
+        TensorShapeUtils::IsMatrix(paddings.shape()) &&
+            paddings.dim_size(1) == 2,
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 paddings.shape().DebugString()));
     const int fixed_dims =
@@ -715,20 +716,22 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
       const int32 after =
           paddings_matrix(d, 1);  // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument("paddings must be non-negative: ",
-                                          before, " ", after));
+                  errors::InvalidArgument(
+                      "paddings must be non-negative: ", before, " ", after));
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(
-            context, before <= resized_shape.dim_size(d) &&
-                         after <= resized_shape.dim_size(d),
+            context,
+            before <= resized_shape.dim_size(d) &&
+                after <= resized_shape.dim_size(d),
             errors::InvalidArgument("paddings must be no greater "
                                     "than the dimension size: ",
                                     before, ", ", after, " greater than ",
                                     resized_shape.dim_size(d)));
       } else if (offset_ == 1) {  // REFLECT mode.
         OP_REQUIRES(
-            context, before < resized_shape.dim_size(d) &&
-                         after < resized_shape.dim_size(d),
+            context,
+            before < resized_shape.dim_size(d) &&
+                after < resized_shape.dim_size(d),
             errors::InvalidArgument("paddings must be less than"
                                     " the dimension size: ",
                                     before, ", ", after, " not less than ",
@@ -767,18 +770,19 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     // We only check the first three dims, since the depth is accessed as an
     // int64 below.
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = padded_shape.dim_size(3);
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -786,9 +790,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
     const int64 padded_rows_raw = padded_shape.dim_size(1);
-    OP_REQUIRES(context, FastBoundsCheck(padded_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(padded_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int padded_rows = static_cast<int>(padded_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
     const int resized_rows = static_cast<int>(resized_shape.dim_size(1));
@@ -796,9 +801,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
     const int64 padded_cols_raw = padded_shape.dim_size(2);
-    OP_REQUIRES(context, FastBoundsCheck(padded_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(padded_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int padded_cols = static_cast<int>(padded_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
     const int resized_cols = static_cast<int>(resized_shape.dim_size(2));
@@ -864,24 +870,26 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(FusedResizeConv2DUsingGemmOp);
 };
 
-#define REGISTER_FUSED(T)                                                    \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("FusedResizeAndPadConv2D")                                        \
-          .Device(DEVICE_CPU)                                                \
-          .TypeConstraint<T>("T"),                                           \
-      FusedResizeConv2DUsingGemmOp<                                          \
-          T, FusedResizeAndPadConvFunctor<T, T, T, FastGemmFunctor<T, T, T>, \
-                                          BILINEAR>,                         \
+#define REGISTER_FUSED(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("FusedResizeAndPadConv2D")                                     \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<T>("T"),                                        \
+      FusedResizeConv2DUsingGemmOp<                                       \
+          T,                                                              \
+          FusedResizeAndPadConvFunctor<T, T, T, FastGemmFunctor<T, T, T>, \
+                                       BILINEAR>,                         \
           true>);
 
 TF_CALL_float(REGISTER_FUSED);
 
-#define REGISTER_PAD_ONLY_FUSED(T)                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("FusedPadConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),      \
-      FusedResizeConv2DUsingGemmOp<                                          \
-          T, FusedResizeAndPadConvFunctor<T, T, T, FastGemmFunctor<T, T, T>, \
-                                          NEAREST>,                          \
+#define REGISTER_PAD_ONLY_FUSED(T)                                        \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("FusedPadConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      FusedResizeConv2DUsingGemmOp<                                       \
+          T,                                                              \
+          FusedResizeAndPadConvFunctor<T, T, T, FastGemmFunctor<T, T, T>, \
+                                       NEAREST>,                          \
           false>);
 
 TF_CALL_float(REGISTER_PAD_ONLY_FUSED);

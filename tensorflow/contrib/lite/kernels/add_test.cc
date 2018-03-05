@@ -25,10 +25,11 @@ using ::testing::ElementsAreArray;
 
 class BaseAddOpModel : public SingleOpModel {
  public:
-  BaseAddOpModel(const TensorData& input, const TensorData& output,
+  BaseAddOpModel(const TensorData& input1, const TensorData& input2,
+                 const TensorData& output,
                  ActivationFunctionType activation_type) {
-    input1_ = AddInput(input);
-    input2_ = AddInput(input);
+    input1_ = AddInput(input1);
+    input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
@@ -70,6 +71,7 @@ float GetTolerance(int min, int max) {
 
 TEST(FloatAddOpModel, NoActivation) {
   FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
@@ -77,9 +79,10 @@ TEST(FloatAddOpModel, NoActivation) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
-TEST(FloatAddOpModel, ActivationRELU1) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU1);
+TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
+  FloatAddOpModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
@@ -91,12 +94,30 @@ TEST(FloatAddOpModel, VariousInputShapes) {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
+                      {TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
     m.Invoke();
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(FloatAddOpModel, WithBroadcast) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
+                      {TensorType_FLOAT32, {}},  // always a scalar
+                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.PopulateTensor<float>(m.input2(), {0.1});
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetOutput(),
+        ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1})))
         << "With shape number " << i;
   }
 }
@@ -111,6 +132,7 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
       {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
+                          {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {}, -1.0, 1.0},
                           ActivationFunctionType_NONE);
     m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[i]);
@@ -122,7 +144,7 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU1) {
+TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::initializer_list<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
                                                        {-0.8, 0.2, 0.7, 0.3}};
@@ -132,8 +154,9 @@ TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU1) {
                                                        {-0.2, 0.6, -0.1, 0.8}};
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
+                          {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {}, -1.0, 1.0},
-                          ActivationFunctionType_RELU1);
+                          ActivationFunctionType_RELU_N1_TO_1);
     m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[i]);
     m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[i]);
     m.Invoke();
@@ -149,6 +172,7 @@ TEST(QuantizedAddOpModel, QuantizedVariousInputShapes) {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
+                          {TensorType_UINT8, test_shapes[i], -3.0, 3.0},
                           {TensorType_UINT8, {}, -3.0, 3.0},
                           ActivationFunctionType_NONE);
     m.QuantizeAndPopulate<uint8_t>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
@@ -156,6 +180,25 @@ TEST(QuantizedAddOpModel, QuantizedVariousInputShapes) {
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(),
                 ElementsAreArray(ArrayFloatNear({-1.9, 0.5, 1.0, 1.3, 2.2, 2.1},
+                                                kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedAddOpModel, QuantizedWithBroadcast) {
+  float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedAddOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
+                          {TensorType_UINT8, {}, -3.0, 3.0},
+                          {TensorType_UINT8, {}, -3.0, 3.0},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1});
+    m.Invoke();
+    EXPECT_THAT(m.GetDequantizedOutput(),
+                ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1},
                                                 kQuantizedTolerance)))
         << "With shape number " << i;
   }

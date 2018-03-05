@@ -6,15 +6,10 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cuda_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library",
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
 )
 
 # -----------------------------------------------------------------------------
@@ -22,8 +17,27 @@ load(
 
 filegroup(
     name = "headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "*test*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
 )
 
 tf_cuda_library(
@@ -79,7 +93,31 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
         ],
+    }) + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+        ],
+        "//conditions:default": [],
     }),
+)
+
+tf_cuda_library(
+    name = "c_api_experimental",
+    srcs = [
+        "c_api_experimental.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 exports_files(
@@ -123,15 +161,21 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_test_util.cc"],
     hdrs = ["c_test_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         ":c_api",
+        ":c_api_experimental",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
         "//tensorflow/core:test",
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],

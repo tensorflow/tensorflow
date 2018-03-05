@@ -16,8 +16,8 @@ limitations under the License.
 // Build a graph structure based on op inputs/outputs. The graph is a directed
 // acyclic graph pointing *from outputs to inputs*.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_
 
 #include <deque>
 #include <map>
@@ -86,4 +86,4 @@ class TFGraph : public TFShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_GRAPH_H_

@@ -131,7 +131,8 @@ struct scalar_cast_op<::tensorflow::bfloat16, float> {
     p[0] = a.value;
     p[1] = 0;
 #else
-    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
+    static_assert(::tensorflow::port::kLittleEndian,
+                  "Not a little endian system!");
     p[0] = 0;
     p[1] = a.value;
 #endif

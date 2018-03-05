@@ -896,7 +896,7 @@ class DnnSupport {
   //  offset: offset parameters.
   //  estimated_mean: population mean estimated during training.
   //    Used for inference only; empty for training.
-  //  estimated_variance: population variance estimated during traning,
+  //  estimated_variance: population variance estimated during training,
   //    used for inference only; empty for training.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
   //    of the output.

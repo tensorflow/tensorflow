@@ -67,7 +67,7 @@ class ComputationBuilder {
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
-  // OpMetadata attached until a call to ClearOpMetdata.
+  // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.
@@ -100,6 +100,9 @@ class ComputationBuilder {
   // Retrieves the (inferred) shape of the operand in the computation.
   StatusOr<std::unique_ptr<Shape>> GetShape(
       const ComputationDataHandle& operand);
+
+  // Retrieves the (inferred) result for the current computation's shape.
+  StatusOr<ProgramShape> GetProgramShape();
 
   // Checks that the operand has the given expected shape. Returns the operand
   // if yes, fails with a CHECK error if no.
@@ -195,9 +198,8 @@ class ComputationBuilder {
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
   // Enqueues an operation onto the computation that collapses the operand, from
-  // minor to major order, then reshapes it into the shape with the given
-  // dimension sizes, also from major to minor. Conceptually, this is a limited
-  // form of "shape casting".
+  // first to last dimension (C order), then reshapes it to the given dimension
+  // sizes. Conceptually, this is a limited form of "shape casting".
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
@@ -442,6 +444,16 @@ class ComputationBuilder {
       const string& call_target_name,
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Shape& shape);
+
+  // Enqueues a pseudo-op to represent host-side computation data-dependencies.
+  // During code generation, host send and receive operations will be generated
+  // to transfer |operands| to the host and a single result of |shape| back to
+  // the device.  Host send/recv operations are emitted using |channel_name|.
+  // Dataflow dependencies and the |cost_estimate_ns| field may be used in HLO
+  // instruction scheduling.
+  ComputationDataHandle HostCompute(
+      tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
+      const string& channel_name, int64 cost_estimate_ns, const Shape& shape);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -705,6 +717,13 @@ class ComputationBuilder {
                                         const int exponent_bits,
                                         const int mantissa_bits);
 
+  // Enqueues a Gather node onto the computation.
+  ComputationDataHandle Gather(
+      const ComputationDataHandle& input,
+      const ComputationDataHandle& gather_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
   void Send(const ComputationDataHandle& operand, const ChannelHandle& handle);
@@ -715,7 +734,7 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with higher index then
+  // constant does not depend on parameters with index greater than or equal to
   // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
   // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
   // compile-time constant without evaluating the computation.
@@ -853,7 +872,7 @@ class ComputationBuilder {
                   Window* window);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  ComputationDataHandle UnaryOp(UnaryOperation binop,
+  ComputationDataHandle UnaryOp(UnaryOperation unop,
                                 const ComputationDataHandle& operand);
 
   // Internal helper method that does the building for an arbitrary binary op.

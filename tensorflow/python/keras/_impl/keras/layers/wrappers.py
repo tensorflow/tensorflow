@@ -25,10 +25,13 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import utils as tf_layers_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.Wrapper')
 class Wrapper(Layer):
   """Abstract wrapper base class.
 
@@ -59,6 +62,14 @@ class Wrapper(Layer):
       return None
 
   @property
+  def trainable(self):
+    return self.layer.trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self.layer.trainable = value
+
+  @property
   def trainable_weights(self):
     return self.layer.trainable_weights
 
@@ -68,34 +79,11 @@ class Wrapper(Layer):
 
   @property
   def updates(self):
-    if hasattr(self.layer, 'updates'):
-      return self.layer.updates
-    return []
-
-  def get_updates_for(self, inputs=None):
-    # If the wrapper modifies the inputs, use the modified inputs to
-    # get the updates from the inner layer.
-    inner_inputs = inputs
-    if inputs is not None:
-      uid = tf_layers_util.object_list_uid(inputs)
-      if uid in self._input_map:
-        inner_inputs = self._input_map[uid]
-
-    updates = self.layer.get_updates_for(inner_inputs)
-    updates += super(Wrapper, self).get_updates_for(inputs)
-    return updates
+    return self.layer.updates + self._updates
 
   @property
   def losses(self):
-    if hasattr(self.layer, 'losses'):
-      return self.layer.losses
-    return []
-
-  def get_losses_for(self, inputs=None):
-    if inputs is None:
-      losses = self.layer.get_losses_for(None)
-      return losses + super(Wrapper, self).get_losses_for(None)
-    return super(Wrapper, self).get_losses_for(inputs)
+    return self.layer.losses + self._losses
 
   def get_weights(self):
     return self.layer.get_weights()
@@ -121,6 +109,7 @@ class Wrapper(Layer):
     return cls(layer, **config)
 
 
+@tf_export('keras.layers.TimeDistributed')
 class TimeDistributed(Wrapper):
   """This wrapper allows to apply a layer to every temporal slice of an input.
 
@@ -245,6 +234,7 @@ class TimeDistributed(Wrapper):
     return y
 
 
+@tf_export('keras.layers.Bidirectional')
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
@@ -273,7 +263,6 @@ class Bidirectional(Wrapper):
   """
 
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
-    super(Bidirectional, self).__init__(layer, **kwargs)
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
@@ -291,7 +280,21 @@ class Bidirectional(Wrapper):
       self.backward_layer.initial_weights = weights[nw // 2:]
     self.stateful = layer.stateful
     self.return_sequences = layer.return_sequences
+    self.return_state = layer.return_state
     self.supports_masking = True
+    self._trainable = True
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self.input_spec = layer.input_spec
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    self.forward_layer.trainable = value
+    self.backward_layer.trainable = value
 
   def get_weights(self):
     return self.forward_layer.get_weights() + self.backward_layer.get_weights()
@@ -301,27 +304,104 @@ class Bidirectional(Wrapper):
     self.forward_layer.set_weights(weights[:nw // 2])
     self.backward_layer.set_weights(weights[nw // 2:])
 
+  @shape_type_conversion
   def compute_output_shape(self, input_shape):
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-    if self.merge_mode in ['sum', 'ave', 'mul']:
-      return self.forward_layer.compute_output_shape(input_shape)
-    elif self.merge_mode == 'concat':
-      shape = self.forward_layer.compute_output_shape(input_shape).as_list()
-      shape[-1] *= 2
-      return tensor_shape.TensorShape(shape)
-    elif self.merge_mode is None:
-      shape = self.forward_layer.compute_output_shape(input_shape)
-      return [shape, copy.copy(shape)]
+    output_shape = tuple(self.forward_layer.compute_output_shape(
+        input_shape).as_list())
+    if self.return_state:
+      state_shape = output_shape[1:]
+      output_shape = output_shape[0]
 
-  def call(self, inputs, training=None, mask=None):
+    if self.merge_mode == 'concat':
+      output_shape = list(output_shape)
+      output_shape[-1] *= 2
+      output_shape = tuple(output_shape)
+    elif self.merge_mode is None:
+      output_shape = [output_shape, copy.copy(output_shape)]
+
+    if self.return_state:
+      if self.merge_mode is None:
+        return output_shape + state_shape + copy.copy(state_shape)
+      return [output_shape] + state_shape + copy.copy(state_shape)
+    return output_shape
+
+  def __call__(self, inputs, initial_state=None, **kwargs):
+    if isinstance(inputs, list):
+      if len(inputs) > 1:
+        initial_state = inputs[1:]
+      inputs = inputs[0]
+
+    if initial_state is None:
+      return super(Bidirectional, self).__call__(inputs, **kwargs)
+
+    # Standardize `initial_state` into list
+    if isinstance(initial_state, tuple):
+      initial_state = list(initial_state)
+    elif not isinstance(initial_state, list):
+      initial_state = [initial_state]
+
+    # Check if `initial_state` can be splitted into half
+    num_states = len(initial_state)
+    if num_states % 2 > 0:
+      raise ValueError(
+          'When passing `initial_state` to a Bidirectional RNN, the state '
+          'should be a list containing the states of the underlying RNNs. '
+          'Found: ' + str(initial_state))
+
+    # Applies the same workaround as in `RNN.__call__`, without handling
+    # constants
+    kwargs['initial_state'] = initial_state
+    additional_inputs = initial_state
+    additional_specs = [InputSpec(shape=K.int_shape(state))
+                        for state in initial_state]
+    self.forward_layer.state_spec = additional_specs[:num_states // 2]
+    self.backward_layer.state_spec = additional_specs[num_states // 2:]
+
+    is_keras_tensor = K.is_keras_tensor(additional_inputs[0])
+    for tensor in additional_inputs:
+      if K.is_keras_tensor(tensor) != is_keras_tensor:
+        raise ValueError('The initial state of a Bidirectional'
+                         ' layer cannot be specified with a mix of'
+                         ' Keras tensors and non-Keras tensors'
+                         ' (a "Keras tensor" is a tensor that was'
+                         ' returned by a Keras layer, or by `Input`)')
+
+    if is_keras_tensor:
+      # Compute the full input spec, including state
+      full_input = [inputs] + additional_inputs
+      full_input_spec = self.input_spec + additional_specs
+
+      # Perform the call with temporarily replaced input_spec
+      original_input_spec = self.input_spec
+      self.input_spec = full_input_spec
+      output = super(Bidirectional, self).__call__(full_input, **kwargs)
+      self.input_spec = original_input_spec
+      return output
+    else:
+      return super(Bidirectional, self).__call__(inputs, **kwargs)
+
+  def call(self, inputs, training=None, mask=None, initial_state=None):
     kwargs = {}
     if has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
     if has_arg(self.layer.call, 'mask'):
       kwargs['mask'] = mask
 
-    y = self.forward_layer.call(inputs, **kwargs)
-    y_rev = self.backward_layer.call(inputs, **kwargs)
+    if initial_state is not None and has_arg(self.layer.call, 'initial_state'):
+      forward_state = initial_state[:len(initial_state) // 2]
+      backward_state = initial_state[len(initial_state) // 2:]
+      y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer.call(
+          inputs, initial_state=backward_state, **kwargs)
+    else:
+      y = self.forward_layer.call(inputs, **kwargs)
+      y_rev = self.backward_layer.call(inputs, **kwargs)
+
+    if self.return_state:
+      states = y[1:] + y_rev[1:]
+      y = y[0]
+      y_rev = y_rev[0]
+
     if self.return_sequences:
       y_rev = K.reverse(y_rev, 1)
     if self.merge_mode == 'concat':
@@ -343,6 +423,11 @@ class Bidirectional(Wrapper):
           out._uses_learning_phase = True
       else:
         output._uses_learning_phase = True
+
+    if self.return_state:
+      if self.merge_mode is None:
+        return output + states
+      return [output] + states
     return output
 
   def reset_states(self):

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities supporting export to SavedModel.
+"""Utilities supporting export to SavedModel (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Some contents of this file are moved to tensorflow/python/estimator/export.py:
 
@@ -52,8 +56,9 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import saver
-
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
+
 
 # A key for use in the input_alternatives dict indicating the default input.
 # This is the input that will be expected when a serving request does not
@@ -77,6 +82,7 @@ FEATURES_INPUT_ALTERNATIVE_KEY = 'features_input_alternative'
 _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def build_standardized_signature_def(input_tensors, output_tensors,
                                      problem_type):
   """Build a SignatureDef using problem type and input and output Tensors.
@@ -156,6 +162,7 @@ def _is_regression_problem(problem_type, input_tensors, output_tensors):
           len(input_tensors) == 1 and len(output_tensors) == 1)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_input_alternatives(input_ops):
   """Obtain all input alternatives using the input_fn output and heuristics."""
   input_alternatives = {}
@@ -181,6 +188,7 @@ def get_input_alternatives(input_ops):
   return input_alternatives, features
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_output_alternatives(model_fn_ops, default_output_alternative_key=None):
   """Obtain all output alternatives using the model_fn output and heuristics.
 
@@ -246,6 +254,7 @@ def get_output_alternatives(model_fn_ops, default_output_alternative_key=None):
                        sorted(output_alternatives.keys())))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def build_all_signature_defs(input_alternatives, output_alternatives,
                              actual_default_output_alternative_key):
   """Build `SignatureDef`s from all pairs of input and output alternatives."""
@@ -279,6 +288,7 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
 MAX_DIRECTORY_CREATION_ATTEMPTS = 10
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -317,6 +327,7 @@ def get_timestamped_export_dir(export_dir_base):
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_temp_export_dir(timestamped_export_dir):
   """Builds a directory name based on the argument but starting with 'temp-'.
 
@@ -344,6 +355,7 @@ def _export_version_parser(path):
   return path._replace(export_version=int(filename))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_most_recent_export(export_dir_base):
   """Locate the most recent SavedModel export in a directory of many exports.
 
@@ -363,6 +375,7 @@ def get_most_recent_export(export_dir_base):
   return next(iter(results or []), None)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def garbage_collect_exports(export_dir_base, exports_to_keep):
   """Deletes older exports, retaining only a given number of the most recent.
 
@@ -387,13 +400,13 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
       logging.warn('Can not delete %s recursively: %s', p.path, e)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def make_export_strategy(serving_input_fn,
                          default_output_alternative_key=None,
                          assets_extra=None,
                          as_text=False,
                          exports_to_keep=5,
-                         strip_default_attrs=False):
-  # pylint: disable=line-too-long
+                         strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
@@ -414,16 +427,16 @@ def make_export_strategy(serving_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
 
-  def export_fn(estimator, export_dir_base, checkpoint_path=None):
+  def export_fn(estimator, export_dir_base, checkpoint_path=None,
+                strip_default_attrs=False):
     """Exports the given Estimator as a SavedModel.
 
     Args:
@@ -432,6 +445,8 @@ def make_export_strategy(serving_input_fn,
         graph and checkpoints.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will
+        be removed from the NodeDefs.
 
     Returns:
       The string path to the exported directory.
@@ -465,17 +480,18 @@ def make_export_strategy(serving_input_fn,
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn, strip_default_attrs)
 
 
+@deprecated(None,
+            'Use tf.estimator.export.build_parsing_serving_input_receiver_fn')
 def make_parsing_export_strategy(feature_columns,
                                  default_output_alternative_key=None,
                                  assets_extra=None,
                                  as_text=False,
                                  exports_to_keep=5,
                                  target_core=False,
-                                 strip_default_attrs=False):
-  # pylint: disable=line-too-long
+                                 strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -503,14 +519,13 @@ def make_parsing_export_strategy(feature_columns,
     target_core: If True, prepare an ExportStrategy for use with
       tensorflow.python.estimator.*.  If False (default), prepare an
       ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
   if target_core:
     serving_input_fn = (
@@ -556,8 +571,14 @@ def _default_compare_fn(curr_best_eval_result, cand_eval_result):
 
 
 class BestModelSelector(object):
-  """A helper that keeps track of export selection candidates."""
+  """A helper that keeps track of export selection candidates.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
   def __init__(self, event_file_pattern=None, compare_fn=None):
     """Constructor of this class.
 
@@ -623,6 +644,7 @@ class BestModelSelector(object):
     return best_eval_result
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def make_best_model_export_strategy(
     serving_input_fn,
     exports_to_keep=1,
@@ -630,8 +652,7 @@ def make_best_model_export_strategy(
     event_file_pattern=None,
     compare_fn=None,
     default_output_alternative_key=None,
-    strip_default_attrs=False):
-  # pylint: disable=line-too-long
+    strip_default_attrs=None):
   """Creates an custom ExportStrategy for use with tf.contrib.learn.Experiment.
 
   Args:
@@ -654,14 +675,13 @@ def make_best_model_export_strategy(
         of evaluation result keyed by corresponding checkpoint path.
     default_output_alternative_key: the key for default serving signature for
         multi-headed inference graphs.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
   best_model_export_strategy = make_export_strategy(
       serving_input_fn,
       exports_to_keep=exports_to_keep,
@@ -710,6 +730,7 @@ def make_best_model_export_strategy(
 
 # TODO(b/67013778): Revisit this approach when corresponding changes to
 # TF Core are finalized.
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def extend_export_strategy(base_export_strategy,
                            post_export_fn,
                            post_export_name=None):

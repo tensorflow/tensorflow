@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
+#define TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA
@@ -76,14 +76,14 @@ class TensorListStack : public OpKernel {
                 errors::InvalidArgument(
                     "Input handle is not a list. Saw: '",
                     c->input(0).scalar<Variant>()().DebugString(), "'"));
-    OP_REQUIRES(c, l->element_shape.IsFullyDefined(),
-                errors::InvalidArgument("Tried to stack elements from a list "
-                                        "with non-fully-defined shape."));
     OP_REQUIRES(c, element_dtype_ == l->element_dtype,
                 errors::InvalidArgument("Invalid data types; op elements ",
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
+    OP_REQUIRES(c, l->element_shape.IsFullyDefined(),
+                errors::InvalidArgument("Tried to stack elements from a list "
+                                        "with non-fully-defined shape."));
     if (num_elements_ != -1) {
       OP_REQUIRES(c, l->tensors.size() == num_elements_,
                   errors::InvalidArgument("Operation expected a list with ",
@@ -98,16 +98,23 @@ class TensorListStack : public OpKernel {
     }
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
+    if (output->NumElements() == 0) {
+      return;
+    }
 
     ConstMatrixVector inputs_flat;
     inputs_flat.reserve(l->tensors.size());
     for (const auto& t : l->tensors) {
+      OP_REQUIRES(
+          c, l->element_shape.IsCompatibleWith(t.shape()),
+          errors::InvalidArgument(
+              "Tensor with invalid shape in list. List element shape shape: ",
+              l->element_shape.DebugString(),
+              " and tensor shape: ", t.shape().DebugString()));
       inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
           t.shaped<T, 2>({1, t.NumElements()})));
     }
-    auto output_flat =
-        output->shaped<T, 2>({1, static_cast<int64>(l->tensors.size()) *
-                                     l->element_shape.num_elements()});
+    auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
 #if GOOGLE_CUDA
     if (std::is_same<Device, Eigen::GpuDevice>::value) {
@@ -195,17 +202,26 @@ Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
   for (int i = 0; i < a.tensors.size(); ++i) {
     const Tensor& a_tensor = a.tensors[i];
     const Tensor& b_tensor = b.tensors[i];
+    if (a_tensor.dtype() == DT_INVALID) {
+      out->tensors.push_back(b_tensor);
+      continue;
+    }
+    if (b_tensor.dtype() == DT_INVALID) {
+      out->tensors.push_back(a_tensor);
+      continue;
+    }
     if (a_tensor.shape() != b_tensor.shape()) {
       // TODO(apassos) support broadcasting additions here?
       return errors::InvalidArgument(
           "Trying to add two tensors with incompatible element shapes. "
           "One is ",
           a_tensor.shape().DebugString(), " and the other is ",
-          b_tensor.shape().DebugString());
+          b_tensor.shape().DebugString(), " in position ", i);
     }
     Tensor out_tensor;
     TF_RETURN_IF_ERROR(
         c->allocate_temp(a_tensor.dtype(), a_tensor.shape(), &out_tensor));
+    out->tensors.push_back(out_tensor);
     switch (out_tensor.dtype()) {
 #define DTYPE_CASE(dtype)                                        \
   case DataTypeToEnum<dtype>::value:                             \
@@ -254,4 +270,4 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_

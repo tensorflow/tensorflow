@@ -170,6 +170,18 @@ TEST(ShapeUtilTest, CompatibleNotIdenticalShapes) {
   EXPECT_TRUE(ShapeUtil::Compatible(shape_1, shape_2));
 }
 
+TEST(ShapeUtilTest, CompatibleIgnoringFpPrecision) {
+  Shape shape1 = ShapeUtil::MakeShape(BF16, {3, 2});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
+  ASSERT_TRUE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+}
+
+TEST(ShapeUtilTest, IncompatibleIgnoringFpPrecision) {
+  Shape shape1 = ShapeUtil::MakeShape(BF16, {3, 2});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 2});
+  ASSERT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+}
+
 TEST(ShapeUtilTest, IncompatibleDifferentElementShapes) {
   Shape shape_1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape_2 = ShapeUtil::MakeShape(PRED, {3, 2});
@@ -184,6 +196,14 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, CompatibleTuplesIgnoringFpPrecision) {
+  Shape tuple1 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(BF16, {3, 2}), ShapeUtil::MakeShape(F32, {4, 5})});
+  Shape tuple2 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F64, {3, 2}), ShapeUtil::MakeShape(BF16, {4, 5})});
+  EXPECT_TRUE(ShapeUtil::CompatibleIgnoringFpPrecision(tuple1, tuple2));
+}
+
 TEST(ShapeUtilTest, IncompatibleTuplesWithSwappedElements) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(PRED, {4, 5}), ShapeUtil::MakeShape(F32, {3, 2})});
@@ -191,6 +211,14 @@ TEST(ShapeUtilTest, IncompatibleTuplesWithSwappedElements) {
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(PRED, {4, 5})});
   EXPECT_FALSE(ShapeUtil::Compatible(tuple1, tuple2));
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(tuple1, tuple2));
+}
+
+TEST(ShapeUtilTest, IncompatibleTuplesIgnoringFpPrecision) {
+  Shape tuple1 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(BF16, {4, 5}), ShapeUtil::MakeShape(F32, {3, 2})});
+  Shape tuple2 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(BF16, {4, 5})});
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(tuple1, tuple2));
 }
 
 TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentPrimitiveType) {
@@ -545,10 +573,11 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func = [&invocations](const std::vector<int64>& indexes) {
-      invocations++;
-      return true;
-    };
+    auto increment_func =
+        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
+          invocations++;
+          return true;
+        };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -558,6 +587,29 @@ TEST(ShapeUtilTest, ForEachIndex) {
 
     EXPECT_EQ(invocations, data.invocations);
   }
+}
+
+TEST(ShapeUtilTest, ForEachIndexWithStatus) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  // Increments at every invocation.
+  int invocations = 0;
+  auto increment_func =
+      [&invocations](
+          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+    if (++invocations == 5) {
+      return Unimplemented("Cannot increment beyond 5.");
+    }
+    return true;
+  };
+
+  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+      shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
+      increment_func);
+
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(error_status.error_message(),
+              ::testing::HasSubstr("Cannot increment beyond 5."));
+  EXPECT_EQ(invocations, 5);
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {

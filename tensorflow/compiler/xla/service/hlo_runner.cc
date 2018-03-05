@@ -47,22 +47,11 @@ HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
   return tools::Parse(hlo_string, config);
 }
 
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromHloProtoFile(const std::string& filename,
-                                      const DebugOptions& debug_options) {
-  HloProto proto;
+namespace {
 
-  const Status s =
-      tensorflow::ReadBinaryProto(tensorflow::Env::Default(), filename, &proto);
-
-  if (!s.ok()) {
-    const Status s2 =
-        tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto);
-    if (!s2.ok()) {
-      return Status(s2.code(), s.error_message() + "\n" + s2.error_message());
-    }
-  }
-
+// Creates an HloModule from the given proto.
+StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
+    const HloProto& proto, const DebugOptions& debug_options) {
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromProto(proto.hlo_module()));
@@ -72,28 +61,35 @@ HloRunner::ReadModuleFromHloProtoFile(const std::string& filename,
   return std::move(module);
 }
 
+}  // namespace
+
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromHloTextDumpFile(const std::string& filename,
+HloRunner::ReadModuleFromBinaryProtoFile(const std::string& filename,
                                          const DebugOptions& debug_options) {
+  HloProto proto;
+  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                                 filename, &proto));
+  return HloProtoToModule(proto, debug_options);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::ReadModuleFromTextProtoFile(const std::string& filename,
+                                       const DebugOptions& debug_options) {
+  HloProto proto;
+  TF_RETURN_IF_ERROR(
+      tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto));
+  return HloProtoToModule(proto, debug_options);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
+                                     const DebugOptions& debug_options) {
   string hlo_string;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
   return tools::Parse(hlo_string, config);
-}
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>> HloRunner::ReadModule(
-    const std::string& filename, const DebugOptions& debug_options) {
-  auto module = HloRunner::ReadModuleFromHloProtoFile(filename, debug_options);
-  if (module.ok()) {
-    return module;
-  }
-  const std::string e = module.status().error_message();
-  module = HloRunner::ReadModuleFromHloTextDumpFile(filename, debug_options);
-  return module.ok() ? std::move(module)
-                     : Status(module.status().code(),
-                              e + "\n" + module.status().error_message());
 }
 
 // Define this in .cc file to avoid having to include eigen or forward declare
@@ -121,12 +117,14 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
   if (run_hlo_passes) {
     TF_ASSIGN_OR_RETURN(
         module, backend().compiler()->RunHloPasses(
-                    std::move(module), backend().default_stream_executor()));
+                    std::move(module), backend().default_stream_executor(),
+                    /*device_allocator=*/nullptr));
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
-                                       backend().default_stream_executor()));
+                                       backend().default_stream_executor(),
+                                       /*device_allocator=*/nullptr));
 
   se::Stream stream(backend().default_stream_executor());
   stream.Init();

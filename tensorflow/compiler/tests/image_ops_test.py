@@ -65,7 +65,7 @@ class RGBToHSVTest(XLATestCase):
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
       self.assertAllClose(batch2, join2)
-      self.assertAllClose(batch2, inp)
+      self.assertAllCloseAccordingToType(batch2, inp, bfloat16_atol=0.03)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
@@ -77,21 +77,25 @@ class RGBToHSVTest(XLATestCase):
           hsv = image_ops.rgb_to_hsv(placeholder)
           rgb = image_ops.hsv_to_rgb(hsv)
         rgb_tf = rgb.eval(feed_dict={placeholder: rgb_np})
-      self.assertAllClose(rgb_tf, rgb_np)
+      self.assertAllCloseAccordingToType(rgb_tf, rgb_np, bfloat16_atol=0.03)
 
   def testRGBToHSVNumpy(self):
     """Tests the RGB to HSV conversion matches a reference implementation."""
     for nptype in self.float_types:
       rgb_flat = np.random.random(64 * 3).reshape((64, 3)).astype(nptype)
       rgb_np = rgb_flat.reshape(4, 4, 4, 3)
-      hsv_np = np.array([colorsys.rgb_to_hsv(r, g, b) for r, g, b in rgb_flat])
+      hsv_np = np.array([
+          colorsys.rgb_to_hsv(
+              r.astype(np.float64), g.astype(np.float64), b.astype(np.float64))
+          for r, g, b in rgb_flat
+      ])
       hsv_np = hsv_np.reshape(4, 4, 4, 3)
       with self.test_session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv_op = image_ops.rgb_to_hsv(placeholder)
         hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
-      self.assertAllClose(hsv_tf, hsv_np)
+      self.assertAllCloseAccordingToType(hsv_tf, hsv_np)
 
 
 class AdjustContrastTest(XLATestCase):
@@ -422,12 +426,13 @@ class ResizeBilinearTest(XLATestCase):
     with self.test_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
-      resized = gen_image_ops._resize_bilinear_grad(
+      resized = gen_image_ops.resize_bilinear_grad(
           grads,
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)
       out = sess.run(resized, {grads: grads_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+      self.assertAllCloseAccordingToType(expected[np.newaxis, :, :, np.newaxis],
+                                         out)
 
   def testAlignCorners1x2To3x2(self):
     for dtype in self.float_types:
@@ -504,6 +509,42 @@ class ResizeBilinearTest(XLATestCase):
           expected=np.array(
               [[1, 1, 1, 3], [2, 1.25, 1.25, 3], [2, 1.25, 1.25, 3],
                [7, 4, 4, 9]],
+              dtype=np.float32))
+
+  def testAlignCorners3x3To9x9(self):
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtype), [9, 9],
+          expected=np.array(
+              [[1.0, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00], [
+                  1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75
+              ], [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50], [
+                  3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25
+              ], [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00], [
+                  4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75
+              ], [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50], [
+                  6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25
+              ], [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
+              dtype=np.float32))
+
+  def testAlignCorners3x3To9x9Grad(self):
+    for dtype in self.float_types:
+      self._assertBackwardOpMatchesExpected(
+          np.array(
+              [[1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00], [
+                  1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75
+              ], [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50], [
+                  3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25
+              ], [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00], [
+                  4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75
+              ], [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50], [
+                  6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25
+              ], [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
+              dtype=np.float32),
+          input_shape=[3, 3],
+          dtype=dtype,
+          expected=np.array(
+              [[12.5, 27.5, 21.875], [42.5, 80.0, 57.5], [40.625, 72.5, 50]],
               dtype=np.float32))
 
 

@@ -24,8 +24,10 @@ from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.layers import pooling as tf_pooling_layers
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.MaxPool1D', 'keras.layers.MaxPooling1D')
 class MaxPooling1D(tf_pooling_layers.MaxPooling1D, Layer):
   """Max pooling operation for temporal data.
 
@@ -58,6 +60,7 @@ class MaxPooling1D(tf_pooling_layers.MaxPooling1D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.AveragePooling1D', 'keras.layers.AvgPool1D')
 class AveragePooling1D(tf_pooling_layers.AveragePooling1D, Layer):
   """Average pooling for temporal data.
 
@@ -91,6 +94,7 @@ class AveragePooling1D(tf_pooling_layers.AveragePooling1D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.MaxPool2D', 'keras.layers.MaxPooling2D')
 class MaxPooling2D(tf_pooling_layers.MaxPooling2D, Layer):
   """Max pooling operation for spatial data.
 
@@ -156,6 +160,7 @@ class MaxPooling2D(tf_pooling_layers.MaxPooling2D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.AveragePooling2D', 'keras.layers.AvgPool2D')
 class AveragePooling2D(tf_pooling_layers.AveragePooling2D, Layer):
   """Average pooling operation for spatial data.
 
@@ -221,6 +226,7 @@ class AveragePooling2D(tf_pooling_layers.AveragePooling2D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.MaxPool3D', 'keras.layers.MaxPooling3D')
 class MaxPooling3D(tf_pooling_layers.MaxPooling3D, Layer):
   """Max pooling operation for 3D data (spatial or spatio-temporal).
 
@@ -282,6 +288,7 @@ class MaxPooling3D(tf_pooling_layers.MaxPooling3D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.AveragePooling3D', 'keras.layers.AvgPool3D')
 class AveragePooling3D(tf_pooling_layers.AveragePooling3D, Layer):
   """Average pooling operation for 3D data (spatial or spatio-temporal).
 
@@ -359,6 +366,8 @@ class _GlobalPooling1D(Layer):
     raise NotImplementedError
 
 
+@tf_export('keras.layers.GlobalAveragePooling1D',
+           'keras.layers.GlobalAvgPool1D')
 class GlobalAveragePooling1D(_GlobalPooling1D):
   """Global average pooling operation for temporal data.
 
@@ -374,6 +383,7 @@ class GlobalAveragePooling1D(_GlobalPooling1D):
     return K.mean(inputs, axis=1)
 
 
+@tf_export('keras.layers.GlobalMaxPool1D', 'keras.layers.GlobalMaxPooling1D')
 class GlobalMaxPooling1D(_GlobalPooling1D):
   """Global max pooling operation for temporal data.
 
@@ -414,6 +424,8 @@ class _GlobalPooling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.GlobalAveragePooling2D',
+           'keras.layers.GlobalAvgPool2D')
 class GlobalAveragePooling2D(_GlobalPooling2D):
   """Global average pooling operation for spatial data.
 
@@ -449,6 +461,7 @@ class GlobalAveragePooling2D(_GlobalPooling2D):
       return K.mean(inputs, axis=[2, 3])
 
 
+@tf_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
 class GlobalMaxPooling2D(_GlobalPooling2D):
   """Global max pooling operation for spatial data.
 
@@ -509,6 +522,8 @@ class _GlobalPooling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.GlobalAveragePooling3D',
+           'keras.layers.GlobalAvgPool3D')
 class GlobalAveragePooling3D(_GlobalPooling3D):
   """Global Average pooling operation for 3D data.
 
@@ -544,6 +559,7 @@ class GlobalAveragePooling3D(_GlobalPooling3D):
       return K.mean(inputs, axis=[2, 3, 4])
 
 
+@tf_export('keras.layers.GlobalMaxPool3D', 'keras.layers.GlobalMaxPooling3D')
 class GlobalMaxPooling3D(_GlobalPooling3D):
   """Global Max pooling operation for 3D data.
 

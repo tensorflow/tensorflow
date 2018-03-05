@@ -915,6 +915,15 @@ class BackendNNOpsTest(test.TestCase):
         last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
                                                              initial_states,
                                                              **kwargs)
+        # check static shape inference
+        self.assertEquals(last_output.get_shape().as_list(),
+                          [num_samples, output_dim])
+        self.assertEquals(outputs.get_shape().as_list(),
+                          [num_samples, timesteps, output_dim])
+        for state in new_states:
+          self.assertEquals(state.get_shape().as_list(),
+                            [num_samples, output_dim])
+
         last_output_list[i].append(keras.backend.eval(last_output))
         outputs_list[i].append(keras.backend.eval(outputs))
         self.assertEqual(len(new_states), 1)
@@ -954,20 +963,8 @@ class BackendNNOpsTest(test.TestCase):
     x = keras.backend.variable(val)
     reduction_axes = (0, 2, 3)
 
-    # case: need broadcasting
     g_val = np.random.random((3,))
     b_val = np.random.random((3,))
-    gamma = keras.backend.variable(g_val)
-    beta = keras.backend.variable(b_val)
-    normed, mean, var = keras.backend.normalize_batch_in_training(
-        x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
-
-    # case: doesn't need broadcasting
-    g_val = np.random.random((1, 3, 1, 1))
-    b_val = np.random.random((1, 3, 1, 1))
     gamma = keras.backend.variable(g_val)
     beta = keras.backend.variable(b_val)
     normed, mean, var = keras.backend.normalize_batch_in_training(

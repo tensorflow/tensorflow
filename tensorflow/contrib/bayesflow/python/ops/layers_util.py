@@ -23,9 +23,12 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import deterministic as deterministic_lib
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import normal as normal_lib
 
 
@@ -178,3 +181,11 @@ def default_mean_field_normal_fn(
     return independent_lib.Independent(
         dist, reinterpreted_batch_ndims=reinterpreted_batch_ndims)
   return _fn
+
+
+def random_sign(shape, dtype=dtypes.float32, seed=None):
+  """Draw values from {-1, 1} uniformly, i.e., Rademacher distribution."""
+  random_bernoulli = random_ops.random_uniform(shape, minval=0, maxval=2,
+                                               dtype=dtypes.int32,
+                                               seed=seed)
+  return math_ops.cast(2 * random_bernoulli - 1, dtype)

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
@@ -574,6 +574,46 @@ struct FloatDepthwiseConvKernel<true, 1, 32> {
 };
 
 template <>
+struct FloatDepthwiseConvKernel<true, 1, 20> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter_0 = vld1q_f32(filter_ptr + 4 * 0);
+    float32x4_t filter_1 = vld1q_f32(filter_ptr + 4 * 1);
+    float32x4_t filter_2 = vld1q_f32(filter_ptr + 4 * 2);
+    float32x4_t filter_3 = vld1q_f32(filter_ptr + 4 * 3);
+    float32x4_t filter_4 = vld1q_f32(filter_ptr + 4 * 4);
+
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // Load the inputs
+      const float input_val = *input_ptr;
+      input_ptr += input_ptr_increment;
+      // Load the accumulators from acc_buffer
+      float32x4_t acc_0 = vld1q_f32(acc_buffer_ptr + 4 * 0);
+      float32x4_t acc_1 = vld1q_f32(acc_buffer_ptr + 4 * 1);
+      float32x4_t acc_2 = vld1q_f32(acc_buffer_ptr + 4 * 2);
+      float32x4_t acc_3 = vld1q_f32(acc_buffer_ptr + 4 * 3);
+      float32x4_t acc_4 = vld1q_f32(acc_buffer_ptr + 4 * 4);
+      // Multiply-accumulate
+      acc_0 = vmlaq_n_f32(acc_0, filter_0, input_val);
+      acc_1 = vmlaq_n_f32(acc_1, filter_1, input_val);
+      acc_2 = vmlaq_n_f32(acc_2, filter_2, input_val);
+      acc_3 = vmlaq_n_f32(acc_3, filter_3, input_val);
+      acc_4 = vmlaq_n_f32(acc_4, filter_4, input_val);
+      // Store the accumulators back to acc_buffer
+      vst1q_f32(acc_buffer_ptr + 4 * 0, acc_0);
+      vst1q_f32(acc_buffer_ptr + 4 * 1, acc_1);
+      vst1q_f32(acc_buffer_ptr + 4 * 2, acc_2);
+      vst1q_f32(acc_buffer_ptr + 4 * 3, acc_3);
+      vst1q_f32(acc_buffer_ptr + 4 * 4, acc_4);
+      acc_buffer_ptr += 20;
+    }
+  }
+};
+
+template <>
 struct FloatDepthwiseConvKernel<true, 0, 16> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
                   const float* input_ptr, int input_ptr_increment,
@@ -926,6 +966,7 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 8, 1)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 8)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 20)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 32)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 2, 1)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 2)
@@ -992,11 +1033,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
           for (int k = 0; k < 4; k++) {
             acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
           }
-            for (int k = 0; k < 4; k++) {
-              acc[k] = vmaxq_f32(
-                  vdupq_n_f32(output_activation_min),
-                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-            }
+          for (int k = 0; k < 4; k++) {
+            acc[k] = vmaxq_f32(
+                vdupq_n_f32(output_activation_min),
+                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+          }
           for (int k = 0; k < 4; k++) {
             vst1q_f32(output_ptr + 4 * k, acc[k]);
           }
@@ -1057,4 +1098,4 @@ void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_

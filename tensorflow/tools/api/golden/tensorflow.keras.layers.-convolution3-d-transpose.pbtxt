@@ -1,10 +1,12 @@
 path: "tensorflow.keras.layers.Convolution3DTranspose"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.Conv3DTranspose\'>"
+  is_instance: "<class \'tensorflow.python.layers.convolutional.Conv3DTranspose\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional.Conv3D\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"

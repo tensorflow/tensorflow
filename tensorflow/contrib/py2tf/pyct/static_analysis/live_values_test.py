@@ -19,24 +19,48 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
+from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
 class LiveValuesResolverTest(test.TestCase):
 
+  def _parse_and_analyze(self,
+                         test_fn,
+                         namespace,
+                         literals=None,
+                         arg_types=None):
+    literals = literals or {}
+    arg_types = arg_types or {}
+    node, source = parser.parse_entity(test_fn)
+    ctx = context.EntityContext(
+        namer=None,
+        source_code=source,
+        source_file=None,
+        namespace=namespace,
+        arg_values=None,
+        arg_types=arg_types,
+        owner_type=None,
+        recursive=True)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, literals)
+    node = type_info.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, literals)
+    return node
+
   def test_literals(self):
 
     def test_fn():
       return Foo  # pylint: disable=undefined-variable
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {}, {'Foo': 'bar'})
-
+    node = self._parse_and_analyze(test_fn, {}, {'Foo': 'bar'})
     retval_node = node.body[0].body[0].value
     self.assertEquals('bar', anno.getanno(retval_node, 'live_val'))
 
@@ -48,10 +72,7 @@ class LiveValuesResolverTest(test.TestCase):
     def test_fn():
       return foo()
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'foo': foo}, {})
-
+    node = self._parse_and_analyze(test_fn, {'foo': foo})
     func_node = node.body[0].body[0].value.func
     self.assertEquals(foo, anno.getanno(func_node, 'live_val'))
     self.assertEquals(('foo',), anno.getanno(func_node, 'fqn'))
@@ -61,14 +82,29 @@ class LiveValuesResolverTest(test.TestCase):
     def test_fn():
       return constant_op.constant(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'constant_op': constant_op}, {})
-
+    node = self._parse_and_analyze(test_fn, {'constant_op': constant_op})
     func_node = node.body[0].body[0].value.func
     self.assertEquals(constant_op.constant, anno.getanno(func_node, 'live_val'))
     self.assertEquals((constant_op.__name__, 'constant'),
                       anno.getanno(func_node, 'fqn'))
+
+  def test_attributes_with_type_hints(self):
+
+    class TestClass(object):
+
+      def member(self):
+        pass
+
+      def test_fn(self):
+        return self.member()
+
+    node = self._parse_and_analyze(
+        TestClass.test_fn, {'constant_op': constant_op},
+        arg_types={'self': (TestClass.__name__, TestClass)})
+    func_node = node.body[0].body[0].value.func
+    self.assertEquals(TestClass.member, anno.getanno(func_node, 'live_val'))
+    self.assertEquals(TestClass, anno.getanno(func_node, 'parent_type'))
+    self.assertEquals(('TestClass', 'member'), anno.getanno(func_node, 'fqn'))
 
 
 if __name__ == '__main__':

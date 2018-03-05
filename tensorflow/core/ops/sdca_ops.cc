@@ -19,8 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::ShapeHandle;
 using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 // --------------------------------------------------------------------------
 static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {

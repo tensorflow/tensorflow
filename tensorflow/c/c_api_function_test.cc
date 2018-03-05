@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -328,6 +329,11 @@ class CApiFunctionTest : public ::testing::Test {
     for (const EdgeSpec& e : e_edges) {
       ASSERT_TRUE(a_edges.find(e) != a_edges.end())
           << "Failed to find expected edge " << e.ToString()
+          << " in fdef: " << fdef.DebugString();
+    }
+    for (const EdgeSpec& e : c_edges) {
+      ASSERT_TRUE(a_edges.find(e) != a_edges.end())
+          << "Failed to find expected control edge " << e.ToString()
           << " in fdef: " << fdef.DebugString();
     }
 
@@ -979,7 +985,7 @@ TEST_F(CApiFunctionTest, ControlDependency) {
   VerifyFDef(
       {"add_0", "scalar"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
       {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
-      {{"scalar", "add_0"}});
+      {{"^scalar", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody) {
@@ -1022,12 +1028,17 @@ TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody_FromInputNode) {
   TF_Operation* add =
       AddWithCtrlDependency(feed1, feed2, func_graph_, feed1, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  Define(-1, {}, {feed1, feed2}, {add}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
-  EXPECT_EQ(string("The source of control edge [id=3 feed1:-1 -> add:-1] "
-                   "is not in the body. Encountered while creating "
-                   "function 'MyFunc'"),
-            string(TF_Message(s_)));
+  Define(-1, {}, {feed1, feed2}, {add}, {});
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_);
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, 2 + 3);
+  VerifyFDef(
+      {"add_0"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
+      {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
+      {{"^feed1", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, DuplicateInputsAreNotAllowed) {
@@ -1533,6 +1544,76 @@ TEST_F(CApiFunctionTest, StatefulOpDef) {
   EXPECT_TRUE(op_def.is_stateful());
 
   TF_DeleteBuffer(buffer);
+}
+
+void AssertEqual(TF_Function* f1, TF_Function* f2) {
+  string s1, s2;
+  tensorflow::FunctionDef fdef1, fdef2;
+  ASSERT_TRUE(GetFunctionDef(f1, &fdef1));
+  ASSERT_TRUE(GetFunctionDef(f2, &fdef2));
+  SerializeToStringDeterministic(fdef1, &s1);
+  SerializeToStringDeterministic(fdef2, &s2);
+  ASSERT_EQ(s1, s2);
+}
+
+string GetName(TF_Function* func) {
+  tensorflow::FunctionDef fdef;
+  GetFunctionDef(func, &fdef);
+  return fdef.signature().name();
+}
+
+TEST_F(CApiFunctionTest, GetFunctionsFromGraph) {
+  TF_Function* funcs[2];
+
+  // Get functions from empty graph
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 0);
+  TF_GraphGetFunctions(host_graph_, nullptr, 0, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Define a function and add it to host_graph_
+  TF_Function* func0;
+  DefineFunction("FooFunc0", &func0);
+  TF_GraphCopyFunction(host_graph_, func0, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get this function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 1);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 1, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+
+  // Define a second function
+  TF_Function* func1;
+  DefineFunction("FooFunc1", &func1);
+  TF_GraphCopyFunction(host_graph_, func1, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get both function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 2);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 2);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  if (GetName(funcs[0]) == GetName(func0)) {
+    AssertEqual(func0, funcs[0]);
+    AssertEqual(func1, funcs[1]);
+  } else {
+    AssertEqual(func0, funcs[1]);
+    AssertEqual(func1, funcs[0]);
+  }
+
+  TF_DeleteFunction(funcs[0]);
+  TF_DeleteFunction(funcs[1]);
+
+  TF_DeleteFunction(func0);
+  TF_DeleteFunction(func1);
 }
 
 }  // namespace

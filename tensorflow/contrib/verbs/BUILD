@@ -99,7 +99,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+cc_library(
     name = "rdma_rendezvous_mgr",
     srcs = ["rdma_rendezvous_mgr.cc"],
     hdrs = ["rdma_rendezvous_mgr.h"],
@@ -114,7 +114,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "rdma_mgr",
     srcs = ["rdma_mgr.cc"],
     hdrs = ["rdma_mgr.h"],
@@ -141,6 +141,8 @@ tf_cuda_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":grpc_verbs_client",
+        ":verbs_service_proto_cc",
         ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

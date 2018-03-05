@@ -124,6 +124,17 @@ class TfInspectTest(test.TestCase):
         inspect.getmembers(TestDecoratedClass),
         tf_inspect.getmembers(TestDecoratedClass))
 
+  def testGetModule(self):
+    self.assertEqual(
+        inspect.getmodule(TestDecoratedClass),
+        tf_inspect.getmodule(TestDecoratedClass))
+    self.assertEqual(
+        inspect.getmodule(test_decorated_function),
+        tf_inspect.getmodule(test_decorated_function))
+    self.assertEqual(
+        inspect.getmodule(test_undecorated_function),
+        tf_inspect.getmodule(test_undecorated_function))
+
   def testGetSource(self):
     expected = '''@test_decorator('decorator')
 def test_decorated_function_with_defaults(a, b=2, c='Hello'):
@@ -132,6 +143,19 @@ def test_decorated_function_with_defaults(a, b=2, c='Hello'):
 '''
     self.assertEqual(
         expected, tf_inspect.getsource(test_decorated_function_with_defaults))
+
+  def testIsBuiltin(self):
+    self.assertEqual(
+        tf_inspect.isbuiltin(TestDecoratedClass),
+        inspect.isbuiltin(TestDecoratedClass))
+    self.assertEqual(
+        tf_inspect.isbuiltin(test_decorated_function),
+        inspect.isbuiltin(test_decorated_function))
+    self.assertEqual(
+        tf_inspect.isbuiltin(test_undecorated_function),
+        inspect.isbuiltin(test_undecorated_function))
+    self.assertEqual(tf_inspect.isbuiltin(range), inspect.isbuiltin(range))
+    self.assertEqual(tf_inspect.isbuiltin(max), inspect.isbuiltin(max))
 
   def testIsClass(self):
     self.assertTrue(tf_inspect.isclass(TestDecoratedClass))

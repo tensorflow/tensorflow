@@ -23,6 +23,7 @@ import collections
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _TensorLike = ops._TensorLike
@@ -31,6 +32,7 @@ _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
+@tf_export("SparseTensor")
 class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
@@ -222,8 +224,10 @@ class SparseTensor(_TensorLike):
 
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
+tf_export("SparseTensorValue")(SparseTensorValue)
 
 
+@tf_export("convert_to_tensor_or_sparse_tensor")
 def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   """Converts value to a `SparseTensor` or `Tensor`.
 

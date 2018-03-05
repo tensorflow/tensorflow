@@ -15,12 +15,13 @@ limitations under the License.
 #include <string.h>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 
 #ifdef USE_NEON
 
-#include <arm_neon.h>
 #define kFloatWeightsPerNeonLane 4
 
 namespace tflite {

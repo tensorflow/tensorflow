@@ -142,14 +142,8 @@ NodeProperties GetPropertiesForArray(const Model& model,
 
   // Append array shape to the label.
   auto& array = model.GetArray(array_name);
-
-  if (array.data_type == ArrayDataType::kFloat) {
-    AppendF(&node_properties.label, "\\nType: float");
-  } else if (array.data_type == ArrayDataType::kInt32) {
-    AppendF(&node_properties.label, "\\nType: int32");
-  } else if (array.data_type == ArrayDataType::kUint8) {
-    AppendF(&node_properties.label, "\\nType: uint8");
-  }
+  AppendF(&node_properties.label, "\\nType: %s",
+          ArrayDataTypeName(array.data_type));
 
   if (array.has_shape()) {
     auto& array_shape = array.shape();
@@ -199,12 +193,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
   }
 
   if (array.minmax) {
-    AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
+    AppendF(&node_properties.label, "\\nMinMax: [%.7g, %.7g]",
             array.minmax->min, array.minmax->max);
   }
 
   if (array.quantization_params) {
-    AppendF(&node_properties.label, "\\nQuantization: %.3g * (x - %d)",
+    AppendF(&node_properties.label, "\\nQuantization: %7g * (x - %d)",
             array.quantization_params->scale,
             array.quantization_params->zero_point);
   }
@@ -278,8 +272,8 @@ std::vector<const Operator*> OperatorsToDump(const Model& model) {
   if (last_specified) {
     // Return only the part of the graph between graphviz_first_array
     // and graphviz_last_array.
-    CHECK(model.arrays.count(dump_options.graphviz_first_array));
-    CHECK(model.arrays.count(dump_options.graphviz_last_array));
+    CHECK(model.HasArray(dump_options.graphviz_first_array));
+    CHECK(model.HasArray(dump_options.graphviz_last_array));
     std::unordered_set<string> arrays_already_produced;
     std::vector<string> arrays_to_produce;
     arrays_to_produce.push_back(dump_options.graphviz_last_array);
@@ -336,7 +330,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
             op_properties.color.TextColorString().c_str());
     // Add nodes and edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
-      if (model.arrays.count(input) == 0) {
+      if (!model.HasArray(input)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
@@ -352,7 +346,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     }
     // Add nodes and edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
-      if (model.arrays.count(output) == 0) {
+      if (!model.HasArray(output)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }

@@ -132,6 +132,33 @@ class ShuffleDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testSeedZero(self):
+    """Test for same behavior when the seed is a Python or Tensor zero."""
+    iterator = (
+        dataset_ops.Dataset.range(10).shuffle(10, seed=0)
+        .make_one_shot_iterator())
+    get_next = iterator.get_next()
+
+    elems = []
+    with self.test_session() as sess:
+      for _ in range(10):
+        elems.append(sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+    seed_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+    iterator = (
+        dataset_ops.Dataset.range(10).shuffle(10, seed=seed_placeholder)
+        .make_initializable_iterator())
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(iterator.initializer, feed_dict={seed_placeholder: 0})
+      for elem in elems:
+        self.assertEqual(elem, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testDefaultArguments(self):
     components = [0, 1, 2, 3, 4]
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).shuffle(5)
