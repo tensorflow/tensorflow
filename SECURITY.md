@@ -129,7 +129,7 @@ with specially crafted inputs.
 ### What is a vulnerability?
 
 Given TensorFlow's flexibility, it is possible to specify computation graphs
-which exhibit unexpected or unwanted behaviors. The fact that TensorFlow models
+which exhibit unexpected or unwanted behavior. The fact that TensorFlow models
 can perform arbitrary computations means that they may read and write files,
 communicate via the network, produce deadlocks and infinite loops, or run out
 of memory. It is only when these behaviors are outside the specifications of the
