@@ -17,7 +17,7 @@ You must choose one of the following types of TensorFlow to install:
     NVIDIA® GPU, you must install this version. Note that this version of
     TensorFlow is typically much easier to install (typically,
     in 5 or 10 minutes), so even if you have an NVIDIA GPU, we recommend
-    installing this version first.
+    installing this version first. Prebuilt binaries will use AVX instructions. 
   * **TensorFlow with GPU support**. TensorFlow programs typically run
     significantly faster on a GPU than on a CPU. Therefore, if your
     system has a NVIDIA® GPU meeting the prerequisites shown below
@@ -41,7 +41,8 @@ installed on your system:
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
     the cuDNN DLL to your `%PATH%` environment variable.
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.0 or higher for building
+    from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
     list of supported GPU cards.
 
