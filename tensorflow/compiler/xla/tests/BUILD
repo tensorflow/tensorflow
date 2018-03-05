@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
+    alwayslink = True,
 )
 
 cc_library(
