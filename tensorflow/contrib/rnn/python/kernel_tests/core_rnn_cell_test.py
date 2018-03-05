@@ -693,6 +693,13 @@ class DropoutWrapperTest(test.TestCase):
         self.assertEqual(res[1].h.shape, (batch_size, 3))
         return res
 
+  def testProperties(self):
+    cell = rnn_cell_impl.BasicRNNCell(4)
+    wrapper = rnn_cell_impl.DropoutWrapper(cell)
+    self.assertEqual(wrapper.variables, [])
+    v = wrapper.add_variable("new_var", (1, ))
+    self.assertAllEqual(wrapper.variables, [v])
+
   def testWrappedCellProperty(self):
     cell = rnn_cell_impl.BasicRNNCell(10)
     wrapper = rnn_cell_impl.DropoutWrapper(cell)
