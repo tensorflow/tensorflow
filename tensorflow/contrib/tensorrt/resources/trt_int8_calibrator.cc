@@ -43,13 +43,12 @@ TRTInt8Calibrator::TRTInt8Calibrator(
 
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
-  if (done_) return false;
   tensorflow::mutex_lock lock(cond_mtx_);
   while ((calib_running_ || batch_is_set_) &&
          !done_) {  // wait while calibration is running
     cond_.wait(lock);
-    if (done_) return false;
   }
+  if (done_) return false;
   CHECK(!calib_running_ && !batch_is_set_);
   VLOG(1) << "Set Batch Waiting finished";
   for (const auto it : data) {
@@ -62,6 +61,8 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
 
     // TODO(aaroey): we should not use sync copy on default stream. Make sure
     // stream->ThenMemcpy() is used in future PRs.
+    // TODO(sami,aaroey): Need to figureout a way to ensure synchronization
+    // between stream, perhaps using a tensor?
     auto status = cudaMemcpyAsync(d.first, it.second, d.second,
                                   cudaMemcpyDeviceToDevice, stream);
     if (status != cudaSuccess) {
@@ -69,6 +70,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                  << "' failed with " << status;
     }
   }
+  // TODO(Sami, aaorey): Find an alternative way!
   cudaStreamSynchronize(
       stream);  // we have to wait for the stream before returning!
   batch_is_set_ = true;

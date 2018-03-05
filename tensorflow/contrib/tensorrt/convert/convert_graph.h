@@ -27,6 +27,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+const int FP32MODE = 0;
+const int FP16MODE = 1;
+const int INT8MODE = 2;
+// This method converts an already generated calibration graph which was used in
+// calibration runs to an inference graph
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def);
 

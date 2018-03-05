@@ -40,7 +40,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   int getBatchSize() const override;
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
-  bool setBatch(const std::unordered_map<string, void*>& data,const cudaStream_t stream);
+  bool setBatch(const std::unordered_map<string, void*>& data,
+                const cudaStream_t stream);
   void setDone();
   const void* readCalibrationCache(std::size_t& length) override;
   void writeCalibrationCache(const void* ptr, std::size_t length) override;

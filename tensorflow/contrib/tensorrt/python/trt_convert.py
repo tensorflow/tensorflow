@@ -25,7 +25,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl as _impl
 from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert, calib_convert
 from tensorflow.python.util import compat
-import tensorflow as tf
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import meta_graph
