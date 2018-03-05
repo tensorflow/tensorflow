@@ -285,9 +285,6 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
     ret = array_ops.reshape(log_prob, logits_shape)
     return ret
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _assert_valid_sample(self, x):
     if not self.validate_args:
       return x

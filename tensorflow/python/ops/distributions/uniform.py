@@ -165,9 +165,6 @@ class Uniform(distribution.Distribution):
                                         seed=seed)
     return self.low + self.range() * samples
 
-  def _log_prob(self, x):
-    return math_ops.log(self._prob(x))
-
   def _prob(self, x):
     broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
     return array_ops.where(
@@ -178,9 +175,6 @@ class Uniform(distribution.Distribution):
                                 broadcasted_x >= self.high),
             array_ops.zeros_like(broadcasted_x),
             array_ops.ones_like(broadcasted_x) / self.range()))
-
-  def _log_cdf(self, x):
-    return math_ops.log(self.cdf(x))
 
   def _cdf(self, x):
     broadcast_shape = array_ops.broadcast_dynamic_shape(
