@@ -190,7 +190,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "halton_sequence_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/halton_sequence_test.py"],
     additional_deps = [
         ":bayesflow_py",

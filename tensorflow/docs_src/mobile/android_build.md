@@ -90,8 +90,8 @@ using [ADB](https://developer.android.com/studio/command-line/adb.html). This
 requires some knowledge of build systems and Android developer tools, but we'll
 guide you through the basics here.
 
-- First, follow our instructions for @{$install/install_sources$installing from
-  sources}. This will also guide you through installing Bazel and cloning the
+- First, follow our instructions for @{$install/install_sources$installing from sources}.
+  This will also guide you through installing Bazel and cloning the
   TensorFlow code.
 
 - Download the Android [SDK](https://developer.android.com/studio/index.html)
