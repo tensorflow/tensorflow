@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
@@ -54,6 +53,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+using ::tensorflow::strings::StrCat;
 
 namespace {
 
@@ -69,7 +69,6 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
     case tensorflow::DataType::DT_HALF:
       *trt_dtype = nvinfer1::DataType::kHALF;
       break;
-
     default:
       return tensorflow::errors::InvalidArgument(
           "Unsupported data type " + tensorflow::DataTypeString(tf_dtype));
@@ -497,7 +496,7 @@ class Converter {
       TRT_TensorOrWeights output = outputs.at(i);
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
       string output_name = node_def.name();
-      if (i != 0) output_name = output_name + ":" + std::to_string(i);
+      if (i != 0) output_name = StrCat(output_name, ":", i);
       if (output.is_tensor()) {
         output.tensor()->setName(output_name.c_str());
       }
@@ -2227,10 +2226,9 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     subgraph_name_scope = GetCommonNameScope(subgraph_name_scope, node->name());
   }
   // TODO(sami,ben,jie): proper naming!
-  string calib_op_name = tensorflow::strings::StrCat(
-      subgraph_name_scope, "my_trt_calib_op_", static_id);
-  string engine_name =
-      tensorflow::strings::StrCat(subgraph_name_scope, "my_trt_op", static_id);
+  string calib_op_name =
+      StrCat(subgraph_name_scope, "my_trt_calib_op_", static_id);
+  string engine_name = StrCat(subgraph_name_scope, "my_trt_op", static_id);
   static_id++;
   auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
   auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
@@ -2258,7 +2256,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (const std::pair<int, int>& input : s.input_inds) {
-    VLOG(2) << "parsing input. Node id= "<< input.first;
+    VLOG(2) << "parsing input. Node id= " << input.first;
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);
@@ -2272,9 +2270,8 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     auto op_info_vec = s.graph_properties.GetOutputProperties(node_name);
     if (static_cast<int>(op_info_vec.size()) < output_idx)
       return tensorflow::errors::Internal(
-          "accessing output index of: " + std::to_string(output_idx) +
-          ", at node: " + node_name + "with output entry from shape_map: " +
-          std::to_string(op_info_vec.size()));
+          "accessing output index of: ", output_idx, ", at node: ", node_name,
+          "with output entry from shape_map: ", op_info_vec.size());
 
     auto op_info = op_info_vec.at(output_idx);
 
@@ -2284,10 +2281,9 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
     TF_CHECK_OK(ConvertDType(tf_dtype, &dtype));
 
-    VLOG(2) << "accessing output index of: " << std::to_string(output_idx)
+    VLOG(2) << "accessing output index of: " << output_idx
             << ", at node: " << node_name
-            << "with output entry from shape_map: "
-            << std::to_string(op_info_vec.size());
+            << "with output entry from shape_map: " << op_info_vec.size();
 
     // TODO(ben,jie): update TRT input format/dimension
     nvinfer1::DimsCHW input_dim_psuedo_chw;
@@ -2301,8 +2297,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
 
     // TODO(ben,jie): proper way to restore input tensor name?
     auto input_tensor_name = node_name;
-    if (output_idx != 0)
-      input_tensor_name = node_name + ":" + std::to_string(output_idx);
+    if (output_idx != 0) input_tensor_name = StrCat(node_name, ":", output_idx);
 
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
         input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
@@ -2341,11 +2336,12 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     s.output_edge_map->insert(
         {trt_engine_op_output_idx == 0
              ? engine_name
-             : engine_name + ":" + std::to_string(trt_engine_op_output_idx),
+             : StrCat(engine_name, ":", trt_engine_op_output_idx),
          {output_idx, tensor_name}});
     trt_engine_op_output_idx++;
-    if (output_idx != 0)
-      tensor_name = tensor_name + ":" + std::to_string(output_idx);
+    if (output_idx != 0) {
+      tensor_name = StrCat(tensor_name, ":", output_idx);
+    }
     VLOG(1) << "output tensor name: " << tensor_name;
     output_names.push_back(tensor_name);
     auto tensor_or_weights = converter.get_tensor(tensor_name);
@@ -2451,9 +2447,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   }
   static int static_id = 0;
   // TODO(sami,ben,jie): proper naming!
-  string engine_name =
-      tensorflow::strings::StrCat(subgraph_name_scope, "my_trt_op");
-  engine_name = tensorflow::strings::StrCat(engine_name, static_id++);
+  string engine_name = StrCat(subgraph_name_scope, "my_trt_op");
+  engine_name = StrCat(engine_name, static_id++);
   auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
   auto weight_rmgr = trt_rmgr->getManager("WeightStore");
   auto ws = new tensorflow::tensorrt::TRTWeightStore();
@@ -2474,8 +2469,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     // here it should be the input tensor name -> matching the binding
     // insert original node name without port
     auto tensor_name = node_name;
-    if (output_idx != 0)
-      tensor_name = tensor_name + ":" + std::to_string(output_idx);
+    if (output_idx != 0) {
+      tensor_name = StrCat(tensor_name, ":", output_idx);
+    }
 
     VLOG(2) << "input name: " << node_name << " tensor_name: " << tensor_name
             << " idx: " << output_idx;
@@ -2499,10 +2495,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         s.graph_properties.GetOutputProperties(shape_inference_node_name);
     if (static_cast<int>(op_info_vec.size()) <= shape_inference_output_idx)
       return tensorflow::errors::Internal(
-          "accessing output index of: " +
-          std::to_string(shape_inference_output_idx) + ", at node: " +
-          shape_inference_node_name + " with output entry from shape_map: " +
-          std::to_string(op_info_vec.size()));
+          "accessing output index of: ", shape_inference_output_idx,
+          ", at node: ", shape_inference_node_name,
+          " with output entry from shape_map: ", op_info_vec.size());
 
     auto op_info = op_info_vec.at(shape_inference_output_idx);
     tensorflow::DataType tf_dtype = op_info.dtype();
@@ -2511,10 +2506,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
     TF_CHECK_OK(ConvertDType(tf_dtype, &dtype));
 
-    VLOG(2) << "Accessing output index of: " << std::to_string(output_idx)
+    VLOG(2) << "Accessing output index of: " << output_idx
             << ", at node: " << node_name
-            << " with output entry from shape_map: "
-            << std::to_string(op_info_vec.size());
+            << " with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
     nvinfer1::DimsCHW input_dim_psuedo_chw;
     for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
@@ -2532,8 +2526,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
     // TODO(ben,jie): proper way to restore input tensor name?
     auto input_tensor_name = node_name;
-    if (output_idx != 0)
-      input_tensor_name = node_name + ":" + std::to_string(output_idx);
+    if (output_idx != 0) {
+      input_tensor_name = StrCat(node_name, ":", output_idx);
+    }
 
     input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
@@ -2573,13 +2568,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     s.output_edge_map->insert(
         {trt_engine_op_output_idx == 0
              ? engine_name
-             : tensorflow::strings::StrCat(engine_name, ":",
-                                           trt_engine_op_output_idx),
+             : StrCat(engine_name, ":", trt_engine_op_output_idx),
          {output_idx, tensor_name}});
     trt_engine_op_output_idx++;
     if (output_idx != 0)
-      tensorflow::strings::StrAppend(&tensor_name, ":",
-                                     std::to_string(output_idx));
+      tensorflow::strings::StrAppend(&tensor_name, ":", output_idx);
     VLOG(2) << "Output tensor name: " << tensor_name;
     output_names.push_back(tensor_name);
     auto tensor_or_weights = converter.get_tensor(tensor_name);
@@ -2627,8 +2620,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     engine_plan_string =
         string(engine_plan_data, engine_plan_data + engine_plan->size());
   }
-  weight_rmgr->Delete<tensorflow::tensorrt::TRTWeightStore>(engine_name,
-                                                            engine_name);
+  TF_RETURN_IF_ERROR(weight_rmgr->Delete<tensorflow::tensorrt::TRTWeightStore>(
+      engine_name, engine_name));
   LOG(INFO) << "finished engine " << engine_name;
 
   // Build the TRT op
@@ -2636,7 +2629,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
   VLOG(2) << "input edge size: " << input_names.size();
   for (size_t i = 0; i < input_names.size(); ++i) {
-    VLOG(2) << "input edges: " << std::to_string(i) << " " << input_names.at(i);
+    VLOG(2) << "input edges: " << i << " " << input_names.at(i);
     int output_idx = s.input_inds.at(i).second;
     // we wired up the input here already, it is redundant to do it again in
     //  ConvertSubGraphToTensorRT(convert_graph.cc)

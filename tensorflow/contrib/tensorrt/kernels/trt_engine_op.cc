@@ -26,9 +26,10 @@ limitations under the License.
 
 namespace tensorflow {
 static ::tensorflow::tensorrt::Logger logger;
-
+namespace gpu = ::perftools::gputools;
 using IRuntime = nvinfer1::IRuntime;
 using Dims = nvinfer1::Dims;
+
 namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {

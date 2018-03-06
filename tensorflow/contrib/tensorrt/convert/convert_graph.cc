@@ -192,7 +192,7 @@ static tensorflow::Status FillSubGraphEdgeSets(ConvertGraphParams* p) {
 };
 
 tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
-  FillSubGraphEdgeSets(params);
+  TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
   tensorflow::NodeDef trt_node_def;
   SubGraphParams s(params->graph, params->subgraph_node_ids,
                    params->subgraph_inputs, params->subgraph_outputs,
@@ -214,13 +214,14 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
     auto dst_input = in_edge->dst_input();
     VLOG(1) << " update edge " << trt_node->name() << ":" << src_output
             << " -> " << dst_node->name() << ":" << dst_input;
-    params->graph.UpdateEdge(trt_node, src_output, dst_node, dst_input);
+    TF_RETURN_IF_ERROR(params->graph.UpdateEdge(
+        trt_node, src_output, dst_node, dst_input));
   }
   return tensorflow::Status::OK();
 }
 
 tensorflow::Status ConvertSubGraphToTensorRT(ConvertGraphParams* params) {
-  FillSubGraphEdgeSets(params);
+  TF_RETURN_IF_ERROR(FillSubGraphEdgeSets(params));
   tensorflow::NodeDef trt_node_def;
 
   SubGraphParams s(params->graph, params->subgraph_node_ids,
