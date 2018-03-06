@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned ${tf.estimator.Estimator}s.
+canned @{tf.estimator.Estimator}s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -1626,7 +1626,7 @@ class _FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of ${tf.parse_example} for all
+    supported objects. Please check documentation of @{tf.parse_example} for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -1677,7 +1677,7 @@ class _DenseColumn(_FeatureColumn):
       weight_collections: List of graph collections to which Variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.Variable}).
 
     Returns:
       `Tensor` of shape [batch_size] + `_variable_shape`.
@@ -1735,7 +1735,7 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a ${tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -1770,7 +1770,7 @@ class _CategoricalColumn(_FeatureColumn):
       weight_collections: List of graph collections to which variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.get_variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.get_variable}).
     """
     pass
 
