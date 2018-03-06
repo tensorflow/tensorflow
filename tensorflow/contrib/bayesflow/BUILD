@@ -204,6 +204,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+    tags = ["nomsan"],
 )
 
 cuda_py_test(
