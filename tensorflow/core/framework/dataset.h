@@ -466,11 +466,11 @@ class GraphDatasetBase : public DatasetBase {
   }
 
   // Key for storing the Dataset graph in the serialized format.
-  static const char kDatasetGraphKey[];
+  TF_EXPORT static const char kDatasetGraphKey[];
 
   // Key for storing the output node of the Dataset graph in the serialized
   // format.
-  static const char kDatasetGraphOutputNodeKey[];
+  TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
 
  private:
   Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
