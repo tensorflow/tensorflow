@@ -190,7 +190,6 @@ class BatchNormalization(bijector.Bijector):
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension
     broadcast_shape = [1] * ndims
-    # import pdb; pdb.set_trace()
     broadcast_shape[self.batchnorm.axis[0]] = (
         input_shape[self.batchnorm.axis[0]])
     def _broadcast(v):
