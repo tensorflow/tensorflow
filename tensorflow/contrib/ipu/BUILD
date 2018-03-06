@@ -11,7 +11,8 @@ py_library(
     name = "ipu",
     srcs = [
       "__init__.py",
-      "python/ipu_ops.py",
+      "python/ops.py",
+      "python/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

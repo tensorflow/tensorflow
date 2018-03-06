@@ -415,7 +415,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "small",
+    size = "medium",
     srcs = ["tests/estimator_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",

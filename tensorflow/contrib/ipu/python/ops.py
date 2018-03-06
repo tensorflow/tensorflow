@@ -23,6 +23,16 @@ from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 def ipu_compile_summary(name, op, collections=None):
+  """Create an IPU compiler summary operation.
+
+  Args:
+    name: A name for the summary
+    op: An operation to make this summary dependent upon
+    collections: Optional collections to add the summary into
+
+  Returns:
+    The new summary operation.
+  """
 
   with ops.device("cpu"):
     with ops.control_dependencies([op]):
