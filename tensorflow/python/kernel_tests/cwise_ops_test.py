@@ -495,11 +495,11 @@ class UnaryOpTest(test.TestCase):
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
     op_range = [
-        (gen_math_ops._reciprocal_grad, [-2, 2]),
-        (gen_math_ops._rsqrt_grad, [0.1, 3]),
-        (gen_math_ops._sigmoid_grad, [-2, 2]),
-        (gen_math_ops._sqrt_grad, [0.1, 3]),
-        (gen_math_ops._tanh_grad, [-2, 2]),
+        (gen_math_ops.reciprocal_grad, [-2, 2]),
+        (gen_math_ops.rsqrt_grad, [0.1, 3]),
+        (gen_math_ops.sigmoid_grad, [-2, 2]),
+        (gen_math_ops.sqrt_grad, [0.1, 3]),
+        (gen_math_ops.tanh_grad, [-2, 2]),
     ]
 
     def rand(dtype):

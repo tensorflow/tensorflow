@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Classes and methods related to model_fn."""
+"""Classes and methods related to model_fn (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -37,10 +42,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.deprecation import deprecated
 
 
 class ModeKeys(object):
-  """Standard names for model modes.
+  """Standard names for model modes (deprecated).
+
+  THIS CLASS IS DEPRECATED.
 
   The following standard keys are defined:
 
@@ -65,8 +73,16 @@ class ModelFnOps(
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
         'scaffold', 'mode'
     ])):
-  """Ops returned from a model_fn."""
+  """Ops returned from a model_fn.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'When switching to tf.estimator.Estimator, use '
+              'tf.estimator.EstimatorSpec. You can use the `estimator_spec`'
+              ' method to create an equivalent one.')
   def __new__(cls,
               mode,
               predictions=None,

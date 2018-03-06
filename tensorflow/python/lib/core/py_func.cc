@@ -79,10 +79,11 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
     const Tensor& t = call->ins[i];
     if (call->eager) {
       if (call->gpu) {
-        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, call->device));
+        arg = EagerTensorFromHandle(
+            new TFE_TensorHandle(t, call->device, call->device));
       } else {
         // TFE_TensorHandle assumes that CPU is identified by `nullptr`.
-        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, nullptr));
+        arg = EagerTensorFromHandle(new TFE_TensorHandle(t, nullptr, nullptr));
       }
       if (arg == nullptr) {
         return errors::Internal("Unable to procure EagerTensor from Tensor.");

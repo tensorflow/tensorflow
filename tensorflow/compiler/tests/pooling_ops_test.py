@@ -459,7 +459,7 @@ class PoolGradTest(XLATestCase):
         padding="SAME")
 
   def testMaxPool(self):
-    self._TestPooling(nn_ops.max_pool, gen_nn_ops._max_pool_grad)
+    self._TestPooling(nn_ops.max_pool, gen_nn_ops.max_pool_grad)
 
   def testAvgPool(self):
     # Wrapper around AvgPoolGrad that ignores extra arguments needed by
@@ -467,7 +467,7 @@ class PoolGradTest(XLATestCase):
     def AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding,
                     data_format):
       del outputs  # Unused by average-pooling gradients.
-      return gen_nn_ops._avg_pool_grad(
+      return gen_nn_ops.avg_pool_grad(
           inputs.get_shape().as_list(),
           output_gradients,
           ksize=ksize,
@@ -483,7 +483,7 @@ class PoolGradTest(XLATestCase):
   def testMaxPoolKernelSmallerThanStrideValid(self):
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 7, 7, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 3, 3, 1],
@@ -492,7 +492,7 @@ class PoolGradTest(XLATestCase):
   def testMaxPoolKernelSmallerThanStrideSame(self):
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 1, 1, 1],
         strides=[1, 2, 2, 1],
@@ -500,7 +500,7 @@ class PoolGradTest(XLATestCase):
 
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 1, 1, 1],
         strides=[1, 2, 2, 1],

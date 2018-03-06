@@ -307,6 +307,9 @@ class Variable(checkpointable.CheckpointableBase):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
+    # Store the graph key so optimizers know how to only retrieve variables from
+    # this graph.
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     if isinstance(initial_value, checkpointable.CheckpointInitialValue):
       self._maybe_initialize_checkpointable()
       self._update_uid = initial_value.checkpoint_position.restore_uid

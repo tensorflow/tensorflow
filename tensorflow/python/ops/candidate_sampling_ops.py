@@ -77,7 +77,7 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
@@ -136,7 +136,7 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._log_uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.log_uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
@@ -193,7 +193,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._learned_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.learned_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
@@ -283,7 +283,7 @@ def fixed_unigram_candidate_sampler(true_classes,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._fixed_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.fixed_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max,
       vocab_file=vocab_file, distortion=distortion,
       num_reserved_ids=num_reserved_ids, num_shards=num_shards, shard=shard,
@@ -321,7 +321,7 @@ def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`. All returned values are 1.0.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._all_candidate_sampler(
+  return gen_candidate_sampling_ops.all_candidate_sampler(
       true_classes, num_true, num_sampled, unique, seed=seed1, seed2=seed2,
       name=name)
 
@@ -370,6 +370,6 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._compute_accidental_hits(
+  return gen_candidate_sampling_ops.compute_accidental_hits(
       true_classes, sampled_candidates, num_true, seed=seed1, seed2=seed2,
       name=name)

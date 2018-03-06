@@ -56,6 +56,10 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@save_network_checkpoint
 @@restore_network_checkpoint
 
+@@Checkpoint
+@@Checkpointable
+@@CheckpointableSaver
+
 @@in_eager_mode
 @@in_graph_mode
 
@@ -74,6 +78,8 @@ from __future__ import print_function
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.contrib.eager.python.checkpointable_utils import CheckpointableSaver
+from tensorflow.contrib.eager.python.checkpointable_utils import Checkpoint
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
@@ -105,6 +111,7 @@ from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Vari
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
+from tensorflow.python.training.checkpointable import Checkpointable
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func

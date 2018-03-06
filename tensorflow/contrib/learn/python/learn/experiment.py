@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experiment class collecting information needed for a single training run."""
+"""Experiment class collecting information for a single training run (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +30,6 @@ import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
@@ -118,6 +122,10 @@ class _EvalAndExportListener(basic_session_run_hooks.CheckpointSaverListener):
 class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   After an experiment is created (by passing an Estimator and inputs for
   training and evaluation), an Experiment instance knows how to invoke training
   and eval loops in a sensible fashion for distributed training.
@@ -125,16 +133,8 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behavior.
-  @deprecated_args(
-      "2016-10-23",
-      "local_eval_frequency is deprecated as local_run will be renamed to "
-      "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
-      "instead. Note, however, that the default for min_eval_frequency is 1, "
-      "meaning models will be evaluated every time a new checkpoint is "
-      "available. In contrast, the default for local_eval_frequency is None, "
-      "resulting in evaluation occurring only after training has completed. "
-      "min_eval_frequency is ignored when calling the deprecated local_run.",
-      "local_eval_frequency")
+  @deprecated(None, "Please switch to tf.estimator.train_and_evaluate. You will"
+              " also have to convert to a tf.estimator.Estimator.")
   def __init__(self,
                estimator,
                train_input_fn,

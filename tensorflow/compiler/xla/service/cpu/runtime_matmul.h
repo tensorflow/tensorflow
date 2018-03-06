@@ -25,6 +25,12 @@ extern "C" {
 // order. 'out' is a pointer to a buffer sufficiently large to hold the result
 // of the operation. Following standard nomenclature: lhs is m x k,
 // rhs is k x n, and out is m x n.
+extern void __xla_cpu_runtime_EigenMatMulF16(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs, tensorflow::int64 m,
+    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
+    tensorflow::int32 transpose_rhs);
+
 extern void __xla_cpu_runtime_EigenMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, tensorflow::int64 m, tensorflow::int64 n,

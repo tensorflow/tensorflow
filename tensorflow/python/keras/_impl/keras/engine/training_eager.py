@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras training and evaluation routines.
+"""Keras training and evaluation routines for eager execution.
 """
 # pylint: disable=protected-access
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import copy
+
 import numpy as np
+
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -26,6 +30,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
+from tensorflow.python.keras._impl.keras.engine import training_utils
 from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
@@ -99,15 +104,15 @@ def _eager_metrics_fn(model, outputs, targets):
   return metric_names, metric_results
 
 
-def _model_loss(model, inputs, targets, training=False):
+def _model_loss(model, inputs, targets, sample_weights=None, training=False):
   """Calculates the loss for a given model.
 
   Arguments:
-     model: The model on which metrics are being calculated.
-     inputs: The inputs of the given model. This is typically the mini batch of
-              data that is fed to the model.
-     targets: The predictions or targets of the given model.
-     training: Whether the model should be run in inference or training mode.
+      model: The model on which metrics are being calculated.
+      inputs: List of input arrays.
+      targets: List of target arrays.
+      sample_weights: Optional list of sample weight arrays.
+      training: Whether the model should be run in inference or training mode.
 
   Returns:
      Returns the model output, total loss and loss value calculated using the
@@ -134,31 +139,20 @@ def _model_loss(model, inputs, targets, training=False):
   loss_metrics = []
   with K.name_scope('loss'):
     for i, loss_fn in enumerate(model.loss_functions):
-      # compute the loss
-      output_loss = _eager_loss_fn(outs[i], targets[i], loss_fn,
-                                   model.output_names[i])
-      loss_metrics.append(K.mean(output_loss))
+      if sample_weights:
+        weights = sample_weights[i]
+      else:
+        weights = None
 
+      # TODO(fchollet): support masking; in practice `_keras_mask` is never
+      # set in this context currently.
       mask = outs[i]._keras_mask
-      # adapted from weighted_loss_fn
-      if mask is not None:
-        # mask should have the same shape as output_loss
-        output_loss *= mask
-        #  the loss per batch should be proportional
-        #  to the number of unmasked samples.
-        output_loss /= K.mean(mask)
 
-      # adapted from weighted_loss_fn
-      # apply sample weighting
-      if model.sample_weights:
-        # reduce score_array to same ndim as weight array
-        ndim = K.ndim(output_loss)
-        weight_ndim = K.ndim(model.sample_weights)
-        output_loss = K.mean(output_loss, axis=list(range(weight_ndim, ndim)))
-        output_loss *= model.sample_weights
-        output_loss /= K.mean(K.cast(K.not_equal(model.sample_weights, 0),
-                                     K.floatx()))
-        output_loss = K.mean(output_loss)
+      weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
+      with K.name_scope(model.output_names[i] + '_loss'):
+        output_loss = weighted_masked_fn(
+            outs[i], targets[i], weights, mask=mask)
+      loss_metrics.append(K.mean(output_loss))
 
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
@@ -179,16 +173,20 @@ def _model_loss(model, inputs, targets, training=False):
   return outs, total_loss, loss_metrics
 
 
-def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
+def _process_single_batch(model,
+                          inputs,
+                          targets,
+                          sample_weights=None,
                           training=False):
   """Calculate the loss and gradient for one input batch.
 
      The model weights are updated if training is set to True.
 
   Arguments:
-      eager_model_inputs: Input batch data.
-      eager_model_outputs: Output batch data.
       model: Model whose loss has to be calculated.
+      inputs: List of input arrays.
+      targets: List of target arrays.
+      sample_weights: Optional list of sample weight arrays.
       training: The boolean represents if the weights of the model are updated.
               'fit' methods will set this to True while 'evaluate' methods will
               set this to False.
@@ -201,8 +199,8 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
   """
   K.set_learning_phase(training)
   with GradientTape() as tape:
-    outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                           eager_model_outputs,
+    outs, loss, loss_metrics = _model_loss(model, inputs, targets,
+                                           sample_weights=sample_weights,
                                            training=training)
     if loss is None:
       raise ValueError('The model cannot be run '
@@ -219,61 +217,61 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
   return outs, loss, loss_metrics
 
 
-def train_on_batch(model, ins):
+def train_on_batch(model, inputs, targets, sample_weights=None):
   """Calculates the loss and gradient updates for one input batch.
 
   Arguments:
-      model: Given model on which loss and gradients are calculated.
-      ins: Input and output batch numpy arrays.
+      model: Model whose loss has to be calculated.
+      inputs: Input batch data.
+      targets: Target batch data.
+      sample_weights: Sample weight batch data.
 
   Returns:
       total loss and the loss associated with each output.
   """
-  ins_batch_converted = []
-  for ib in ins:
-    ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
-  eager_model_inputs = []
-  eager_model_outputs = []
-  for i in range(len(model.inputs)):
-    eager_model_inputs.append(ins_batch_converted[i])
-  for i in range(len(model.inputs), len(ins_batch_converted)):
-    eager_model_outputs.append(ins_batch_converted[i])
+  inputs = [
+      ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
+  targets = [
+      ops.convert_to_tensor(val, dtype=K.floatx()) for val in targets]
+  sample_weights = [
+      ops.convert_to_tensor(val, dtype=K.floatx())
+      if val is not None else None for val in sample_weights]
   outs, loss, _ = _process_single_batch(
-      eager_model_inputs, eager_model_outputs, model, training=True)
+      model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
   _, metrics_results = _eager_metrics_fn(
-      model, outs, eager_model_outputs)
+      model, outs, targets)
   if not isinstance(loss, list):
     loss = [loss]
   return loss + metrics_results
 
 
-def test_on_batch(model, ins):
+def test_on_batch(model, inputs, targets, sample_weights=None):
   """Calculates the loss for one input batch.
 
   Arguments:
-      model: Given model on which loss is calculated.
-      ins: Input and output batch numpy arrays.
+      model: Model whose loss has to be calculated.
+      inputs: Input batch data.
+      targets: Target batch data.
+      sample_weights: Sample weight batch data.
 
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  ins_batch_converted = []
-  for ib in ins:
-    ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
-  eager_model_inputs = []
-  eager_model_outputs = []
-  for i in range(len(model.inputs)):
-    eager_model_inputs.append(ins_batch_converted[i])
-  for i in range(len(model.inputs), len(ins_batch_converted)):
-    eager_model_outputs.append(ins_batch_converted[i])
+  inputs = [
+      ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
+  targets = [
+      ops.convert_to_tensor(val, dtype=K.floatx()) for val in targets]
+  sample_weights = [
+      ops.convert_to_tensor(val, dtype=K.floatx())
+      if val is not None else None for val in sample_weights]
   outs, loss, loss_metrics = _process_single_batch(
-      eager_model_inputs, eager_model_outputs, model, training=False)
+      model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
   metric_names, metrics_results = _eager_metrics_fn(
-      model, outs, eager_model_outputs)
+      model, outs, targets)
   model.metrics_names.append(metric_names)
   if not isinstance(loss, list):
     loss = [loss]
@@ -282,32 +280,35 @@ def test_on_batch(model, ins):
 
 def fit_loop(
     model,
-    ins,
-    out_labels=None,
+    inputs,
+    targets,
+    sample_weights=None,
+    val_inputs=None,
+    val_targets=None,
+    val_sample_weights=None,
     batch_size=None,
     epochs=100,
     verbose=1,
     callbacks=None,
-    val_ins=None,
     shuffle=True,
     callback_metrics=None,
     initial_epoch=0,
     steps_per_epoch=None,
     validation_steps=None):
-  """Abstract fit function for `f(ins)`.
-
-  Assume that f returns a list, labeled by out_labels.
+  """Abstract fit function for eager execution.
 
   Arguments:
       model: Instance of the model that is being executed in Eager mode.
-      ins: List of tensors to be fed to `f`
-      out_labels: List of strings, display names of
-          the outputs of `f`
+      inputs: List of input arrays.
+      targets: List of target arrays.
+      sample_weights: Optional list of sample weight arrays.
+      val_inputs: Input data for validation.
+      val_targets: Target data for validation.
+      val_sample_weights: Sample weight data for validation.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
-      val_ins: List of tensors to be fed to `val_f`
       shuffle: Whether to shuffle the data at the beginning of each epoch
       callback_metrics: List of strings, the display names of the metrics
           passed to the callbacks. They should be the
@@ -331,20 +332,35 @@ def fit_loop(
   K.set_learning_phase(True)
 
   do_validation = False
-  if val_ins:
+  if val_inputs:
     do_validation = True
-    if (verbose and ins and hasattr(ins[0], 'shape') and
-        hasattr(val_ins[0], 'shape')):
+    if (verbose and inputs and hasattr(inputs[0], 'shape') and
+        hasattr(val_inputs[0], 'shape')):
       print('Train on %d samples, validate on %d samples' %
-            (ins[0].shape[0], val_ins[0].shape[0]))
+            (inputs[0].shape[0], val_inputs[0].shape[0]))
   if validation_steps:
     if steps_per_epoch is None:
       raise ValueError('Can only use `validation_steps` when doing step-wise '
                        'training, i.e. `steps_per_epoch` must be set.')
     do_validation = True
 
-  num_train_samples = model._check_num_samples(
-      ins, batch_size, steps_per_epoch, 'steps_per_epoch')
+  out_labels = model.metrics_names
+  if do_validation:
+    callback_metrics = copy.copy(out_labels) + [
+        'val_' + n for n in out_labels
+    ]
+  else:
+    callback_metrics = copy.copy(out_labels)
+
+  if sample_weights:
+    feed_data = inputs + targets + sample_weights
+  else:
+    feed_data = inputs + targets
+  num_train_samples = training_utils.check_num_samples(
+      feed_data,
+      batch_size=batch_size,
+      steps=steps_per_epoch,
+      steps_name='steps_per_epoch')
 
   if num_train_samples is not None:
     index_array = np.arange(num_train_samples)
@@ -358,7 +374,6 @@ def fit_loop(
       count_mode = 'samples'
     callbacks += [cbks.ProgbarLogger(count_mode)]
   callbacks = cbks.CallbackList(callbacks)
-  out_labels = out_labels or []
 
   # it's possible to callback a different model than self
   # (used by Sequential models)
@@ -381,7 +396,12 @@ def fit_loop(
   callbacks.on_train_begin()
   callback_model.stop_training = False
   for cbk in callbacks:
-    cbk.validation_data = val_ins
+    if not val_inputs:
+      cbk.validation_data = []
+    elif val_sample_weights:
+      cbk.validation_data = val_inputs + val_targets + val_sample_weights
+    else:
+      cbk.validation_data = val_inputs + val_targets
 
   for epoch in range(initial_epoch, epochs):
     callbacks.on_epoch_begin(epoch)
@@ -396,11 +416,12 @@ def fit_loop(
     for batch_index, (batch_start, batch_end) in enumerate(batches):
       batch_ids = index_array[batch_start:batch_end]
       try:
-        if isinstance(ins[-1], float):
-          # Do not slice the training phase flag.
-          ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+        inputs_batch = slice_arrays(inputs, batch_ids)
+        targets_batch = slice_arrays(targets, batch_ids)
+        if sample_weights:
+          sample_weights_batch = slice_arrays(sample_weights, batch_ids)
         else:
-          ins_batch = slice_arrays(ins, batch_ids)
+          sample_weights_batch = None
       except TypeError:
         raise TypeError('TypeError while preparing batch. '
                         'If using HDF5 input data, '
@@ -411,21 +432,22 @@ def fit_loop(
 
       callbacks.on_batch_begin(batch_index, batch_logs)
 
-      ins_batch_converted = []
-      for ib in ins_batch:
-        ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
-      eager_model_inputs = []
-      eager_model_outputs = []
-      for i in range(len(model.inputs)):
-        eager_model_inputs.append(ins_batch_converted[i])
+      inputs_batch = [
+          ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs_batch]
+      targets_batch = [
+          ops.convert_to_tensor(val, dtype=K.floatx()) for val in targets_batch]
+      if sample_weights:
+        sample_weights_batch = [
+            ops.convert_to_tensor(val, dtype=K.floatx())
+            if val is not None else None
+            for val in sample_weights_batch]
 
-      for i in range(len(model.inputs), len(ins_batch_converted)):
-        eager_model_outputs.append(ins_batch_converted[i])
-
-      outs, loss, loss_metrics = _process_single_batch(eager_model_inputs,
-                                                       eager_model_outputs,
-                                                       model,
-                                                       training=True)
+      outs, loss, loss_metrics = _process_single_batch(
+          model,
+          inputs_batch,
+          targets_batch,
+          sample_weights=sample_weights_batch,
+          training=True)
 
       if not isinstance(outs, list):
         outs = [outs]
@@ -433,8 +455,8 @@ def fit_loop(
       for l, o in zip(out_labels, outs):
         batch_logs[l] = o
       # Required for Eager mode
-      metrics_names, metrics_results = _eager_metrics_fn(model, outs,
-                                                         eager_model_outputs)
+      metrics_names, metrics_results = _eager_metrics_fn(
+          model, outs, targets_batch)
       batch_logs['loss'] = tensor_util.constant_value(K.mean(loss))
 
       # TODO(anjalisridhar): Move this to compile to avoid duplicate code.
@@ -468,7 +490,10 @@ def fit_loop(
       if batch_index == len(batches) - 1:  # Last batch.
         if do_validation:
           val_outs = test_loop(
-              model, val_ins, batch_size=batch_size, verbose=0)
+              model, val_inputs, val_targets,
+              sample_weights=val_sample_weights,
+              batch_size=batch_size,
+              verbose=0)
           if not isinstance(val_outs, list):
             val_outs = [val_outs]
           # Same labels assumed.
@@ -481,12 +506,18 @@ def fit_loop(
   return model.history
 
 
-def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
+def test_loop(model, inputs, targets,
+              sample_weights=None,
+              batch_size=None,
+              verbose=0,
+              steps=None):
   """Abstract method to loop over some data in batches.
 
   Arguments:
       model: Model instance that is being evaluated in Eager mode.
-      ins: list of tensors to be fed to `f`.
+      inputs: List of input arrays.
+      targets: List of target arrays.
+      sample_weights: Optional list of sample weight arrays.
       batch_size: integer batch size or `None`.
       verbose: verbosity mode.
       steps: Total number of steps (batches of samples)
@@ -500,7 +531,11 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
       the display labels for the scalar outputs.
   """
   K.set_learning_phase(False)
-  num_samples = model._check_num_samples(ins, batch_size, steps, 'steps')
+  feed_data = inputs + targets
+  if sample_weights:
+    feed_data += sample_weights
+  num_samples = training_utils.check_num_samples(
+      feed_data, batch_size=batch_size, steps=steps, steps_name='steps')
   outs = []
   if verbose == 1:
     progbar = Progbar(target=num_samples)
@@ -508,29 +543,30 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
-    if isinstance(ins[-1], float):
-      # Do not slice the training phase flag.
-      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+    inputs_batch = slice_arrays(inputs, batch_ids)
+    targets_batch = slice_arrays(targets, batch_ids)
+    if sample_weights:
+      sample_weights_batch = slice_arrays(sample_weights, batch_ids)
     else:
-      ins_batch = slice_arrays(ins, batch_ids)
+      sample_weights_batch = None
 
-    ins_batch_converted = []
-    for ib in ins_batch:
-      ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
+    inputs_batch = [
+        ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs_batch]
+    targets_batch = [
+        ops.convert_to_tensor(val, dtype=K.floatx()) for val in targets_batch]
+    if sample_weights:
+      sample_weights_batch = [
+          ops.convert_to_tensor(val, dtype=K.floatx())
+          if val is not None else None
+          for val in sample_weights_batch]
 
-    eager_model_inputs = []
-    eager_model_outputs = []
-    for i in range(len(model.inputs)):
-      eager_model_inputs.append(ins_batch_converted[i])
-
-    for i in range(len(model.inputs), len(ins_batch_converted)):
-      eager_model_outputs.append(ins_batch_converted[i])
-
-    loss_outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                                eager_model_outputs,
-                                                training=False)
-    _, metrics_results = _eager_metrics_fn(model, loss_outs,
-                                           eager_model_outputs)
+    loss_outs, loss, loss_metrics = _model_loss(
+        model,
+        inputs_batch,
+        targets_batch,
+        sample_weights=sample_weights_batch,
+        training=False)
+    _, metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
     batch_outs = []
     for _, v in zip(model.metrics_names,
                     [K.mean(loss)] + loss_metrics + metrics_results):
@@ -556,12 +592,15 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
   return outs
 
 
-def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
+def predict_loop(model, inputs,
+                 batch_size=32,
+                 verbose=0,
+                 steps=None):
   """Abstract method to loop over some data in batches.
 
   Arguments:
       model:
-      ins: list of tensors to be fed to `f`.
+      inputs: List of input arrays.
       batch_size: integer batch size.
       verbose: verbosity mode.
       steps: Total number of steps (batches of samples)
@@ -574,7 +613,8 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   K.set_learning_phase(False)
-  num_samples = model._check_num_samples(ins, batch_size, steps, 'steps')
+  num_samples = training_utils.check_num_samples(
+      inputs, batch_size, steps, 'steps')
   if verbose == 1:
     if steps is not None:
       progbar = Progbar(target=steps)
@@ -586,30 +626,21 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
-    if ins and isinstance(ins[-1], float):
-      # Do not slice the training phase flag.
-      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
-    else:
-      ins_batch = slice_arrays(ins, batch_ids)
+    inputs_batch = slice_arrays(inputs, batch_ids)
 
-    ins_batch_converted = []
-    for ib in ins_batch:
-      ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
+    inputs_batch = [
+        ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs_batch]
 
-    eager_model_inputs = []
-    for i in range(len(model.inputs)):
-      eager_model_inputs.append(ins_batch_converted[i])
-
-    if len(eager_model_inputs) == 1:
+    if len(inputs_batch) == 1:
       if model._expects_training_arg:
-        batch_outs = model.call(eager_model_inputs[0], training=False)
+        batch_outs = model.call(inputs_batch[0], training=False)
       else:
-        batch_outs = model.call(eager_model_inputs[0])
+        batch_outs = model.call(inputs_batch[0])
     else:
       if model._expects_training_arg:
-        batch_outs = model.call(eager_model_inputs, training=False)
+        batch_outs = model.call(inputs_batch, training=False)
       else:
-        batch_outs = model.call(eager_model_inputs)
+        batch_outs = model.call(inputs_batch)
 
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]

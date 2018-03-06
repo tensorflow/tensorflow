@@ -265,6 +265,14 @@ class Interpreter {
   void set_model(const Model* model) { model_ = const_cast<Model*>(model); }
   Model* model() const { return model_; }
 
+  // The default capacity of `tensors_` vector.
+  static constexpr int kTensorsReservedCapacity = 128;
+  // The capacity headroom of `tensors_` vector before calling ops'
+  // `prepare` and `invoke` function. In these functions, it's guaranteed
+  // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
+  // pointers to existing tensors.
+  static constexpr int kTensorsCapacityHeadroom = 16;
+
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
@@ -376,6 +384,18 @@ class Interpreter {
   // Entry point for C node plugin API to get the execution plan
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
+
+  // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
+  // capacity. Calling this function may invalidate existing pointers to
+  // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
+  // more tensors won't invalidate the pointer to existing tensors.
+  void EnsureTensorsVectorCapacity() {
+    const int required_capacity = tensors_size() + kTensorsCapacityHeadroom;
+    if (required_capacity > tensors_.capacity()) {
+      tensors_.reserve(required_capacity);
+      context_.tensors = tensors_.data();
+    }
+  }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
