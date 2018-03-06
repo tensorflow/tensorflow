@@ -384,122 +384,6 @@ func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs t
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
-type MutableHashTableOfTensorsV2Attr func(optionalAttr)
-
-// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-// If not specified, defaults to false
-func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
-// If not specified, defaults to <>
-func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["value_shape"] = value
-	}
-}
-
-// Creates an empty hash table.
-//
-// This op creates a mutable hash table, specifying the type of its keys and
-// values. Each value must be a vector. Data can be inserted into the table using
-// the insert operations. It does not support the initialization operation.
-//
-// Arguments:
-//	key_dtype: Type of the table keys.
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MutableHashTableOfTensorsV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceApplyProximalAdagradAttr is an optional argument to ResourceApplyProximalAdagrad.
-type ResourceApplyProximalAdagradAttr func(optionalAttr)
-
-// ResourceApplyProximalAdagradUseLocking sets the optional use_locking attribute to value.
-//
-// value: If True, updating of the var and accum tensors will be protected by
-// a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to false
-func ResourceApplyProximalAdagradUseLocking(value bool) ResourceApplyProximalAdagradAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
-//
-// accum += grad * grad
-// prox_v = var - lr * grad * (1 / sqrt(accum))
-// var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	accum: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	l1: L1 regularization. Must be a scalar.
-//	l2: L2 regularization. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, optional ...ResourceApplyProximalAdagradAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyProximalAdagrad",
-		Input: []tf.Input{
-			var_, accum, lr, l1, l2, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
 type MutableHashTableV2Attr func(optionalAttr)
 
@@ -557,142 +441,6 @@ func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.Data
 	}
 	opspec := tf.OpSpec{
 		Type: "MutableHashTableV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MapUnstageNoKeyAttr is an optional argument to MapUnstageNoKey.
-type MapUnstageNoKeyAttr func(optionalAttr)
-
-// MapUnstageNoKeyCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapUnstageNoKeyCapacity(value int64) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapUnstageNoKeyMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapUnstageNoKeyMemoryLimit(value int64) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapUnstageNoKeyContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func MapUnstageNoKeyContainer(value string) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MapUnstageNoKeySharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func MapUnstageNoKeySharedName(value string) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op removes and returns a random (key, value)
-//
-// from the underlying container.   If the underlying container
-// does not contain elements, the op will block until it does.
-func MapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataType, optional ...MapUnstageNoKeyAttr) (key tf.Output, values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MapUnstageNoKey",
-		Input: []tf.Input{
-			indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	key = op.Output(idx)
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("MapUnstageNoKey", err)
-		return
-	}
-	return key, values
-}
-
-// HashTableV2Attr is an optional argument to HashTableV2.
-type HashTableV2Attr func(optionalAttr)
-
-// HashTableV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func HashTableV2Container(value string) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// HashTableV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func HashTableV2SharedName(value string) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-//
-// value: If true and shared_name is empty, the table is shared
-// using the node name.
-// If not specified, defaults to false
-func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// Creates a non-initialized hash table.
-//
-// This op creates a hash table, specifying the type of its keys and values.
-// Before using the table you will have to initialize it.  After initialization the
-// table will be immutable.
-//
-// Arguments:
-//	key_dtype: Type of the table keys.
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "HashTableV2",
 
 		Attrs: attrs,
 	}
@@ -5642,111 +5390,6 @@ func QuantizedReluX(scope *Scope, features tf.Output, max_value tf.Output, min_f
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// SummaryWriterAttr is an optional argument to SummaryWriter.
-type SummaryWriterAttr func(optionalAttr)
-
-// SummaryWriterSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func SummaryWriterSharedName(value string) SummaryWriterAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// SummaryWriterContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func SummaryWriterContainer(value string) SummaryWriterAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// Returns a handle to be used to access a summary writer.
-//
-// The summary writer is an in-graph resource which can be used by ops to write
-// summaries to event files.
-//
-// Returns the summary writer resource. Scalar handle.
-func SummaryWriter(scope *Scope, optional ...SummaryWriterAttr) (writer tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SummaryWriter",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes gradients for SparseSegmentMean.
-//
-// Returns tensor "output" with same shape as grad, except for dimension 0 whose
-// value is output_dim0.
-//
-// Arguments:
-//	grad: gradient propagated to the SparseSegmentMean op.
-//	indices: indices passed to the corresponding SparseSegmentMean op.
-//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
-//	output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
-func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, output_dim0 tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMeanGrad",
-		Input: []tf.Input{
-			grad, indices, segment_ids, output_dim0,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Applies softmax to a batched N-D `SparseTensor`.
-//
-// The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
-// (where `N >= 2`), and with indices sorted in the canonical lexicographic order.
-//
-// This op is equivalent to applying the normal `tf.nn.softmax()` to each innermost
-// logical submatrix with shape `[B, C]`, but with the catch that *the implicitly
-// zero elements do not participate*.  Specifically, the algorithm is equivalent
-// to the following:
-//
-//   (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix
-//       with shape `[B, C]`, along the size-C dimension;
-//   (2) Masks out the original implicitly-zero locations;
-//   (3) Renormalizes the remaining elements.
-//
-// Hence, the `SparseTensor` result has exactly the same non-zero indices and
-// shape.
-//
-// Arguments:
-//	sp_indices: 2-D.  `NNZ x R` matrix with the indices of non-empty values in a
-// SparseTensor, in canonical ordering.
-//	sp_values: 1-D.  `NNZ` non-empty values corresponding to `sp_indices`.
-//	sp_shape: 1-D.  Shape of the input SparseTensor.
-//
-// Returns 1-D.  The `NNZ` values for the result `SparseTensor`.
-func SparseSoftmax(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSoftmax",
-		Input: []tf.Input{
-			sp_indices, sp_values, sp_shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // RandomPoissonAttr is an optional argument to RandomPoisson.
 type RandomPoissonAttr func(optionalAttr)
 
@@ -7025,6 +6668,225 @@ func DestroyResourceOp(scope *Scope, resource tf.Output, optional ...DestroyReso
 	return scope.AddOperation(opspec)
 }
 
+// SummaryWriterAttr is an optional argument to SummaryWriter.
+type SummaryWriterAttr func(optionalAttr)
+
+// SummaryWriterSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterSharedName(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// SummaryWriterContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterContainer(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// Returns a handle to be used to access a summary writer.
+//
+// The summary writer is an in-graph resource which can be used by ops to write
+// summaries to event files.
+//
+// Returns the summary writer resource. Scalar handle.
+func SummaryWriter(scope *Scope, optional ...SummaryWriterAttr) (writer tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SummaryWriter",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentMean.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is output_dim0.
+//
+// Arguments:
+//	grad: gradient propagated to the SparseSegmentMean op.
+//	indices: indices passed to the corresponding SparseSegmentMean op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
+//	output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, output_dim0 tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMeanGrad",
+		Input: []tf.Input{
+			grad, indices, segment_ids, output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Applies softmax to a batched N-D `SparseTensor`.
+//
+// The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+// (where `N >= 2`), and with indices sorted in the canonical lexicographic order.
+//
+// This op is equivalent to applying the normal `tf.nn.softmax()` to each innermost
+// logical submatrix with shape `[B, C]`, but with the catch that *the implicitly
+// zero elements do not participate*.  Specifically, the algorithm is equivalent
+// to the following:
+//
+//   (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix
+//       with shape `[B, C]`, along the size-C dimension;
+//   (2) Masks out the original implicitly-zero locations;
+//   (3) Renormalizes the remaining elements.
+//
+// Hence, the `SparseTensor` result has exactly the same non-zero indices and
+// shape.
+//
+// Arguments:
+//	sp_indices: 2-D.  `NNZ x R` matrix with the indices of non-empty values in a
+// SparseTensor, in canonical ordering.
+//	sp_values: 1-D.  `NNZ` non-empty values corresponding to `sp_indices`.
+//	sp_shape: 1-D.  Shape of the input SparseTensor.
+//
+// Returns 1-D.  The `NNZ` values for the result `SparseTensor`.
+func SparseSoftmax(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSoftmax",
+		Input: []tf.Input{
+			sp_indices, sp_values, sp_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Partitions `data` into `num_partitions` tensors using indices from `partitions`.
+//
+// For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`
+// becomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`
+// are placed in `outputs[i]` in lexicographic order of `js`, and the first
+// dimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.
+// In detail,
+//
+// ```python
+//     outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]
+//
+//     outputs[i] = pack([data[js, ...] for js if partitions[js] == i])
+// ```
+//
+// `data.shape` must start with `partitions.shape`.
+//
+// For example:
+//
+// ```python
+//     # Scalar partitions.
+//     partitions = 1
+//     num_partitions = 2
+//     data = [10, 20]
+//     outputs[0] = []  # Empty with shape [0, 2]
+//     outputs[1] = [[10, 20]]
+//
+//     # Vector partitions.
+//     partitions = [0, 0, 1, 1, 0]
+//     num_partitions = 2
+//     data = [10, 20, 30, 40, 50]
+//     outputs[0] = [10, 20, 50]
+//     outputs[1] = [30, 40]
+// ```
+//
+// See `dynamic_stitch` for an example on how to merge partitions back.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
+// </div>
+//
+// Arguments:
+//
+//	partitions: Any shape.  Indices in the range `[0, num_partitions)`.
+//	num_partitions: The number of partitions to output.
+func DynamicPartition(scope *Scope, data tf.Output, partitions tf.Output, num_partitions int64) (outputs []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_partitions": num_partitions}
+	opspec := tf.OpSpec{
+		Type: "DynamicPartition",
+		Input: []tf.Input{
+			data, partitions,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
+		scope.UpdateErr("DynamicPartition", err)
+		return
+	}
+	return outputs
+}
+
+// ResourceApplyAdagradAttr is an optional argument to ResourceApplyAdagrad.
+type ResourceApplyAdagradAttr func(optionalAttr)
+
+// ResourceApplyAdagradUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var and accum tensors will be protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyAdagradUseLocking(value bool) ResourceApplyAdagradAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' according to the adagrad scheme.
+//
+// accum += grad * grad
+// var -= lr * grad * (1 / sqrt(accum))
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	accum: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, grad tf.Output, optional ...ResourceApplyAdagradAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyAdagrad",
+		Input: []tf.Input{
+			var_, accum, lr, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // CumprodAttr is an optional argument to Cumprod.
 type CumprodAttr func(optionalAttr)
 
@@ -7909,63 +7771,6 @@ func ResourceScatterNdUpdate(scope *Scope, ref tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
-// StageSizeAttr is an optional argument to StageSize.
-type StageSizeAttr func(optionalAttr)
-
-// StageSizeCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func StageSizeCapacity(value int64) StageSizeAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// StageSizeMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func StageSizeMemoryLimit(value int64) StageSizeAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// StageSizeContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func StageSizeContainer(value string) StageSizeAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// StageSizeSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func StageSizeSharedName(value string) StageSizeAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op returns the number of elements in the underlying container.
-func StageSize(scope *Scope, dtypes []tf.DataType, optional ...StageSizeAttr) (size tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StageSize",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // NonMaxSuppressionAttr is an optional argument to NonMaxSuppression.
 type NonMaxSuppressionAttr func(optionalAttr)
 
@@ -8703,120 +8508,6 @@ func SparseReduceSum(scope *Scope, input_indices tf.Output, input_values tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Partitions `data` into `num_partitions` tensors using indices from `partitions`.
-//
-// For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`
-// becomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`
-// are placed in `outputs[i]` in lexicographic order of `js`, and the first
-// dimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.
-// In detail,
-//
-// ```python
-//     outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]
-//
-//     outputs[i] = pack([data[js, ...] for js if partitions[js] == i])
-// ```
-//
-// `data.shape` must start with `partitions.shape`.
-//
-// For example:
-//
-// ```python
-//     # Scalar partitions.
-//     partitions = 1
-//     num_partitions = 2
-//     data = [10, 20]
-//     outputs[0] = []  # Empty with shape [0, 2]
-//     outputs[1] = [[10, 20]]
-//
-//     # Vector partitions.
-//     partitions = [0, 0, 1, 1, 0]
-//     num_partitions = 2
-//     data = [10, 20, 30, 40, 50]
-//     outputs[0] = [10, 20, 50]
-//     outputs[1] = [30, 40]
-// ```
-//
-// See `dynamic_stitch` for an example on how to merge partitions back.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
-// </div>
-//
-// Arguments:
-//
-//	partitions: Any shape.  Indices in the range `[0, num_partitions)`.
-//	num_partitions: The number of partitions to output.
-func DynamicPartition(scope *Scope, data tf.Output, partitions tf.Output, num_partitions int64) (outputs []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_partitions": num_partitions}
-	opspec := tf.OpSpec{
-		Type: "DynamicPartition",
-		Input: []tf.Input{
-			data, partitions,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
-		scope.UpdateErr("DynamicPartition", err)
-		return
-	}
-	return outputs
-}
-
-// ResourceApplyAdagradAttr is an optional argument to ResourceApplyAdagrad.
-type ResourceApplyAdagradAttr func(optionalAttr)
-
-// ResourceApplyAdagradUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var and accum tensors will be protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyAdagradUseLocking(value bool) ResourceApplyAdagradAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' according to the adagrad scheme.
-//
-// accum += grad * grad
-// var -= lr * grad * (1 / sqrt(accum))
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	accum: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, grad tf.Output, optional ...ResourceApplyAdagradAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyAdagrad",
-		Input: []tf.Input{
-			var_, accum, lr, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Returns element-wise remainder of division. This emulates C semantics in that
@@ -9559,6 +9250,258 @@ func Conv3DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_ba
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// ResourceApplyProximalAdagradAttr is an optional argument to ResourceApplyProximalAdagrad.
+type ResourceApplyProximalAdagradAttr func(optionalAttr)
+
+// ResourceApplyProximalAdagradUseLocking sets the optional use_locking attribute to value.
+//
+// value: If True, updating of the var and accum tensors will be protected by
+// a lock; otherwise the behavior is undefined, but may exhibit less contention.
+// If not specified, defaults to false
+func ResourceApplyProximalAdagradUseLocking(value bool) ResourceApplyProximalAdagradAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
+//
+// accum += grad * grad
+// prox_v = var - lr * grad * (1 / sqrt(accum))
+// var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	accum: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	l1: L1 regularization. Must be a scalar.
+//	l2: L2 regularization. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, optional ...ResourceApplyProximalAdagradAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyProximalAdagrad",
+		Input: []tf.Input{
+			var_, accum, lr, l1, l2, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
+type MutableHashTableOfTensorsV2Attr func(optionalAttr)
+
+// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
+// If not specified, defaults to <>
+func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a vector. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableOfTensorsV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// HashTableV2Attr is an optional argument to HashTableV2.
+type HashTableV2Attr func(optionalAttr)
+
+// HashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func HashTableV2Container(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// HashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func HashTableV2SharedName(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates a non-initialized hash table.
+//
+// This op creates a hash table, specifying the type of its keys and values.
+// Before using the table you will have to initialize it.  After initialization the
+// table will be immutable.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "HashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MapUnstageNoKeyAttr is an optional argument to MapUnstageNoKey.
+type MapUnstageNoKeyAttr func(optionalAttr)
+
+// MapUnstageNoKeyCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapUnstageNoKeyCapacity(value int64) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// MapUnstageNoKeyMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapUnstageNoKeyMemoryLimit(value int64) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// MapUnstageNoKeyContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func MapUnstageNoKeyContainer(value string) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MapUnstageNoKeySharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func MapUnstageNoKeySharedName(value string) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op removes and returns a random (key, value)
+//
+// from the underlying container.   If the underlying container
+// does not contain elements, the op will block until it does.
+func MapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataType, optional ...MapUnstageNoKeyAttr) (key tf.Output, values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MapUnstageNoKey",
+		Input: []tf.Input{
+			indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	key = op.Output(idx)
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("MapUnstageNoKey", err)
+		return
+	}
+	return key, values
 }
 
 // Inverse 2D fast Fourier transform.
@@ -12257,6 +12200,63 @@ func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, value_dtype tf.D
 	return op.Output(0)
 }
 
+// StageSizeAttr is an optional argument to StageSize.
+type StageSizeAttr func(optionalAttr)
+
+// StageSizeCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageSizeCapacity(value int64) StageSizeAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// StageSizeMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageSizeMemoryLimit(value int64) StageSizeAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// StageSizeContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func StageSizeContainer(value string) StageSizeAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// StageSizeSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func StageSizeSharedName(value string) StageSizeAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op returns the number of elements in the underlying container.
+func StageSize(scope *Scope, dtypes []tf.DataType, optional ...StageSizeAttr) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StageSize",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Produces the max pool of the input tensor for quantized types.
 //
 // Arguments:
@@ -12994,6 +12994,56 @@ func Neg(scope *Scope, x tf.Output) (y tf.Output) {
 		Input: []tf.Input{
 			x,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// FakeQuantWithMinMaxVarsAttr is an optional argument to FakeQuantWithMinMaxVars.
+type FakeQuantWithMinMaxVarsAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// FakeQuantWithMinMaxVarsNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
+//
+// and `max` to 'outputs' tensor of same shape as `inputs`.
+//
+// `[min; max]` define the clamping range for the `inputs` data.
+// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+// then de-quantized and output as floats in `[min; max]` interval.
+// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
+//
+// This operation has a gradient and thus allows for training `min` and `max`
+// values.
+func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FakeQuantWithMinMaxVars",
+		Input: []tf.Input{
+			inputs, min, max,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -28229,54 +28279,4 @@ func QuantizedInstanceNorm(scope *Scope, x tf.Output, x_min tf.Output, x_max tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// FakeQuantWithMinMaxVarsAttr is an optional argument to FakeQuantWithMinMaxVars.
-type FakeQuantWithMinMaxVarsAttr func(optionalAttr)
-
-// FakeQuantWithMinMaxVarsNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to 8
-func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
-	return func(m optionalAttr) {
-		m["num_bits"] = value
-	}
-}
-
-// FakeQuantWithMinMaxVarsNarrowRange sets the optional narrow_range attribute to value.
-// If not specified, defaults to false
-func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr {
-	return func(m optionalAttr) {
-		m["narrow_range"] = value
-	}
-}
-
-// Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
-//
-// and `max` to 'outputs' tensor of same shape as `inputs`.
-//
-// `[min; max]` define the clamping range for the `inputs` data.
-// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
-// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
-// then de-quantized and output as floats in `[min; max]` interval.
-// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
-//
-// This operation has a gradient and thus allows for training `min` and `max`
-// values.
-func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FakeQuantWithMinMaxVars",
-		Input: []tf.Input{
-			inputs, min, max,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }

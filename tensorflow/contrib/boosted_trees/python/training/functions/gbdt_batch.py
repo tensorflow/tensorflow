@@ -57,6 +57,8 @@ PREDICTIONS = "predictions"
 PARTITION_IDS = "partition_ids"
 NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
+NUM_USED_HANDLERS = "num_used_handlers"
+USED_HANDLERS_MASK = "used_handlers_mask"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -70,7 +72,8 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
+def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats,
+                           used_handlers):
   """Returns predictions for the given logits and n_classes.
 
   Args:
@@ -79,6 +82,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
         that contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
+    used_handlers: A TreeEnsembleUsedHandlerOp result tuple of an int and a
+        boolean mask..
 
   Returns:
     A dict of predictions.
@@ -89,6 +94,8 @@ def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
   result[PARTITION_IDS] = partition_ids
   result[NUM_LAYERS_ATTEMPTED] = ensemble_stats.attempted_layers
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
+  result[NUM_USED_HANDLERS] = used_handlers.num_used_handlers
+  result[USED_HANDLERS_MASK] = used_handlers.used_handlers_mask
   return result
 
 
@@ -361,6 +368,13 @@ class GradientBoostedDecisionTreeModel(object):
     """
     ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
                                                       ensemble_stamp)
+    num_handlers = (
+        len(self._dense_floats) + len(self._sparse_float_shapes) +
+        len(self._sparse_int_shapes))
+    # Used during feature selection.
+    used_handlers = model_ops.tree_ensemble_used_handlers(
+        ensemble_handle, ensemble_stamp, num_all_handlers=num_handlers)
+
     # We don't need dropout info - we can always restore it based on the
     # seed.
     apply_dropout, seed = _dropout_params(mode, ensemble_stats)
@@ -395,7 +409,7 @@ class GradientBoostedDecisionTreeModel(object):
           use_locking=True)
 
     return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
-                                  ensemble_stats)
+                                  ensemble_stats, used_handlers)
 
   def predict(self, mode):
     """Returns predictions given the features and mode.
@@ -715,6 +729,22 @@ class GradientBoostedDecisionTreeModel(object):
                                             [len(handlers)], dtype=dtypes.bool))
     else:
       active_handlers = array_ops.ones([len(handlers), 2], dtype=dtypes.bool)
+
+    if self._learner_config.constraints.max_number_of_unique_feature_columns:
+      target = (
+          self._learner_config.constraints.max_number_of_unique_feature_columns)
+
+      def _feature_selection_active_handlers():
+        # The active list for current and the next iteration.
+        used_handlers = array_ops.reshape(predictions_dict[USED_HANDLERS_MASK],
+                                          [-1, 1])
+        used_handlers = array_ops.concat([used_handlers, used_handlers], axis=1)
+        return math_ops.logical_and(used_handlers, active_handlers)
+
+      active_handlers = (
+          control_flow_ops.cond(predictions_dict[NUM_USED_HANDLERS] >= target,
+                                _feature_selection_active_handlers,
+                                lambda: active_handlers))
 
     # Prepare empty gradients and hessians when handlers are not ready.
     empty_hess_shape = [1] + hessian_shape.as_list()

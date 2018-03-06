@@ -110,5 +110,6 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
     ],
+    grpc_enabled = True,
     main = "python/training/tpu_cluster_resolver_test.py",
 )

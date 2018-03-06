@@ -170,7 +170,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "ImageSummary", [tag, tensor]) as scope:
-    val = gen_logging_ops._image_summary(
+    val = gen_logging_ops.image_summary(
         tag=tag, tensor=tensor, max_images=max_images, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
@@ -226,11 +226,12 @@ def audio_summary(tag,
   with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
     sample_rate = ops.convert_to_tensor(sample_rate, dtype=dtypes.float32,
                                         name="sample_rate")
-    val = gen_logging_ops._audio_summary_v2(tag=tag,
-                                            tensor=tensor,
-                                            max_outputs=max_outputs,
-                                            sample_rate=sample_rate,
-                                            name=scope)
+    val = gen_logging_ops.audio_summary_v2(
+        tag=tag,
+        tensor=tensor,
+        max_outputs=max_outputs,
+        sample_rate=sample_rate,
+        name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
@@ -263,7 +264,7 @@ def merge_summary(inputs, collections=None, name=None):
     buffer resulting from the merging.
   """
   with ops.name_scope(name, "MergeSummary", inputs):
-    val = gen_logging_ops._merge_summary(inputs=inputs, name=name)
+    val = gen_logging_ops.merge_summary(inputs=inputs, name=name)
     _Collect(val, collections, [])
   return val
 

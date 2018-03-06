@@ -51,6 +51,13 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 
+// Registers e as the type of the ResourceVariable class.
+// Returns Py_None if registration succeeds, else throws a TypeError and returns
+// NULL.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
+
 // Registers e as the Exception to be raised when the conditions of
 // TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
 // is a signal to the calling code that it should fall back to the safer (and
@@ -160,13 +167,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 //  Item 2: device_name: Name of the device on which to execute the operation,
 //          or NULL for automatic selection.
 //  Item 3: op_name: Name of the TensorFlow op to execute.
-//  Item 4: record_gradient_callback: Callback that records the gradient of the
-//          result. The callback takes (op_name, inputs, attrs, result, name)
-//          - all sequences and records the gradient.
-//  Item 5: name: An optional name for the operation.
-//  Item 6: List representing all callbacks to execute after successful
+//  Item 4: name: An optional name for the operation.
+//  Item 5: List representing all callbacks to execute after successful
 //  op execute.
-//  Item 7 onwards: inputs - This is a list of inputs followed by a list of
+//  Item 6 onwards: inputs - This is a list of inputs followed by a list of
 //        attrs. It is not necessary for type attrs to be present.
 //
 // This is named _C since there doesn't seem to be any way to make it visible

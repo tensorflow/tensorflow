@@ -2074,7 +2074,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
 
     TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
         /*instruction=*/*root, /*operands=*/{lhs, rhs},
-        /*supported_types=*/{F32}));
+        /*supported_types=*/{F16, F32}));
 
     llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
     llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));

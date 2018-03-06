@@ -85,14 +85,19 @@ def fuse_op(graph_def, input_nodes, output_nodes, output_dtypes,
       if n not in reachable_by_input and n not in output_nodes_set:
         # n is between input and output, i.e., part of the fused op
         next_to_visit = [n]
+        visited = set()
         while next_to_visit:
           cur_node = next_to_visit[0]
+          visited.add(cur_node)
           del next_to_visit[0]
           if cur_node in reachable_by_input and cur_node not in input_nodes_set:
             raise TypeError("Node %s uses input %s not in input_nodes." %
                             (n, cur_node))
           if cur_node not in input_nodes_set:
-            next_to_visit += name_to_input_name[cur_node]
+            next_to_visit += [
+                input_node for input_node in name_to_input_name[cur_node]
+                if input_node not in visited
+            ]
     elif n not in reachable_by_input:
       nodes_post_output.append(n)
 
