@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from math import ceil
-
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -736,35 +734,35 @@ def _ExtractImagePatchesGrad(op, grad):
   padding = op.get_attr("padding")
 
   grad_expanded = array_ops.transpose(
-    array_ops.reshape(
-      grad, array_ops.stack((batch_size, rows_out, cols_out,
-                             ksize_r, ksize_c, channels))),
-    (1, 2, 3, 4, 0, 5))
+      array_ops.reshape(
+          grad, array_ops.stack((batch_size, rows_out, cols_out,
+                                 ksize_r, ksize_c, channels))),
+      (1, 2, 3, 4, 0, 5))
   grad_flat = array_ops.reshape(grad_expanded,
                                 array_ops.stack((-1, batch_size * channels)))
 
   # Source indices
   input_size = rows_in * cols_in
   src_idx = math_ops.cast(
-    math_ops.linspace(1.0,
-                      math_ops.cast(input_size, ops.dtypes.float32),
-                      input_size),
-    ops.dtypes.int64)
+      math_ops.linspace(1.0,
+                        math_ops.cast(input_size, ops.dtypes.float32),
+                        input_size),
+      ops.dtypes.int64)
   src_idx = array_ops.reshape(src_idx,
                               array_ops.stack((rows_in, cols_in)))
   src_idx = gen_array_ops.extract_image_patches(
-    array_ops.expand_dims(array_ops.expand_dims(src_idx, 0), 3),
-    ksizes=ksizes, strides=strides, rates=rates, padding=padding)
+      array_ops.expand_dims(array_ops.expand_dims(src_idx, 0), 3),
+      ksizes=ksizes, strides=strides, rates=rates, padding=padding)
   src_idx = array_ops.reshape(src_idx, (-1,))
   valid_idx = array_ops.where(src_idx > 0)
 
   # Destination indices
   output_size = rows_out * cols_out * ksize_r * ksize_c
   dst_idx = math_ops.cast(
-    math_ops.linspace(0.0,
-                      math_ops.cast(output_size - 1, ops.dtypes.float32),
-                      output_size),
-    ops.dtypes.int64)
+      math_ops.linspace(0.0,
+                        math_ops.cast(output_size - 1, ops.dtypes.float32),
+                        output_size),
+      ops.dtypes.int64)
   dst_idx = array_ops.reshape(dst_idx, (-1,))
 
   idx = array_ops.stack((src_idx - 1,
@@ -774,13 +772,13 @@ def _ExtractImagePatchesGrad(op, grad):
   sp_shape = array_ops.stack((input_size, output_size))
 
   sp_mat = sparse_tensor.SparseTensor(
-    idx, array_ops.ones((array_ops.shape(idx)[0],), dtype=ops.dtypes.float32),
-    sp_shape)
+      idx, array_ops.ones((array_ops.shape(idx)[0],), dtype=ops.dtypes.float32),
+      sp_shape)
 
   jac = sparse_ops.sparse_tensor_dense_matmul(sp_mat, grad_flat)
 
   grad_out = array_ops.reshape(
-    jac, array_ops.stack((rows_in, cols_in, batch_size, channels)))
+      jac, array_ops.stack((rows_in, cols_in, batch_size, channels)))
   grad_out = array_ops.transpose(grad_out, (2, 0, 1, 3))
 
   return [grad_out]
