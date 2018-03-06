@@ -268,7 +268,7 @@ class Estimator(object):
     _check_checkpoint_available(self.model_dir)
     if isinstance(name, six.string_types):
       return training.load_variable(self.model_dir, name)
-    return {v: traning.load_variable(self.model_dir, _check_string_or_not(v))\
+    return {v: training.load_variable(self.model_dir, _check_string_or_not(v))\
             for v in name}
 
   def get_variable_names(self):
