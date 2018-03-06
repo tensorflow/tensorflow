@@ -44,7 +44,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with tf.device("/device:IPU:0"):
       pa = tf.placeholder(tf.float32, [3], name="grad")
       pb = tf.placeholder(tf.float32, [3], name="in")
-      c = gen_math_ops._sigmoid_grad(pa, pb)
+      c = gen_math_ops.sigmoid_grad(pa, pb)
 
     with tf.device('cpu'):
       report = gen_ipu_ops.ipu_summary()
@@ -91,7 +91,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with tf.device("/device:IPU:0"):
       pa = tf.placeholder(tf.float32, [3], name="grad")
       pb = tf.placeholder(tf.float32, [3], name="in")
-      c = gen_nn_ops._relu_grad(pa, pb)
+      c = gen_nn_ops.relu_grad(pa, pb)
 
     with tf.device('cpu'):
       report = gen_ipu_ops.ipu_summary()

@@ -210,3 +210,10 @@ ArrayElementwiseOpTest.MinF32s POPLAR
 ArrayElementwiseOpTest.MaxF32s POPLAR
 
 MatOpsSimpleTest_F16F32.ExpTwoByTwoValues POPLAR // Precision error
+
+DotOperationTest.ZeroElementVectorDot POPLAR // Zero sized matmul
+DotOperationTest_F16F32F64.Dot_3x2_2x0 POPLAR
+DotOperationTest_F16F32F64.Dot_0x2_2x0 POPLAR
+DotOperationTest_F16F32F64.Dot_0x2_2x3 POPLAR
+DotOperationTest_F16F32F64.Dot_2x0_0x2 POPLAR
+DotOperationTest_F16F32F64CF64.ZeroElementVectorDot POPLAR
