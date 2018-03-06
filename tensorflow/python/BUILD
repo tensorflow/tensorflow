@@ -1775,6 +1775,7 @@ py_library(
 py_library(
     name = "gradients",
     srcs = [
+        "ops/custom_gradient.py",
         "ops/gradients.py",
         "ops/gradients_impl.py",
     ],
@@ -1788,6 +1789,7 @@ py_library(
         ":control_flow_util",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":framework_ops",
         ":functional_ops",
         ":image_grad",
         ":linalg_grad",
@@ -1800,6 +1802,8 @@ py_library(
         ":platform",
         ":spectral_grad",
         ":util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
