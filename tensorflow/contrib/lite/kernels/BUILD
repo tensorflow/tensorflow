@@ -97,6 +97,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "test_util_test",
+    size = "small",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "builtin_ops",
     srcs = [
