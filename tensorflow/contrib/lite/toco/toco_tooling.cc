@@ -102,6 +102,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new ResolveConstantFakeQuant);
+  transformations->Add(new UnpartitionEmbeddingLookup);
 }
 
 bool SupportsQuantization(FileFormat format) {

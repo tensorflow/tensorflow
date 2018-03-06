@@ -475,6 +475,19 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "statistical_testing_test",
+    size = "medium",
+    srcs = [
+        "python/kernel_tests/statistical_testing_test.py",
+    ],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "vector_sinh_arcsinh_diag_test",
     size = "medium",
     srcs = ["python/kernel_tests/vector_sinh_arcsinh_diag_test.py"],

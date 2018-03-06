@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import compat
@@ -162,31 +163,15 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
-    # TODO(apassos) probably control flow has to be handled delicately here as
-    # in if a resource is accessed inside a control flow context we need the
-    # control dependency to point to something outside the context which is
-    # guaranteed to happen after the access.
-    #
     # TODO(apassos) this should do some form of alias analysis as ops which
     # forward the resources such as Identity and Switch can cause serialization
     # to fail.
-    resource_inputs = set()
-    control_inputs = set()
     for i, inp in enumerate(inputs):
       if inp.graph is not self:
         inputs[i] = capture_value(self.captures, inp, inp.dtype, inp.op.name)
-      inp = inputs[i]
-      if inp.dtype == dtypes_module.resource:
-        if inp.name in self._last_op_using_resource_tensor:
-          control_inputs.add(self._last_op_using_resource_tensor[inp.name])
-        resource_inputs.add(inp.name)
-    with self.control_dependencies(list(control_inputs)):
-      op = super(CapturingGraph, self).create_op(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
-    for name in resource_inputs:
-      self._last_op_using_resource_tensor[name] = op
-    return op
+    return super(CapturingGraph, self).create_op(
+        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        compute_shapes, compute_device)
 
 
 # TODO(apassos): it'd be really nice if we could scope this registration.
@@ -636,13 +621,15 @@ def _defun_internal(name, func, args, kwds):
     for collection in curr_graph.collections:
       tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
           collection)
-    with tmp_graph.as_default():
+    with tmp_graph.as_default(), AutomaticControlDependencies() as a:
       func_inputs = _get_defun_inputs(args)
 
       def convert(x):
         if x is None:
           return None
-        return ops.convert_to_tensor_or_indexed_slices(x)
+        x = ops.convert_to_tensor_or_indexed_slices(x)
+        x = a.mark_as_return(x)
+        return x
 
       with capture_tensors(captures):
         this_tape = tape.push_new_tape()
@@ -887,7 +874,36 @@ class AutomaticControlDependencies(object):
     self._returned_tensors = set()
 
   def mark_as_return(self, tensor):
+    """Acts like identity but marks the `Tensor` as a return value.
+
+    This will possibly return a copy of the `Tensor`. Usage:
+
+    ```
+      with AutomaticControlDependencies() as a:
+       ...
+       t = a.mark_as_return(t)
+      _ = ...(t...)  # i.e. it's safe to use t here
+    ```
+
+    Args:
+      tensor: the `Tensor` to be marked
+
+    Returns:
+      a copy of the `Tensor`.
+    """
+    if isinstance(tensor, ops.IndexedSlices):
+      values = array_ops.identity(tensor.values)
+      indices = array_ops.identity(tensor.indices)
+      self._returned_tensors.add(indices)
+      self._returned_tensors.add(values)
+      return ops.IndexedSlices(values, indices, dense_shape=tensor.dense_shape)
+    # We want to make the return values depend on the stateful operations, but
+    # we don't want to introduce a cycle, so we make the return value the result
+    # of a new identity operation that the stateful operations definitely don't
+    # depend on.
+    tensor = array_ops.identity(tensor)
     self._returned_tensors.add(tensor)
+    return tensor
 
   def __enter__(self):
     if context.in_eager_mode():
@@ -1008,7 +1024,8 @@ class AutomaticControlDependencies(object):
     for op in new_operations:
       control_inputs = set()
       # Ensure stateful ops run
-      if self._graph._registered_ops[op.type].is_stateful:  # pylint: disable=protected-access
+      if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
+          or self._graph._registered_ops[op.type].is_stateful):  # pylint: disable=protected-access
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -1044,9 +1061,10 @@ class AutomaticControlDependencies(object):
 
     # Ensure all ops which must run do run
     for r in self._returned_tensors:
-      r.op._add_control_inputs(  # pylint: disable=protected-access
-          [o for o in ops_which_must_run
-           if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+      if ops_which_must_run:
+        r.op._add_control_inputs(  # pylint: disable=protected-access
+            [o for o in ops_which_must_run
+             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
 
 
 def automatic_control_dependencies(f):
@@ -1066,8 +1084,7 @@ def automatic_control_dependencies(f):
   def wrapper(*args, **kwds):
     with AutomaticControlDependencies() as a:
       result = f(*args, **kwds)
-      for t in nest.flatten(result):
-        a.mark_as_return(t)
-      return result
+      result_flat = [a.mark_as_return(t) for t in nest.flatten(result)]
+      return nest.pack_sequence_as(result, result_flat)
 
   return tf_decorator.make_decorator(f, wrapper)

@@ -74,7 +74,10 @@ py_test(
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+    ],
     deps = [
         ":feature_column",
         ":feature_column_py",

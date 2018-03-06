@@ -39,10 +39,22 @@ namespace xla {
 class ReferenceUtil {
  public:
   // Returns the result of a transpose operation on the input matrix.
-  static std::unique_ptr<Array2D<float>> TransposeArray2D(
-      const Array2D<float>& operand);
+  template <typename T>
+  static std::unique_ptr<Array2D<T>> TransposeArray2D(
+      const Array2D<T>& operand) {
+    auto result = MakeUnique<Array2D<T>>(operand.width(), operand.height());
+    for (int64 w = 0; w < operand.width(); ++w) {
+      for (int64 h = 0; h < operand.height(); ++h) {
+        (*result)(w, h) = operand(h, w);
+      }
+    }
+
+    return result;
+  }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
+  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
+      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
   static std::unique_ptr<Array2D<float>> MatmulArray2D(
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(

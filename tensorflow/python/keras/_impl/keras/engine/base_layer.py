@@ -240,9 +240,10 @@ class Layer(tf_base_layers.Layer):
     if context.in_eager_mode():
       return output
 
-    # Un-built subclassed network: build it
-    if hasattr(self, '_set_inputs') and not self.inputs:
-      self._set_inputs(inputs, training=kwargs.get('training'))
+    if hasattr(self, '_symbolic_set_inputs') and not self.inputs:
+      # Subclassed network: explicitly set metadata normally set by a call to
+      # self._set_inputs().
+      self._symbolic_set_inputs(inputs, output)
 
     # Update learning phase info.
     output_tensors = generic_utils.to_list(output)

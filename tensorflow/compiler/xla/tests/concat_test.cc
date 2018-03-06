@@ -75,7 +75,7 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
-              HasSubstr("dimension to concatenate along out of bounds: 0"));
+              HasSubstr("out of bounds: 0"));
 }
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {

@@ -1542,6 +1542,12 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTranspose:
       ProcessTransposeOperator(model, static_cast<TransposeOperator*>(op));
       break;
+    case OperatorType::kDynamicPartition:
+    case OperatorType::kDynamicStitch:
+      // DynamicPartition/DynamicStitch are currently only supported for
+      // transforms that remove them, so we avoid propagating shapes through
+      // them and let things settle once they've been removed.
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);

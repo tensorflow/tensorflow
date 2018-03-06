@@ -79,8 +79,9 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     } else if (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW) {
       mkl_context.c_size = GetTensorDim(input, data_format_, 'C');
     } else {
-      errors::InvalidArgument("Unknown format ",
-                              " Format must be either NCHW or NHWC. ");
+      context->CtxFailure(errors::InvalidArgument(
+          "Unknown format ", " Format must be either NCHW or NHWC. "));
+      return;
     }
     TensorShape output_shape{mkl_context.c_size};
 
