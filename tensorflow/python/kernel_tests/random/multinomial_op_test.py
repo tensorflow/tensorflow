@@ -57,12 +57,14 @@ class MultinomialTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)
-    with test_util.device(use_gpu=True):
-      # A logit value of -10 corresponds to a probability of ~5e-5.
-      logits = constant_op.constant([[-10., 10., -10.], [-10., -10., 10.]])
-      num_samples = 1000
-      samples = self.evaluate(random_ops.multinomial(logits, num_samples))
-      self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
+    for output_dtype in [np.int32, np.int64]:
+      with test_util.device(use_gpu=True):
+        # A logit value of -10 corresponds to a probability of ~5e-5.
+        logits = constant_op.constant([[-10., 10., -10.], [-10., -10., 10.]])
+        num_samples = 1000
+        samples = self.evaluate(random_ops.multinomial(
+            logits, num_samples, output_dtype=output_dtype))
+        self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
   def testOneOpMultipleStepsIndependent(self):
     with self.test_session(use_gpu=True) as sess:

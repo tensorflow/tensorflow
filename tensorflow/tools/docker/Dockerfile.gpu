@@ -1,4 +1,4 @@
-FROM nvidia/cuda:8.0-cudnn6-runtime-ubuntu16.04
+FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
 
 LABEL maintainer="Craig Citro <craigcitro@google.com>"
 

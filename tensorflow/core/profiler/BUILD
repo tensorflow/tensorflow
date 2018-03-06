@@ -34,11 +34,22 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/internal:tfprof_options",
+        "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
-        "@linenoise//:linenoise",
+        "@linenoise",
+    ],
+)
+
+cc_library(
+    name = "tfprof_options",
+    srcs = ["tfprof_options.cc"],
+    hdrs = ["tfprof_options.h"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
 

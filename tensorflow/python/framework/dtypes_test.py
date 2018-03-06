@@ -176,7 +176,7 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("float64").is_floating, True)
     self.assertEqual(dtypes.as_dtype("string").is_floating, False)
     self.assertEqual(dtypes.as_dtype("bool").is_floating, False)
-    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_floating, True)
     self.assertEqual(dtypes.as_dtype("qint8").is_floating, False)
     self.assertEqual(dtypes.as_dtype("qint16").is_floating, False)
     self.assertEqual(dtypes.as_dtype("qint32").is_floating, False)
@@ -276,6 +276,9 @@ class TypesTest(test_util.TensorFlowTestCase):
       if numpy_dtype in (np.float16, np.float32, np.float64):
         self.assertEquals(dtype.min, np.finfo(numpy_dtype).min)
         self.assertEquals(dtype.max, np.finfo(numpy_dtype).max)
+      if numpy_dtype == dtypes.bfloat16.as_numpy_dtype:
+        self.assertEquals(dtype.min, float.fromhex("-0x1.FEp127"))
+        self.assertEquals(dtype.max, float.fromhex("0x1.FEp127"))
 
   def testRepr(self):
     for enum, name in dtypes._TYPE_TO_STRING.items():

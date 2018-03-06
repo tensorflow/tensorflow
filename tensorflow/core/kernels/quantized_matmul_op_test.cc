@@ -206,17 +206,32 @@ TEST_F(QuantizedMatMulTest, Small_WithParams) {
   // We have set the transpose_a flag to true, so the matrix is transposed, and
   // for filling the values the in-memory storage order is effectively
   // column major, rather than the default row-major.
-  AddInputFromArray<quint8>(TensorShape({a_rows, a_cols}),
-                            {
-                                11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-                            });
+  AddInputFromArray<quint8>(TensorShape({a_rows, a_cols}), {
+                                                               11,
+                                                               10,
+                                                               9,
+                                                               8,
+                                                               7,
+                                                               6,
+                                                               5,
+                                                               4,
+                                                               3,
+                                                               2,
+                                                               1,
+                                                               0,
+                                                           });
 
   // The B matrix is:
   // |   1 |   4|
   // |   2 |   5|
   // |   3 |   6|
   AddInputFromArray<quint8>(TensorShape({b_rows, b_cols}), {
-                                                               1, 4, 2, 5, 3, 6,
+                                                               1,
+                                                               4,
+                                                               2,
+                                                               5,
+                                                               3,
+                                                               6,
                                                            });
   AddInputFromArray<float>(TensorShape({1}), {-12.0f});
   AddInputFromArray<float>(TensorShape({1}), {243.0f});
@@ -238,10 +253,16 @@ TEST_F(QuantizedMatMulTest, Small_WithParams) {
   // |  -50 | -113 |
   // |  -56 | -128 |
   Tensor expected(allocator(), DT_QINT32, TensorShape({a_cols, b_cols}));
-  test::FillValues<qint32>(&expected,
-                           {
-                               -38, -83, -44, -98, -50, -113, -56, -128,
-                           });
+  test::FillValues<qint32>(&expected, {
+                                          -38,
+                                          -83,
+                                          -44,
+                                          -98,
+                                          -50,
+                                          -113,
+                                          -56,
+                                          -128,
+                                      });
   test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
 }
 

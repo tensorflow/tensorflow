@@ -39,11 +39,14 @@ namespace tensorflow {
 // represent the TF_AttrType type of the values in the list.
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
+// Look up OpDef for `op_name`.
+Status OpDefForOp(const char* op_name, const OpDef** op_def);
+
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap* m, const string& attr_name,
+Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
@@ -175,9 +178,14 @@ class KernelAndDevice {
       : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
 
   // TODO(ashankar): Handle list-valued inputs.
-  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs);
+  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
+             NodeExecStats* stats);
 
   const OpKernel* kernel() const { return kernel_.get(); }
+
+  Device* device() const { return device_; }
+
+  DataTypeVector* output_dtypes() { return &output_dtypes_; }
 
  private:
   std::unique_ptr<OpKernel> kernel_;
@@ -185,6 +193,7 @@ class KernelAndDevice {
   FunctionLibraryRuntime* flib_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   Rendezvous* rendez_;
+  DataTypeVector output_dtypes_;
 };
 
 }  // namespace tensorflow

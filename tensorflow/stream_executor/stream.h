@@ -113,7 +113,7 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  Stream &Init();
+  Stream &Init() LOCKS_EXCLUDED(mu_);
 
   // Initializes timer t via the StreamExecutor.
   Stream &InitTimer(Timer *t);
@@ -124,11 +124,11 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
-  Stream *GetOrCreateSubStream();
+  Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later.
-  void ReturnSubStream(Stream *sub_stream);
+  void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
   // or destroyed.
@@ -234,7 +234,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
       const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
@@ -255,7 +255,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &variance,
+      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
@@ -1903,8 +1903,9 @@ class Stream {
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.
   //
-  // Returns true if the stream is ok().
-  bool BlockHostUntilDone();
+  // Returns an OK status if the blocking was successful and the stream is ok().
+  // Otherwise returns an error describing why the blocking failed.
+  port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
@@ -1960,14 +1961,14 @@ class Stream {
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
 
-  bool InErrorState() const {
+  bool InErrorState() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock{mu_};
     return !ok_;
   }
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) {
+  void CheckError(bool operation_retcode) LOCKS_EXCLUDED(mu_) {
     if (operation_retcode) {
       return;
     }

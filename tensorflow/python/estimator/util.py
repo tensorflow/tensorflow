@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utility to retrieve function args.."""
+"""Utility to retrieve function args."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,6 +26,7 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_bounded_method(fn):
+  _, fn = tf_decorator.unwrap(fn)
   return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
 
 
@@ -45,14 +46,13 @@ def fn_args(fn):
   Raises:
     ValueError: if partial function has positionally bound arguments
   """
-  _, fn = tf_decorator.unwrap(fn)
   if isinstance(fn, functools.partial):
     args = fn_args(fn.func)
     args = [a for a in args[len(fn.args):] if a not in (fn.keywords or [])]
   else:
     if _is_callable_object(fn):
       fn = fn.__call__
-    args = tf_inspect.getargspec(fn).args
+    args = tf_inspect.getfullargspec(fn).args
     if _is_bounded_method(fn):
       args.remove('self')
   return tuple(args)

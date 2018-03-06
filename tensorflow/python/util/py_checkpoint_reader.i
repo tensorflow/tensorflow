@@ -164,6 +164,8 @@ def NewCheckpointReader(filepattern):
   with errors.raise_exception_on_not_ok_status() as status:
     from tensorflow.python.util import compat
     return CheckpointReader(compat.as_bytes(filepattern), status)
+
+NewCheckpointReader._tf_api_names = ['train.NewCheckpointReader']
 %}
 
 %include "tensorflow/c/checkpoint_reader.h"

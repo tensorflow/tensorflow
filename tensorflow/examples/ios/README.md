@@ -6,7 +6,7 @@ This folder contains examples of how to build applications for iOS devices using
  - You'll need Xcode 7.3 or later.
 
  - There are currently three examples: simple, benchmark, and camera. For now,
-   you can download the sample code by cloning the main tensorflow repository 
+   you can download the sample code by cloning the main tensorflow repository
    (we are planning to make the samples available as a separate repository
    later).
 
@@ -48,8 +48,8 @@ open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
 ### Troubleshooting
 
  - Make sure you use the TensorFlow-experimental pod (and not TensorFlow).
-  
- - The TensorFlow-experimental pod is current about ~450MB. The reason it is 
+
+ - The TensorFlow-experimental pod is current about ~450MB. The reason it is
    so big is because we are bundling multiple platforms, and the pod includes
    all TensorFlow functionality (e.g. operations). The final app size after
    build is substantially smaller though (~25MB). Working with the complete
@@ -91,7 +91,7 @@ target 'YourProjectName'
    open up the Xcode project in the `camera` subfolder. Once you build and run
    that, you should get a live camera view that you can point at objects to get
    real-time recognition results.
-   
+
 ### Troubleshooting
 
 If you're hitting problems, here's a checklist of common things to investigate:

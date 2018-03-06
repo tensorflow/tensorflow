@@ -296,13 +296,11 @@ create_activate_virtualenv_and_install_tensorflow() {
     die "FAILED to create virtualenv directory: ${VIRTUALENV_DIR}"
   fi
 
-  # Verify that virtualenv exists
-  if [[ -z $(which virtualenv) ]]; then
-    die "FAILED: virtualenv not available on path"
-  fi
-
-  virtualenv ${VIRTUALENV_FLAGS} \
-    -p "${PYTHON_BIN_PATH}" "${VIRTUALENV_DIR}" || \
+  # Use the virtualenv from the default python version (i.e., python-virtualenv)
+  # to create the virtualenv directory for testing. Use the -p flag to specify
+  # the python version inside the to-be-created virtualenv directory.
+  ${PYTHON_BIN_PATH} -m virtualenv -p "${PYTHON_BIN_PATH}" ${VIRTUALENV_FLAGS} \
+    "${VIRTUALENV_DIR}" || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
@@ -345,7 +343,7 @@ do_clean_virtualenv_smoke_test() {
   then
     echo "Smoke test of tensorflow install in clean virtualenv PASSED."
   else
-    echo "Smoke test of tensroflow install in clean virtualenv FAILED."
+    echo "Smoke test of tensorflow install in clean virtualenv FAILED."
     return 1
   fi
 

@@ -58,9 +58,10 @@ void SpaceToBatchOpCompute(OpKernelContext* context,
       errors::InvalidArgument("input rank should be >= ", 1 + block_dims,
                               " instead of ", orig_input_tensor.dims()));
 
-  OP_REQUIRES(context, TensorShapeUtils::IsMatrix(orig_paddings.shape()) &&
-                           block_dims == orig_paddings.dim_size(0) &&
-                           2 == orig_paddings.dim_size(1),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsMatrix(orig_paddings.shape()) &&
+                  block_dims == orig_paddings.dim_size(0) &&
+                  2 == orig_paddings.dim_size(1),
               errors::InvalidArgument("paddings should have shape [",
                                       block_dims, ", 2] instead of ",
                                       orig_paddings.shape().DebugString()));

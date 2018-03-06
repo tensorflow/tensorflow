@@ -261,12 +261,12 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
       std::vector<int64>* algorithms, bool use_autotune, Tensor* out) {
     using perftools::gputools::blas::AlgorithmConfig;
     using perftools::gputools::blas::ComputationType;
-    using perftools::gputools::blas::ProfileResult;
-    using perftools::gputools::blas::Transpose;
     using perftools::gputools::blas::kDefaultAlgorithm;
     using perftools::gputools::blas::kDefaultBlasGemm;
     using perftools::gputools::blas::kDefaultBlasGemv;
     using perftools::gputools::blas::kNoAlgorithm;
+    using perftools::gputools::blas::ProfileResult;
+    using perftools::gputools::blas::Transpose;
     Transpose trans[] = {Transpose::kNoTranspose, Transpose::kTranspose};
     const uint64 m = a.dim_size(1 - dim_pair[0].first);
     const uint64 k = a.dim_size(dim_pair[0].first);
@@ -535,13 +535,16 @@ struct MatMulFunctor<SYCLDevice, T> {
 
 }  // end namespace functor
 
-#define REGISTER_CPU(T)                                                        \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),                \
-      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);            \
+#define REGISTER_CPU_EIGEN(T)                                                  \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("eigen"), \
-      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>)
+      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
+
+#define REGISTER_CPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),     \
+      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>); \
+  REGISTER_CPU_EIGEN(T);
 
 #define REGISTER_GPU(T)                                            \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -556,9 +559,14 @@ struct MatMulFunctor<SYCLDevice, T> {
 #if defined(INTEL_MKL)
 // MKL does not support half and int32 types for matrix-multiplication, so
 // register the kernel to use default Eigen based implementations for these
-// types
+// types. Registration for NO-LABEL version is in mkl_matmul_op.cc
+TF_CALL_float(REGISTER_CPU_EIGEN);
+TF_CALL_double(REGISTER_CPU_EIGEN);
 TF_CALL_half(REGISTER_CPU);
+
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_complex64(REGISTER_CPU_EIGEN);
+TF_CALL_complex128(REGISTER_CPU_EIGEN);
 #else
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);

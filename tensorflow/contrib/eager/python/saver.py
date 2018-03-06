@@ -82,7 +82,7 @@ def restore_variables_on_create(save_path, map_func=None):
       map_func_wrapper = lambda self, x: x
     else:
       if not callable(map_func):
-        raise ValueError("map_func must be callaled.")
+        raise ValueError("map_func must be callable.")
       map_func_wrapper = lambda self, x: map_func(x)
 
     ckpt_var_cache = dict()

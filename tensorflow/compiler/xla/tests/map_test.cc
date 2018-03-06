@@ -405,13 +405,13 @@ TEST_F(MapTest, MapBinaryAdder) {
 // for Map that used to fail in shape inference (b/28989438).
 XLA_TEST_F(MapTest, AddWithMixedLayouts) {
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> param0_literal =
-      test_utils::CreateR2LiteralWithLayout({{1, 2}, {3, 4}}, {1, 0});
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR2WithLayout(
+      {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({1, 0}));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  std::unique_ptr<Literal> param1_literal =
-      test_utils::CreateR2LiteralWithLayout({{10, 20}, {30, 40}}, {0, 1});
+  std::unique_ptr<Literal> param1_literal = Literal::CreateR2WithLayout(
+      {{10, 20}, {30, 40}}, LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -531,7 +531,7 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
   ASSERT_TRUE(!computation_status.ok());
   EXPECT_THAT(
       computation_status.status().ToString(),
-      ::testing::HasSubstr("error from: ErrorAdd: binary op BINOP_ADD with "
+      ::testing::HasSubstr("error from: ErrorAdd: Binary op BINOP_ADD with "
                            "different element types: f32[] and u16[]"));
 }
 

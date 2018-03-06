@@ -19,13 +19,13 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/core/util/ctc/ctc_beam_search.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/ctc/ctc_beam_search.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -80,16 +80,17 @@ class CTCDecodeHelper {
 
     if (!(batch_size == (*seq_len)->dim_size(0))) {
       return errors::FailedPrecondition(
-          "len(sequence_length) != batch_size.  ", "len(sequence_length):  ",
-          (*seq_len)->dim_size(0), " batch_size: ", batch_size);
+          "len(sequence_length) != batch_size.  ",
+          "len(sequence_length):  ", (*seq_len)->dim_size(0),
+          " batch_size: ", batch_size);
     }
 
     auto seq_len_t = (*seq_len)->vec<int32>();
 
     for (int b = 0; b < batch_size; ++b) {
       if (!(seq_len_t(b) <= max_time)) {
-        return errors::FailedPrecondition("sequence_length(", b, ") <= ",
-                                          max_time);
+        return errors::FailedPrecondition("sequence_length(", b,
+                                          ") <= ", max_time);
       }
     }
 

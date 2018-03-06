@@ -211,9 +211,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.abs(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
-      return self._options['symmetric_l1_regularization'] * sum
+      return self._options['symmetric_l1_regularization'] * math_ops.add_n(sums)
 
   def _l2_loss(self, l2):
     """Computes the (un-normalized) l2 loss of the model."""
@@ -225,9 +224,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.square(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
-      return l2 * sum / 2.0
+      return l2 * math_ops.add_n(sums) / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -238,10 +236,10 @@ class SdcaModel(object):
     with name_scope('sdca/prediction'):
       sparse_variables = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
-      result = 0.0
+      result_sparse = 0.0
       for sfc, sv in zip(examples['sparse_features'], sparse_variables):
         # TODO(sibyl-Aix6ihai): following does not take care of missing features.
-        result += math_ops.segment_sum(
+        result_sparse += math_ops.segment_sum(
             math_ops.multiply(
                 array_ops.gather(sv, sfc.feature_indices), sfc.feature_values),
             sfc.example_indices)
@@ -249,12 +247,14 @@ class SdcaModel(object):
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
 
+      result_dense = 0.0
       for i in range(len(dense_variables)):
-        result += math_ops.matmul(dense_features[i],
-                                  array_ops.expand_dims(dense_variables[i], -1))
+        result_dense += math_ops.matmul(dense_features[i],
+                                        array_ops.expand_dims(
+                                            dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
-    return array_ops.reshape(result, [-1])
+    return array_ops.reshape(result_dense, [-1]) + result_sparse
 
   def predictions(self, examples):
     """Add operations to compute predictions by the model.

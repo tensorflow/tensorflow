@@ -237,6 +237,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       VLOG(1) << "Continuing to center bias, delta=" << total_delta;
     } else {
       VLOG(1) << "Done centering bias, delta=" << total_delta;
+      ensemble_resource->LastTreeMetadata()->set_is_finalized(true);
     }
     Tensor* continue_centering_t = nullptr;
     OP_REQUIRES_OK(
@@ -260,7 +261,6 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       for (size_t idx = 0; idx < logits_dimension; ++idx) {
         leaf->mutable_vector()->add_value(0.0);
       }
-      ensemble_resource->LastTreeMetadata()->set_is_finalized(true);
       return leaf;
     } else if (num_trees == 1) {
       // Confirms that the only tree is a bias and returns its leaf.
@@ -381,7 +381,8 @@ class GrowTreeEnsembleOp : public OpKernel {
 
     // Split tree nodes.
     for (auto& split_entry : best_splits) {
-      SplitTreeNode(split_entry.first, &split_entry.second, tree_config);
+      SplitTreeNode(split_entry.first, &split_entry.second, tree_config,
+                    ensemble_resource);
     }
 
     // Post-prune finalized tree if needed.
@@ -403,8 +404,9 @@ class GrowTreeEnsembleOp : public OpKernel {
   // Helper method which effectively does a reduce over all split candidates
   // and finds the best split for each partition.
   void FindBestSplitsPerPartition(
-      OpKernelContext* const context, const OpInputList& partition_ids_list,
-      const OpInputList& gains_list, const OpInputList& splits_list,
+      OpKernelContext* const context,
+      const OpInputList& partition_ids_list, const OpInputList& gains_list,
+      const OpInputList& splits_list,
       std::map<int32, SplitCandidate>* best_splits) {
     // Find best split per partition going through every feature candidate.
     // TODO(salehay): Is this worth parallelizing?
@@ -592,8 +594,10 @@ class GrowTreeEnsembleOp : public OpKernel {
 
   // Helper method to split a tree node and append its respective
   // leaf children given the split candidate.
-  void SplitTreeNode(const int32 node_id, SplitCandidate* split,
-                     boosted_trees::trees::DecisionTreeConfig* tree_config) {
+  void SplitTreeNode(
+      const int32 node_id, SplitCandidate* split,
+      boosted_trees::trees::DecisionTreeConfig* tree_config,
+      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
     // No-op if we have no real node.
     CHECK(node_id < tree_config->nodes_size())
         << "Invalid node " << node_id << " to split.";
@@ -633,6 +637,9 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Replace node in tree.
     (*tree_config->mutable_nodes(node_id)) =
         *split->split_info.mutable_split_node();
+    if (learner_config_.constraints().max_number_of_unique_feature_columns()) {
+      ensemble_resource->MaybeAddUsedHandler(split->handler_id);
+    }
   }
 
   void PruneTree(boosted_trees::trees::DecisionTreeConfig* tree_config) {

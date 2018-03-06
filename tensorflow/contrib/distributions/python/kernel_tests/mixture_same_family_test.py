@@ -45,6 +45,17 @@ class MixtureSameFamilyTest(test_util.VectorDistributionTestHelpers,
       self.assertEqual([4, 5], x.shape)
       self.assertEqual([4, 5], log_prob_x.shape)
 
+  def testSampleAndLogProbBatch(self):
+    with self.test_session():
+      gm = mixture_same_family_lib.MixtureSameFamily(
+          mixture_distribution=categorical_lib.Categorical(probs=[[0.3, 0.7]]),
+          components_distribution=normal_lib.Normal(
+              loc=[[-1., 1]], scale=[[0.1, 0.5]]))
+      x = gm.sample([4, 5], seed=42)
+      log_prob_x = gm.log_prob(x)
+      self.assertEqual([4, 5, 1], x.shape)
+      self.assertEqual([4, 5, 1], log_prob_x.shape)
+
   def testSampleAndLogProbShapesBroadcastMix(self):
     mix_probs = np.float32([.3, .7])
     bern_probs = np.float32([[.4, .6], [.25, .75]])

@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.tf_export import tf_export
 
 
 # The list of exceptions that we should recover from. Exceptions not in this
@@ -52,7 +53,7 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-# TODO(touts): Share that with the Supervisor.
+@tf_export('train.Scaffold')
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
@@ -213,6 +214,7 @@ class Scaffold(object):
     self._saver.build()
 
     ops.get_default_graph().finalize()
+    logging.info('Graph was finalized.')
     return self
 
   @property
@@ -266,10 +268,13 @@ class Scaffold(object):
 
   @staticmethod
   def _default_local_init_op():
-    return control_flow_ops.group(variables.local_variables_initializer(),
-                                  lookup_ops.tables_initializer())
+    return control_flow_ops.group(
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer(),
+        resources.initialize_resources(resources.local_resources()))
 
 
+@tf_export('train.MonitoredTrainingSession')
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
@@ -281,7 +286,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_secs=USE_DEFAULT,
                              config=None,
                              stop_grace_period_secs=120,
-                             log_step_count_steps=100):
+                             log_step_count_steps=100,
+                             max_wait_secs=7200):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -320,6 +326,10 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `close()` has been called.
     log_step_count_steps: The frequency, in number of global steps, that the
       global step/sec is logged.
+    max_wait_secs: Maximum time workers should wait for the session to
+      become available. This should be kept relatively short to help detect
+      incorrect code, but sometimes may need to be increased if the chief takes
+      a while to start up.
 
   Returns:
     A `MonitoredSession` object.
@@ -335,7 +345,10 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   scaffold = scaffold or Scaffold()
   if not is_chief:
     session_creator = WorkerSessionCreator(
-        scaffold=scaffold, master=master, config=config)
+        scaffold=scaffold,
+        master=master,
+        config=config,
+        max_wait_secs=max_wait_secs)
     return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
                             stop_grace_period_secs=stop_grace_period_secs)
 
@@ -371,6 +384,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                           stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export('train.SessionCreator')
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -380,6 +394,7 @@ class SessionCreator(object):
         'create_session is not implemented for {}.'.format(self))
 
 
+@tf_export('train.ChiefSessionCreator')
 class ChiefSessionCreator(SessionCreator):
   """Creates a tf.Session for a chief."""
 
@@ -431,10 +446,15 @@ class ChiefSessionCreator(SessionCreator):
         init_fn=self._scaffold.init_fn)
 
 
+@tf_export('train.WorkerSessionCreator')
 class WorkerSessionCreator(SessionCreator):
   """Creates a tf.Session for a worker."""
 
-  def __init__(self, scaffold=None, master='', config=None):
+  def __init__(self,
+               scaffold=None,
+               master='',
+               config=None,
+               max_wait_secs=30 * 60):
     """Initializes a worker session creator.
 
     Args:
@@ -442,11 +462,13 @@ class WorkerSessionCreator(SessionCreator):
         not specified a default one is created. It's used to finalize the graph.
       master: `String` representation of the TensorFlow master to use.
       config: `ConfigProto` proto used to configure the session.
+      max_wait_secs: Maximum time to wait for the session to become available.
     """
     self._scaffold = scaffold or Scaffold()
     self._session_manager = None
     self._master = master
     self._config = config
+    self._max_wait_secs = max_wait_secs
 
   def _get_session_manager(self):
     if self._session_manager:
@@ -463,7 +485,7 @@ class WorkerSessionCreator(SessionCreator):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
         self._master, config=self._config,
-        max_wait_secs=30 * 60  # Wait up to 30 mins for the session to be ready.
+        max_wait_secs=self._max_wait_secs
     )
 
 
@@ -536,6 +558,7 @@ class _MonitoredSession(object):
         will return True.
 
         Example usage:
+
         ```python
            with tf.Graph().as_default():
              c = tf.placeholder(dtypes.float32)
@@ -552,6 +575,7 @@ class _MonitoredSession(object):
                while not session.should_stop():
                  a = session.run_step_fn(step_fn)
         ```
+
         Hooks interact with the `run_with_hooks()` call inside the `step_fn`
         as they do with a `MonitoredSession.run` call.
 
@@ -688,6 +712,7 @@ class _MonitoredSession(object):
     return self._coordinated_creator.tf_sess
 
 
+@tf_export('train.MonitoredSession')
 class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
@@ -770,6 +795,7 @@ class MonitoredSession(_MonitoredSession):
         stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export('train.SingularMonitoredSession')
 class SingularMonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, restoring, and hooks.
 

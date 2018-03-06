@@ -199,10 +199,10 @@ handled for you under the hood, so you simply need to create a
 
 ```python
 model = tf.estimator.DNNLinearCombinedClassifier(
-            model_dir='/tmp/census_model',
-            linear_feature_columns=base_columns + crossed_columns,
-            dnn_feature_columns=deep_columns,
-            dnn_hidden_units=[100, 50])
+    model_dir='/tmp/census_model',
+    linear_feature_columns=base_columns + crossed_columns,
+    dnn_feature_columns=deep_columns,
+    dnn_hidden_units=[100, 50])
 ```
 
 ## Training and Evaluating The Model
@@ -215,26 +215,18 @@ Before we train the model, let's read in the Census dataset as we did in the
 After reading in the data, you can train and evaluate the model:
 
 ```python
-# Set up input function generators for the train and test data files.
-train_input_fn = input_fn(
-    data_file=FLAGS.train_data,
-    num_epochs=FLAGS.epochs_per_eval,
-    shuffle=True,
-    batch_size=FLAGS.batch_size)
-eval_input_fn = input_fn(
-    data_file=FLAGS.test_data,
-    num_epochs=1,
-    shuffle=False,
-    batch_size=FLAGS.batch_size)
-
 # Train and evaluate the model every `FLAGS.epochs_per_eval` epochs.
 for n in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
-  model.train(input_fn=train_input_fn)
-  results = model.evaluate(input_fn=eval_input_fn)
+  model.train(input_fn=lambda: input_fn(
+      FLAGS.train_data, FLAGS.epochs_per_eval, True, FLAGS.batch_size))
+
+  results = model.evaluate(input_fn=lambda: input_fn(
+      FLAGS.test_data, 1, False, FLAGS.batch_size))
 
   # Display evaluation metrics
   print('Results at epoch', (n + 1) * FLAGS.epochs_per_eval)
   print('-' * 30)
+
   for key in sorted(results):
     print('%s: %s' % (key, results[key]))
 ```

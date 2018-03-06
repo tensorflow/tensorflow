@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.tf_export import tf_export
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -146,10 +147,12 @@ class _GraphTensorArray(object):
         # write into the TensorArray from a Tensor with a set device
         # will retroactively set the device value of this op.
         def create():
-          return gen_data_flow_ops._tensor_array_v3(
+          """Create the TensorArray op."""
+          return gen_data_flow_ops.tensor_array_v3(
               dtype=dtype,
               size=size,
               element_shape=element_shape,
+              identical_element_shapes=infer_shape,
               dynamic_size=dynamic_size,
               clear_after_read=clear_after_read,
               tensor_array_name=tensor_array_name,
@@ -234,7 +237,7 @@ class _GraphTensorArray(object):
       flow = self.flow
     with ops.name_scope(name, "TensorArrayGrad", [self._handle]):
       with ops.colocate_with(self._handle):
-        g_handle, unused_flow = gen_data_flow_ops._tensor_array_grad_v3(
+        g_handle, unused_flow = gen_data_flow_ops.tensor_array_grad_v3(
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
           flow = array_ops.identity(flow, name="gradient_flow")
@@ -249,7 +252,7 @@ class _GraphTensorArray(object):
 
   def read(self, index, name=None):
     """See TensorArray."""
-    value = gen_data_flow_ops._tensor_array_read_v3(
+    value = gen_data_flow_ops.tensor_array_read_v3(
         handle=self._handle,
         index=index,
         flow_in=self._flow,
@@ -267,7 +270,7 @@ class _GraphTensorArray(object):
       if self._infer_shape:
         self._merge_element_shape(value.shape)
       with self._maybe_colocate_with(value):
-        flow_out = gen_data_flow_ops._tensor_array_write_v3(
+        flow_out = gen_data_flow_ops.tensor_array_write_v3(
             handle=self._handle,
             index=index,
             value=value,
@@ -293,7 +296,7 @@ class _GraphTensorArray(object):
       element_shape = self._element_shape[0]
     else:
       element_shape = tensor_shape.TensorShape(None)
-    value = gen_data_flow_ops._tensor_array_gather_v3(
+    value = gen_data_flow_ops.tensor_array_gather_v3(
         handle=self._handle,
         indices=indices,
         flow_in=self._flow,
@@ -311,7 +314,7 @@ class _GraphTensorArray(object):
           tensor_shape.TensorShape(self._element_shape[0].dims[1:]))
     else:
       element_shape_except0 = tensor_shape.TensorShape(None)
-    value, _ = gen_data_flow_ops._tensor_array_concat_v3(
+    value, _ = gen_data_flow_ops.tensor_array_concat_v3(
         handle=self._handle,
         flow_in=self._flow,
         dtype=self._dtype,
@@ -338,7 +341,7 @@ class _GraphTensorArray(object):
       if self._infer_shape and context.in_graph_mode():
         self._merge_element_shape(value.shape[1:])
       with self._maybe_colocate_with(value):
-        flow_out = gen_data_flow_ops._tensor_array_scatter_v3(
+        flow_out = gen_data_flow_ops.tensor_array_scatter_v3(
             handle=self._handle,
             indices=indices,
             value=value,
@@ -367,7 +370,7 @@ class _GraphTensorArray(object):
               self._merge_element_shape(
                   tensor_shape.TensorShape([clengths[0]]).concatenate(
                       value.shape[1:]))
-        flow_out = gen_data_flow_ops._tensor_array_split_v3(
+        flow_out = gen_data_flow_ops.tensor_array_split_v3(
             handle=self._handle,
             value=value,
             lengths=lengths_64,
@@ -383,13 +386,13 @@ class _GraphTensorArray(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops._tensor_array_size_v3(
+    return gen_data_flow_ops.tensor_array_size_v3(
         handle=self._handle, flow_in=self.flow, name=name)
 
   @tf_should_use.should_use_result
   def close(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops._tensor_array_close_v3(
+    return gen_data_flow_ops.tensor_array_close_v3(
         handle=self._handle, name=name)
 
 # pylint: enable=protected-access
@@ -593,10 +596,7 @@ class _EagerTensorArray(object):
             "a previous read (perhaps try setting clear_after_read = false?)" %
             index)
       else:
-        raise errors_impl.InvalidArgumentError(
-            None, None,
-            "Could not read from TensorArray index %d because it has not yet "
-            "been written to." % index)
+        tensor = self._maybe_zero(index)
 
     if self._clear_after_read:
       self._tensor_array[index] = None
@@ -610,52 +610,36 @@ class _EagerTensorArray(object):
     _eager_write_no_copy(ta._implementation, index, value)  # pylint: disable=protected-access
     return ta
 
+  def _maybe_zero(self, ix):
+    val = self._tensor_array[ix]
+    if val is None:
+      val = self._tensor_array[ix] = array_ops.zeros(
+          shape=self._element_shape, dtype=self._dtype)
+    return val
+
   def stack(self, name=None):
     """See TensorArray."""
-    try:
-      return array_ops.stack(self._tensor_array, name=name)
-    except ValueError:
-      if None in self._tensor_array:
-        idx = self._tensor_array.index(None)
-        raise errors_impl.InvalidArgumentError(
-            None, None, "Could not read from TensorArray index %d because "
-            "it has not yet been written to." % idx)
-      else:
-        raise
+    if self._tensor_array:
+      for ix in range(len(self._tensor_array)):
+        self._maybe_zero(ix)
+    return array_ops.stack(self._tensor_array, name=name)
 
   def gather(self, indices, name=None):
     """See TensorArray."""
     del name  # not meaningful in Eager mode
-    return array_ops.stack([self._tensor_array[i] for i in indices.numpy()])
+    return array_ops.stack([self._maybe_zero(i) for i in indices.numpy()])
 
   def concat(self, name=None):
     """See TensorArray."""
     try:
-      return array_ops.concat(self._tensor_array, 0, name=name)
+      return array_ops.concat(
+          [self._maybe_zero(ix) for ix in range(len(self._tensor_array))],
+          0, name=name)
     except errors_impl.OpError:
       # Reproduce a subset of the error-handling for graph-mode TensorArrays.
       shapes = [t.shape for t in self._tensor_array]
       ndims = [s.ndims for s in shapes]
-      if None in self._tensor_array:
-        # Concatenating empty TensorArrays is permitted if the element
-        # shape is defined; the output is a tensor with shape
-        # [0] + self._element_shape[1:]
-        if all(t is None for t in self._tensor_array):
-          if self._element_shape is not None:
-            return constant_op.constant([], shape=[0] + self._element_shape[1:])
-          else:
-            raise errors_impl.UnimplementedError(
-                None, None, "TensorArray has size zero, but "
-                "element_shape_except0 %s is not fully defined. Currently only "
-                "static shapes are supported when concatenating zero-size "
-                "TensorArrays." % self._element_shape[1:])
-        # Concatenating a TensorArray in which some but not all entries have
-        # been written to is not allowed.
-        idx = self._tensor_array.index(None)
-        raise errors_impl.InvalidArgumentError(
-            None, None, "Could not read from TensorArray index %d because "
-            "it has not yet been written to." % idx)
-      elif 0 in ndims:
+      if 0 in ndims:
         idx = ndims.index(0)
         raise errors_impl.InvalidArgumentError(
             None, None, "Concat saw a scalar shape at index %d but requires "
@@ -669,7 +653,7 @@ class _EagerTensorArray(object):
     if len(tensors) > len(self._tensor_array) and not self._dynamic_size:
       raise ValueError(
           "Cannot unstack %d tensors into a TensorArray of static size %d" %
-          (len(tensors), len(self._tensors)))
+          (len(tensors), len(self._tensor_array)))
     ta = self._identity_without_array()
     ta._implementation._tensor_array = tensors  # pylint: disable=protected-access
     return ta
@@ -728,6 +712,7 @@ class _EagerTensorArray(object):
 # TensorArray is designed to hide an underlying implementation object
 # and as such accesses many of that object's hidden fields.
 # pylint: disable=protected-access
+@tf_export("TensorArray")
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 

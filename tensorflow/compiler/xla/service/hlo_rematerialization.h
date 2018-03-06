@@ -20,6 +20,7 @@
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
 namespace xla {
@@ -65,12 +66,15 @@ class HloRematerialization {
   // code generation.
   static StatusOr<bool> RematerializeAndSchedule(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      HloModule* hlo_module, SequentialHloOrdering::HloModuleSequence* sequence,
+      HloModule* hlo_module, SchedulerAlgorithm scheduler_algorithm,
+      SequentialHloOrdering::HloModuleSequence* sequence,
       RematerializationSizes* sizes = nullptr);
 
  protected:
-  HloRematerialization(const ShapeSizeFunction& size_function)
-      : size_function_(size_function) {}
+  HloRematerialization(SchedulerAlgorithm scheduler_algorithm,
+                       const ShapeSizeFunction& size_function)
+      : scheduler_algorithm_(scheduler_algorithm),
+        size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -102,6 +106,9 @@ class HloRematerialization {
   // instruction. Zero is returned if the instruction calls no computations.
   StatusOr<int64> CalledComputationsMemoryUsage(
       const HloInstruction* instruction) const;
+
+  // Selects an algorithm to use for HLO scheduling.
+  SchedulerAlgorithm scheduler_algorithm_;
 
   // Function which computes the size of the top-level buffer of a shape.
   const ShapeSizeFunction size_function_;

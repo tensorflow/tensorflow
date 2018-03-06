@@ -104,6 +104,9 @@ class StreamExecutor {
   // platform, false is returned.
   bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
+  // Releases any state associated with the previously loaded kernel.
+  void UnloadKernel(const KernelBase *kernel);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
@@ -478,7 +481,7 @@ class StreamExecutor {
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
-  bool BlockHostUntilDone(Stream *stream);
+  port::Status BlockHostUntilDone(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,

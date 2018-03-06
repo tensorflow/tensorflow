@@ -17,85 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import dataset_ops as contrib_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import deprecation
-
-
-class TextLineDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` comprising lines from one or more text files."""
-
-  @deprecation.deprecated(None, "Use `tf.data.TextLineDataset`.")
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TextLineDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
-        to buffer. A value of 0 results in the default buffering values chosen
-        based on the compression type.
-    """
-    dataset = readers.TextLineDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TextLineDataset, self).__init__(dataset)
-
-
-class TFRecordDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` comprising records from one or more TFRecord files."""
-
-  @deprecation.deprecated(None, "Use `tf.data.TFRecordDataset`.")
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TFRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes in the read buffer. 0 means no buffering.
-    """
-    dataset = readers.TFRecordDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TFRecordDataset, self).__init__(dataset)
-
-
-class FixedLengthRecordDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` of fixed-length records from one or more binary files."""
-
-  @deprecation.deprecated(None, "Use `tf.data.FixedLengthRecordDataset`.")
-  def __init__(self,
-               filenames,
-               record_bytes,
-               header_bytes=None,
-               footer_bytes=None,
-               buffer_size=None):
-    """Creates a `FixedLengthRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      record_bytes: A `tf.int64` scalar representing the number of bytes in
-        each record.
-      header_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to skip at the start of a file.
-      footer_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to ignore at the end of a file.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to buffer when reading.
-    """
-    dataset = readers.FixedLengthRecordDataset(
-        filenames, record_bytes, header_bytes, footer_bytes, buffer_size)
-    super(FixedLengthRecordDataset, self).__init__(dataset)
 
 
 def read_batch_features(file_pattern,
@@ -156,8 +85,7 @@ def read_batch_features(file_pattern,
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be called with a `filenames` tensor
-      and (optional) `reader_args` and returns a `Dataset` of serialized
-      Examples.
+      and (optional) `reader_args` and returns a `Dataset` of Examples.
     reader_args: Additional arguments to pass to the reader class.
     randomize_input: Whether the input should be randomized.
     num_epochs: Integer specifying the number of times to read through the
@@ -166,7 +94,7 @@ def read_batch_features(file_pattern,
       shuffling but would increase memory usage and startup time.
 
   Returns:
-    A dict from keys in features to Tensor or SparseTensor objects.
+    A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
   filenames = _get_file_names(file_pattern, randomize_input)
   if reader_args:
@@ -174,32 +102,17 @@ def read_batch_features(file_pattern,
   else:
     dataset = reader(filenames)
   if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda unused_k, v: v)
-  elif dataset.output_types != dtypes.string:
-    raise TypeError("`reader` must be a dataset of `tf.string` values, "
-                    "or `(tf.string, tf.string)` key-value pairs.")
+    dataset = dataset.map(lambda _, v: v)
   if num_epochs != 1:
     dataset = dataset.repeat(num_epochs)
   if randomize_input:
     dataset = dataset.shuffle(capacity)
   dataset = dataset.batch(batch_size)
-  dataset = dataset.map(lambda x: _parse_example(x, features))
+  dataset = dataset.map(lambda x: parsing_ops.parse_example(x, features))
+  dataset = dataset.prefetch(1)
   iterator = dataset.make_one_shot_iterator()
   outputs = iterator.get_next()
-  index = 0
-  result = {}
-  for key in sorted(features.keys()):
-    feature = features[key]
-    if isinstance(feature, parsing_ops.FixedLenFeature):
-      result[key] = outputs[index]
-      index += 1
-    else:
-      result[key] = sparse_tensor_lib.SparseTensor(
-          indices=outputs[index],
-          values=outputs[index + 1],
-          dense_shape=outputs[index + 2])
-      index += 3
-  return result
+  return outputs
 
 
 def _get_file_names(file_pattern, randomize_input):
@@ -233,26 +146,7 @@ def _get_file_names(file_pattern, randomize_input):
   return file_names
 
 
-def _parse_example(serialized, features):
-  parsed = parsing_ops.parse_example(serialized, features)
-  result = []
-  for key in sorted(features.keys()):
-    val = parsed[key]
-    if isinstance(val, sparse_tensor_lib.SparseTensor):
-      result.extend([val.indices, val.values, val.dense_shape])
-    else:
-      result.append(val)
-  return tuple(result)
-
-
-class SqlDataset(contrib_dataset_ops.Dataset):
-
-  def __init__(self, driver_name, data_source_name, query, output_types):
-    dataset = _SqlDataset(driver_name, data_source_name, query, output_types)
-    super(SqlDataset, self).__init__(dataset)
-
-
-class _SqlDataset(dataset_ops.Dataset):
+class SqlDataset(dataset_ops.Dataset):
   """A `Dataset` consisting of the results from a SQL query."""
 
   def __init__(self, driver_name, data_source_name, query, output_types):
@@ -284,7 +178,7 @@ class _SqlDataset(dataset_ops.Dataset):
       output_types: A tuple of `tf.DType` objects representing the types of the
         columns returned by `query`.
     """
-    super(_SqlDataset, self).__init__()
+    super(SqlDataset, self).__init__()
     self._driver_name = ops.convert_to_tensor(
         driver_name, dtype=dtypes.string, name="driver_name")
     self._data_source_name = ops.convert_to_tensor(
@@ -298,6 +192,10 @@ class _SqlDataset(dataset_ops.Dataset):
                                        self._data_source_name, self._query,
                                        nest.flatten(self.output_types),
                                        nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
 
   @property
   def output_shapes(self):

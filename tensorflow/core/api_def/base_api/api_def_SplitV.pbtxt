@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "SplitV"
+  in_arg {
+    name: "value"
+    description: <<END
+The tensor to split.
+END
+  }
+  in_arg {
+    name: "size_splits"
+    description: <<END
+list containing the sizes of each output tensor along the split
+dimension. Must sum to the dimension of value along split_dim.
+Can contain one -1 indicating that dimension is to be inferred.
+END
+  }
+  in_arg {
+    name: "split_dim"
+    rename_to: "axis"
+    description: <<END
+0-D.  The dimension along which to split.  Must be in the range
+`[-rank(value), rank(value))`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Tensors whose shape matches that of `value`
+except along `split_dim`, where their sizes are
+`size_splits[i]`.
+END
+  }
+  summary: "Splits a tensor into `num_split` tensors along one dimension."
+}

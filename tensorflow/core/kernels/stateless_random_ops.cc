@@ -50,9 +50,18 @@ class StatelessRandomOpBase : public OpKernel {
     if (shape.num_elements() == 0) return;
 
     // Grab the two seeds
-    const auto seed = seed_t.flat<int64>();
-    const uint64 seed0 = internal::SubtleMustCopy(seed(0));
-    const uint64 seed1 = internal::SubtleMustCopy(seed(1));
+    uint64 seed0;
+    uint64 seed1;
+    if (context->input_dtype(1) == DT_INT32) {
+      const auto seed = seed_t.flat<int32>();
+      seed0 = internal::SubtleMustCopy(seed(0));
+      seed1 = internal::SubtleMustCopy(seed(1));
+    } else {
+      CHECK_EQ(DT_INT64, context->input_dtype(1));
+      const auto seed = seed_t.flat<int64>();
+      seed0 = internal::SubtleMustCopy(seed(0));
+      seed1 = internal::SubtleMustCopy(seed(1));
+    }
 
     // Scramble the seeds so that the user doesn't need to worry about which
     // part of the seed needs to be strong.

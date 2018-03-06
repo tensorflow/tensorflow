@@ -109,14 +109,22 @@ class CpuCompiler : public LLVMCompiler {
   CpuCompiler();
   ~CpuCompiler() override {}
 
-  StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+  // Bring in
+  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  //     std::vector<std::unique_ptr<HloModule>> modules,
+  //     std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+  //        stream_execs)
+  using LLVMCompiler::Compile;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_execs) override;
+  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> module,
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module,
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,

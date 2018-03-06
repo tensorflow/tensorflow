@@ -572,6 +572,66 @@ TEST(GrpcSessionTest, Error) {
   Env::Default()->SleepForMicroseconds(2000000);
 }
 
+TEST(GrpcSessionTest, LongErrorMessage) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  const string& master = cluster->targets()[0];
+  const string& dev_a = cluster->devices()[0].name();
+  const string& dev_b = cluster->devices()[1].name();
+  LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  {
+    Graph g(OpRegistry::Global());
+
+    // a2 = a + error(a)
+    //
+    // Subgraph for "a" fails. The master will cancel the subgraph for
+    // "b" and then returns the Session::Run.
+    auto a = test::graph::Constant(&g, Tensor());
+    a->set_assigned_device_name(dev_a);
+    std::vector<char> long_string_buffer(1024 * 1024, 'x');
+    StringPiece long_string(long_string_buffer.data(), 1024 * 1024);
+    string name = strings::StrCat(long_string, "fantasia!");
+    auto a_err = test::graph::Error(&g, a, name);
+    a_err->set_assigned_device_name(dev_a);
+    auto a2 = test::graph::Add(&g, a, a_err);
+    a2->set_assigned_device_name(dev_a);
+    fetches.push_back(a2->name());
+
+    // b2 = b + delay(b)
+    //
+    // Subgraph for "b" sleeps at the node "b_delay". When the sleep
+    // finishes, the subgraph "b" will continue execution till it
+    // notices that it is canceled. Meanwhile, subgraph's executor
+    // and its related state (registered ops) should still be alive.
+    auto b = test::graph::Constant(&g, Tensor());
+    b->set_assigned_device_name(dev_b);
+    auto b_delay = test::graph::Delay(&g, b, Microseconds(1000000));
+    b_delay->set_assigned_device_name(dev_b);
+    auto b2 = test::graph::Add(&g, b, b_delay);
+    b2->set_assigned_device_name(dev_b);
+    fetches.push_back(b2->name());
+    test::graph::ToGraphDef(&g, &gdef);
+  }
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    Status status = session->Run({}, fetches, {}, nullptr);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
 TEST(SessionTest, SharedVar) {
   std::unique_ptr<test::TestCluster> cluster;
   TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));

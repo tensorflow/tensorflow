@@ -54,10 +54,12 @@ struct InflatePadAndShuffle {
 template <typename Device, typename Input, typename Filter, typename Output>
 void SpatialConvolutionFunc(const Device& d, Output output, Input input,
                             Filter filter, int row_stride, int col_stride,
+                            int row_dilation, int col_dilation,
                             const Eigen::PaddingType& padding) {
   // Need to swap row/col when calling Eigen.
   output.device(d) =
-      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding);
+      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding,
+                                col_dilation, row_dilation);
 }
 
 template <typename Device, typename T>
@@ -65,9 +67,10 @@ struct SpatialConvolution {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor output,
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor filter, int row_stride,
-                  int col_stride, const Eigen::PaddingType& padding) {
+                  int col_stride, int row_dilation, int col_dilation,
+                  const Eigen::PaddingType& padding) {
     SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
-                           padding);
+                           row_dilation, col_dilation, padding);
   }
 };
 
@@ -77,11 +80,12 @@ struct SpatialConvolution<Device, Eigen::half> {
                   typename TTypes<Eigen::half, 4>::Tensor output,
                   typename TTypes<Eigen::half, 4>::ConstTensor input,
                   typename TTypes<Eigen::half, 4>::ConstTensor filter,
-                  int row_stride, int col_stride,
-                  const Eigen::PaddingType& padding) {
+                  int row_stride, int col_stride, int row_dilation,
+                  int col_dilation, const Eigen::PaddingType& padding) {
     output.device(d) =
         Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
-                                  col_stride, row_stride, padding)
+                                  col_stride, row_stride, padding, col_dilation,
+                                  row_dilation)
             .cast<Eigen::half>();
   }
 };
@@ -91,27 +95,29 @@ struct SpatialConvolutionBackwardInput {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
                   typename TTypes<T, 4>::ConstTensor kernel,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride) {
+                  int row_stride, int col_stride, int row_dilation,
+                  int col_dilation) {
     // Need to swap row/col when calling Eigen.
     input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_cols, input_rows, col_stride,
-        row_stride);
+        kernel, output_backward, input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
   }
 };
 
 template <typename Device, typename T>
-struct SpatialConvolutionBackwardKernel {
+struct SpatialConvolutionBackwardFilter {
   void operator()(const Device& d,
                   typename TTypes<T, 4>::Tensor kernel_backward,
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int kernel_rows, int kernel_cols, int row_stride,
-                  int col_stride) {
+                  int row_stride, int col_stride, int row_dilation,
+                  int col_dilation) {
     // Need to swap row/col when calling Eigen.
     kernel_backward.device(d) = Eigen::SpatialConvolutionBackwardKernel(
-        input, output_backward, kernel_cols, kernel_rows, col_stride,
-        row_stride);
+        input, output_backward, kernel_backward.dimension(1),
+        kernel_backward.dimension(0), col_stride, row_stride, col_dilation,
+        row_dilation);
   }
 };
 

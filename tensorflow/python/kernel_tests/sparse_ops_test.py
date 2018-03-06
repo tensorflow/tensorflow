@@ -938,6 +938,7 @@ class SparseTransposeTest(test.TestCase):
           sp_trans = sparse_ops.sparse_transpose(sp_input, perm=perm)
           dn_trans = sparse_ops.sparse_tensor_to_dense(sp_trans).eval()
           expected_trans = array_ops.transpose(dn_input, perm=perm).eval()
+          self.assertAllEqual(expected_trans.shape, sp_trans.get_shape())
           self.assertAllEqual(dn_trans, expected_trans)
 
 

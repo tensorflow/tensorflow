@@ -17,260 +17,105 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
-import random
-
-import numpy as np
-
-from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.python.client import session
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import function
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.training import server_lib
 
 
-class FlatMapDatasetTest(test.TestCase):
+class FlatMapDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  # pylint: disable=g-long-lambda
-  def testFlatMapDataset(self):
-    repeats = [1, 2, 3, 4, 5, 0, 1]
-    components = np.array(repeats, dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensors([x]).repeat(x))
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+  def testCore(self):
+    # Complicated way of saying range(start, start+25).
+    def build_ds(start):
 
-    with self.test_session() as sess:
-      sess.run(init_op)
-      for i in repeats:
-        for _ in range(i):
-          self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+      def map_fn(x):
+        return dataset_ops.Dataset.range(x, x + 5)
 
-  def testNestedFlatMapDataset(self):
-    repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
-    components = np.array(repeats, dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
-                            .repeat(y))).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+      return dataset_ops.Dataset.range(start, start + 5 * 5, 5).flat_map(map_fn)
 
-    with self.test_session() as sess:
-      sess.run(init_op)
-      for row in repeats:
-        for i in row:
-          for _ in range(i):
-            self.assertEqual(i, sess.run(get_next))
+    self.run_core_tests(lambda: build_ds(0), lambda: build_ds(10), 25)
 
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testMapThenFlatMap(self):
 
-  def testSharedResourceNestedFlatMapDataset(self):
-    repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
-    components = np.array(repeats, dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
-                            .repeat(y))).make_initializable_iterator(
-                                shared_name="shared_flat_map_iterator"))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    def build_ds():
 
-    # Create two concurrent sessions that share the same iterator
-    # resource on the same server, and verify that a random
-    # interleaving of `Session.run(get_next)` calls on the two
-    # sessions yields the expected result.
-    server = server_lib.Server.create_local_server()
-    with session.Session(server.target) as sess1:
-      with session.Session(server.target) as sess2:
-        for _ in range(3):
-          sess = random.choice([sess1, sess2])
-          sess.run(init_op)
-          for row in repeats:
-            for i in row:
-              for _ in range(i):
-                sess = random.choice([sess1, sess2])
-                self.assertEqual(i, sess.run(get_next))
+      def flat_map_fn(_):
 
-        with self.assertRaises(errors.OutOfRangeError):
-          sess = random.choice([sess1, sess2])
-          sess.run(get_next)
+        def map_fn(y):
+          return 10 * math_ops.to_int32(y)
 
-  def testMapDict(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
-                .flat_map(lambda d: dataset_ops.Dataset.from_tensors(d["foo"])
-                          .repeat(d["bar"]))
-                .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+        return dataset_ops.Dataset.range(100).map(map_fn)
 
-    with self.test_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        for _ in range(i ** 2):
-          self.assertEqual(i * 2, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-  # pylint: enable=g-long-lambda
+      return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
 
+    self.run_core_tests(build_ds, None, 500)
 
-class InterleaveDatasetTest(test.TestCase):
+  def testCaptureDefunInMapFn(self):
 
-  def _interleave(self, lists, cycle_length, block_length):
-    num_open = 0
+    def build_ds():
 
-    # `all_iterators` acts as a queue of iterators over each element of `lists`.
-    all_iterators = [iter(l) for l in lists]
+      def map_fn(x):
 
-    # `open_iterators` are the iterators whose elements are currently being
-    # interleaved.
-    open_iterators = []
-    for i in range(cycle_length):
-      if all_iterators:
-        open_iterators.append(all_iterators.pop(0))
-        num_open += 1
-      else:
-        open_iterators.append(None)
+        @function.Defun(dtypes.int64)
+        def defun_fn(x):
+          return constant_op.constant(1000) + math_ops.to_int32(x)
 
-    while num_open or all_iterators:
-      for i in range(cycle_length):
-        if open_iterators[i] is None:
-          if all_iterators:
-            open_iterators[i] = all_iterators.pop(0)
-            num_open += 1
-          else:
-            continue
-        for _ in range(block_length):
-          try:
-            yield next(open_iterators[i])
-          except StopIteration:
-            open_iterators[i] = None
-            num_open -= 1
-            break
+        return dataset_ops.Dataset.from_tensor_slices([defun_fn(x)])
 
-  def testPythonImplementation(self):
-    input_lists = [[4, 4, 4, 4], [5, 5, 5, 5, 5], [6, 6, 6, 6, 6, 6],
-                   [4, 4, 4, 4], [5, 5, 5, 5, 5], [6, 6, 6, 6, 6, 6]]
+      return dataset_ops.Dataset.range(100).flat_map(map_fn)
 
-    # Cycle length 1 acts like `Dataset.flat_map()`.
-    expected_elements = itertools.chain(*input_lists)
-    for expected, produced in zip(
-        expected_elements, self._interleave(input_lists, 1, 1)):
-      self.assertEqual(expected, produced)
+    self.run_core_tests(build_ds, None, 100)
 
-    # Cycle length > 1.
-    expected_elements = [4, 5, 4, 5, 4, 5, 4,
-                         5, 5, 6, 6,  # NOTE(mrry): When we cycle back
-                                      # to a list and are already at
-                                      # the end of that list, we move
-                                      # on to the next element.
-                         4, 6, 4, 6, 4, 6, 4, 6, 5, 6, 5, 6, 5, 6, 5, 6, 5]
-    for expected, produced in zip(
-        expected_elements, self._interleave(input_lists, 2, 1)):
-      self.assertEqual(expected, produced)
+  def testDisallowVariableCapture(self):
 
-    # Cycle length > 1 and block length > 1.
-    expected_elements = [4, 4, 4, 5, 5, 5, 4, 5, 5, 6, 6, 6, 4, 4, 4, 6, 6, 6,
-                         4, 5, 5, 5, 6, 6, 6, 5, 5, 6, 6, 6]
-    for expected, produced in zip(
-        expected_elements, self._interleave(input_lists, 2, 3)):
-      self.assertEqual(expected, produced)
+    def build_ds():
+      test_var = variable_scope.get_variable(
+          name="test_var", shape=(), use_resource=True)
+      return dataset_ops.Dataset.range(5).flat_map(
+          lambda _: dataset_ops.Dataset.from_tensor_slices([test_var]))
 
-    # Cycle length > len(input_values).
-    expected_elements = [4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6,
-                         4, 4, 5, 5, 6, 6, 5, 6, 6, 5, 6, 6]
-    for expected, produced in zip(
-        expected_elements, self._interleave(input_lists, 7, 2)):
-      self.assertEqual(expected, produced)
+    self.verify_error_on_save(build_ds, 5, errors.InvalidArgumentError)
 
-  def testInterleaveDataset(self):
-    input_values = array_ops.placeholder(dtypes.int64, shape=[None])
-    cycle_length = array_ops.placeholder(dtypes.int64, shape=[])
-    block_length = array_ops.placeholder(dtypes.int64, shape=[])
+  def testDisallowCapturingStatefulOps(self):
 
-    repeat_count = 2
+    def build_ds():
 
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_values)
-        .repeat(repeat_count)
-        .interleave(lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
-                    cycle_length, block_length))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    next_element = iterator.get_next()
+      def flat_map_fn(_):
 
-    with self.test_session() as sess:
-      # Cycle length 1 acts like `Dataset.flat_map()`.
-      sess.run(init_op, feed_dict={input_values: [4, 5, 6],
-                                   cycle_length: 1, block_length: 3})
+        def map_fn(x):
+          return random_ops.random_uniform(
+              (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
 
-      for expected_element in self._interleave(
-          [[4] * 4, [5] * 5, [6] * 6] * repeat_count, 1, 3):
-        self.assertEqual(expected_element, sess.run(next_element))
+        return dataset_ops.Dataset.range(100).map(map_fn)
 
-      # Cycle length > 1.
-      # expected: [4, 5, 4, 5, 4, 5, 4, 5, 5, 6, 6, 4, 6, 4, 6, 4, 6, 4, 6, 5,
-      #            6, 5, 6, 5, 6, 5, 6, 5]
-      sess.run(init_op, feed_dict={input_values: [4, 5, 6],
-                                   cycle_length: 2, block_length: 1})
-      for expected_element in self._interleave(
-          [[4] * 4, [5] * 5, [6] * 6] * repeat_count, 2, 1):
-        self.assertEqual(expected_element, sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+      return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
 
-      # Cycle length > 1 and block length > 1.
-      # expected: [4, 4, 4, 5, 5, 5, 4, 5, 5, 6, 6, 6, 4, 4, 4, 6, 6, 6, 4, 5,
-      #            5, 5, 6, 6, 6, 5, 5, 6, 6, 6]
-      sess.run(init_op, feed_dict={input_values: [4, 5, 6],
-                                   cycle_length: 2, block_length: 3})
-      for expected_element in self._interleave(
-          [[4] * 4, [5] * 5, [6] * 6] * repeat_count, 2, 3):
-        self.assertEqual(expected_element, sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    self.verify_error_on_save(build_ds, 500, errors.InvalidArgumentError)
 
-      # Cycle length > len(input_values) * repeat_count.
-      # expected: [4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4, 5, 5, 6, 6, 4, 4,
-      #            5, 5, 6, 6, 5, 6, 6, 5, 6, 6]
-      sess.run(init_op, feed_dict={input_values: [4, 5, 6],
-                                   cycle_length: 7, block_length: 2})
-      for expected_element in self._interleave(
-          [[4] * 4, [5] * 5, [6] * 6] * repeat_count, 7, 2):
-        self.assertEqual(expected_element, sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+  def testSparseCore(self):
 
-      # Empty input.
-      sess.run(init_op, feed_dict={input_values: [],
-                                   cycle_length: 2, block_length: 3})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
 
-      # Non-empty input leading to empty output.
-      sess.run(init_op, feed_dict={input_values: [0, 0, 0],
-                                   cycle_length: 2, block_length: 3})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    def _flat_map_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
 
-      # Mixture of non-empty and empty interleaved datasets.
-      sess.run(init_op, feed_dict={input_values: [4, 0, 6],
-                                   cycle_length: 2, block_length: 3})
-      for expected_element in self._interleave(
-          [[4] * 4, [], [6] * 6] * repeat_count, 2, 3):
-        self.assertEqual(expected_element, sess.run(next_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    def _build_ds():
+      return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+
+    self.run_core_tests(_build_ds, None, 20)
 
 
 if __name__ == "__main__":

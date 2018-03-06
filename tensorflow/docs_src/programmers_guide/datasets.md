@@ -1,16 +1,16 @@
 # Importing Data
 
-The @{tf.data.Dataset$`Dataset`} API enables you to build complex input pipelines from
+The @{tf.data} API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
 for training. The pipeline for a text model might involve extracting symbols
 from raw text data, converting them to embedding identifiers with a lookup
-table, and batching together sequences of different lengths. The `Dataset` API
+table, and batching together sequences of different lengths. The `tf.data` API
 makes it easy to deal with large amounts of data, different data formats, and
 complicated transformations.
 
-The `Dataset` API introduces two new abstractions to TensorFlow:
+The `tf.data` API introduces two new abstractions to TensorFlow:
 
 * A `tf.data.Dataset` represents a sequence of elements, in which
   each element contains one or more `Tensor` objects. For example, in an image
@@ -18,11 +18,11 @@ The `Dataset` API introduces two new abstractions to TensorFlow:
   tensors representing the image data and a label. There are two distinct
   ways to create a dataset:
 
-  * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
+    * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
     dataset from
     one or more `tf.Tensor` objects.
 
-  * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
+    * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
     from one or more `tf.data.Dataset` objects.
 
 * A `tf.data.Iterator` provides the main way to extract elements from a
@@ -121,7 +121,7 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 ### Creating an iterator
 
 Once you have built a `Dataset` to represent your input data, the next step is to
-create an `Iterator` to access elements from that dataset.  The `Dataset` API
+create an `Iterator` to access elements from that dataset.  The `tf.data` API
 currently supports the following iterators, in increasing level of
 sophistication:
 
@@ -190,8 +190,8 @@ validation_dataset = tf.data.Dataset.range(50)
 # A reinitializable iterator is defined by its structure. We could use the
 # `output_types` and `output_shapes` properties of either `training_dataset`
 # or `validation_dataset` here, because they are compatible.
-iterator = Iterator.from_structure(training_dataset.output_types,
-                                   training_dataset.output_shapes)
+iterator = tf.data.Iterator.from_structure(training_dataset.output_types,
+                                           training_dataset.output_shapes)
 next_element = iterator.get_next()
 
 training_init_op = iterator.make_initializer(training_dataset)
@@ -322,9 +322,39 @@ sess.run(iterator.initializer)
 next1, (next2, next3) = iterator.get_next()
 ```
 
-Note that evaluating *any* of `next1`, `next2`, or `next3` will advance the
-iterator for all components. A typical consumer of an iterator will include all
-components in a single expression.
+Note that `next1`, `next2`, and `next3` are tensors produced by the
+same op/node (created by `Iterator.get_next()`). Therefore,  evaluating *any* of
+these tensors will advance the iterator for all components. A typical consumer
+of an iterator will include all components in a single expression.
+
+### Saving iterator state
+
+The @{tf.contrib.data.make_saveable_from_iterator} function creates a
+`SaveableObject` from an iterator, which can be used to save and
+restore the current state of the iterator (and, effectively, the whole input
+pipeline). A saveable object thus created can be added to @{tf.train.Saver}
+variables list or the `tf.GraphKeys.SAVEABLE_OBJECTS` collection for saving and
+restoring in the same manner as a @{tf.Variable}. Refer to
+@{$saved_model$Saving and Restoring} for details on how to save and restore
+variables.
+
+```python
+# Create saveable object from iterator.
+saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+
+# Save the iterator state by adding it to the saveable objects collection.
+tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
+saver = tf.train.Saver()
+
+with tf.Session() as sess:
+
+  if should_checkpoint:
+    saver.save(path_to_checkpoint)
+
+# Restore the iterator state.
+with tf.Session() as sess:
+  saver.restore(sess, path_to_checkpoint)
+```
 
 ## Reading input data
 
@@ -379,7 +409,7 @@ sess.run(iterator.initializer, feed_dict={features_placeholder: features,
 
 ### Consuming TFRecord data
 
-The `Dataset` API supports a variety of file formats so that you can process
+The `tf.data` API supports a variety of file formats so that you can process
 large datasets that do not fit in memory. For example, the TFRecord file format
 is a simple record-oriented binary format that many TensorFlow applications use
 for training data. The `tf.data.TFRecordDataset` class enables you to
@@ -454,9 +484,6 @@ dataset = dataset.flat_map(
         .skip(1)
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
-
-For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
-in @{$get_started/linear_regression}.
 
 <!--
 TODO(mrry): Add these sections.
@@ -540,7 +567,7 @@ import cv2
 # Use a custom OpenCV function to read the image, instead of the standard
 # TensorFlow `tf.read_file()` operation.
 def _read_py_function(filename, label):
-  image_decoded = cv2.imread(image_string, cv2.IMREAD_GRAYSCALE)
+  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
   return image_decoded, label
 
 # Use standard TensorFlow operations to resize the image to a fixed shape.
@@ -628,7 +655,7 @@ TODO(mrry): Add this section.
 
 ### Processing multiple epochs
 
-The `Dataset` API offers two main ways to process multiple epochs of the same
+The `tf.data` API offers two main ways to process multiple epochs of the same
 data.
 
 The simplest way to iterate over a dataset in multiple epochs is to use the
@@ -693,7 +720,7 @@ dataset = dataset.repeat()
 The @{tf.train.MonitoredTrainingSession} API simplifies many aspects of running
 TensorFlow in a distributed setting. `MonitoredTrainingSession` uses the
 @{tf.errors.OutOfRangeError} to signal that training has completed, so to use it
-with the `Dataset` API, we recommend using
+with the `tf.data` API, we recommend using
 `Dataset.make_one_shot_iterator()`. For example:
 
 ```python
@@ -735,7 +762,7 @@ def dataset_input_fn():
     parsed = tf.parse_single_example(record, keys_to_features)
 
     # Perform additional preprocessing on the parsed data.
-    image = tf.decode_jpeg(parsed["image_data"])
+    image = tf.image.decode_jpeg(parsed["image_data"])
     image = tf.reshape(image, [299, 299, 1])
     label = tf.cast(parsed["label"], tf.int32)
 

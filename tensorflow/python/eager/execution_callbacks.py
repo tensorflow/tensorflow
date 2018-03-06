@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import execute
 from tensorflow.python.platform import tf_logging as logging
 
 _DEFAULT_CALLBACK_ACTION = "raise"
@@ -103,10 +104,10 @@ class InfOrNanError(Exception):
 
 
 def inf_nan_callback(op_type,
-                     op_name,
-                     attrs,
                      inputs,
+                     attrs,
                      outputs,
+                     op_name,
                      check_inf=True,
                      check_nan=True,
                      action=_DEFAULT_CALLBACK_ACTION):
@@ -120,14 +121,14 @@ def inf_nan_callback(op_type,
 
   Args:
     op_type: Name of the TFE operation type (e.g., `MatMul`).
-    op_name: Name of the TFE operation. This name is set by client and can be
-      `None` if it unset.
-    attrs: Attributes of the TFE operation, as a tuple of alternating attribute
-      names and attribute values.
     inputs: The `list` of input tensors to the operation, currently unused by
       this callback.
+    attrs: Attributes of the TFE operation, as a tuple of alternating attribute
+      names and attribute values.
     outputs: The `list` of output tensors from the operation, checked by this
       callback for `inf` and `nan` values.
+    op_name: Name of the TFE operation. This name is set by client and can be
+      `None` if it unset.
     check_inf: (`bool`) Whether this callback should check for `inf` values in
       the output tensor values.
     check_nan: (`bool`) Whether this callback should check for `nan` values in
@@ -152,7 +153,7 @@ def inf_nan_callback(op_type,
       continue
 
     numpy_dtype = output.dtype.as_numpy_dtype
-    if (np.issubdtype(numpy_dtype, np.float) or
+    if (np.issubdtype(numpy_dtype, np.floating) or
         np.issubdtype(numpy_dtype, np.complex) or
         np.issubdtype(numpy_dtype, np.integer)):
       try:
@@ -186,26 +187,38 @@ def inf_nan_callback(op_type,
 
 
 def inf_callback(op_type,
-                 op_name,
-                 attrs,
                  inputs,
+                 attrs,
                  outputs,
+                 op_name,
                  action=_DEFAULT_CALLBACK_ACTION):
   """A specialization of `inf_nan_callback` that checks for `inf`s only."""
   inf_nan_callback(
-      op_type, op_name, attrs, inputs, outputs, check_inf=True, check_nan=False,
+      op_type,
+      inputs,
+      attrs,
+      outputs,
+      op_name,
+      check_inf=True,
+      check_nan=False,
       action=action)
 
 
 def nan_callback(op_type,
-                 op_name,
-                 attrs,
                  inputs,
+                 attrs,
                  outputs,
+                 op_name,
                  action=_DEFAULT_CALLBACK_ACTION):
   """A specialization of `inf_nan_callback` that checks for `nan`s only."""
   inf_nan_callback(
-      op_type, op_name, attrs, inputs, outputs, check_inf=False, check_nan=True,
+      op_type,
+      inputs,
+      attrs,
+      outputs,
+      op_name,
+      check_inf=False,
+      check_nan=True,
       action=action)
 
 
@@ -249,6 +262,7 @@ def add_execution_callback(callback):
       `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
   """
+  execute.execute = execute.execute_with_callbacks
   context.get_default_context().add_post_execution_callback(callback)
 
 

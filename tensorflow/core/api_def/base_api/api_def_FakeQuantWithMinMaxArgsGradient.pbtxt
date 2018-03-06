@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxArgsGradient"
+  in_arg {
+    name: "gradients"
+    description: <<END
+Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+END
+  }
+  in_arg {
+    name: "inputs"
+    description: <<END
+Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+`gradients * (inputs >= min && inputs <= max)`.
+END
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
+}

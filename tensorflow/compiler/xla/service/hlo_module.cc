@@ -35,14 +35,19 @@ namespace xla {
 HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle) {}
+      entry_computation_handle_(entry_computation_handle),
+      unique_id_(next_unique_module_id_++) {}
 
-HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      unique_id_(next_unique_module_id_++) {}
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
-    : name_(name), config_(config) {}
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(config),
+      unique_id_(next_unique_module_id_++) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -140,6 +145,21 @@ void HloModule::ReplaceComputations(
           }
           break;
         }
+        case HloOpcode::kConditional: {
+          HloComputation* new_true_computation =
+              tensorflow::gtl::FindWithDefault(
+                  replacements, instruction->true_computation(), nullptr);
+          if (new_true_computation != nullptr) {
+            instruction->set_true_computation(new_true_computation);
+          }
+          HloComputation* new_false_computation =
+              tensorflow::gtl::FindWithDefault(
+                  replacements, instruction->false_computation(), nullptr);
+          if (new_false_computation != nullptr) {
+            instruction->set_false_computation(new_false_computation);
+          }
+          break;
+        }
         case HloOpcode::kSelectAndScatter: {
           HloComputation* new_select = tensorflow::gtl::FindWithDefault(
               replacements, instruction->select(), nullptr);
@@ -170,23 +190,14 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString(bool include_large_constants) const {
+string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name() << ":\n\n";
+  s << "HloModule " << name() << "\n\n";
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    // Fusion computations are emitted with their fusion instruction and
-    // therefore don't need to be emitted as a separate comptutation in the
-    // module.
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
-    s << computation->ToString(
-             /*nested_level=*/0,
-             /*include_large_constants=*/include_large_constants)
-      << "\n\n";
+    s << computation->ToString(options) << "\n\n";
   }
   return s.str();
 }
@@ -238,8 +249,8 @@ StatusOr<ProgramShape> ProgramShapeFromProto(const HloModuleProto& module) {
           << "Entry computation has more than one parameter instruction "
              "with parameter number "
           << instruction.parameter_number();
-      parameters[instruction.parameter_number()] = {
-          instruction.parameter_name(), &instruction.shape()};
+      parameters[instruction.parameter_number()] = {instruction.name(),
+                                                    &instruction.shape()};
     }
   }
   TF_RET_CHECK(root != nullptr)
@@ -296,9 +307,16 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
   for (const HloComputationProto& computation_proto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
-                        HloComputation::CreateFromProto(
-                            module.get(), computation_proto, &computation_map));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloComputation> computation,
+        HloComputation::CreateFromProto(
+            module.get(), computation_proto, computation_map,
+            /*add_fused_computation=*/
+            [&module](std::unique_ptr<HloComputation> fused_computation) {
+              module->AddComputationInternal(std::move(fused_computation),
+                                             /*is_entry=*/false,
+                                             /*uniquify_names=*/false);
+            }));
     CHECK_NE(computation.get(), nullptr);
     TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
     string computation_name = computation->name();
@@ -458,6 +476,14 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
+int64 HloModule::instruction_count() const {
+  int64 n = 0;
+  for (const auto& computation : computations_) {
+    n += computation->instruction_count();
+  }
+  return n;
+}
+
 std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
@@ -516,7 +542,15 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
 
   std::unordered_map<HloComputation*, HloComputation*> clone_map;
   for (auto& computation : computations_) {
-    auto cloned_computation = computation->Clone(suffix);
+    if (computation->IsFusionComputation()) {
+      // Cloning of a fused computation is handled by its fusion instruction.
+      continue;
+    }
+
+    // When cloning a computation, pass in the new module, so that for any
+    // fusion instruction in this computation, the fused computation will be
+    // deep cloned to the new module.
+    auto cloned_computation = computation->Clone(suffix, module.get());
     InsertOrDie(&clone_map, computation.get(), cloned_computation.get());
 
     if (entry_computation_ == computation.get()) {
@@ -530,16 +564,37 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
     for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
-      instruction->ReplaceCalledComputations(
-          [&](HloComputation* hlo) { return FindOrDie(clone_map, hlo); });
+      instruction->ReplaceCalledComputations([&](HloComputation* hlo) {
+        if (hlo->IsFusionComputation()) {
+          // Cloning of a fused computation has already been handled when its
+          // fusion instruction is cloned. So this hlo computation is already
+          // the cloned one.
+          return hlo;
+        }
+        return FindOrDie(clone_map, hlo);
+      });
     }
   }
   return module;
+}
+
+HloComputation* HloModule::DeepCloneComputation(HloComputation* computation) {
+  HloComputation* clone = AddEmbeddedComputation(computation->Clone("", this));
+  TF_CHECK_OK(
+      clone->root_instruction()->Accept([this](HloInstruction* instruction) {
+        instruction->ReplaceCalledComputations([this](HloComputation* callee) {
+          return DeepCloneComputation(callee);
+        });
+        return Status::OK();
+      }));
+  return clone;
 }
 
 uint64 HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();
 }
+
+/* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
 
 }  // namespace xla

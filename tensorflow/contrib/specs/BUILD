@@ -23,7 +23,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
@@ -45,6 +44,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
 )

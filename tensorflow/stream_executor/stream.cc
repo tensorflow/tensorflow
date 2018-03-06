@@ -342,7 +342,7 @@ Stream &Stream::ThenBatchNormalizationForward(
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
     const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-    const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
     DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
     DeviceMemory<float> *offset_backprop) {
@@ -352,7 +352,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationBackward(
-          this, y_backprop, x, scale, mean, variance, x_desc, scale_offset_desc,
+          this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
           epsilon, x_backprop, scale_backprop, offset_backprop));
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -392,7 +392,7 @@ Stream &Stream::ThenBatchNormalizationForward(
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<Eigen::half> &y_backprop,
     const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-    const DeviceMemory<float> &mean, const DeviceMemory<float> &variance,
+    const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
     const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
     DeviceMemory<Eigen::half> *x_backprop, DeviceMemory<float> *scale_backprop,
@@ -403,7 +403,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationBackward(
-          this, y_backprop, x, scale, mean, variance, x_desc, scale_offset_desc,
+          this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
           epsilon, x_backprop, scale_backprop, offset_backprop));
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -5055,22 +5055,24 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-bool Stream::BlockHostUntilDone() {
+port::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
   if (!ok()) {
-    LOG(INFO)
-        << "stream " << this
-        << " did not block host until done; was already in an error state";
-    return false;
+    port::Status status = port::Status(
+        port::error::INTERNAL,
+        "stream did not block host until done; was already in an error state");
+    LOG(INFO) << status << " " << this;
+    return status;
   }
 
+  port::Status first_error;
   {
     // Wait until all active sub-streams have done their tasks.
     mutex_lock lock{mu_};
     for (auto &stream : sub_streams_) {
       if (!stream.second) {
-        CheckError(stream.first->BlockHostUntilDone());
+        first_error.Update(stream.first->BlockHostUntilDone());
         // Set this sub-stream as available.
         stream.second = true;
       }
@@ -5079,8 +5081,9 @@ bool Stream::BlockHostUntilDone() {
 
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  CheckError(parent_->BlockHostUntilDone(this));
-  return ok();
+  first_error.Update(parent_->BlockHostUntilDone(this));
+  CheckError(first_error.ok());
+  return first_error;
 }
 
 }  // namespace gputools

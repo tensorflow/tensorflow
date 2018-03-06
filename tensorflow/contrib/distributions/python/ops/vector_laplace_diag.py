@@ -101,10 +101,10 @@ class VectorLaplaceDiag(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 2-variate VectorLaplace.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[1., -1],
       scale_diag=[1, 2.])
 
@@ -118,7 +118,7 @@ class VectorLaplaceDiag(
   vla.prob([-1., 0]).eval()  # shape: []
 
   # Initialize a 3-batch, 2-variate scaled-identity VectorLaplace.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[1., -1],
       scale_identity_multiplier=[1, 2., 3])
 
@@ -136,7 +136,7 @@ class VectorLaplaceDiag(
   vla.prob([-1., 0]).eval()  # shape: [3]
 
   # Initialize a 2-batch of 3-variate VectorLaplace's.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[[1., 2, 3],
            [11, 22, 33]]           # shape: [2, 3]
       scale_diag=[[1., 2, 3],

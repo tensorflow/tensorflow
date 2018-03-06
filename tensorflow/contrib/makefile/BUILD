@@ -12,20 +12,3 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
-
-sh_test(
-    name = "build_all_linux",
-    size = "enormous",
-    srcs = ["build_all_linux.sh"],
-    data = [
-        "//tensorflow:all_opensource_files",
-        "//third_party/eigen3:all_files",
-        "//third_party/fft2d:all_files",
-    ],
-    tags = [
-        "manual",
-        "no_gpu",
-        "no_oss",
-        "notap",
-    ],
-)

@@ -44,13 +44,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "version",
+    hdrs = ["version.h"],
+    visibility = ["//visibility:public"],
+)
+
 tf_cc_binary(
     name = "capture_tpu_profile",
-    srcs = ["capture_tpu_profile.cc"],
-    visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
+    srcs = [
+        "capture_tpu_profile.cc",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":dump_tpu_profile",
         ":tpu_profiler_proto_cc",
+        ":version",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
@@ -92,6 +101,13 @@ tf_cc_test(
 tf_proto_library_cc(
     name = "op_profile_proto",
     srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library_cc(
+    name = "tf_op_stats_proto",
+    srcs = ["tf_op_stats.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )

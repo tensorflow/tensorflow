@@ -109,6 +109,9 @@ class AssignOp : public OpKernel {
         OP_REQUIRES_OK(
             context, context->allocate_persistent(old_lhs.dtype(), rhs.shape(),
                                                   &copy, &copyTensor, attr));
+        // We track memory of variables in variable ops instead of in this
+        // assign op.
+        context->clear_recorded_memory();
         context->replace_ref_input(0, *copyTensor, /* lock_held */ true);
         if (use_exclusive_lock_) {
           Copy(context, copyTensor, rhs);

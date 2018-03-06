@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.platform import resource_loader
 
 __all__ = ["sparsemax"]
 

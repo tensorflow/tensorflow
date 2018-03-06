@@ -30,12 +30,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.training import checkpointable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(object):
+class Metric(checkpointable.CheckpointableBase):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:
@@ -49,6 +49,20 @@ class Metric(object):
 
   Example use with graph execution:
 
+  ```python
+  m = SomeMetric(...)
+  inputs = ... # Some tensors to compute the metric on.
+  m_update = m(inputs)
+  # Variables defined in first call, so get the initialization op afterwards.
+  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_result = m.result()
+  with tf.Session() as sess:
+    sess.run(m_init)
+    for input in ...:
+      sess.run(m_update)
+    print(sess.run(m_result))
+  ```
+  Example use with graph execution with placeholders and feed_dict:
   ```python
   m = SomeMetric(...)
   m_placeholder = tf.placeholder(...)
@@ -73,17 +87,18 @@ class Metric(object):
   * `result()`: Computes and returns a final value for the metric
     from the variables in `self`.
 
-  Decendants may override `aggregate()`, but usually won't need to.  It
+  Descendants may override `aggregate()`, but usually won't need to.  It
   adds in the state from a list of metrics of the same type as `self`.
   (Default is to sum all the variables.) Note that users should not call
   `aggregate()`, it is for use by TensorFlow infrastructure.
   """
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, use_global_variables=False):
     self._built = False
     self._vars = []
     self._initial_values = {}
     self._updates = []
+    self._use_global_variables = use_global_variables
     name = name or self.__class__.__name__
     # Replace things like spaces in name to create a valid scope name.
     scope_name = _to_replace.sub("_", name)
@@ -107,6 +122,7 @@ class Metric(object):
     """Returns op to execute to update this metric for these inputs.
 
     Returns None if eager execution is enabled.
+    Returns a graph-mode function if graph execution is enabled.
 
     Args:
       *args:
@@ -183,6 +199,13 @@ class Metric(object):
     """Computes and returns a final value for the metric."""
     raise NotImplementedError("Metrics must define a result() member function")
 
+  def value(self):
+    """In graph mode returns the result Tensor while in eager the callable."""
+    if context.in_graph_mode():
+      return self.result()
+    else:
+      return self.result
+
   # We can support two different strategies of for doing data-parallel
   # distributed metric computations:
   # * Put metric variables on the first device and rely on small
@@ -223,17 +246,29 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    collections = None if context.in_eager_mode() else [
-        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
-    ]
-    v = variable_scope.get_variable(
-        name,
-        shape,
-        dtype,
-        initializer,
+    if context.in_eager_mode():
+      collections = None
+    else:
+      if self._use_global_variables:
+        collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+      else:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      collections += [ops.GraphKeys.METRIC_VARIABLES]
+    # Variables are Checkpointable dependencies of Metrics regardless of the
+    # global/local distinction. Users can avoid saving variables by not adding a
+    # dependency on the Metric.
+    v = self._add_variable_with_custom_getter(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
         trainable=False,
         collections=collections,
-        use_resource=True)
+        use_resource=True,
+        getter=variable_scope.get_variable,
+        # Raise duplicate variable exceptions from get_variable rather than
+        # Checkpointable.
+        overwrite=True)
     self._vars.append(v)
     if context.in_eager_mode():
       self._initial_values[v] = v.value()
@@ -245,8 +280,10 @@ class Mean(Metric):
   # TODO(josh11b): Maybe have a dtype argument that defaults to tf.float64?
   # Or defaults to type of the input if it is tf.float32, else tf.float64?
 
-  def __init__(self, name=None, dtype=dtypes.float64):
-    super(Mean, self).__init__(name=name)
+  def __init__(self, name=None, dtype=dtypes.float64,
+               use_global_variables=False):
+    super(Mean, self).__init__(name=name,
+                               use_global_variables=use_global_variables)
     self.dtype = dtype
 
   def build(self, *args, **kwargs):
@@ -269,6 +306,9 @@ class Mean(Metric):
     Args:
       values: Tensor with the per-example value.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     if weights is None:
       self.denom.assign_add(
@@ -280,6 +320,9 @@ class Mean(Metric):
       self.denom.assign_add(math_ops.reduce_sum(weights))
       values = math_ops.cast(values, self.dtype) * weights
       self.numer.assign_add(math_ops.reduce_sum(values))
+    if weights is None:
+      return values
+    return values, weights
 
   def result(self):
     t = self.numer / self.denom
@@ -307,7 +350,13 @@ class Accuracy(Mean):
         per element of the Tensor.
       predictions: Tensor with the predicted label for each example.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, dtypes.float64)
     super(Accuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights

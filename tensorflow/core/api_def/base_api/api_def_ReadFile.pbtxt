@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "ReadFile"
+  summary: "Reads and outputs the entire contents of the input filename."
+}

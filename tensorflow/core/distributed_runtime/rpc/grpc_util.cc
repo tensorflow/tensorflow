@@ -135,25 +135,4 @@ bool GrpcMaybeParseProto(const grpc::ByteBuffer& src, string* dst) {
   return true;
 }
 
-void GrpcCounter::Increment() {
-  mutex_lock l(mu_);
-  counter_++;
-}
-
-void GrpcCounter::Decrement() {
-  mutex_lock l(mu_);
-  DCHECK_GT(counter_, 0);
-  counter_--;
-  if (counter_ == 0) {
-    empty_.notify_all();
-  }
-}
-
-void GrpcCounter::WaitUntilUnused() {
-  mutex_lock l(mu_);
-  while (counter_ != 0) {
-    empty_.wait(l);
-  }
-}
-
 }  // namespace tensorflow

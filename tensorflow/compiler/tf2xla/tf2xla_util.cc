@@ -88,8 +88,8 @@ Status ValidateConfig(const tf2xla::Config& config) {
     TF_RETURN_IF_ERROR(CheckNameDuplicates("fetch", fetch.name(), &names));
   }
   TF_RETURN_IF_ERROR(CheckFeedFetchNameConflicts("fetch", names));
-  if (config.feed().empty() || config.fetch().empty()) {
-    return errors::InvalidArgument("feeds and fetches must be specified");
+  if (config.fetch().empty()) {
+    return errors::InvalidArgument("fetches must be specified");
   }
   return Status::OK();
 }

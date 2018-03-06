@@ -14,8 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/path.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#if !defined(PLATFORM_WINDOWS)
+#include <unistd.h>
+#endif
+
+#include <vector>
+
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace io {
@@ -60,8 +74,7 @@ std::pair<StringPiece, StringPiece> SplitPath(StringPiece uri) {
 
   auto pos = path.rfind('/');
 #ifdef PLATFORM_WINDOWS
-  if (pos == StringPiece::npos)
-    pos = path.rfind('\\');
+  if (pos == StringPiece::npos) pos = path.rfind('\\');
 #endif
   // Handle the case with no '/' in 'path'.
   if (pos == StringPiece::npos)
@@ -112,7 +125,7 @@ StringPiece Extension(StringPiece path) {
 
 string CleanPath(StringPiece unclean_path) {
   string path = unclean_path.ToString();
-  const char *src = path.c_str();
+  const char* src = path.c_str();
   string::iterator dst = path.begin();
 
   // Check for absolute path and determine initial backtrack limit.
@@ -227,6 +240,53 @@ string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
     return path.ToString();
   }
   return strings::StrCat(scheme, "://", host, path);
+}
+
+// Returns a unique number every time it is called.
+int64 UniqueId() {
+  static mutex mu(LINKER_INITIALIZED);
+  static int64 id = 0;
+  mutex_lock l(mu);
+  return ++id;
+}
+
+string GetTempFilename(const string& extension) {
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
+#else
+  for (const char* dir : std::vector<const char*>(
+           {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
+    if (!dir || !dir[0]) {
+      continue;
+    }
+    struct stat statbuf;
+    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
+      // UniqueId is added here because mkstemps is not as thread safe as it
+      // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
+      // the problem.
+      string tmp_filepath;
+      int fd;
+      if (extension.length()) {
+        tmp_filepath = io::JoinPath(
+            dir, strings::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.",
+                                 extension));
+        fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
+      } else {
+        tmp_filepath = io::JoinPath(
+            dir,
+            strings::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX"));
+        fd = mkstemp(&tmp_filepath[0]);
+      }
+      if (fd < 0) {
+        LOG(FATAL) << "Failed to create temp file.";
+      } else {
+        close(fd);
+        return tmp_filepath;
+      }
+    }
+  }
+  LOG(FATAL) << "No temp directory found.";
+#endif
 }
 
 }  // namespace io

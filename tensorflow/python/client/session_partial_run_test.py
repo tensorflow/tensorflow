@@ -199,11 +199,11 @@ class PartialRunTestMethods(object):
   def testPartialRunSetupNoFeedsPassed(self):
     sess = session.Session()
     r1 = constant_op.constant([6.0])
-   
+
     h = sess.partial_run_setup([r1])
     result1 = sess.partial_run(h, r1)
     self.assertEqual([6.0], result1)
-      
+
   def testPartialRunDirect(self):
     self.RunTestPartialRun(session.Session())
 

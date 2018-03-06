@@ -30,13 +30,13 @@ If you are installing TensorFlow with GPU support using one of the mechanisms
 described in this guide, then the following NVIDIA software must be
 installed on your system:
 
-  * CUDA® Toolkit 8.0. For details, see
+  * CUDA® Toolkit 9.0. For details, see
     [NVIDIA's
     documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/)
     Ensure that you append the relevant Cuda pathnames to the `%PATH%`
     environment variable as described in the NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6.1. For details, see
+  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
+  * cuDNN v7.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
@@ -47,7 +47,7 @@ installed on your system:
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -84,7 +84,7 @@ install it now:
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
   * [Python 3.6.x 64-bit from python.org](https://www.python.org/downloads/release/python-362/)
 
--TensorFlow supports Python 3.5.x and 3.6.x on Windows.
+TensorFlow supports Python 3.5.x and 3.6.x on Windows.
 Note that Python 3 comes with the pip3 package manager, which is the
 program you'll use to install TensorFlow.
 
@@ -97,7 +97,6 @@ version of TensorFlow, enter the following command:
 To install the GPU version of TensorFlow, enter the following command:
 
 <pre>C:\> <b>pip3 install --upgrade tensorflow-gpu</b></pre>
-
 
 ## Installing with Anaconda
 
@@ -154,8 +153,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
-TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
@@ -219,6 +217,11 @@ ImportError: cannot import name 'descriptor'</pre>
   </td>
 </tr>
 
+<tr>
+  <td><a href="https://stackoverflow.com/q/38896424">38896424</a></td>
+  <td>
+  <pre>Could not find a version that satisfies the requirement tensorflow</pre>
+  </td>
+</tr>
 
 </table>
-

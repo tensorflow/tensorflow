@@ -406,51 +406,9 @@ tf_cc_test(
 )
 
 # Learner/stochastic
-
-cc_library(
-    name = "feature-column-handlers",
-    srcs = [
-        "learner/stochastic/handlers/bias-feature-column-handler.cc",
-        "learner/stochastic/handlers/categorical-feature-column-handler.cc",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler.cc",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc",
-    ],
-    hdrs = [
-        "learner/stochastic/handlers/bias-feature-column-handler.h",
-        "learner/stochastic/handlers/categorical-feature-column-handler.h",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler.h",
-        "learner/stochastic/handlers/feature-column-handler.h",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.h",
-    ],
-    deps = [
-        ":feature-split-candidate",
-        ":feature-stats-accumulator",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "feature-column-handlers_test",
-    size = "small",
-    srcs = [
-        "learner/stochastic/handlers/bias-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/categorical-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/dense-quantized-feature-column-handler_test.cc",
-        "learner/stochastic/handlers/sparse-quantized-feature-column-handler_test.cc",
-    ],
-    deps = [
-        ":feature-column-handlers",
-        "//tensorflow/core:tensor_testutil",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "gradient-stats",
-    hdrs = ["learner/stochastic/stats/gradient-stats.h"],
+    hdrs = ["learner/common/stats/gradient-stats.h"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -459,7 +417,7 @@ cc_library(
 
 cc_library(
     name = "node-stats",
-    hdrs = ["learner/stochastic/stats/node-stats.h"],
+    hdrs = ["learner/common/stats/node-stats.h"],
     deps = [
         ":gradient-stats",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
@@ -471,7 +429,7 @@ cc_library(
 
 cc_library(
     name = "split-stats",
-    hdrs = ["learner/stochastic/stats/split-stats.h"],
+    hdrs = ["learner/common/stats/split-stats.h"],
     deps = [
         ":node-stats",
     ],
@@ -479,7 +437,7 @@ cc_library(
 
 cc_library(
     name = "feature-split-candidate",
-    hdrs = ["learner/stochastic/stats/feature-split-candidate.h"],
+    hdrs = ["learner/common/stats/feature-split-candidate.h"],
     deps = [
         ":split-stats",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
@@ -489,7 +447,7 @@ cc_library(
 tf_cc_test(
     name = "node-stats_test",
     size = "small",
-    srcs = ["learner/stochastic/stats/node-stats_test.cc"],
+    srcs = ["learner/common/stats/node-stats_test.cc"],
     deps = [
         ":node-stats",
         "//tensorflow/core:tensor_testutil",

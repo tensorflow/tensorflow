@@ -1,8 +1,9 @@
 path: "tensorflow.keras.layers.Lambda"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.core.Lambda\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -90,7 +91,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'function\', \'mask\', \'arguments\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'function\', \'output_shape\', \'mask\', \'arguments\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -123,6 +124,10 @@ tf_class {
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

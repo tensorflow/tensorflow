@@ -19,6 +19,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "STRIPPED_DEFAULT_ATTRS_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "STRIPPED_OP_LIST_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }

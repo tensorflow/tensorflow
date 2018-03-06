@@ -1,0 +1,14 @@
+op {
+  graph_op_name: "Sub"
+  endpoint {
+    name: "Subtract"
+  }
+  endpoint {
+    name: "Sub"
+  }
+  summary: "Returns x - y element-wise."
+  description: <<END
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}

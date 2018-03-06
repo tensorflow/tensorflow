@@ -22,9 +22,9 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import test_util
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import Invert
+from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import _gen_mask
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import masked_autoregressive_default_template
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import MaskedAutoregressiveFlow
-from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive_impl import _gen_mask
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -146,6 +146,18 @@ class MaskedAutoregressiveFlowShiftOnlyTest(MaskedAutoregressiveFlowTest):
         "shift_and_log_scale_fn": masked_autoregressive_default_template(
             hidden_layers=[2], shift_only=True),
         "is_constant_jacobian": True,
+    }
+
+
+class MaskedAutoregressiveFlowUnrollLoopTest(MaskedAutoregressiveFlowTest):
+
+  @property
+  def _autoregressive_flow_kwargs(self):
+    return {
+        "shift_and_log_scale_fn": masked_autoregressive_default_template(
+            hidden_layers=[2], shift_only=False),
+        "is_constant_jacobian": False,
+        "unroll_loop": True,
     }
 
 

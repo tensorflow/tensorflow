@@ -50,8 +50,8 @@ genrule(
            "-e 's/@ac_cv_have_stddef_h@/1/g' " +
            "-e 's/@ac_cv_have_stdint_h@/1/g' " +
            select({
-               "@%ws%//tensorflow:windows": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
-               "@%ws%//tensorflow:windows_msvc": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
+               "@org_tensorflow//tensorflow:windows": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
+               "@org_tensorflow//tensorflow:windows_msvc": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
                "//conditions:default": "-e 's/@ac_cv_have_sys_uio_h@/1/g' ",
            }) +
            "-e 's/@SNAPPY_MAJOR@/1/g' " +

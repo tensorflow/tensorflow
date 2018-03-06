@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/node_builder.h"
-
 
 namespace tensorflow {
 namespace {
@@ -35,7 +33,7 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // Replaces occurrences of the "AccumulateNV2" stub operator with a graph of
 // lower-level ops. The graph is equivalent (modulo certain corner cases)
 // to the semantics of the original accumulate_n() Python op in math_ops.py.
-// Implementing the op with a rewrite allows this new variant of accumulate_n 
+// Implementing the op with a rewrite allows this new variant of accumulate_n
 // to be differentiable.
 //
 // The binary code that generates AccumulateNV2 stub ops is located in a
@@ -44,7 +42,6 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // third-party libraries aren't currently supported.
 class AccumulateNV2RemovePass : public GraphOptimizationPass {
  public:
-
   Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
@@ -36,13 +37,7 @@ inline PyObject* PyType(PyObject* obj) {
 }
 
 bool IsPyString(PyObject* obj) {
-  // TODO(josh11b): Support unicode strings in Python 2? bytearrays? NumPy string
-  // types?
-#if PY_MAJOR_VERSION >= 3
   return PyBytes_Check(obj) || PyUnicode_Check(obj);
-#else
-  return PyBytes_Check(obj);
-#endif
 }
 
 bool IsPyInt(PyObject* obj) {
@@ -95,12 +90,25 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
       *dtype = DT_STRING;
     } else if (PySequence_Check(obj)) {
       auto length = PySequence_Length(obj);
-      shape->AddDim(length);
       if (length > 0) {
+        shape->AddDim(length);
         obj = PySequence_GetItem(obj, 0);
         continue;
-      } else {
+      } else if (length == 0) {
+        shape->AddDim(length);
         *dtype = DT_INVALID;  // Invalid dtype for empty tensors.
+      } else {
+        // The sequence does not have a valid length (PySequence_Length < 0).
+        if (PyErr_Occurred()) {
+          // PySequence_Length failed and set an exception. Fetch the message
+          // and convert it to a failed status.
+          return errors::InvalidArgument(PyExceptionFetch());
+        } else {
+          // This is almost certainly dead code: PySequence_Length failed but
+          // did not set an exception.
+          return errors::InvalidArgument(
+              "Attempted to convert an invalid sequence to a Tensor.");
+        }
       }
     } else if (IsPyFloat(obj)) {
       *dtype = DT_DOUBLE;
@@ -309,15 +317,21 @@ const char* ConvertOneString(PyObject* v, string* out) {
     out->assign(PyBytes_AS_STRING(v), PyBytes_GET_SIZE(v));
     return nullptr;
   }
-#if PY_MAJOR_VERSION >= 3
   if (PyUnicode_Check(v)) {
+#if PY_MAJOR_VERSION >= 3
     Py_ssize_t size;
     const char* str = PyUnicode_AsUTF8AndSize(v, &size);
     if (str == nullptr) return ErrorConvertingUnicodeString;
     out->assign(str, size);
     return nullptr;
-  }
+#else
+    PyObject* py_str = PyUnicode_AsUTF8String(v);
+    if (py_str == nullptr) return ErrorConvertingUnicodeString;
+    out->assign(PyBytes_AS_STRING(py_str), PyBytes_GET_SIZE(py_str));
+    Py_DECREF(py_str);
+    return nullptr;
 #endif
+  }
   return ErrorMixedTypes;
 }
 

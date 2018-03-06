@@ -286,13 +286,14 @@ BM_ResizeBicubicDev(32, 128, 3);
 BM_ResizeBicubicDev(32, 512, 3);
 BM_ResizeBicubicDev(32, 1024, 3);
 
-#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                          \
-  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE *  \
-                            CHANNELS * 8 * 8);                                 \
-    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))         \
-        .Run(iters);                                                           \
-  }                                                                            \
+#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                         \
+  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(         \
+      int iters) {                                                            \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE * \
+                            CHANNELS * 8 * 8);                                \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))        \
+        .Run(iters);                                                          \
+  }                                                                           \
   BENCHMARK(BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS);
 
 BM_ResizeBicubicExpand(12, 48, 1);

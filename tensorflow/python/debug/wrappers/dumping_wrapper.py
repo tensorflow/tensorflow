@@ -73,6 +73,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter,
         pass_through_operrors=pass_through_operrors)
 
+    session_root = os.path.expanduser(session_root)
     if gfile.Exists(session_root):
       if not gfile.IsDirectory(session_root):
         raise ValueError(
