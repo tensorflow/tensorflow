@@ -396,7 +396,7 @@ class Network(base_layer.Layer):
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
-      _, output_masks = self._run_internal_graph(inputs, masks)
+      _, output_masks = self._run_internal_graph(inputs, mask=masks)
       return output_masks
 
   @property
