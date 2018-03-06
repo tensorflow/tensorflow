@@ -362,10 +362,10 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertTrue(tpu_cluster_resolver._inGke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        tpu_cluster_resolver._gkeMaster())
+        compat.as_bytes(tpu_cluster_resolver._gkeMaster()))
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        tpu_cluster_resolver.get_master())
+        compat.as_bytes(tpu_cluster_resolver.get_master()))
     del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
 
