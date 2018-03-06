@@ -345,6 +345,33 @@ class _RestructuredDataset(dataset_ops.Dataset):
     return self._output_shapes
 
 
+def assert_element_shape(shapes):
+  """Set the shape of this `Dataset`.
+
+  ```python
+  shapes = [tf.TensorShape([16, 256]), tf.TensorShape(None)]
+  result = dataset.apply(tf.contrib.data.assert_element_shape(shapes))
+  print(result.output_shapes)  # ==> "((16, 256), <unknown>)"
+  ```
+
+  Args:
+    shapes: A nested structure of `tf.TensorShape` objects.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.data.Dataset.apply}
+  """
+
+  def _apply_fn(dataset):
+    return _RestructuredDataset(
+      dataset,
+      dataset.output_types,
+      output_shapes=shapes,
+      output_classes=dataset.output_classes)
+
+  return _apply_fn
+
+
 class _MapAndBatchDataset(dataset_ops.MapDataset):
   """A `Dataset` that maps a function over a batch of elements."""
 
