@@ -27,8 +27,7 @@ TEST(CudaLibdevicePathTest, LibdevicePath) {
   VLOG(2) << "Libdevice root = " << LibdeviceRoot();
   std::vector<string> libdevice_files;
   TF_EXPECT_OK(Env::Default()->GetMatchingPaths(
-      io::JoinPath(LibdeviceRoot(), "libdevice.*.bc"),
-      &libdevice_files));
+      io::JoinPath(LibdeviceRoot(), "libdevice.*.bc"), &libdevice_files));
   EXPECT_LT(0, libdevice_files.size());
 }
 #endif

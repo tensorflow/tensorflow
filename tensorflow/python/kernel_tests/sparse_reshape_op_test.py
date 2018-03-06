@@ -57,6 +57,25 @@ class SparseReshapeTest(test.TestCase):
     sp_output = sparse_ops.sparse_reshape(sp_input, shape=(1, 5, 2, 3))
     self.assertAllEqual((1, 5, 2, 3), sp_output.get_shape())
 
+  def testStaticShapeInfoPreservedWithInferredDims(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_2x3x4())
+    self.assertAllEqual((2, 3, 4), sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reshape(sp_input, shape=(2, -1))
+    self.assertAllEqual((2, 3 * 4), sp_output.get_shape())
+
+  def testRaisesIfMoreThanOneInferredDim(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_2x3x4())
+    with self.assertRaisesRegexp(ValueError, "At most one dimension can"):
+      sparse_ops.sparse_reshape(sp_input, shape=(-1, 2, -1))
+
+  def testRaisesIfInferredShapeNotPossible(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_2x3x4())
+    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+      sparse_ops.sparse_reshape(sp_input, shape=(-1, 7))
+
   def testSameShape(self):
     with self.test_session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6()
@@ -196,7 +215,7 @@ class SparseReshapeTest(test.TestCase):
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1, -1])
-      with self.assertRaisesOpError("only one output shape size may be -1"):
+      with self.assertRaisesOpError("only one output dimension may be -1"):
         sess.run(sp_output, {sp_input: input_val})
 
   def testProvideStaticallyMismatchedSizes(self):

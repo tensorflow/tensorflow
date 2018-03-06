@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 from math import log10
 import os
 import tempfile
@@ -25,14 +26,13 @@ import numpy as np
 
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 
 
 try:
@@ -63,7 +63,7 @@ def simple_functional_model():
   return model
 
 
-def get_resource_for_simple_model(is_sequential, is_evaluate):
+def get_resource_for_simple_model(is_sequential=True, is_evaluate=False):
   model = simple_sequential_model(
   ) if is_sequential else simple_functional_model()
   if is_sequential:
@@ -79,22 +79,17 @@ def get_resource_for_simple_model(is_sequential, is_evaluate):
   y_test = keras.utils.to_categorical(y_test)
 
   train_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: np.array(x_train, dtype=np.float32)},
-      y=np.array(y_train, dtype=np.float32),
+      x={input_name: x_train},
+      y=y_train,
       shuffle=False,
       num_epochs=None,
       batch_size=16)
 
   evaluate_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: np.array(x_test, dtype=np.float32)},
-      y=np.array(y_test, dtype=np.float32),
-      num_epochs=1,
-      shuffle=False)
+      x={input_name: x_test}, y=y_test, num_epochs=1, shuffle=False)
 
   predict_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: np.array(x_test, dtype=np.float32)},
-      num_epochs=1,
-      shuffle=False)
+      x={input_name: x_test}, num_epochs=1, shuffle=False)
 
   inference_input_fn = evaluate_input_fn if is_evaluate else predict_input_fn
 
@@ -132,6 +127,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
 
   def tearDown(self):
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
 
@@ -153,6 +150,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
         after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
         self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+      writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
   def test_evaluate(self):
@@ -238,41 +237,13 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     d_test = keras.utils.to_categorical(d_test)
 
     def train_input_fn():
-      input_dict = {
-          'input_a':
-              ops.convert_to_tensor(
-                  np.array(a_train, dtype=np.float32), dtype=dtypes.float32),
-          'input_b':
-              ops.convert_to_tensor(
-                  np.array(b_train, dtype=np.float32), dtype=dtypes.float32)
-      }
-      output_dict = {
-          'dense_2':
-              ops.convert_to_tensor(
-                  np.array(c_train, dtype=np.float32), dtype=dtypes.float32),
-          'dense_3':
-              ops.convert_to_tensor(
-                  np.array(d_train, dtype=np.float32), dtype=dtypes.float32)
-      }
+      input_dict = {'input_a': a_train, 'input_b': b_train}
+      output_dict = {'dense_2': c_train, 'dense_3': d_train}
       return input_dict, output_dict
 
     def eval_input_fn():
-      input_dict = {
-          'input_a':
-              ops.convert_to_tensor(
-                  np.array(a_test, dtype=np.float32), dtype=dtypes.float32),
-          'input_b':
-              ops.convert_to_tensor(
-                  np.array(b_test, dtype=np.float32), dtype=dtypes.float32)
-      }
-      output_dict = {
-          'dense_2':
-              ops.convert_to_tensor(
-                  np.array(c_test, dtype=np.float32), dtype=dtypes.float32),
-          'dense_3':
-              ops.convert_to_tensor(
-                  np.array(d_test, dtype=np.float32), dtype=dtypes.float32)
-      }
+      input_dict = {'input_a': a_test, 'input_b': b_test}
+      output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 
     with self.test_session():
@@ -342,26 +313,12 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     y_train = keras.utils.to_categorical(y_train)
 
     def invald_input_name_input_fn():
-      input_dict = {
-          'invalid_input_name':
-              ops.convert_to_tensor(
-                  np.array(x_train, dtype=np.float32), dtype=dtypes.float32),
-      }
-      output = ops.convert_to_tensor(
-          np.array(y_train, dtype=np.float32), dtype=dtypes.float32)
-      return input_dict, output
+      input_dict = {'invalid_input_name': x_train}
+      return input_dict, y_train
 
     def invald_output_name_input_fn():
-      input_dict = {
-          'input_1':
-              ops.convert_to_tensor(
-                  np.array(x_train, dtype=np.float32), dtype=dtypes.float32),
-      }
-      output_dict = {
-          'invalid_output_name':
-              ops.convert_to_tensor(
-                  np.array(y_train, dtype=np.float32), dtype=dtypes.float32),
-      }
+      input_dict = {'input_1': x_train}
+      output_dict = {'invalid_output_name': y_train}
       return input_dict, output_dict
 
     model = simple_functional_model()
@@ -395,6 +352,30 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           keras_model=keras_mobile,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
           custom_objects=custom_objects)
+
+  def test_tf_config(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    tf_config = json.dumps({
+        'cluster': {
+            run_config_lib.TaskType.PS: ['localhost:1234'],
+            run_config_lib.TaskType.WORKER: ['localhost:1236'],
+            run_config_lib.TaskType.MASTER: ['localhost:1238']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      with self.test_session():
+        keras.estimator.model_to_estimator(
+            keras_model=keras_model,
+            model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
 
 if __name__ == '__main__':

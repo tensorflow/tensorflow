@@ -23,6 +23,9 @@
 
 set -e
 
+# Filter out LOG(INFO)
+export TF_CPP_MIN_LOG_LEVEL=1
+
 IS_VIRTUALENV=0
 PYTHON_BIN_PATH=""
 while true; do

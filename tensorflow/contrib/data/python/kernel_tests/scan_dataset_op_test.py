@@ -21,6 +21,7 @@ import itertools
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import scan_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -122,6 +123,19 @@ class ScanDatasetTest(test.TestCase):
         "output value."):
       dataset.apply(
           scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
+
+
+class ScanDatasetSerialzationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset(self, num_elements):
+    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
+        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
+
+  def testScanCore(self):
+    num_output = 5
+    self.run_core_tests(lambda: self._build_dataset(num_output),
+                        lambda: self._build_dataset(2), num_output)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,6 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )

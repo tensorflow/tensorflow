@@ -29,8 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class AdjustContrastOpTest : public OpsTestBase {
-};
+class AdjustContrastOpTest : public OpsTestBase {};
 
 TEST_F(AdjustContrastOpTest, Simple_1113) {
   TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")

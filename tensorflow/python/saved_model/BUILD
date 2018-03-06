@@ -25,6 +25,7 @@ py_library(
         ":main_op",
         ":signature_constants",
         ":signature_def_utils",
+        ":simple_save",
         ":tag_constants",
         ":utils",
         "//tensorflow/python:util",
@@ -90,6 +91,23 @@ py_library(
 )
 
 py_library(
+    name = "simple_save",
+    srcs = [
+        "simple_save.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":builder",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":tag_constants",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "main_op",
     srcs = [
         "main_op.py",
@@ -130,6 +148,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -195,6 +214,22 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+py_test(
+    name = "simple_save_test",
+    size = "small",
+    srcs = ["simple_save_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_constants",
+        ":simple_save",
+        ":tag_constants",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
     ],
 )
 

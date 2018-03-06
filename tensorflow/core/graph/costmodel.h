@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-typedef std::unordered_map<StringPiece, int32, StringPiece::Hasher>
+typedef std::unordered_map<StringPiece, int32, StringPieceHasher>
     NodeNameToCostIdMap;
 
 class StepStats;
@@ -133,13 +133,8 @@ class CostModel {
   // Returns the size in bytes of temporary memory consumed by "node".
   Bytes TempMemorySize(const Node* node) const;
 
-  // Returns the size in bytes of temporary memory consumed by "node".
-  Bytes HostTempMemorySize(const Node* node) const;
-  Bytes DeviceTempMemorySize(const Node* node) const;
-
   // Returns the size of persistent memory allocated by "node".
-  Bytes HostPersistentMemorySize(const Node* node) const;
-  Bytes DevicePersistentMemorySize(const Node* node) const;
+  Bytes PersistentMemorySize(const Node* node) const;
 
   // Records memory stats such as temp momory and persistent memory.
   void RecordMemoryStats(const Node* node, const MemoryStats& memory_stats);
@@ -188,8 +183,8 @@ class CostModel {
 
   const bool is_global_;
 
-  // Resizes vectors so that they are large enough for "id".
-  void Ensure(int id);
+  // Resizes vectors so that they are large enough for "id" and id's outputs.
+  void Ensure(int id, int num_outputs);
 
   // Nodes and Edges whose count is < this value
   // get type/byte estimates of 0.
@@ -203,28 +198,18 @@ class CostModel {
   // Cumulative execution time.
   std::vector<Microseconds> time_;
   // Cumulative Bytes output on each channel.
-  std::vector<gtl::InlinedVector<Bytes, 2> > slot_bytes_;
+  std::vector<gtl::InlinedVector<Bytes, 2>> slot_bytes_;
 
   // Maximum execution time
   std::vector<Microseconds> max_exec_time_;
 
   // Maximum memory usage
   struct MemUsage {
-    MemUsage()
-        : temp_memory_size(-1),
-          host_temp_memory_size(0),
-          device_temp_memory_size(0),
-          host_persistent_memory_size(0),
-          device_persistent_memory_size(0) {}
+    MemUsage() : temp_memory_size(0), persistent_memory_size(0) {}
 
     // TODO(yuefengz): temp_memory_size is not being used, remove it.
     Bytes temp_memory_size;
-
-    Bytes host_temp_memory_size;
-    Bytes device_temp_memory_size;
-
-    Bytes host_persistent_memory_size;
-    Bytes device_persistent_memory_size;
+    Bytes persistent_memory_size;
 
     gtl::InlinedVector<Bytes, 2> output_port_mem;
     gtl::InlinedVector<TensorShapeProto, 2> output_port_shape;
@@ -232,9 +217,9 @@ class CostModel {
   };
   std::vector<MemUsage> max_mem_usage_;
 
-  std::vector<gtl::InlinedVector<int64, 2> > output_port_alloc_ids_;
+  std::vector<gtl::InlinedVector<int64, 2>> output_port_alloc_ids_;
 
-  std::set<int64> host_persistent_alloc_ids_;
+  std::set<int64> persistent_alloc_ids_;
   std::map<string, std::set<int64>> persistent_alloc_ids_by_devices_;
 
   TensorShapeProto unknown_shape_;

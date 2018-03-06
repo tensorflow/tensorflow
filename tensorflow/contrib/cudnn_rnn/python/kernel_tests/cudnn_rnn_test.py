@@ -29,6 +29,8 @@ import numpy as np
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn_lib
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -49,7 +51,11 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import adagrad
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
+from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -313,6 +319,150 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       self.assertEqual(0, total_sum1_v)
       self.assertEqual(0, total_sum2_v)
       self.assertEqual(0, total_sum3_v)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testOptimizersSupport(self):
+    for opt in ("adagrad", "adam", "rmsprop", "momentum", "sgd"):
+      self._TestOptimizerSupportHelper(opt)
+
+  def _GetOptimizer(self, opt):
+    if opt == "adagrad":
+      return adagrad.AdagradOptimizer(learning_rate=1e-2)
+    elif opt == "adam":
+      return adam.AdamOptimizer(learning_rate=1e-2)
+    elif opt == "rmsprop":
+      return rmsprop.RMSPropOptimizer(learning_rate=1e-2)
+    elif opt == "momentum":
+      return momentum.MomentumOptimizer(learning_rate=1e-2, momentum=0.9)
+    elif opt == "sgd":
+      return gradient_descent.GradientDescentOptimizer(learning_rate=1e-2)
+    else:
+      raise ValueError("Unsupported optimizer: %s" % opt)
+
+  def _TestOptimizerSupportHelper(self, opt):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    with ops.Graph().as_default() as g:
+      kernel_initializer = init_ops.constant_initializer(0.)
+      bias_initializer = init_ops.constant_initializer(0.)
+      inputs = random_ops.random_uniform([
+          num_layers * dir_count, batch_size, num_units], dtype=dtypes.float32)
+
+      lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                 direction=direction,
+                                 kernel_initializer=kernel_initializer,
+                                 bias_initializer=bias_initializer,
+                                 name="awesome_lstm")
+      outputs, _ = lstm(inputs)
+      loss = math_ops.reduce_sum(outputs)
+      optimizer = self._GetOptimizer(opt)
+      train_op = optimizer.minimize(loss)
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(train_op)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSaveableGraphDeviceAssignment(self):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    def DeviceFn(op):
+      if op.type in ("Variable", "VariableV2"):
+        return "/cpu:0"
+      else:
+        return "/gpu:0"
+
+    with ops.Graph().as_default() as g:
+      with ops.device(DeviceFn):
+        with vs.variable_scope("main"):
+          kernel_initializer = init_ops.constant_initializer(3.14)
+          bias_initializer = init_ops.constant_initializer(1.59)
+          inputs = random_ops.random_uniform(
+              [num_layers * dir_count, batch_size, num_units],
+              dtype=dtypes.float32)
+
+          lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                     direction=direction,
+                                     kernel_initializer=kernel_initializer,
+                                     bias_initializer=bias_initializer,
+                                     name="awesome_lstm")
+          outputs = lstm(inputs)
+
+        # saver is created in the scope of DeviceFn.
+        saver = saver_lib.Saver()
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      save_path = os.path.join(self.get_temp_dir(),
+                               "test-saveable-device-assignment")
+      sess.run(variables.global_variables_initializer())
+
+      saver.save(sess, save_path)
+      saver.restore(sess, save_path)
+      sess.run(outputs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesEager(self):
+    # Checks that kernel caching does not cause sharing of temporary storage
+    # across different input shapes when executing eagerly.
+    with context.eager_mode():
+      with ops.device("gpu:0"):
+        first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 28]))
+        second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 100]))
+        self.assertAllEqual([28, 100, 100], first_output.shape)
+        self.assertAllEqual([28, 100, 100], second_output.shape)
+
+        def _LossFunc():
+          first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 28]))
+          second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 100]))
+          return (math_ops.reduce_sum(first_output) +
+                  math_ops.reduce_sum(second_output))
+
+        backprop.implicit_grad(_LossFunc)()
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesGraph(self):
+    # Tests that a single kernel instance presented with multiple input shapes
+    # does not crash with graph execution.
+    with ops.device("gpu:0"):
+      layer = cudnn_rnn.CudnnGRU(1, 100)
+      layer(array_ops.zeros([28, 100, 100]))
+
+      def _Cond(index, accumulation):
+        del accumulation  # unused
+        return math_ops.less(index, 4)
+
+      def _Body(index, accumulation):
+        layer_input = accumulation[:, :, 10 * (1 + index % 2):]
+        output, _ = layer(layer_input)
+        return index + 1, accumulation + output
+
+      original_input = array_ops.zeros([28, 100, 100])
+      _, accumulation = control_flow_ops.while_loop(_Cond, _Body,
+                                                    [0, original_input])
+      grad, = gradients.gradients(
+          math_ops.reduce_sum(accumulation), (original_input,))
+    init_op = variables.global_variables_initializer()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      accumulation_eval, grad_eval = sess.run((accumulation, grad))
+      self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
+      self.assertAllEqual([28, 100, 100], grad_eval.shape)
 
 
 # TODO(jamesqin): Transform to parameterized test after it is included in the

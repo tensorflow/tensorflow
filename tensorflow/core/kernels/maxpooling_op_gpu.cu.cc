@@ -405,17 +405,17 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
   if (propagate_nans) {
     MaxPoolForwardNHWC<true>
         <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>
-        (output_size, bottom_data, height, width, channels, pooled_height,
-         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-         top_data, mask);
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
   } else {
     MaxPoolForwardNHWC<false>
         <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-           kThreadsPerBlock, 0, d.stream()>>>
-        (output_size, bottom_data, height, width, channels, pooled_height,
-         pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-         top_data, mask);
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
   }
   return d.ok();
 }
@@ -450,10 +450,10 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-    kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
+            kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
   MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
                     kThreadsPerBlock, 0, d.stream()>>>(
-                                        output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
   return d.ok();
 }
 

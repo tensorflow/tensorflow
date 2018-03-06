@@ -144,10 +144,11 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsSend) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  while_body->AddInstruction(HloInstruction::CreateSend(
+  auto* send = while_body->AddInstruction(HloInstruction::CreateSend(
       while_body->AddInstruction(
           HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
       /*channel_id=*/0));
+  while_body->AddInstruction(HloInstruction::CreateSendDone(send));
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -156,9 +157,10 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsRecv) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  while_body->AddInstruction(
+  auto* recv = while_body->AddInstruction(
       HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}),
                                  /*channel_id=*/0));
+  while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -414,6 +416,33 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedOperand) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+}
+
+TEST_F(WhileLoopSimplifierTest, BodyHasNonTupleRoot) {
+  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+
+  HloComputation* while_body = [&]() {
+    HloComputation::Builder builder(TestName() + ".passthrough");
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, while_shape, "param"));
+    HloComputation* result = module().AddEmbeddedComputation(builder.Build());
+
+    result->AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    return result;
+  }();
+
+  HloComputation::Builder builder(TestName());
+  auto* init_value = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+  builder.AddInstruction(HloInstruction::CreateWhile(
+      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
+      while_body, init_value));
+  module().AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopSimplifier{}.Run(&module()));
+  EXPECT_FALSE(simplified_loop);
 }
 
 }  // namespace

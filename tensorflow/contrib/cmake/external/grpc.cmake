@@ -17,20 +17,28 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 781fd6f6ea03645a520cd5c675da67ab61f87e4b)
+set(GRPC_TAG 730b778632e79cc3c96ad237f282d687ee325ce7)
 
 if(WIN32)
-  set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(grpc_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  else()
+    set(grpc_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/gpr.lib)
+  endif()
 else()
   set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/libcares.a)
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
+
+add_definitions(-DGRPC_ARES=0)
 
 ExternalProject_Add(grpc
     PREFIX grpc
@@ -39,9 +47,7 @@ ExternalProject_Add(grpc
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    # TODO(jhseu): Remove this PATCH_COMMAND once grpc removes the dependency
-    # on "grpc" from the "grpc++_unsecure" rule.
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
+    BUILD_BYPRODUCTS ${grpc_STATIC_LIBRARIES}
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
     COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""

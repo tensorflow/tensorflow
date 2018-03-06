@@ -87,8 +87,8 @@ class MirrorPadOp : public OpKernel {
       const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
       const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument("paddings must be non-negative: ",
-                                          before, " ", after));
+                  errors::InvalidArgument(
+                      "paddings must be non-negative: ", before, " ", after));
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context,
                     before <= in0.dim_size(d) && after <= in0.dim_size(d),
@@ -296,8 +296,8 @@ class MirrorPadGradOp : public OpKernel {
       const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
       const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument("Paddings must be non-negative: ",
-                                          before, ", ", after));
+                  errors::InvalidArgument(
+                      "Paddings must be non-negative: ", before, ", ", after));
 
       const int64 out_size = in0.dim_size(d) - (before + after);
       if (offset_ == 0) {  // SYMMETRIC mode.

@@ -79,12 +79,12 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
   // Test that two identical constants with different layouts are commoned if
   // the pass is not layout sensitive.
   auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{0, 1})));
-  auto constant2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{1, 0})));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
@@ -111,12 +111,12 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
   // Test that two identical constants with different layouts are *not* commoned
   // if the pass is layout sensitive.
   auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{0, 1})));
-  auto constant2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{1, 0})));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 

@@ -45,8 +45,12 @@ if(WIN32)
       $<TARGET_FILE:tensorflow_static>
       $<TARGET_FILE:tf_protos_cc>
   )
-    
-  set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+  else()
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
+  endif()
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
   add_custom_command(TARGET tensorflow_static POST_BUILD
@@ -73,7 +77,7 @@ add_library(tensorflow SHARED
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     ${tensorflow_deffile}
 )
@@ -95,10 +99,18 @@ if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
 
-install(TARGETS tensorflow
+target_include_directories(tensorflow PUBLIC 
+    $<INSTALL_INTERFACE:include/>
+    $<INSTALL_INTERFACE:include/external/nsync/public>)
+
+install(TARGETS tensorflow EXPORT tensorflow_export
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+        
+install(EXPORT tensorflow_export
+        FILE TensorflowConfig.cmake
+        DESTINATION lib/cmake)
 
 # install necessary headers
 # tensorflow headers

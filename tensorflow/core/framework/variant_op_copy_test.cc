@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -108,12 +109,17 @@ class CreateTestVariantOp : public OpKernel {
  public:
   explicit CreateTestVariantOp(OpKernelConstruction* c) : OpKernel(c) {}
   void Compute(OpKernelContext* c) override {
+    // Take the scalar tensor fed as input, and emit a Tensor
+    // containing 10 Variants (StoredTensorValues), both containing
+    // the input tensor.
     const Tensor& stored_t = c->input(0);
     Tensor* out;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &out));
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({10}), &out));
     StoredTensorValue store{stored_t};
     auto t = out->flat<Variant>();
-    t(0) = store;
+    for (int i = 0; i < 10; ++i) {
+      t(i) = store;
+    }
     CHECK_EQ("StoredTensorValue", t(0).TypeName());
   }
 };
@@ -175,7 +181,7 @@ TEST(VariantOpCopyTest, CreateConstOnCPU) {
   TF_ASSERT_OK(root.status());
   ClientSession session(root);
   std::vector<Tensor> outputs;
-  TF_EXPECT_OK(session.Run({create_const}, &outputs));
+  TF_CHECK_OK(session.Run({create_const}, &outputs));
   EXPECT_EQ(1, outputs.size());
   EXPECT_EQ(DT_VARIANT, outputs[0].dtype());
   EXPECT_EQ(0, outputs[0].dims());
@@ -212,7 +218,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPU) {
 
   int copy_to_gpu_before = *GetCopyCPUToGPUCounter();
   int copy_to_cpu_before = *GetCopyGPUToCPUCounter();
-  TF_EXPECT_OK(session.Run({create_const}, &outputs));
+  TF_CHECK_OK(session.Run({create_const}, &outputs));
   int copy_to_cpu_after = *GetCopyGPUToCPUCounter();
   int copy_to_gpu_after = *GetCopyCPUToGPUCounter();
 
@@ -261,7 +267,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
 TEST(VariantOpCopyTest, CreateCopyCPUToCPU) {
   Scope root = Scope::NewRootScope().WithDevice("/cpu:0");
   Tensor t_42(DT_INT32, TensorShape({}));
-  t_42.scalar<int32>()() = 42;
+  t_42.flat<int32>()(0) = 42;
   Output create_op = CreateTestVariant(root, t_42);
   Output identity = ops::Identity(root, create_op);
 
@@ -269,14 +275,17 @@ TEST(VariantOpCopyTest, CreateCopyCPUToCPU) {
 
   ClientSession session(root);
   std::vector<Tensor> outputs;
-  TF_EXPECT_OK(session.Run({create_op, identity}, &outputs));
+  TF_CHECK_OK(session.Run({create_op, identity}, &outputs));
   EXPECT_EQ(2, outputs.size());
-  const Variant& r1 = outputs[1].scalar<Variant>()();
-
-  EXPECT_EQ("StoredTensorValue", r1.TypeName());
-  const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
-  EXPECT_NE(v1, nullptr);
-  EXPECT_EQ(42, v1->stored.scalar<int32>()());
+  EXPECT_EQ(10, outputs[1].dim_size(0));
+  auto output = outputs[1].flat<Variant>();
+  for (int i = 0; i < 10; ++i) {
+    const Variant& r1 = output(i);
+    EXPECT_EQ("StoredTensorValue", r1.TypeName());
+    const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
+    EXPECT_NE(v1, nullptr);
+    EXPECT_EQ(42, v1->stored.scalar<int32>()());
+  }
 }
 
 TEST(VariantOpCopyTest, CreateCopyCPUToCPUString) {
@@ -290,14 +299,17 @@ TEST(VariantOpCopyTest, CreateCopyCPUToCPUString) {
 
   ClientSession session(root);
   std::vector<Tensor> outputs;
-  TF_EXPECT_OK(session.Run({create_op, identity}, &outputs));
+  TF_CHECK_OK(session.Run({create_op, identity}, &outputs));
   EXPECT_EQ(2, outputs.size());
-  const Variant& r1 = outputs[1].scalar<Variant>()();
-
-  EXPECT_EQ("StoredTensorValue", r1.TypeName());
-  const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
-  EXPECT_NE(v1, nullptr);
-  EXPECT_EQ("hi", v1->stored.scalar<string>()());
+  EXPECT_EQ(10, outputs[1].dim_size(0));
+  auto output = outputs[1].flat<Variant>();
+  for (int i = 0; i < 10; ++i) {
+    const Variant& r1 = output(i);
+    EXPECT_EQ("StoredTensorValue", r1.TypeName());
+    const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
+    EXPECT_NE(v1, nullptr);
+    EXPECT_EQ("hi", v1->stored.scalar<string>()());
+  }
 }
 
 TEST(VariantOpCopyTest, CreateCopyCPUToGPU) {
@@ -318,7 +330,7 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPU) {
   int copy_to_cpu_before = *GetCopyGPUToCPUCounter();
   // Force the identity to run on GPU, and then the data to be copied
   // back to CPU for the final output.
-  TF_EXPECT_OK(session.Run({create_op, identity}, &outputs));
+  TF_CHECK_OK(session.Run({create_op, identity}, &outputs));
   int copy_to_cpu_after = *GetCopyGPUToCPUCounter();
   int copy_to_gpu_after = *GetCopyCPUToGPUCounter();
 
@@ -326,12 +338,15 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPU) {
   EXPECT_GT(copy_to_gpu_after - copy_to_gpu_before, 0);
 
   EXPECT_EQ(2, outputs.size());
-  const Variant& r1 = outputs[1].scalar<Variant>()();
-
-  EXPECT_EQ("StoredTensorValue", r1.TypeName());
-  const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
-  EXPECT_NE(v1, nullptr);
-  EXPECT_EQ(42, v1->stored.scalar<int32>()());
+  EXPECT_EQ(10, outputs[1].dim_size(0));
+  auto output = outputs[1].flat<Variant>();
+  for (int i = 0; i < 10; ++i) {
+    const Variant& r1 = output(i);
+    EXPECT_EQ("StoredTensorValue", r1.TypeName());
+    const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
+    EXPECT_NE(v1, nullptr);
+    EXPECT_EQ(42, v1->stored.scalar<int32>()());
+  }
 }
 
 TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {

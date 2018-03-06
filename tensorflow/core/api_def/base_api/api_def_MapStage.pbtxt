@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "MapStage"
+  in_arg {
+    name: "key"
+    description: <<END
+int64
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+END
+  }
+  attr {
+    name: "capacity"
+    description: <<END
+Maximum number of elements in the Staging Area. If > 0, inserts
+on the container will block when the capacity is reached.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this queue is placed in the given container. Otherwise,
+a default container is used.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+It is necessary to match this name to the matching Unstage Op.
+END
+  }
+  summary: "Stage (key, values) in the underlying container which behaves like a hashtable."
+}

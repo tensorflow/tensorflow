@@ -32,26 +32,26 @@ namespace {
 class Base1 {
  public:
   virtual ~Base1() {}
-  int pad;
+  int pad_;
 };
 
 class Base2 {
  public:
   virtual ~Base2() {}
-  int yetotherpad;
+  int yetotherpad_;
 };
 
 class Derived : public Base1, public Base2 {
  public:
   ~Derived() override {}
-  int evenmorepad;
+  int evenmorepad_;
 };
 
 class CopyNoAssign {
  public:
-  explicit CopyNoAssign(int value) : foo(value) {}
-  CopyNoAssign(const CopyNoAssign& other) : foo(other.foo) {}
-  int foo;
+  explicit CopyNoAssign(int value) : foo_(value) {}
+  CopyNoAssign(const CopyNoAssign& other) : foo_(other.foo_) {}
+  int foo_;
 
  private:
   const CopyNoAssign& operator=(const CopyNoAssign&);
@@ -253,7 +253,7 @@ TEST(StatusOr, TestCopyCtorNonAssignable) {
   StatusOr<CopyNoAssign> original(value);
   StatusOr<CopyNoAssign> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(original.ValueOrDie().foo, copy.ValueOrDie().foo);
+  EXPECT_EQ(original.ValueOrDie().foo_, copy.ValueOrDie().foo_);
 }
 
 TEST(StatusOr, TestCopyCtorStatusOKConverting) {

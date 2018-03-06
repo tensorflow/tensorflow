@@ -60,9 +60,7 @@ tf_py_test(
     size = "small",
     srcs = ["python/ops/bigquery_reader_ops_test.py"],
     additional_deps = [
-        ":bigquery_reader_ops_op_lib",
         ":cloud_py",
-        "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

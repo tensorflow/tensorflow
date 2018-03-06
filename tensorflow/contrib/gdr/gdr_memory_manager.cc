@@ -86,8 +86,9 @@ int TryToReadNumaNode(ibv_device* device) {
   if (strings::safe_strto32(content, &value)) {
     if (value < 0) {
       LOG(INFO) << "Successful NUMA node read from SysFS had negative value ("
-                << value << "), but there must be at least one NUMA node"
-                            ", so returning NUMA node zero";
+                << value
+                << "), but there must be at least one NUMA node"
+                   ", so returning NUMA node zero";
       return 0;
     }
     LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
@@ -290,8 +291,8 @@ Status GdrMemoryManager::Init() {
   // Host memory allocators
   for (Allocator* allocator : allocators) {
     auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
-    CHECK(visitable_allocator) << "is not visitable for instrumentation"
-                               << allocator->Name();
+    CHECK(visitable_allocator)
+        << "is not visitable for instrumentation" << allocator->Name();
     // Make sure we don't instrument the same allocator twice
     if (instrumented_.find(allocator) == std::end(instrumented_)) {
       visitable_allocator->AddAllocVisitor(alloc_visitor);
@@ -635,8 +636,8 @@ void GdrMemoryManager::TensorFromTransportOptions(
     } else {
       checksum = GPUUtil::Checksum(*tensor);
     }
-    CHECK(checksum == remote_mr.checksum()) << "Checksum mismatch: " << checksum
-                                            << "!=" << remote_mr.checksum();
+    CHECK(checksum == remote_mr.checksum())
+        << "Checksum mismatch: " << checksum << "!=" << remote_mr.checksum();
 #endif
   }
   done(Status::OK());

@@ -1,0 +1,72 @@
+op {
+  graph_op_name: "CTCBeamSearchDecoder"
+  in_arg {
+    name: "inputs"
+    description: <<END
+3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
+END
+  }
+  in_arg {
+    name: "sequence_length"
+    description: <<END
+A vector containing sequence lengths, size `(batch)`.
+END
+  }
+  out_arg {
+    name: "decoded_indices"
+    description: <<END
+A list (length: top_paths) of indices matrices.  Matrix j,
+size `(total_decoded_outputs[j] x 2)`, has indices of a
+`SparseTensor<int64, 2>`.  The rows store: [batch, time].
+END
+  }
+  out_arg {
+    name: "decoded_values"
+    description: <<END
+A list (length: top_paths) of values vectors.  Vector j,
+size `(length total_decoded_outputs[j])`, has the values of a
+`SparseTensor<int64, 2>`.  The vector stores the decoded classes for beam j.
+END
+  }
+  out_arg {
+    name: "decoded_shape"
+    description: <<END
+A list (length: top_paths) of shape vector.  Vector j,
+size `(2)`, stores the shape of the decoded `SparseTensor[j]`.
+Its values are: `[batch_size, max_decoded_length[j]]`.
+END
+  }
+  out_arg {
+    name: "log_probability"
+    description: <<END
+A matrix, shaped: `(batch_size x top_paths)`.  The
+sequence log-probabilities.
+END
+  }
+  attr {
+    name: "beam_width"
+    description: <<END
+A scalar >= 0 (beam search beam width).
+END
+  }
+  attr {
+    name: "top_paths"
+    description: <<END
+A scalar >= 0, <= beam_width (controls output size).
+END
+  }
+  attr {
+    name: "merge_repeated"
+    description: <<END
+If true, merge repeated classes in output.
+END
+  }
+  summary: "Performs beam search decoding on the logits given in input."
+  description: <<END
+A note about the attribute merge_repeated: For the beam search decoder,
+this means that if consecutive entries in a beam are the same, only
+the first of these is emitted.  That is, when the top path is "A B B B B",
+"A B" is returned if merge_repeated = True but "A B B B B" is
+returned if merge_repeated = False.
+END
+}

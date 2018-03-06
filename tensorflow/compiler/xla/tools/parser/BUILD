@@ -34,9 +34,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
     ],

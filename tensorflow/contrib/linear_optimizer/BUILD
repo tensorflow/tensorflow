@@ -126,6 +126,7 @@ py_library(
 py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":sdca_estimator_py",

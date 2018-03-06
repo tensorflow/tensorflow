@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
 
 #include <map>
 
@@ -49,4 +49,4 @@ Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_

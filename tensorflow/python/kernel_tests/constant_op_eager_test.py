@@ -237,6 +237,39 @@ class ConstantTest(test.TestCase):
     self._testAll((1, x))
     self._testAll((x, 1))
 
+  def testInvalidLength(self):
+
+    class BadList(list):
+
+      def __init__(self):
+        super(BadList, self).__init__([1, 2, 3])  # pylint: disable=invalid-length-returned
+
+      def __len__(self):
+        return -1
+
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList()])
+    with self.assertRaisesRegexp(ValueError, "mixed types"):
+      constant_op.constant([1, 2, BadList()])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant(BadList())
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([[BadList(), 2], 3])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), [1, 2, 3]])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), []])
+
+    # TODO(allenl, josh11b): These cases should return exceptions rather than
+    # working (currently shape checking only checks the first element of each
+    # sequence recursively). Maybe the first one is fine, but the second one
+    # silently truncating is rather bad.
+
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[3, 2, 1], BadList()])
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[], BadList()])
+
   def testSparseValuesRaiseErrors(self):
     with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)

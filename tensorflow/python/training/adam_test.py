@@ -174,8 +174,11 @@ class AdamOptimizerTest(test.TestCase):
         opt = adam.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         opt_variables = opt.variables()
-        self.assertIn(opt._beta1_power, opt_variables)
-        self.assertIn(opt._beta2_power, opt_variables)
+        beta1_power, beta2_power = opt._get_beta_accumulators()
+        self.assertTrue(beta1_power is not None)
+        self.assertTrue(beta2_power is not None)
+        self.assertIn(beta1_power, opt_variables)
+        self.assertIn(beta2_power, opt_variables)
 
         with ops.Graph().as_default():
           # Shouldn't return non-slot variables from other graphs.
@@ -207,6 +210,9 @@ class AdamOptimizerTest(test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+          if use_resource:
+            self.assertEqual("var0_%d/Adam:0" % (i,),
+                             opt.get_slot(var=var0, name="m").name)
 
   def testBasic(self):
     with self.test_session():

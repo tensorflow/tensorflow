@@ -83,7 +83,7 @@ string Uppercase(StringPiece s);
 
 // Converts "^2ILoveYou!" to "i_love_you_". More specifically:
 // - converts all non-alphanumeric characters to underscores
-// - replaces each occurence of a capital letter (except the very
+// - replaces each occurrence of a capital letter (except the very
 //   first character and if there is already an '_' before it) with '_'
 //   followed by this letter in lower case
 // - Skips leading non-alpha characters

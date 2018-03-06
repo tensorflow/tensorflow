@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "RightShift"
+  summary: "Elementwise computes the bitwise right-shift of `x` and `y`."
+  description: <<END
+Performs a logical shift for unsigned integer types, and an arithmetic shift
+for signed integer types.
+
+If `y` is negative, or greater than or equal to than the width of `x` in bits
+the result is implementation defined.
+END
+}

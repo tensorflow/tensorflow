@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -29,13 +29,20 @@ namespace tensorflow {
 // - if the device name is invalid.
 // - the core is parsed and is out of the range [0, num_cores_per_replica).
 //
-// Otherwise, returns either a non-value or a sharding set as per
-// xla:ShardingBuilder::AssignDevice.
+// Otherwise, returns either:
+// - explicit_sharding if explicit_sharding.has_value()
+// - a non-value if there is no assigned core or
+// - a sharding set as per xla::sharding_builder::AssignDevice.
 xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
-ParseShardingFromDevice(const string& device_name, int num_cores_per_replica);
+ParseShardingFromDevice(const string& device_name, int num_cores_per_replica,
+                        tensorflow::gtl::optional<xla::OpSharding>
+                            explicit_sharding = tensorflow::gtl::nullopt);
 
 xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
 ParseShardingFromDevice(const Node& node, int num_cores_per_replica);
+
+xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
+ParseShardingFromDevice(const NodeDef& node_def, int num_cores_per_replica);
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 

@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
@@ -101,6 +102,82 @@ class LocalVariableTest(test.TestCase):
       a = variables_lib2.local_variable([0, 0, 0, 0, 0], name='a')
       sess.run(variables_lib.local_variables_initializer())
       self.assertAllEqual(a.eval(), [0] * 5)
+
+  def testResourceVariable(self):
+    a = variables_lib2.local_variable(0)
+    b = variables_lib2.local_variable(0, use_resource=True)
+    self.assertEqual(type(a), variables_lib.Variable)
+    self.assertEqual(type(b), resource_variable_ops.ResourceVariable)
+
+
+class GlobalVariableTest(test.TestCase):
+
+  def test_global_variable(self):
+    with self.test_session() as sess:
+      self.assertEquals([], variables_lib.global_variables())
+      value0 = 42
+      variables_lib2.global_variable(value0)
+      value1 = 43
+      variables_lib2.global_variable(value1)
+      variables = variables_lib.global_variables()
+      self.assertEquals(2, len(variables))
+      with self.assertRaisesOpError(
+          'Attempting to use uninitialized value Variable'):
+        sess.run(variables)
+      variables_lib.variables_initializer(variables).run()
+      self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
+
+  def testVariableNameAndShape(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        a = variables_lib2.global_variable([1, 1, 1, 1, 1], name='a')
+        self.assertEquals(a.op.name, 'A/a')
+        self.assertListEqual(a.get_shape().as_list(), [5])
+        self.assertListEqual([a], variables_lib.global_variables())
+
+  def testGlobalVariableNotInLocalVariables(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        a = variables_lib2.global_variable(0)
+        self.assertFalse(a in variables_lib.local_variables())
+        self.assertTrue(a in variables_lib.global_variables())
+
+  def testGlobalVariableInVariablesToRestore(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        a = variables_lib2.global_variable(0)
+        self.assertFalse(a in variables_lib.local_variables())
+        self.assertTrue(a in variables_lib2.get_variables_to_restore())
+
+  def testGetVariablesReturnsThem(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        a = variables_lib2.global_variable(0)
+      with variable_scope.variable_scope('B'):
+        b = variables_lib2.global_variable(0)
+      self.assertEquals([a], variables_lib2.get_variables('A'))
+      self.assertEquals([b], variables_lib2.get_variables('B'))
+
+  def testGetLocalVariablesDontReturnsThem(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        variables_lib2.global_variable(0)
+      with variable_scope.variable_scope('B'):
+        variables_lib2.global_variable(0)
+      self.assertEquals([], variables_lib2.get_local_variables('A'))
+      self.assertEquals([], variables_lib2.get_local_variables('B'))
+
+  def testInitializedVariableValue(self):
+    with self.test_session() as sess:
+      a = variables_lib2.global_variable([0, 0, 0, 0, 0], name='a')
+      sess.run(variables_lib.global_variables_initializer())
+      self.assertAllEqual(a.eval(), [0] * 5)
+
+  def testResourceVariable(self):
+    a = variables_lib2.global_variable(0)
+    b = variables_lib2.global_variable(0, use_resource=True)
+    self.assertEqual(type(a), variables_lib.Variable)
+    self.assertEqual(type(b), resource_variable_ops.ResourceVariable)
 
 
 class GlobalStepTest(test.TestCase):

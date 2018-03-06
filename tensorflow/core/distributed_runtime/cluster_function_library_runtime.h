@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -34,6 +34,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::LocalHandle* handle) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -42,10 +43,10 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
            FunctionLibraryRuntime::DoneCallback done) override;
 
  private:
-  static Status ConstructFunctionGraph(const OpDef& sig, AttrSlice attrs,
-                                       GraphDef* g,
-                                       std::vector<string>* send_keys,
-                                       std::vector<string>* recv_keys);
+  static Status ConstructFunctionGraph(
+      const OpDef& sig, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
+      std::vector<string>* send_keys, std::vector<string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 
   mutable mutex mu_;
@@ -73,4 +74,4 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_

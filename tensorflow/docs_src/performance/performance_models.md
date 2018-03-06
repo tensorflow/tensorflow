@@ -29,8 +29,8 @@ implementation is made up of 3 stages:
 
 The dominant part of each stage is executed in parallel with the other stages
 using `data_flow_ops.StagingArea`. `StagingArea` is a queue-like operator
-similar to @{tf.FIFOQueue}. The difference is that `StagingArea`  does not 
-guarantee FIFO ordering, but offers simpler functionality and can be executed 
+similar to @{tf.FIFOQueue}. The difference is that `StagingArea`  does not
+guarantee FIFO ordering, but offers simpler functionality and can be executed
 on both CPU and GPU in parallel with other stages. Breaking the input pipeline
 into 3 stages that operate independently in parallel is scalable and takes full
 advantage of large multi-core environments. The rest of this section details
@@ -344,7 +344,7 @@ executing the main script
     `alexnet`.
 *   **`num_gpus`**: Number of GPUs to use.
 *   **`data_dir`**: Path to data to process. If not set, synthetic data is used.
-    To use Imagenet data use these
+    To use ImageNet data use these
     [instructions](https://github.com/tensorflow/models/tree/master/research/inception#getting-started)
     as a starting point.
 *   **`batch_size`**: Batch size for each GPU.

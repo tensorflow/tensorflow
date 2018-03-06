@@ -30,8 +30,8 @@ static Graph* Diag(int n, DataType type) {
   return g;
 }
 
-#define BM_DiagDev(N, T, TFTYPE, DEVICE)                           \
-  static void BM_Diag##_##N##_##TFTYPE##_##DEVICE(int iters) {   \
+#define BM_DiagDev(N, T, TFTYPE, DEVICE)                        \
+  static void BM_Diag##_##N##_##TFTYPE##_##DEVICE(int iters) {  \
     testing::UseRealTime();                                     \
     testing::ItemsProcessed(static_cast<int64>(iters) * N * N); \
     test::Benchmark(#DEVICE, Diag<T>(N, TFTYPE)).Run(iters);    \
@@ -51,4 +51,3 @@ BM_Diag(128);
 BM_Diag(512);
 
 }  // end namespace tensorflow
-

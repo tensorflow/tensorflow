@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "Conj"
+  summary: "Returns the complex conjugate of a complex number."
+  description: <<END
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+complex numbers that are the complex conjugate of each element in `input`. The
+complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+real part and *b* is the imaginary part.
+
+The complex conjugate returned by this operation is of the form \\(a - bj\\).
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+```
+END
+}

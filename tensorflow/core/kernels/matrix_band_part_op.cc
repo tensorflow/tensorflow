@@ -62,7 +62,15 @@ class MatrixBandPartOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_lower_in.shape()),
                 errors::InvalidArgument("num_lower must be scalar, got shape ",
                                         num_lower_in.shape().DebugString()));
-    const int64 num_lower = num_lower_in.scalar<int64>()();
+
+    auto as_int64_scalar = [](const Tensor& tensor) -> int64 {
+      if (tensor.dtype() == DT_INT32) {
+        return tensor.scalar<int32>()();
+      } else {
+        return tensor.scalar<int64>()();
+      }
+    };
+    const int64 num_lower = as_int64_scalar(num_lower_in);
     OP_REQUIRES(
         context, num_lower <= input_reshaped.dimension(1),
         errors::InvalidArgument(
@@ -73,7 +81,7 @@ class MatrixBandPartOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
                 errors::InvalidArgument("num_upper must be scalar, got shape ",
                                         num_upper_in.shape().DebugString()));
-    const int64 num_upper = num_upper_in.scalar<int64>()();
+    const int64 num_upper = as_int64_scalar(num_upper_in);
     OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
                 errors::InvalidArgument("num_upper must be negative or less or "
                                         "equal to number of columns (",

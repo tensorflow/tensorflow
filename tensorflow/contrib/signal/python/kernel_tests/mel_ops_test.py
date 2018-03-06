@@ -159,6 +159,9 @@ class LinearToMelTest(test.TestCase):
       mel_ops.linear_to_mel_weight_matrix(lower_edge_hertz=100,
                                           upper_edge_hertz=10)
     with self.assertRaises(ValueError):
+      mel_ops.linear_to_mel_weight_matrix(upper_edge_hertz=1000,
+                                          sample_rate=800)
+    with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(dtype=dtypes.int32)
 
   def test_constant_folding(self):

@@ -24,9 +24,17 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Complex;
+using ops::Const;
+using ops::MatMul;
+using ops::Placeholder;
+using ops::Real;
+using ops::Split;
+using ops::Square;
+using ops::Stack;
+using ops::Unstack;
 
 TEST(GradientCheckerTest, BasicFloat) {
   Scope scope = Scope::NewRootScope();

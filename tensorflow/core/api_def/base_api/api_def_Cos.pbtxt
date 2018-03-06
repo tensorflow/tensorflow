@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Cos"
+  summary: "Computes cos of x element-wise."
+}

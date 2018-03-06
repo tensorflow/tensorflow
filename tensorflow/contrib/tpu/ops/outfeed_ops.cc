@@ -39,7 +39,7 @@ REGISTER_OP("OutfeedEnqueueTuple")
     .Doc(R"doc(
 An op which emits multiple Tensor values from an XLA computation.
 
-inputs: A list of tensors that will be inserted into the outfeed queue as an 
+inputs: A list of tensors that will be inserted into the outfeed queue as an
 XLA tuple.
 )doc");
 

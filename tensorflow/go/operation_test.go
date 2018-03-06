@@ -123,6 +123,14 @@ func TestOutputDataTypeAndShape(t *testing.T) {
 			[]int64{2, 3},
 			Double,
 		},
+		{ // Matrix of Uint64
+			[][]uint64{
+				{1, 2, 3},
+				{4, 5, 6},
+			},
+			[]int64{2, 3},
+			Uint64,
+		},
 	}
 	for idx, test := range testdata {
 		t.Run(fmt.Sprintf("#%d Value %T", idx, test.Value), func(t *testing.T) {

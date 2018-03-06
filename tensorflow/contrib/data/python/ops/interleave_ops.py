@@ -17,77 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.util import deprecation
 
 
-class ParallelInterleaveDataset(dataset_ops.Dataset):
-  """A `Dataset` that maps a function over its input and flattens the result."""
-
-  def __init__(self, input_dataset, map_func, cycle_length, block_length,
-               sloppy):
-    """See `tf.contrib.data.parallel_interleave()` for details."""
-    super(ParallelInterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(input_dataset.output_types))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-
-      if nest.is_sequence(nested_args):
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, dataset_ops.Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
-    self._cycle_length = ops.convert_to_tensor(
-        cycle_length, dtype=dtypes.int64, name="cycle_length")
-    self._block_length = ops.convert_to_tensor(
-        block_length, dtype=dtypes.int64, name="block_length")
-    self._sloppy = ops.convert_to_tensor(
-        sloppy, dtype=dtypes.bool, name="sloppy")
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.parallel_interleave_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
-        self._cycle_length,
-        self._block_length,
-        self._sloppy,
-        f=self._map_func,
-        output_types=nest.flatten(self.output_types),
-        output_shapes=nest.flatten(self.output_shapes))
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
-def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
+def parallel_interleave(map_func,
+                        cycle_length,
+                        block_length=1,
+                        sloppy=False,
+                        buffer_output_elements=None,
+                        prefetch_input_elements=None):
   """A parallel version of the `Dataset.interleave()` transformation.
 
   `parallel_interleave()` maps `map_func` across its input to produce nested
@@ -115,20 +54,27 @@ def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
 
   Args:
     map_func: A function mapping a nested structure of tensors to a `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`.
     sloppy: If false, elements are produced in deterministic order. Otherwise,
       the implementation is allowed, for the sake of expediency, to produce
       elements in a non-deterministic order.
+    buffer_output_elements: The number of elements each iterator being
+      interleaved should buffer (similar to the `.prefetch()` transformation for
+      each interleaved iterator).
+    prefetch_input_elements: The number of input elements to transform to
+      iterators before they are needed for interleaving.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
     @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
-    return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy)
+    return readers.ParallelInterleaveDataset(
+        dataset, map_func, cycle_length, block_length, sloppy,
+        buffer_output_elements, prefetch_input_elements)
+
   return _apply_fn
 
 
@@ -173,17 +119,24 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
     map_func: A function mapping a nested structure of tensors (having shapes
       and types defined by `self.output_shapes` and `self.output_types`) to a
       `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread. Note: sloppy_interleave will
-      skip the remainder of elements in the block_length in order to avoid
-      blocking.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`. Note:
+      `sloppy_interleave` will skip the remainder of elements in the
+      `block_length` in order to avoid blocking.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
     @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
-    return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy=True)
+    return readers.ParallelInterleaveDataset(
+        dataset,
+        map_func,
+        cycle_length,
+        block_length,
+        sloppy=True,
+        buffer_output_elements=None,
+        prefetch_input_elements=None)
+
   return _apply_fn

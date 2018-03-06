@@ -136,15 +136,19 @@ void Env::GetLocalTempDirectories(std::vector<string>* list) {
   // Directories, in order of preference. If we find a dir that
   // exists, we stop adding other less-preferred dirs
   const char* candidates[] = {
-      // Non-null only during unittest/regtest
-      getenv("TEST_TMPDIR"),
+    // Non-null only during unittest/regtest
+    getenv("TEST_TMPDIR"),
 
-      // Explicitly-supplied temp dirs
-      getenv("TMPDIR"),
-      getenv("TMP"),
+    // Explicitly-supplied temp dirs
+    getenv("TMPDIR"),
+    getenv("TMP"),
 
-      // If all else fails
-      "/tmp",
+#if defined(__ANDROID__)
+    "/data/local/tmp",
+#endif
+
+    // If all else fails
+    "/tmp",
   };
 
   for (const char* d : candidates) {

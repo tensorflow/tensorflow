@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -159,9 +159,10 @@ class Sampler {
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  // We use a std::map here because we give out pointers to the SamplerCells,
-  // which need to remain valid even after more cells.
   using LabelArray = std::array<string, NumLabels>;
+  // we need a container here that guarantees pointer stability of the value,
+  // namely, the pointer of the value should remain valid even after more cells
+  // are inserted.
   std::map<LabelArray, SamplerCell> cells_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
@@ -214,4 +215,4 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace tensorflow
 
 #endif  // IS_MOBILE_PLATFORM
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_SAMPLER_H_

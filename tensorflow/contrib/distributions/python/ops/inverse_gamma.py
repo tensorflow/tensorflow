@@ -88,8 +88,9 @@ class InverseGamma(distribution.Distribution):
   #### Examples
 
   ```python
-  dist = InverseGamma(concentration=3.0, rate=2.0)
-  dist2 = InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  tfd = tf.contrib.distributions
+  dist = tfd.InverseGamma(concentration=3.0, rate=2.0)
+  dist2 = tfd.InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
 
   """

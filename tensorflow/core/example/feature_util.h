@@ -33,7 +33,7 @@ limitations under the License.
 //   GetFeatureValues<int64>("tag", &example)->Add(id);
 //
 // Modification of bytes features is slightly different:
-//   auto tag = GetFeatureValues<string>("tag", example);
+//   auto tag = GetFeatureValues<string>("tag", &example);
 //   *tag->Add() = "lorem ipsum";
 //
 // To copy multiple values into a feature:
@@ -56,9 +56,9 @@ limitations under the License.
 //
 // To add values to feature_lists:
 //   AppendFeatureValues({4.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 //   AppendFeatureValues({5.0, 3.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 // This will create a feature list keyed as "images" with two features:
 //   feature_lists {
 //     feature_list {

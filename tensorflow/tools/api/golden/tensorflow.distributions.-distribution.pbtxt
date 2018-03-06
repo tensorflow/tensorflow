@@ -56,6 +56,10 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'covariance\'], "
   }
   member_method {
+    name: "cross_entropy"
+    argspec: "args=[\'self\', \'other\', \'name\'], varargs=None, keywords=None, defaults=[\'cross_entropy\'], "
+  }
+  member_method {
     name: "entropy"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'entropy\'], "
   }
@@ -70,6 +74,10 @@ tf_class {
   member_method {
     name: "is_scalar_event"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'is_scalar_event\'], "
+  }
+  member_method {
+    name: "kl_divergence"
+    argspec: "args=[\'self\', \'other\', \'name\'], varargs=None, keywords=None, defaults=[\'kl_divergence\'], "
   }
   member_method {
     name: "log_cdf"
