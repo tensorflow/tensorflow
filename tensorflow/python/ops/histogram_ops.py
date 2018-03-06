@@ -32,8 +32,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('histogram_fixed_width_bins')
 def histogram_fixed_width_bins(values,
                                value_range,
                                nbins=100,
@@ -139,5 +141,7 @@ def histogram_fixed_width(values,
   """
   with ops.name_scope(name, 'histogram_fixed_width',
                       [values, value_range, nbins]) as name:
-    return gen_math_ops._histogram_fixed_width(  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    return gen_math_ops._histogram_fixed_width(
         values, value_range, nbins, dtype=dtype, name=name)
+    # pylint: enable=protected-access

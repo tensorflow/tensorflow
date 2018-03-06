@@ -741,6 +741,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
         producer_op_list=producer_op_list)
 
     # Restores all the other collections.
+    variable_objects = {}
     for key, col_def in sorted(meta_graph_def.collection_def.items()):
       # Don't add unbound_inputs to the new graph.
       if key == unbound_inputs_col_name:
@@ -756,11 +757,23 @@ def import_scoped_meta_graph(meta_graph_or_file,
       from_proto = ops.get_from_proto_function(key)
       if from_proto and kind == "bytes_list":
         proto_type = ops.get_collection_proto_type(key)
-        for value in col_def.bytes_list.value:
-          proto = proto_type()
-          proto.ParseFromString(value)
-          graph.add_to_collection(
-              key, from_proto(proto, import_scope=scope_to_prepend_to_names))
+        if key in ops.GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
+          for value in col_def.bytes_list.value:
+            variable = variable_objects.get(value, None)
+            if variable is None:
+              proto = proto_type()
+              proto.ParseFromString(value)
+              variable = from_proto(
+                  proto, import_scope=scope_to_prepend_to_names)
+              variable_objects[value] = variable
+            graph.add_to_collection(key, variable)
+        else:
+          for value in col_def.bytes_list.value:
+            proto = proto_type()
+            proto.ParseFromString(value)
+            graph.add_to_collection(
+                key, from_proto(
+                    proto, import_scope=scope_to_prepend_to_names))
       else:
         field = getattr(col_def, kind)
         if key in _COMPAT_COLLECTION_LIST:

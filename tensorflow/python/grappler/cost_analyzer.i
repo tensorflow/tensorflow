@@ -44,7 +44,7 @@ limitations under the License.
 
 %{
 string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_node_report,
-                          GCluster cluster) {
+                          bool verbose, GCluster cluster) {
   tensorflow::grappler::ItemConfig cfg;
   cfg.apply_optimizations = false;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
@@ -57,11 +57,11 @@ string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_no
   tensorflow::grappler::CostAnalyzer analyzer(*item, cluster.get(), suffix);
 
   std::stringstream os;
-  analyzer.GenerateReport(os, per_node_report);
+  analyzer.GenerateReport(os, per_node_report, verbose);
   return os.str();
 }
 
 %}
 
 string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph, bool per_node_report,
-                          GCluster cluster);
+                          bool verbose, GCluster cluster);

@@ -27,6 +27,10 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
+  explicit ShapeVerifier() : allow_mixed_precision_(false) {}
+  explicit ShapeVerifier(bool allow_mixed_precision)
+      : allow_mixed_precision_(allow_mixed_precision) {}
+
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleClamp(HloInstruction* clamp) override;
@@ -56,6 +60,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleFusion(HloInstruction*) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction*) override;
+  Status HandleHostCompute(HloInstruction*) override;
   Status HandleSlice(HloInstruction* slice) override;
   Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
   Status HandleDynamicUpdateSlice(
@@ -75,20 +80,21 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleBatchNormInference(
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  Status HandleGather(HloInstruction* gather) override;
 
   Status FinishVisit(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
  protected:
-  // Check the instruction's shape against the given expected shape and return
-  // an appropriate error if there is a mismatch.
+  // Check the instruction's shape against the shape given by ShapeInference
+  // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
-                    const Shape& expected_shape);
+                    const Shape& inferred_shape);
 
   // Overload which takes a StatusOr to reduce boilerplate in the caller.
   Status CheckShape(const HloInstruction* instruction,
-                    const StatusOr<Shape>& expected_shape_status);
+                    const StatusOr<Shape>& inferred_shape_status);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   Status CheckUnaryShape(const HloInstruction* instruction);
@@ -99,19 +105,32 @@ class ShapeVerifier : public DfsHloVisitor {
   // Checks if the given two instructions shares the same channel id.
   Status CheckSameChannel(const HloInstruction* instr1,
                           const HloInstruction* instr2);
+
+ private:
+  // Whether the inputs and output of an instruction can contain both F32s and
+  // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
+  // this flag.
+  bool allow_mixed_precision_;
 };
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
 class HloVerifier : public HloPassInterface {
  public:
+  using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
+
   // Uses standard shape inference.
   explicit HloVerifier()
-      : shape_verifier_factory_([] { return MakeUnique<ShapeVerifier>(); }) {}
+      : shape_verifier_factory_(
+            [] { return MakeUnique<ShapeVerifier>(false); }) {}
+
+  explicit HloVerifier(bool allow_mixed_precision)
+      : shape_verifier_factory_([allow_mixed_precision] {
+          return MakeUnique<ShapeVerifier>(allow_mixed_precision);
+        }) {}
 
   // Uses custom shape verification.
-  explicit HloVerifier(
-      std::function<std::unique_ptr<ShapeVerifier>()> shape_verifier_factory)
+  explicit HloVerifier(ShapeVerifierFactory shape_verifier_factory)
       : shape_verifier_factory_(std::move(shape_verifier_factory)) {}
 
   ~HloVerifier() override = default;
@@ -129,7 +148,7 @@ class HloVerifier : public HloPassInterface {
   // expectations.  This is a factory function because ShapeVerifier,  Note that
   // ShapeVerifier, being a DfsHloVisitor, is stateful.  We want a clean object
   // for each run of the verifier.
-  std::function<std::unique_ptr<ShapeVerifier>()> shape_verifier_factory_;
+  ShapeVerifierFactory shape_verifier_factory_;
 };
 
 }  // namespace xla

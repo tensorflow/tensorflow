@@ -157,11 +157,11 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
 inline void Conv(const float* input_data, const Dims<4>& input_dims,
                  const float* filter_data, const Dims<4>& filter_dims,
                  const float* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, float output_activation_min,
-                 float output_activation_max, float* output_data,
-                 const Dims<4>& output_dims, float* im2col_data,
-                 const Dims<4>& im2col_dims) {
+                 int stride_width, int stride_height, int dilation_width_factor,
+                 int dilation_height_factor, int pad_width, int pad_height,
+                 float output_activation_min, float output_activation_max,
+                 float* output_data, const Dims<4>& output_dims,
+                 float* im2col_data, const Dims<4>& im2col_dims) {
   (void)im2col_data;  // only used in optimized code.
   (void)im2col_dims;  // only used in optimized code.
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
@@ -186,8 +186,9 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + filter_x;
-                const int in_y = in_y_origin + filter_y;
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
                 // If the location is outside the bounds of the input image,
                 // use zero as a default value.
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -216,6 +217,23 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+template <FusedActivationFunctionType Ac>
+void Conv(const float* input_data, const Dims<4>& input_dims,
+          const float* filter_data, const Dims<4>& filter_dims,
+          const float* bias_data, const Dims<4>& bias_dims, int stride_width,
+          int stride_height, int dilation_width_factor,
+          int dilation_height_factor, int pad_width, int pad_height,
+          float* output_data, const Dims<4>& output_dims, float* im2col_data,
+          const Dims<4>& im2col_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+  Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
+       stride_width, stride_height, dilation_width_factor,
+       dilation_height_factor, pad_width, pad_height, output_activation_min,
+       output_activation_max, output_data, output_dims, im2col_data,
+       im2col_dims);
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void Conv(const float* input_data, const Dims<4>& input_dims,
@@ -227,7 +245,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
   float output_activation_min, output_activation_max;
   GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
   Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
-       stride_width, stride_height, pad_width, pad_height,
+       stride_width, stride_height, 1, 1, pad_width, pad_height,
        output_activation_min, output_activation_max, output_data, output_dims,
        im2col_data, im2col_dims);
 }
@@ -241,7 +259,7 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
           const Dims<4>& output_dims, float* im2col_data,
           const Dims<4>& im2col_dims) {
   Conv<Ac>(input_data, input_dims, filter_data, filter_dims, bias_data,
-           bias_dims, stride, stride, pad_width, pad_height, output_data,
+           bias_dims, stride, stride, 1, 1, pad_width, pad_height, output_data,
            output_dims, im2col_data, im2col_dims);
 }
 
@@ -1453,7 +1471,10 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
               const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
               const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
               const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift) {
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+
   // Gather dimensions information, and perform consistency checks.
   const int batches =
       MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
@@ -1574,9 +1595,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       FS new_state = gemmlowp::SaturatingAdd(
           gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
           prev_state_times_forget_state);
-      // Implementation of last internal tanh node, still in fixed-point.
-      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Implementation of last internal Tanh node, still in fixed-point.
+      // Since a Tanh fixed-point implementation is specialized for a given
+      // number or integer bits, and each specialization can have a substantial
+      // code size, and we already used above a Tanh on an input with 3 integer
+      // bits, and per the table in the above function comment there is no
+      // significant accuracy to be lost by clamping to [-8, +8] for a
+      // 3-integer-bits representation, let us just do that. This helps people
+      // porting this to targets where code footprint must be minimized.
+      F3 new_state_f3 = gemmlowp::Rescale<3>(new_state);
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state_f3);
       // Store the new internal state back to memory, as 16-bit integers.
+      // Note: here we store the original value with StateIntegerBits, not
+      // the rescaled 3-integer-bits value fed to tanh.
       output_state_data_int16[b * output_depth + c] = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.
@@ -1586,6 +1617,33 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
           std::max<int16>(-128, std::min<int16>(127, rescaled_output_activ));
       output_activ_data_uint8[b * output_depth + c] =
           128 + clamped_output_activ;
+    }
+  }
+}
+
+template <typename Scalar>
+void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
+                     int axis, int outputs_count, Scalar* const* output_data,
+                     const Dims<4>* const* output_dims) {
+  const int batches = ArraySize(*output_dims[0], 3);
+  const int height = ArraySize(*output_dims[0], 2);
+  const int width = ArraySize(*output_dims[0], 1);
+  const int depth = ArraySize(*output_dims[0], 0);
+
+  const int slice_size = ArraySize(*output_dims[0], axis);
+
+  for (int i = 0; i < outputs_count; ++i) {
+    int offset = i * slice_size * input_dims.strides[axis];
+    for (int b = 0; b < batches; ++b) {
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          for (int c = 0; c < depth; ++c) {
+            auto out = Offset(*output_dims[i], c, x, y, b);
+            auto in = Offset(input_dims, c, x, y, b);
+            output_data[i][out] = input_data[offset + in];
+          }
+        }
+      }
     }
   }
 }
@@ -1600,28 +1658,12 @@ void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
     /* height = */ MatchingArraySize(*output_dims[i], 2, input_dims, 2);
     /* width = */ MatchingArraySize(*output_dims[i], 1, input_dims, 1);
   }
-  const int batches = MatchingArraySize(*output_dims[0], 3, input_dims, 3);
-  const int height = MatchingArraySize(*output_dims[0], 2, input_dims, 2);
-  const int width = MatchingArraySize(*output_dims[0], 1, input_dims, 1);
   // for now we dont have a model with a TensorFlowSplit
   // with fused activation function.
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        int in_c = 0;
-        for (int i = 0; i < outputs_count; ++i) {
-          const int depth = ArraySize(*output_dims[i], 0);
-          for (int c = 0; c < depth; ++c) {
-            output_data[i][Offset(*output_dims[i], c, x, y, b)] =
-                input_data[Offset(input_dims, in_c, x, y, b)];
-            in_c++;
-          }
-        }
-        TFLITE_DCHECK(in_c == ArraySize(input_dims, 0));
-      }
-    }
-  }
+
+  TensorFlowSplit(input_data, input_dims, /*axis=*/0, outputs_count,
+                  output_data, output_dims);
 }
 
 // TODO(benoitjacob) make this a proper reference impl without Eigen!
@@ -2186,6 +2228,41 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
           } else {
             output_data[Offset(output_dims, c, x, y, b)] = 0;
           }
+        }
+      }
+    }
+  }
+}
+
+inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
+                       float* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        // Find max element value which we'll use to ensure numerical stability
+        // taking advantage of the following equality:
+        // log(exp(x[i])/sum(exp(x[i]))) == log(exp(x[i]+C)/sum(exp(x[i]+C)))
+        float max = std::numeric_limits<float>::lowest();
+        for (int c = 0; c < depth; ++c) {
+          max = std::max(max, input_data[Offset(input_dims, c, x, y, b)]);
+        }
+
+        // Compute sum.
+        float sum = 0.f;
+        for (int c = 0; c < depth; ++c) {
+          sum += std::exp(input_data[Offset(input_dims, c, x, y, b)] - max);
+        }
+
+        // Compute result.
+        const float log_sum = std::log(sum);
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              input_data[Offset(input_dims, c, x, y, b)] - max - log_sum;
         }
       }
     }
@@ -2763,6 +2840,14 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Exp(const T* input_data, const size_t num_elements,
+                T* output_data) {
+  for (size_t idx = 0; idx < num_elements; ++idx) {
+    output_data[idx] = exp(input_data[idx]);
+  }
+}
+
+template <typename T>
 inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
                  T* output_data, const int* output_dims,
                  const int output_num_dims, const int* axis,
@@ -2814,9 +2899,11 @@ inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
   }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
-                                      num_elements_in_axis);
+  if (num_elements_in_axis > 0) {
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                        num_elements_in_axis);
+    }
   }
 }
 

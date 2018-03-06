@@ -165,6 +165,7 @@ tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
 tensorflow/contrib/distributions/python/ops/bijectors
 tensorflow/contrib/eager
+tensorflow/contrib/eager/proto
 tensorflow/contrib/eager/python
 tensorflow/contrib/estimator
 tensorflow/contrib/estimator/python
@@ -413,6 +414,9 @@ tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
 tensorflow/contrib/tensorboard/plugins/trace
+# TODO(sami): Add cmake implementations.
+# tensorflow/contrib/tensorrt/python
+# tensorflow/contrib/tensorrt/python/ops
 tensorflow/contrib/tensor_forest
 tensorflow/contrib/tensor_forest/client
 tensorflow/contrib/tensor_forest/hybrid

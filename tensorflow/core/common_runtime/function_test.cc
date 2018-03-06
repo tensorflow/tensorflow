@@ -71,11 +71,11 @@ class FunctionTest : public ::testing::Test {
     arg_types_ = result.arg_types;
     ret_types_ = result.ret_types;
 
-    Graph* g = new Graph(OpRegistry::Global());
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -89,7 +89,7 @@ class FunctionTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, g, &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);
   }
 

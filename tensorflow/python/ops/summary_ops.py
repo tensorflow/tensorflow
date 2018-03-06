@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Summary Operations."""
-# pylint: disable=protected-access
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -74,7 +73,7 @@ def tensor_summary(name,
 
   with summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
-    val = gen_logging_ops._tensor_summary_v2(
+    val = gen_logging_ops.tensor_summary_v2(
         tensor=tensor,
         tag=tag,
         name=scope,

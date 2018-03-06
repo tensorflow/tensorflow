@@ -55,7 +55,10 @@ string CudnnConvKindToString(CudnnConvKind kind);
 // Note that depending on the value of CudnnConvKind, the result of this call
 // may be written into input_buf, filter_buf, or output_buf!
 //
-// At the moment we only support cudnn convolutions over floats.
+// At the moment we only support cudnn convolutions over float and half, and
+// convolution with half data type is implemented with cudnn PSEUDO_HALF
+// configuration, that is, the input values are half and the internal
+// computation type is float.
 //
 // We provide one overload which takes a scratch buffer, and another which takes
 // an allocator which is responsible for allocating the scratch space.  In
@@ -69,10 +72,9 @@ string CudnnConvKindToString(CudnnConvKind kind);
 // that size, if you like.
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape,
-    perftools::gputools::DeviceMemory<float> input_buf,
-    perftools::gputools::DeviceMemory<float> filter_buf,
-    perftools::gputools::DeviceMemory<float> output_buf,
+    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
+    perftools::gputools::DeviceMemoryBase filter_buf,
+    perftools::gputools::DeviceMemoryBase output_buf,
     perftools::gputools::DeviceMemoryBase scratch_buf, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
     perftools::gputools::dnn::AlgorithmConfig algorithm,
@@ -81,10 +83,9 @@ Status RunCudnnConvolution(
 
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape,
-    perftools::gputools::DeviceMemory<float> input_buf,
-    perftools::gputools::DeviceMemory<float> filter_buf,
-    perftools::gputools::DeviceMemory<float> output_buf,
+    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
+    perftools::gputools::DeviceMemoryBase filter_buf,
+    perftools::gputools::DeviceMemoryBase output_buf,
     perftools::gputools::ScratchAllocator* scratch_allocator,
     const Window& window, const ConvolutionDimensionNumbers& dnums,
     perftools::gputools::dnn::AlgorithmConfig algorithm,

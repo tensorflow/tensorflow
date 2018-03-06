@@ -50,16 +50,12 @@ def pairwise_distance(feature, squared=False):
     pairwise_distances: 2-D Tensor of size [number of data, number of data].
   """
   pairwise_distances_squared = math_ops.add(
+      math_ops.reduce_sum(math_ops.square(feature), axis=[1], keepdims=True),
       math_ops.reduce_sum(
-          math_ops.square(feature),
-          axis=[1],
-          keepdims=True),
-      math_ops.reduce_sum(
-          math_ops.square(
-              array_ops.transpose(feature)),
+          math_ops.square(array_ops.transpose(feature)),
           axis=[0],
-          keepdims=True)) - 2.0 * math_ops.matmul(
-              feature, array_ops.transpose(feature))
+          keepdims=True)) - 2.0 * math_ops.matmul(feature,
+                                                  array_ops.transpose(feature))
 
   # Deal with numerical inaccuracies. Set small negatives to zero.
   pairwise_distances_squared = math_ops.maximum(pairwise_distances_squared, 0.0)
@@ -134,8 +130,8 @@ def masked_maximum(data, mask, dim=1):
   """
   axis_minimums = math_ops.reduce_min(data, dim, keepdims=True)
   masked_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          data - axis_minimums, mask), dim, keepdims=True) + axis_minimums
+      math_ops.multiply(data - axis_minimums, mask), dim,
+      keepdims=True) + axis_minimums
   return masked_maximums
 
 
@@ -153,8 +149,8 @@ def masked_minimum(data, mask, dim=1):
   """
   axis_maximums = math_ops.reduce_max(data, dim, keepdims=True)
   masked_minimums = math_ops.reduce_min(
-      math_ops.multiply(
-          data - axis_maximums, mask), dim, keepdims=True) + axis_maximums
+      math_ops.multiply(data - axis_maximums, mask), dim,
+      keepdims=True) + axis_maximums
   return masked_minimums
 
 
@@ -202,8 +198,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
   mask_final = array_ops.reshape(
       math_ops.greater(
           math_ops.reduce_sum(
-              math_ops.cast(
-                  mask, dtype=dtypes.float32), 1, keepdims=True),
+              math_ops.cast(mask, dtype=dtypes.float32), 1, keepdims=True),
           0.0), [batch_size, batch_size])
   mask_final = array_ops.transpose(mask_final)
 
@@ -450,8 +445,8 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
   #     this is to take the max only among negatives.
   row_minimums = math_ops.reduce_min(diff, 1, keepdims=True)
   row_negative_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          diff - row_minimums, mask), 1, keepdims=True) + row_minimums
+      math_ops.multiply(diff - row_minimums, mask), 1,
+      keepdims=True) + row_minimums
 
   # Compute the loss.
   # Keep track of matrix of maximums where M_ij = max(m_i, m_j)
@@ -467,10 +462,11 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
       array_ops.transpose(max_elements), [-1, 1])
 
   loss_exp_left = array_ops.reshape(
-      math_ops.reduce_sum(math_ops.multiply(
-          math_ops.exp(
-              diff_tiled - max_elements_vect),
-          mask_tiled), 1, keepdims=True), [batch_size, batch_size])
+      math_ops.reduce_sum(
+          math_ops.multiply(
+              math_ops.exp(diff_tiled - max_elements_vect), mask_tiled),
+          1,
+          keepdims=True), [batch_size, batch_size])
 
   loss_mat = max_elements + math_ops.log(
       loss_exp_left + array_ops.transpose(loss_exp_left))

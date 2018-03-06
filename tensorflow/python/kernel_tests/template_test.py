@@ -17,10 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import traceback
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -354,6 +356,10 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1_1/nested/dummy:0", v5.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
 
+    self.assertEqual(2, len(tmpl1._checkpoint_dependencies))
+    self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
+    self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
+
   @test_util.run_in_graph_and_eager_modes()
   def test_nested_templates_with_defun(self):
 
@@ -411,6 +417,17 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/nested_1/dummy:0", v1[1].name)
     self.assertEqual("s1_1/nested/dummy:0", v3[0].name)
     self.assertEqual("s1_1/nested_1/dummy:0", v3[1].name)
+
+  def test_graph_function_no_name(self):
+    with context.eager_mode():
+
+      def f(_, y):
+        return y + 1
+
+      partial = functools.partial(f, 1.0)
+      tmpl = template.make_template_internal(
+          "a", partial, create_graph_function_=True)
+      self.assertAllEqual(tmpl(ops.convert_to_tensor(1.0)), 2.0)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_immediate_scope_creation(self):

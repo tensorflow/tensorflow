@@ -35,6 +35,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 _MAX_DELAY_SECS = 60
 _DELAY_SECS_PER_WORKER = 5
@@ -114,6 +115,7 @@ def _is_google_env():
   return tf_config.get(_ENVIRONMENT_KEY) == _ENVIRONMENT_GOOGLE_VALUE
 
 
+@tf_export('estimator.TrainSpec')
 class TrainSpec(
     collections.namedtuple('TrainSpec', ['input_fn', 'max_steps', 'hooks'])):
   """Configuration for the "train" part for the `train_and_evaluate` call.
@@ -158,6 +160,7 @@ class TrainSpec(
         cls, input_fn=input_fn, max_steps=max_steps, hooks=hooks)
 
 
+@tf_export('estimator.EvalSpec')
 class EvalSpec(
     collections.namedtuple('EvalSpec', [
         'input_fn', 'steps', 'name', 'hooks', 'exporters', 'start_delay_secs',
@@ -246,6 +249,7 @@ class EvalSpec(
         throttle_secs=throttle_secs)
 
 
+@tf_export('estimator.train_and_evaluate')
 def train_and_evaluate(estimator, train_spec, eval_spec):
   """Train and evaluate the `estimator`.
 
@@ -451,15 +455,21 @@ class _TrainingExecutor(object):
                train_hooks=None,
                continuous_eval_listener=None):
     if not isinstance(estimator, estimator_lib.Estimator):
-      raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
+      raise TypeError(
+          '`estimator` must have type `tf.estimator.Estimator`. '
+          'Got: {}'.format(type(estimator)))
     self._estimator = estimator
 
     if not isinstance(train_spec, TrainSpec):
-      raise TypeError('`train_spec` must have type `tf.estimator.TrainSpec`.')
+      raise TypeError(
+          '`train_spec` must have type `tf.estimator.TrainSpec`. '
+          'Got: {}'.format(type(train_spec)))
     self._train_spec = train_spec
 
     if not isinstance(eval_spec, EvalSpec):
-      raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`.')
+      raise TypeError(
+          '`eval_spec` must have type `tf.estimator.EvalSpec`. '
+          'Got: {}'.format(type(eval_spec)))
     self._eval_spec = eval_spec
 
     self._train_hooks = _validate_hooks(train_hooks)

@@ -72,8 +72,7 @@ CompileOnlyService::CompileAheadOfTime(
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
 
-    // TODO(b/63773457): Track DebugOptions in AotCompilationOptions.
-    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    const DebugOptions& debug_options = options.debug_options();
 
     // Dump computation proto state if flag is set.
     const string& directory_path = debug_options.xla_dump_computations_to();

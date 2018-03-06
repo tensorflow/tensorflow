@@ -37,6 +37,10 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
 
 void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
 
+// Sets whether ops missing a shape inference function should trigger an
+// error. The default is true.
+void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

@@ -196,6 +196,10 @@ typedef struct {
 } TfLiteMeanParams;
 
 typedef struct {
+  int num_splits;
+} TfLiteSplitParams;
+
+typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
   int squeeze_dims[8];

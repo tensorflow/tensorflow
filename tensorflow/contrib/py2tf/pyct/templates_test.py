@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 import gast
 
 from tensorflow.contrib.py2tf.pyct import compiler
@@ -34,7 +36,8 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, b=('a', 'c'))[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
+
     self.assertEquals((2, 3), result.test_fn(2, 3))
 
   def test_replace_variable(self):
@@ -46,7 +49,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, a='b')[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
   def test_replace_function_name(self):
@@ -58,10 +61,10 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, fname='test_fn')[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
-  def test_code_block(self):
+  def test_replace_code_block(self):
     template = """
       def test_fn(a):
         block
@@ -75,8 +78,23 @@ class TemplatesTest(test.TestCase):
                 gast.Name('a', None, None)
             ], gast.BinOp(gast.Name('a', None, None), gast.Add(), gast.Num(1))),
         ] * 2)[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn(1))
+
+  def test_replace_attribute(self):
+    template = """
+      def test_fn(a):
+        return a.foo
+    """
+
+    node = templates.replace(template, foo='b')[0]
+    result, _ = compiler.ast_to_object(node)
+    mod = imp.new_module('test')
+    mod.b = 3
+    self.assertEquals(3, result.test_fn(mod))
+
+    with self.assertRaises(ValueError):
+      templates.replace(template, foo=1)
 
 
 if __name__ == '__main__':
