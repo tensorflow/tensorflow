@@ -41,7 +41,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
 # pylint: disable=unused-import
-from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
+from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 # pylint: enable=unused-import
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export

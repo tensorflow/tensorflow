@@ -1493,6 +1493,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (int i = 0; i < output->node_size(); ++i) {
     NodeDef* node = output->mutable_node(i);
+
     // Remove Shuffle or Reverse op over scalar values.
     if (use_shape_info &&
         (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
@@ -1839,6 +1840,134 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       std::swap(*node->mutable_input(parent_const_input),
                 *op_child_node->mutable_input(non_const_leaf_input));
       graph_modified_ = true;
+      continue;
+    }
+
+    // Partial constant propagation through IdentityN.
+    if (IsIdentityN(*node) && NumNonControlInputs(*node) > 0) {
+      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+      const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
+      for (int input_idx = 0; input_idx < node->input_size(); ++input_idx) {
+        const string& input = node->input(input_idx);
+        if (IsControlInput(input)) {
+          break;
+        }
+        const NodeDef* input_node = node_map_->GetNode(NodeName(input));
+        if (input_node == nullptr) {
+          LOG(ERROR) << "Bad input: " << input;
+          break;
+        }
+        // Forward constant inputs to outputs and add a control dependency on
+        // the IdentityN node.
+        if (IsReallyConstant(*input_node)) {
+          // Update each consumer.
+          for (NodeDef* consumer : consumers) {
+            bool add_dep = false;
+            for (int consumer_input_idx = 0;
+                 consumer_input_idx < consumer->input_size();
+                 ++consumer_input_idx) {
+              const string& consumer_input =
+                  consumer->input(consumer_input_idx);
+              if (IsControlInput(consumer_input)) {
+                break;
+              }
+              int output_idx;
+              const string input_node_name =
+                  ParseNodeName(consumer_input, &output_idx);
+              if (input_node_name == node->name() && output_idx == input_idx) {
+                consumer->set_input(consumer_input_idx, input);
+                // We will keep the input from IdentityN through a control
+                // dependendy, so we only need to add the consumer as an output
+                // for the constant input node.
+                node_map_->AddOutput(NodeName(input), consumer->name());
+                add_dep = true;
+              }
+            }
+            if (add_dep) {
+              consumer->add_input(AsControlDependency(node->name()));
+            }
+          }
+        }
+      }
+      for (NodeDef* consumer : consumers) {
+        DedupControlInputs(consumer);
+      }
+    }
+
+    // Partial constant folding for associative operators:
+    // Split AddN/AccumulateNV2 to enable partial
+    // folding of ops when more than one but not all inputs are constant.
+    // For AddN and AccumulateNV2, we may furthermore reorder inputs, since
+    // addition is commutative.
+    // TODO(rmlarsen): Concat/Pack/ParallelConcat which are not commutative, so
+    // we have to preserve order and can only push consecutive runs of constant
+    // inputs into sub-nodes.
+    if (IsAggregate(*node) && IsCommutative(*node) &&
+        NumNonControlInputs(*node) > 2) {
+      const int num_control_inputs =
+          node->input_size() - NumNonControlInputs(*node);
+      std::vector<int> const_inputs;
+      std::vector<int> nonconst_inputs;
+      for (int i = 0; i < node->input_size(); ++i) {
+        const string& input = node->input(i);
+        const NodeDef* input_node = node_map_->GetNode(NodeName(input));
+        CHECK(input_node != nullptr) << input;
+        if (!IsControlInput(input) && IsReallyConstant(*input_node)) {
+          const_inputs.push_back(i);
+        } else {
+          // Non-const and control inputs.
+          nonconst_inputs.push_back(i);
+        }
+      }
+      // Promote AccumulateNV2 with all constant inputs to AddN, since it is
+      // a fake node that cannot be constant folded by itself.
+      if (const_inputs.size() == NumNonControlInputs(*node) &&
+          node->op() == "AccumulateNV2") {
+        node->set_op("AddN");
+        node->mutable_attr()->erase("shape");
+        graph_modified_ = true;
+        continue;
+      }
+      const string new_node_name = OptimizedNodeName(
+          *node, strings::StrCat("_partial_split_", const_inputs.size()));
+      if (1 < const_inputs.size() &&
+          const_inputs.size() < NumNonControlInputs(*node) &&
+          !node_map_->NodeExists(new_node_name)) {
+        NodeDef* added_node = output->add_node();
+        *added_node = *node;
+        // Always use AddN for the constant node, since AccumulateNV2 is a fake
+        // node that cannot be constant folded, since it does not have a kernel.
+        added_node->set_op("AddN");
+        added_node->mutable_attr()->erase("shape");
+        added_node->set_name(new_node_name);
+        node_map_->AddNode(added_node->name(), added_node);
+        added_node->clear_input();
+        for (int i : const_inputs) {
+          added_node->add_input(node->input(i));
+          node_map_->UpdateOutput(NodeName(node->input(i)), node->name(),
+                                  added_node->name());
+        }
+
+        // Overwrite the first const input with the added node.
+        node->set_input(const_inputs[0], added_node->name());
+        node_map_->AddOutput(added_node->name(), node->name());
+        nonconst_inputs.push_back(const_inputs[0]);
+        // Compact the remaining inputs to the original node.
+        std::sort(nonconst_inputs.begin(), nonconst_inputs.end());
+        int idx = 0;
+        for (int i : nonconst_inputs) {
+          if (idx != i) {
+            node->set_input(idx, node->input(i));
+          }
+          ++idx;
+        }
+        node->mutable_input()->DeleteSubrange(nonconst_inputs.size(),
+                                              const_inputs.size() - 1);
+        (*node->mutable_attr())["N"].set_i(node->input_size() -
+                                           num_control_inputs);
+        (*added_node->mutable_attr())["N"].set_i(const_inputs.size());
+        graph_modified_ = true;
+      }
     }
   }
 

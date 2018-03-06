@@ -193,7 +193,8 @@ class SavedModelBuilder(object):
   def _validate_tensor_info(self, tensor_info):
     """Validates the `TensorInfo` proto.
 
-    Checks if the `name` and `dtype` fields exist and are non-empty.
+    Checks if the `encoding` (`name` or `coo_sparse`) and `dtype` fields exist
+    and are non-empty.
 
     Args:
       tensor_info: `TensorInfo` protocol buffer to validate.
@@ -206,10 +207,12 @@ class SavedModelBuilder(object):
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the name "
           "and dtype fields set.")
-    if not tensor_info.name:
+    if tensor_info.WhichOneof("encoding") is None:
+      # TODO(soergel) validate each of the fields of coo_sparse
       raise AssertionError(
-          "All TensorInfo protos used in the SignatureDefs must have the name "
-          "field set: %s" % tensor_info)
+          "All TensorInfo protos used in the SignatureDefs must have one of "
+          "the 'encoding' fields (e.g., name or coo_sparse) set: %s"
+          % tensor_info)
     if tensor_info.dtype is types_pb2.DT_INVALID:
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the dtype "

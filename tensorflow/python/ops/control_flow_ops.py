@@ -178,6 +178,8 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
 
       guarded_assert = cond(condition, no_op, true_assert, name="AssertGuard")
+      if context.in_eager_mode():
+        return
       return guarded_assert.op
 
 
@@ -327,7 +329,7 @@ def exit(data, name=None):  # pylint: disable=redefined-builtin
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_control_flow_ops._ref_exit(data, name)
+      return gen_control_flow_ops.ref_exit(data, name)
     else:
       return gen_control_flow_ops._exit(data, name)
   else:
@@ -369,17 +371,17 @@ def switch(data, pred, dtype=None, name=None):
         data, dtype=dtype, name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
     if isinstance(data, ops.Tensor):
-      return gen_control_flow_ops._switch(data, pred, name=name)
+      return gen_control_flow_ops.switch(data, pred, name=name)
     else:
       if not isinstance(data, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
         raise TypeError("Type %s not supported" % type(data))
       val, ind = data.values, data.indices
-      val_f, val_t = gen_control_flow_ops._switch(val, pred, name=name)
-      ind_f, ind_t = gen_control_flow_ops._switch(ind, pred, name="indices")
+      val_f, val_t = gen_control_flow_ops.switch(val, pred, name=name)
+      ind_f, ind_t = gen_control_flow_ops.switch(ind, pred, name="indices")
       if isinstance(data, ops.IndexedSlices):
         dense_shape = data.dense_shape
         if dense_shape is not None:
-          dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
+          dense_shape_f, dense_shape_t = gen_control_flow_ops.switch(
               dense_shape, pred, name="dense_shape")
         else:
           dense_shape_f, dense_shape_t = None, None
@@ -387,7 +389,7 @@ def switch(data, pred, dtype=None, name=None):
                 ops.IndexedSlices(val_t, ind_t, dense_shape_t))
       else:
         dense_shape = data.dense_shape
-        dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
+        dense_shape_f, dense_shape_t = gen_control_flow_ops.switch(
             data.dense_shape, pred, name="dense_shape")
         return (sparse_tensor.SparseTensor(ind_f, val_f, dense_shape_f),
                 sparse_tensor.SparseTensor(ind_t, val_t, dense_shape_t))
@@ -471,15 +473,15 @@ def merge(inputs, name=None):
     ]
     if all([isinstance(v, ops.Tensor) for v in inputs]):
       if all([v.dtype._is_ref_dtype for v in inputs]):  # pylint: disable=protected-access
-        return gen_control_flow_ops._ref_merge(inputs, name)
+        return gen_control_flow_ops.ref_merge(inputs, name)
       else:
-        return gen_control_flow_ops._merge(inputs, name)
+        return gen_control_flow_ops.merge(inputs, name)
     elif all([isinstance(v, sparse_tensor.SparseTensor) for v in inputs]):
       # Only handle the case when all inputs are SparseTensor.
       values, _ = merge([inp.values for inp in inputs], name=name)
-      indices, chosen_index = gen_control_flow_ops._merge(
+      indices, chosen_index = gen_control_flow_ops.merge(
           [inp.indices for inp in inputs], name="indices")
-      dense_shape, _ = gen_control_flow_ops._merge(
+      dense_shape, _ = gen_control_flow_ops.merge(
           [inp.dense_shape for inp in inputs], name="dense_shape")
       return (sparse_tensor.SparseTensor(indices, values, dense_shape),
               chosen_index)
@@ -487,13 +489,13 @@ def merge(inputs, name=None):
       # For now convert all the inputs as IndexedSlices.
       inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
       values, _ = merge([inp.values for inp in inputs], name=name)
-      indices, chosen_index = gen_control_flow_ops._merge(
+      indices, chosen_index = gen_control_flow_ops.merge(
           [inp.indices for inp in inputs], name="indices")
       if any(inp.dense_shape is not None for inp in inputs):
         if any(inp.dense_shape is None for inp in inputs):
           raise ValueError("Either all merged IndexedSlices must have a "
                            "dense_shape, or none must have a dense_shape.")
-        dense_shape, _ = gen_control_flow_ops._merge(
+        dense_shape, _ = gen_control_flow_ops.merge(
             [inp.dense_shape for inp in inputs], name="dense_shape")
       else:
         dense_shape = None
@@ -1013,10 +1015,8 @@ class GradLoopState(object):
         else:
           max_size = GetMaxSizeFromNestedMaximumIterations(
               value, self.forward_context)
-        # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack_v2(
+        acc = gen_data_flow_ops.stack_v2(
             max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
-        # pylint: enable=protected-access
       if curr_ctxt:
         curr_ctxt.Exit()
 
@@ -1029,10 +1029,8 @@ class GradLoopState(object):
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
-        # pylint: disable=protected-access
-        push = gen_data_flow_ops._stack_push_v2(
+        push = gen_data_flow_ops.stack_push_v2(
             enter_acc, value, swap_memory=swap_enabled)
-        # pylint: enable=protected-access
         self.forward_context.Exit()
         # Protect stack push and order it before forward_index.
         self.forward_index.op._add_control_input(push.op)
@@ -1044,18 +1042,14 @@ class GradLoopState(object):
           # The special case for creating a zero tensor for a dead
           # branch of a switch. See ControlFlowState.ZerosLike().
           value_ctxt.outer_context.Enter()
-          # pylint: disable=protected-access
-          push = gen_data_flow_ops._stack_push_v2(
+          push = gen_data_flow_ops.stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
-          # pylint: enable=protected-access
           value_ctxt.outer_context.Exit()
           push.op._set_control_flow_context(value_ctxt)
         else:
           value_ctxt.Enter()
-          # pylint: disable=protected-access
-          push = gen_data_flow_ops._stack_push_v2(
+          push = gen_data_flow_ops.stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
-          # pylint: enable=protected-access
           value_ctxt.Exit()
         # Protect stack push and order it before forward_sync.
         self.forward_sync._add_control_input(push.op)
@@ -1102,10 +1096,8 @@ class GradLoopState(object):
           pred = cond_ctxt.pred
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
-      # pylint: disable=protected-access
-      pop = gen_data_flow_ops._stack_pop_v2(history_value,
-                                            value.dtype.base_dtype)
-      # pylint: enable=protected-access
+      pop = gen_data_flow_ops.stack_pop_v2(history_value,
+                                           value.dtype.base_dtype)
       pop.set_shape(value.get_shape())
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
@@ -1788,7 +1780,7 @@ class CondContext(ControlFlowContext):
 
     ret.Enter()
     for nested_def in context_def.nested_contexts:
-      from_control_flow_context_def(nested_def)
+      from_control_flow_context_def(nested_def, import_scope=import_scope)
     ret.Exit()
     return ret
 

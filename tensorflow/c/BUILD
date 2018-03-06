@@ -17,7 +17,10 @@ load(
 
 filegroup(
     name = "headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

@@ -79,6 +79,17 @@ class ReplaceTransformer(gast.NodeTransformer):
     else:
       raise ValueError('unexpected node type "%s"' % node)
 
+  def visit_Attribute(self, node):
+    node = self.generic_visit(node)
+    if node.attr not in self.replacements:
+      return node
+    repl = self.replacements[node.attr]
+    if not isinstance(repl, gast.Name):
+      raise ValueError(
+          'An attribute can only be replaced by a Name node. Found: %s' % repl)
+    node.attr = repl.id
+    return node
+
   def visit_Name(self, node):
     if node.id not in self.replacements:
       return node

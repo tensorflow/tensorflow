@@ -44,6 +44,12 @@ class Base(gast.NodeTransformer):
     self._col_offset = 0
     self.context = context
 
+  def debug_print(self, node):
+    """Helper method useful for debugging."""
+    if __debug__:
+      print(pretty_printer.fmt(node))
+    return node
+
   def visit(self, node):
     source_code = self.context.source_code
     source_file = self.context.source_file

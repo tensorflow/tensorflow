@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
@@ -384,9 +385,6 @@ class ResourceVariable(variables.Variable):
                   shared_name=handle_name,
                   name=name,
                   graph_mode=self._in_graph_mode)
-              self._handle_device = (
-                  self._handle.device if self._in_graph_mode else
-                  context.get_default_context().device_name)
               self._shape = initial_value.get_shape()
           else:
             initial_value = initial_value()
@@ -399,9 +397,6 @@ class ResourceVariable(variables.Variable):
                 shared_name=handle_name,
                 name=name,
                 graph_mode=False)
-            self._handle_device = (
-                self._handle.device if self._in_graph_mode else
-                context.get_default_context().device_name)
             self._shape = initial_value.get_shape()
         # pylint: enable=protected-access
 
@@ -425,8 +420,6 @@ class ResourceVariable(variables.Variable):
               shared_name=handle_name,
               name=name,
               graph_mode=self._in_graph_mode)
-          self._handle_device = (self._handle.device if self._in_graph_mode else
-                                 context.get_default_context().device_name)
           self._shape = initial_value.get_shape()
 
         self._initial_value = initial_value if self._in_graph_mode else None
@@ -449,7 +442,7 @@ class ResourceVariable(variables.Variable):
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
             # messages.
-            with ops.device(self._handle_device):
+            with ops.device(self._handle.device):
               value = self._read_variable_op()
             self._graph_element = value
             if caching_device is not None:
@@ -489,7 +482,7 @@ class ResourceVariable(variables.Variable):
       # cycles being uncollectable, and means that no __del__ will be defined at
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
-          handle=self._handle, handle_device=self._handle_device)
+          handle=self._handle, handle_device=self._handle.device)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -507,7 +500,6 @@ class ResourceVariable(variables.Variable):
             variable_def.variable_name, import_scope=import_scope))
     self._shape = tensor_shape.TensorShape(
         self._handle.op.get_attr("shape"))
-    self._handle_device = self._handle.device
     self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
@@ -534,7 +526,8 @@ class ResourceVariable(variables.Variable):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
-    self._graph_element = self.value()
+    self._graph_element = g.get_tensor_by_name(
+        self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
 
   def __nonzero__(self):
@@ -551,7 +544,7 @@ class ResourceVariable(variables.Variable):
   @property
   def device(self):
     """The device this variable is on."""
-    return self._handle_device
+    return self._handle.device
 
   @property
   def graph(self):
@@ -585,7 +578,7 @@ class ResourceVariable(variables.Variable):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(self._handle_device):
+      with ops.device(self._handle.device):
         return self._read_variable_op()
 
   def _as_graph_element(self):
@@ -682,7 +675,7 @@ class ResourceVariable(variables.Variable):
     """
     with ops.name_scope("Read"):
       # Ensure we read the variable in the same device as the handle.
-      with ops.device(self._handle_device):
+      with ops.device(self._handle.device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
@@ -788,37 +781,83 @@ class ResourceVariable(variables.Variable):
 
   __array_priority__ = 100
 
-  def assign_sub(self, delta, use_locking=None, name=None):
+  def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
+    """Subtracts a value from this variable.
+
+    Args:
+      delta: A `Tensor`. The value to subtract from this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: The name to use for the operation.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    return self._lazy_read(gen_resource_variable_ops.assign_sub_variable_op(
-        self.handle,
-        ops.convert_to_tensor(delta, dtype=self.dtype),
-        name=name))
+    assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
+        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    if read_value:
+      return self._lazy_read(assign_sub_op)
+    return assign_sub_op
 
-  def assign_add(self, delta, use_locking=None, name=None):
-    return self._lazy_read(gen_resource_variable_ops.assign_add_variable_op(
-        self.handle,
-        ops.convert_to_tensor(delta, dtype=self.dtype),
-        name=name))
+  def assign_add(self, delta, use_locking=None, name=None, read_value=True):
+    """Adds a value to this variable.
+
+    Args:
+      delta: A `Tensor`. The value to add to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: The name to use for the operation.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
+    assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
+        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    if read_value:
+      return self._lazy_read(assign_add_op)
+    return assign_add_op
 
   def _lazy_read(self, op):
     if hasattr(self, "_trainable") and self._trainable:
       tape.watch_variable(self)
     return _UnreadVariable(
-        self._handle, self.dtype, self._handle_device, self._shape,
-        self._in_graph_mode,
+        self._handle, self.dtype, self._shape, self._in_graph_mode,
         self._handle_deleter if not self._in_graph_mode else None, op)
 
-  def assign(self, value, use_locking=None, name=None):
+  def assign(self, value, use_locking=None, name=None, read_value=True):
+    """Assigns a new value to this variable.
+
+    Args:
+      value: A `Tensor`. The new value for this variable.
+      use_locking: If `True`, use locking during the assignment.
+      name: The name to use for the assignment.
+      read_value: A `bool`. Whether to read and return the new value of the
+          variable or not.
+
+    Returns:
+      If `read_value` is `True`, this method will return the new value of the
+      variable after the assignment has completed. Otherwise, when in graph mode
+      it will return the `Operation` that does the assignment, and when in eager
+      mode it will return `None`.
+    """
     value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
     self._shape.assert_is_compatible_with(value_tensor.shape)
-    return self._lazy_read(
-        gen_resource_variable_ops.assign_variable_op(
-            self.handle,
-            value_tensor,
-            name=name))
+    assign_op = gen_resource_variable_ops.assign_variable_op(
+        self.handle, value_tensor, name=name)
+    if read_value:
+      return self._lazy_read(assign_op)
+    return assign_op
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
@@ -894,6 +933,9 @@ class ResourceVariable(variables.Variable):
                        "Tensor object.")
 
 
+pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
+
+
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
@@ -904,7 +946,7 @@ class _UnreadVariable(ResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, handle_device,  # pylint: disable=super-init-not-called
+  def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
                shape, in_graph_mode, deleter, parent_op):
     # We do not call super init on purpose.
     self._trainable = False
@@ -912,7 +954,6 @@ class _UnreadVariable(ResourceVariable):
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     self._in_graph_mode = in_graph_mode
     self._handle = handle
-    self._handle_device = handle_device
     self._shape = shape
     self._initial_value = None
     if isinstance(self._handle, ops.EagerTensor):

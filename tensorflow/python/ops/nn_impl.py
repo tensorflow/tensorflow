@@ -888,12 +888,10 @@ def fused_batch_norm(
   # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
   # currently only use the V2 version for float16 inputs, which is not supported
   # by the V1 version.
-  # pylint: disable=protected-access
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
-  # pylint: enable=protected-access
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
   y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,

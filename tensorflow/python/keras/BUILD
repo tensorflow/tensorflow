@@ -45,7 +45,10 @@ py_library(
         "_impl/keras/engine/saving.py",
         "_impl/keras/engine/sequential.py",
         "_impl/keras/engine/training.py",
+        "_impl/keras/engine/training_arrays.py",
         "_impl/keras/engine/training_eager.py",
+        "_impl/keras/engine/training_generator.py",
+        "_impl/keras/engine/training_utils.py",
         "_impl/keras/estimator.py",
         "_impl/keras/initializers.py",
         "_impl/keras/layers/__init__.py",
@@ -78,8 +81,8 @@ py_library(
         "_impl/keras/utils/generic_utils.py",
         "_impl/keras/utils/io_utils.py",
         "_impl/keras/utils/layer_utils.py",
+        "_impl/keras/utils/multi_gpu_utils.py",
         "_impl/keras/utils/np_utils.py",
-        "_impl/keras/utils/training_utils.py",
         "_impl/keras/utils/vis_utils.py",
         "_impl/keras/wrappers/__init__.py",
         "_impl/keras/wrappers/scikit_learn.py",
@@ -646,9 +649,9 @@ py_test(
 )
 
 py_test(
-    name = "training_utils_test",
+    name = "multi_gpu_utils_test",
     size = "medium",
-    srcs = ["_impl/keras/utils/training_utils_test.py"],
+    srcs = ["_impl/keras/utils/multi_gpu_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = ["multi_gpu"],
     deps = [

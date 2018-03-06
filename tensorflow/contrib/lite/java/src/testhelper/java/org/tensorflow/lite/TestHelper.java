@@ -32,4 +32,19 @@ public class TestHelper {
       throw new IllegalArgumentException("Interpreter has not initialized; Failed to setUseNNAPI.");
     }
   }
+
+  /**
+   * Gets the last inference duration in nanoseconds. It returns null if there is no previous
+   * inference run or the last inference run failed.
+   *
+   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
+   *     IllegalArgumentException} will be thrown.
+   */
+  public static Long getLastNativeInferenceDurationNanoseconds(Interpreter interpreter) {
+    if (interpreter != null && interpreter.wrapper != null) {
+      return interpreter.wrapper.getLastNativeInferenceDurationNanoseconds();
+    } else {
+      throw new IllegalArgumentException("Interpreter has not initialized; Failed to get latency.");
+    }
+  }
 }

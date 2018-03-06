@@ -217,7 +217,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       urls = [
           "https://mirror.bazel.build/www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
           "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.12.02.tar.bz2/d15843c3fb7db39af80571ee27ec6fad/nasm-2.12.02.tar.bz2",
-          "http://www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
       ],
       sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
       strip_prefix = "nasm-2.12.02",
@@ -478,11 +477,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/8f7bcdf3c65b9a47e35653d525135beb18f3ac25.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/8f7bcdf3c65b9a47e35653d525135beb18f3ac25.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/193aea3782308c66a7a12f1c37520a1b4ff1dbd8.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/193aea3782308c66a7a12f1c37520a1b4ff1dbd8.tar.gz",
       ],
-      sha256 = "63d4da54dc7bc9a79e2ad266d230f4f759520cccb344a2dd49c2c6383ab75285",
-      strip_prefix = "llvm-8f7bcdf3c65b9a47e35653d525135beb18f3ac25",
+      sha256 = "2eda56deafb8da85bc23aa52fa1fb8c39da6a58c865e5216d0a0787bd09a09ed",
+      strip_prefix = "llvm-193aea3782308c66a7a12f1c37520a1b4ff1dbd8",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

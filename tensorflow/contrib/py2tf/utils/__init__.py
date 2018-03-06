@@ -25,4 +25,5 @@ from tensorflow.contrib.py2tf.utils.misc import alias_tensors
 from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_cond
 from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_while
 from tensorflow.contrib.py2tf.utils.py_func import wrap_py_func
+from tensorflow.contrib.py2tf.utils.testing import fake_tf
 from tensorflow.contrib.py2tf.utils.type_check import is_tensor
