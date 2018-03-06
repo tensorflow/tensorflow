@@ -262,6 +262,11 @@ class Literal {
                        tensorflow::gtl::ArraySlice<int64> dest_base,
                        tensorflow::gtl::ArraySlice<int64> copy_size);
 
+  // Copies one element from src_literal[src_index] to (*this)[dest_index].
+  Status CopyElementFrom(const Literal& src_literal,
+                         tensorflow::gtl::ArraySlice<int64> src_index,
+                         tensorflow::gtl::ArraySlice<int64> dest_index);
+
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
