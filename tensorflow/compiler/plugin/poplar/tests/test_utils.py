@@ -8,6 +8,12 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.ops.summary_ops import tensor_summary
 
 import contextlib
 import re
@@ -30,3 +36,17 @@ def check_all_compute_sets_in_list(cs_list, whitelist):
     if len([x for x in whitelist if cs.startswith(x)]) == 0:
       return False
   return True
+
+def ipu_compile_summary(name, op_list, collections=None):
+
+  with ops.device("cpu"):
+    with ops.control_dependencies(op_list):
+      reports = gen_ipu_ops.ipu_summary()
+
+      summary_metadata = summary_pb2.SummaryMetadata(
+        plugin_data=summary_pb2.SummaryMetadata.PluginData(plugin_name="ipu"))
+
+      t_summary = tensor_summary(name=name, tensor=reports,
+                                 summary_metadata=summary_metadata,
+                                 collections=collections)
+  return t_summary
