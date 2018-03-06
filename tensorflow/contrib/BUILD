@@ -8,6 +8,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "contrib_py",
@@ -39,7 +40,6 @@ py_library(
         "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
@@ -63,7 +63,6 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -110,6 +109,9 @@ py_library(
         "//tensorflow/python:util",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
+    ]) + if_not_windows([
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",  # unix dependency, need to fix code
+        "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
 )
 
