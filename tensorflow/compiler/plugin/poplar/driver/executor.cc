@@ -222,17 +222,7 @@ port::Status PoplarExecutor::BlockHostUntilDone(Stream *stream)  {
 DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
 
-  builder.set_device_address_bits(64);
-
-  // TODO populate dynamic values correctly
-  builder.set_name("Poplar");
-  builder.set_device_vendor("Graphcore");
-  builder.set_platform_version("1.0");
-  builder.set_driver_version("1.0");
-  builder.set_runtime_version("1.0");
-  builder.set_pci_bus_id("1");
-  builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  // This is never used
 
   auto built = builder.Build();
   return built.release();

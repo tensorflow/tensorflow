@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 
 #include "tensorflow/core/kernels/no_op.h"
 
@@ -89,10 +90,33 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
     registration.compile_resource_ops = true;
     XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_IPU, registration);
 
+    se::StreamExecutor *executor;
+    TF_ASSIGN_OR_RETURN(executor, p->ExecutorForDevice(ordinal));
+    auto *e = static_cast<sep::PoplarExecutor *>(executor->implementation());
+    auto& t = e->GetPoplarDevice().getTarget();
+
+    int64 mem = t.getNumIPUs() * t. getTilesPerIPU() * t.getBytesPerTile();
+
+    std::string target_type_name;
+    switch (t.getTargetType()) {
+      case poplar::TargetType::IPU:
+        target_type_name = "IPU Device (IPU configuration)";
+        break;
+      case poplar::TargetType::IPU_MODEL:
+        target_type_name = "IPU Device (IPU Model configuration)";
+        break;
+      case poplar::TargetType::CPU:
+        target_type_name = "IPU Device (CPU configuration)";
+        break;
+      default:
+        target_type_name = "IPU Device (Unknown configuration)";
+        break;
+    }
+
     const DeviceAttributes attrs = Device::BuildDeviceAttributes(
         strings::StrCat(name_prefix, "/device:IPU:", ordinal),
-        DeviceType(DEVICE_XLA_IPU), Bytes(16ULL << 30), DeviceLocality(),
-        "IPU Device");
+        DeviceType(DEVICE_XLA_IPU), Bytes(mem), DeviceLocality(),
+        target_type_name);
 
     auto* device = new IpuDevice(options, attrs, ordinal,
                                  DeviceType(DEVICE_IPU_XLA_JIT), p);
