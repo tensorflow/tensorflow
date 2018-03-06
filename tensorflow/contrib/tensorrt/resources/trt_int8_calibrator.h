@@ -24,8 +24,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda_runtime_api.h"
+
+#include "cuda/include/cuda_runtime_api.h"
 #include "tensorrt/include/NvInfer.h"
+
 namespace tensorflow {
 namespace tensorrt {
 // This class provides a 1 element queue to match TFs push model to
@@ -61,8 +63,11 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool batch_is_set_;
   string engine_name_;
 };
+
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif
+#endif
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_INT8_CALIBRATOR_H_
-#endif
-#endif
