@@ -60,14 +60,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dataset_headers_lib",
-    hdrs = [
-        "dataset.h",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],

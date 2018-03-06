@@ -1590,17 +1590,6 @@ cc_header_only_library(
     deps = [":lookup"],
 )
 
-cc_library(
-    name = "dataset_headers_lib",
-    hdrs = [
-        "dataset.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/kernels/data:dataset_headers_lib",
-    ],
-)
-
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",
