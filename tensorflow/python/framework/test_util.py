@@ -200,9 +200,12 @@ def _strip_checkpoint_v2_randomized(graph_def):
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
-
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+
+
+def IsMklEnabled():
+  return pywrap_tensorflow.IsMklEnabled()
 
 
 def InstallStackTraceHandler():

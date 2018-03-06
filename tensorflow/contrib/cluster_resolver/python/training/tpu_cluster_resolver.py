@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
@@ -32,6 +33,9 @@ try:
   from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
+
+
+_GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 
 
 class TPUClusterResolver(ClusterResolver):
@@ -57,8 +61,15 @@ class TPUClusterResolver(ClusterResolver):
       return False
     return True
 
+  def _inGke(self):
+    """When running in GKE, the environment variable will be set."""
+    return _GKE_ENV_VARIABLE in os.environ
+
+  def _gkeMaster(self):
+    return os.environ[_GKE_ENV_VARIABLE].split(',')[0]
+
   def __init__(self,
-               tpu,
+               tpu=None,
                zone=None,
                project=None,
                job_name='worker',
@@ -107,6 +118,11 @@ class TPUClusterResolver(ClusterResolver):
         raise NotImplementedError(
             'Using multiple TPUs in a single session is not yet implemented')
       tpu = tpu[0]
+
+    # When using GKE with Cloud TPUs, the env variable will be set.
+    if tpu is None and self._inGke():
+      tpu = self._gkeMaster()
+
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
     self._job_name = job_name
     self._credentials = credentials

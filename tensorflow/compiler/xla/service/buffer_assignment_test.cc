@@ -42,8 +42,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
-
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 // DFS visitor that collects the instructions referenced by a computation
 // without descending into nested computations, i.e., only from the operands.
@@ -98,6 +99,22 @@ class BufferAssignmentTest : public HloTestBase {
                backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
+        .ConsumeValueOrDie();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
+      HloModule* module,
+      tensorflow::gtl::ArraySlice<const HloInstruction*> instruction_sequence,
+      int64 alignment = 1) {
+    SequentialHloOrdering::HloModuleSequence module_sequence;
+    module_sequence[module->entry_computation()] =
+        std::vector<const HloInstruction*>(instruction_sequence.begin(),
+                                           instruction_sequence.end());
+    return BufferAssigner::Run(
+               module,
+               xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
   }
 
@@ -1370,7 +1387,7 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   auto element_slices = assignment->GetAllSlices(select, /*index=*/{0});
   EXPECT_EQ(2, element_slices.size());
   EXPECT_THAT(element_slices,
-              ::testing::UnorderedElementsAre(
+              UnorderedElementsAre(
                   assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
                       .ConsumeValueOrDie(),
                   assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
@@ -1471,6 +1488,98 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
     EXPECT_EQ(64 + 32, slice_ab.allocation()->size());
     EXPECT_EQ(64 + 32, slice_bc.allocation()->size());
   }
+}
+
+TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, ""));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, ""));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Trivially, the set of peak memory logical buffer(s) of an allocation with a
+  // single logical buffer should be exactly the logical buffer in that
+  // allocation.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  int64 peak_size;
+  std::vector<const LogicalBuffer*> peak_buffers;
+
+  std::tie(peak_size, peak_buffers) =
+      mul_buffer.ComputePeakMemoryLogicalBuffers();
+  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(f32vec100_));
+  ASSERT_EQ(peak_buffers.size(), 1);
+  EXPECT_EQ(peak_buffers[0]->instruction(), mul);
+}
+
+TEST_F(BufferAssignmentTest, PeakBuffers) {
+  // Compute the peak liveness buffers of the following sequence:
+  //
+  //   %param = ...
+  //   %log = log(%param)
+  //   %rev = reverse(%log)
+  //   %neg = neg(%param)
+  //   %concat = concat(%rev, %neg)
+  //   ROOT %root = slice(concat)
+  //
+  // In the temporary block, the set of live buffers at peak memory use should
+  // be {%rev, %neg, %concat}. This occurs right at the concat itself.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, ""));
+  auto log = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kLog, param));
+  auto rev = builder.AddInstruction(
+      HloInstruction::CreateReverse(f32vec100_, log, {0}));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+  const Shape concat_shape = ShapeUtil::MakeShape(F32, {200});
+  auto concat = builder.AddInstruction(
+      HloInstruction::CreateConcatenate(concat_shape, {rev, neg}, 0));
+  // Make the root tiny so no interior nodes can share its buffer.
+  auto root = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {1}), concat, {0}, {1}, {1}));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignmentWithInstructionSequence(
+      module.get(), {param, log, rev, neg, concat, root});
+
+  // The temporary buffer should hold the 4 interior instructions.
+  const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, concat);
+  EXPECT_FALSE(buffer.IsInputOrOutput());
+  EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
+  ASSERT_EQ(buffer.assigned_buffers().size(), 4);
+
+  int64 peak_size;
+  std::vector<const LogicalBuffer*> peak_buffers;
+  std::tie(peak_size, peak_buffers) = buffer.ComputePeakMemoryLogicalBuffers();
+
+  // The peak live set should be concat and its inputs.
+  EXPECT_EQ(peak_size, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F32, {400})));
+  ASSERT_EQ(peak_buffers.size(), 3);
+  std::vector<const HloInstruction*> peak_instructions;
+  for (const LogicalBuffer* logical_buffer : peak_buffers) {
+    peak_instructions.push_back(logical_buffer->instruction());
+  }
+  EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
 }
 
 class WhileBufferAssignmentTest : public HloTestBase {

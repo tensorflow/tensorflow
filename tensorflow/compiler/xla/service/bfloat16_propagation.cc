@@ -229,6 +229,10 @@ void BFloat16Propagation::DetermineAndMutateInstructionPrecision(
   // or assumptions for them.
   if (hlo->opcode() == HloOpcode::kInfeed ||       //
       hlo->opcode() == HloOpcode::kOutfeed ||      //
+      hlo->opcode() == HloOpcode::kSend ||         //
+      hlo->opcode() == HloOpcode::kSendDone ||     //
+      hlo->opcode() == HloOpcode::kRecv ||         //
+      hlo->opcode() == HloOpcode::kRecvDone ||     //
       hlo->opcode() == HloOpcode::kCustomCall ||   //
       hlo->opcode() == HloOpcode::kCall ||         //
       hlo->opcode() == HloOpcode::kConditional ||  //

@@ -1665,6 +1665,25 @@ cc_library(
 )
 
 cc_library(
+    name = "tflite_portable_logging",
+    srcs = [],
+    hdrs = [
+        "lib/bfloat16/bfloat16.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
+    ],
+)
+
+cc_library(
     name = "android_jpeg_internal",
     srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",
@@ -2039,6 +2058,7 @@ tf_cuda_library(
 
 CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/device.h",
+    "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
     "common_runtime/shape_refiner.h",
     "framework/versions.h",
@@ -2047,6 +2067,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 tf_cuda_library(
     name = "core_cpu_base",
     srcs = [
+        "common_runtime/eval_const_tensor.cc",
         "common_runtime/shape_refiner.cc",
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
