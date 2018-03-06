@@ -472,6 +472,7 @@ def assert_no_new_tensors(f):
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     backprop._zeros_cache.flush()
+    context.get_default_context().ones_rank_cache().flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [
