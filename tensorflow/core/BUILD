@@ -1874,6 +1874,13 @@ cc_header_only_library(
     ],
 )
 
+cc_header_only_library(
+    name = "core_cpu_headers_lib",
+    deps = [
+        ":core_cpu_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "framework_internal_impl",
     srcs = FRAMEWORK_INTERNAL_PRIVATE_HEADERS + [
