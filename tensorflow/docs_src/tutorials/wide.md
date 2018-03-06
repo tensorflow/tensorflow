@@ -74,8 +74,8 @@ Here's a list of columns available in the Census Income dataset:
 | relationship   | Categorical | Wife, Own-child, Husband,         |
 :                :             : Not-in-family, Other-relative,    :
 :                :             : Unmarried.                        :
-| race           | Categorical | White, Asian-Pac-Islander,        |
-:                :             : Amer-Indian-Eskimo, Other, Black. :
+| race           | Categorical | Amer-Indian-Eskimo, Asian-Pac-    |
+:                :             : Islander, Black, White, Other.    :
 | gender         | Categorical | Female, Male.                     |
 | capital_gain   | Continuous  | Capital gains recorded.           |
 | capital_loss   | Continuous  | Capital Losses recorded.          |
