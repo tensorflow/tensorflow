@@ -52,8 +52,8 @@ TEST(LabelImageTest, GetTopN) {
   ASSERT_EQ(top_results[0].second, 8);
 }
 
-}  // label_image
-}  // tflite
+}  // namespace label_image
+}  // namespace tflite
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -101,6 +101,33 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantC64) {
       {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS64) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int64>({
+      -1,
+      1,
+      0,
+      0x12345678,
+      static_cast<int64>(0xffffffff12345678l),
+      static_cast<int64>(0x8000000000000000LL),
+      static_cast<int64>(0x8000000000000001LL),
+  });
+  auto result = builder.Neg(a);
+  LOG(INFO) << -static_cast<int64>(0x7FFFFFFFFFFFFFFFLL);
+
+  ComputeAndCompareR1<int64>(&builder,
+                             {
+                                 1,
+                                 -1,
+                                 0,
+                                 -0x12345678,
+                                 0xedcba988,
+                                 static_cast<int64>(0x8000000000000000LL),
+                                 -static_cast<int64>(0x8000000000000001LL),
+                             },
+                             {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({});
@@ -184,6 +211,86 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantZeroElementC64s) {
   auto add = builder.Add(a, b);
 
   ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<uint64> lhs{0xFFFFFFFF,
+                          static_cast<uint64>(-1),
+                          0,
+                          0,
+                          0x7FFFFFFFFFFFFFFFLL,
+                          0x7FFFFFFFFFFFFFFLL,
+                          0x8000000000000000LL,
+                          0x8000000000000000LL,
+                          1};
+  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<uint64>({lhs});
+  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
+  std::unique_ptr<GlobalData> lhs_data =
+      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
+
+  std::vector<uint64> rhs{1,
+                          0x7FFFFFFFFFFFFFFLL,
+                          0x7FFFFFFFFFFFFFFFLL,
+                          0x8000000000000000LL,
+                          0,
+                          static_cast<uint64>(-1),
+                          0,
+                          1,
+                          0x8000000000000000LL};
+  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<uint64>({rhs});
+  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
+  std::unique_ptr<GlobalData> rhs_data =
+      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
+
+  auto add = b.Add(lhs_param, rhs_param);
+
+  std::vector<uint64> expected(lhs.size());
+  for (int64 i = 0; i < lhs.size(); ++i) {
+    expected[i] = lhs[i] + rhs[i];
+  }
+
+  ComputeAndCompareR1<uint64>(&b, expected, {lhs_data.get(), rhs_data.get()});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<int64> lhs{static_cast<int64>(0x8000000000000000LL),
+                         static_cast<int64>(0x8000000000000000LL),
+                         -1,
+                         0x7FFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL,
+                         1,
+                         0,
+                         -1};
+  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<int64>({lhs});
+  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
+  std::unique_ptr<GlobalData> lhs_data =
+      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
+
+  std::vector<int64> rhs{-1,
+                         0,
+                         static_cast<int64>(0x8000000000000000LL),
+                         1,
+                         0,
+                         0x7FFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL,
+                         0x7FFFFFFFFFFFFFFFLL};
+  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<int64>({rhs});
+  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
+  std::unique_ptr<GlobalData> rhs_data =
+      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
+
+  auto sub = b.Sub(lhs_param, rhs_param);
+
+  std::vector<int64> expected(lhs.size());
+  for (int64 i = 0; i < lhs.size(); ++i) {
+    expected[i] = lhs[i] - rhs[i];
+  }
+
+  ComputeAndCompareR1<int64>(&b, expected, {lhs_data.get(), rhs_data.get()});
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
@@ -847,68 +954,76 @@ XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementU32R1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x12345678),
-                                 static_cast<int32>(0xF0001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 15});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x12345678),
+                                      static_cast<int32>(0xF0001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 15, 32, 100, -1});
   auto out = builder.ShiftLeft(a, b);
 
-  ComputeAndCompareR1<int32>(
-      &builder,
-      {static_cast<int32>(0x23456780), 0x00100000, 0x4, 0x180, 2523136}, {});
+  ComputeAndCompareR1<int32>(&builder,
+                             {static_cast<int32>(0x23456780), 0x00100000, 0x4,
+                              0x180, 2523136, 0, 0, 0},
+                             {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
-                                 static_cast<int32>(0x10001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 2});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                      static_cast<int32>(0x10001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 2, 32, 100, -1});
   auto out = builder.ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<int32>(&builder,
-                             {static_cast<int32>(0xF9234567),
-                              static_cast<int32>(0x00100010), 0, 0, 19},
-                             {});
+  ComputeAndCompareR1<int32>(
+      &builder,
+      {static_cast<int32>(0xF9234567), static_cast<int32>(0x00100010), 0, 0, 19,
+       0, -1, 0},
+      {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalS32) {
   ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
-                                 static_cast<int32>(0x10001000), 1, 3, 77});
-  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 5});
+  auto a = builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                      static_cast<int32>(0x10001000), 1, 3, 77,
+                                      1, -3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 5, 32, 100, -1});
   auto out = builder.ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
+  ComputeAndCompareR1<int32>(&builder,
+                             {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x12345678, 0xF0001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 15});
+  auto a = builder.ConstantR1<uint32>(
+      {0x12345678, 0xF0001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 15, 32, 100, ~0u});
   auto out = builder.ShiftLeft(a, b);
 
   ComputeAndCompareR1<uint32>(
-      &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136}, {});
+      &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 2});
+  auto a = builder.ConstantR1<uint32>(
+      {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 2, 32, 100, ~0u});
   auto out = builder.ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {0xF9234567, 0x00100010, 0, 0, 19}, {});
+  ComputeAndCompareR1<uint32>(
+      &builder, {0xF9234567, 0x00100010, 0, 0, 19, 0, ~0u, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalU32) {
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
-  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 5});
+  auto a = builder.ConstantR1<uint32>(
+      {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 5, 32, 100, ~0u});
   auto out = builder.ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
+  ComputeAndCompareR1<uint32>(&builder,
+                              {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
@@ -1533,33 +1648,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4DZeroElements) {
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
 }
 
-// GPU backend emits nvvm intrinsic for fmin and fmax, whose semantics is NOT
-// such
-// * fmin(NaN, x) = x
-// * fmax(NaN, x) = x
-// so we only test NAN on CPU.
-//
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends.
 XLA_TEST_F(ArrayElementwiseOpTest, MinF32s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
-#endif
   auto minimum = builder.Min(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                             {1.0f, -5.0f, 1.0f},
-#else
-                             {1.0f, -5.0f, 1.0f, 10.0f, 6.0f},
-#endif
-                             {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {1.0f, -5.0f, 1.0f, NAN, NAN}, {},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
@@ -1570,50 +1667,26 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
-  auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
-#endif
   auto minimum = builder.Min(lhs, rhs);
 
-  ComputeAndCompareR1<double>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                              {1.0, -5.0, 1.0},
-#else
-                              {1.0, -5.0, 1.0, 10.0, 6.0},
-#endif
-                              {}, error_spec_);
+  ComputeAndCompareR1<double>(&builder, {1.0, -5.0, 1.0, NAN, NAN}, {},
+                              error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
-#endif
   auto maximum = builder.Max(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                             {2.0f, 1.0f, 2.25f},
-#else
-                             {2.0f, 1.0f, 2.25f, 10.0f, 6.0f},
-#endif
-                             {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {2.0f, 1.0f, 2.25f, NAN, NAN}, {},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
@@ -1624,27 +1697,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MaxF64s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
-  auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
-#endif
   auto maximum = builder.Max(lhs, rhs);
 
-  ComputeAndCompareR1<double>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                              {2.0, 1.0, 2.25},
-#else
-                              {2.0, 1.0, 2.25, 10.0, 6.0},
-#endif
-                              {}, error_spec_);
+  ComputeAndCompareR1<double>(&builder, {2.0, 1.0, 2.25, NAN, NAN}, {},
+                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxS32s) {
@@ -1879,18 +1940,71 @@ XLA_TEST_F(ArrayElementwiseOpTest, ClampF32ScalarVector) {
   auto min_scalar = builder.ConstantR0<float>(0.0f);
   auto min_vector = builder.ConstantR1<float>({1.0f, -6.5f, 1.0f, 2.25f, 0.0f});
   auto arg_vector = builder.ConstantR1<float>({2.0f, 10.0f, -5.0f, 1.0f, 4.0f});
-  auto arg_scalar = builder.ConstantR1<float>({2.0f, 10.0f, -5.0f, 1.0f, 4.0f});
   auto max_scalar = builder.ConstantR0<float>(3.0f);
   auto max_vector = builder.ConstantR1<float>({3.0f, 0.5f, 25.5f, 5.0f, 123.0});
   // Perform clamp with broadcasted scalar and vector.
   auto clamp = builder.Add(
       builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
                   builder.Clamp(min_scalar, arg_vector, max_vector)),
-      builder.Add(builder.Clamp(min_vector, arg_scalar, max_vector),
-                  builder.Clamp(min_scalar, arg_scalar, max_vector)));
+      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
 
-  ComputeAndCompareR1<float>(&builder, {8.0f, 4.5f, 2.0f, 6.5f, 15.0f}, {},
+  ComputeAndCompareR1<float>(&builder, {8.0f, 7.0f, 2.0f, 6.5f, 14.0f}, {},
                              error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampS32Vector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_vector = builder.ConstantR1<int32>({1, -6, 1, 2, 0, -5});
+  auto arg_vector = builder.ConstantR1<int32>({2, 10, -5, 1, 4, 10});
+  auto max_vector = builder.ConstantR1<int32>({3, 0, 25, 5, 123, -1});
+  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+
+  ComputeAndCompareR1<int32>(&builder, {2, 0, 1, 2, 4, -1}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampS32ScalarVector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_scalar = builder.ConstantR0<int32>(0);
+  auto min_vector = builder.ConstantR1<int32>({1, -6, 1, 2, 0});
+  auto arg_vector = builder.ConstantR1<int32>({2, 10, -5, 1, 4});
+  auto max_scalar = builder.ConstantR0<int32>(3);
+  auto max_vector = builder.ConstantR1<int32>({3, 1, 25, 5, 123});
+  // Perform clamp with broadcasted scalar and vector.
+  auto clamp = builder.Add(
+      builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
+                  builder.Clamp(min_scalar, arg_vector, max_vector)),
+      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
+
+  ComputeAndCompareR1<int32>(&builder, {8, 8, 2, 6, 14}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampU32Vector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_vector = builder.ConstantR1<uint32>({1, 2, 1, 2, 0, ~0u - 4});
+  auto arg_vector = builder.ConstantR1<uint32>({2, 10, 5, 1, 4, 10});
+  auto max_vector = builder.ConstantR1<uint32>({3, 5, 25, 5, 123, ~0u});
+  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+
+  ComputeAndCompareR1<uint32>(&builder, {2, 5, 5, 2, 4, ~0u - 4}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampU32ScalarVector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_scalar = builder.ConstantR0<uint32>(0);
+  auto min_vector = builder.ConstantR1<uint32>({1, 0, 1, 2, 0});
+  auto arg_vector = builder.ConstantR1<uint32>({2, 10, 0, 1, 4});
+  auto max_scalar = builder.ConstantR0<uint32>(3);
+  auto max_vector = builder.ConstantR1<uint32>({3, 1, 25, 5, 123});
+  // Perform clamp with broadcasted scalar and vector.
+  auto clamp = builder.Add(
+      builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
+                  builder.Clamp(min_scalar, arg_vector, max_vector)),
+      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
+
+  ComputeAndCompareR1<uint32>(&builder, {8, 8, 2, 6, 14}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
@@ -1995,45 +2109,115 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // This is like the test ArrayElementwiseOpTest.TanhF32s above, except that
   // the input tensor is large enough to exercise the vectorized tanh
-  // implementation.
+  // implementation on XLA CPU.
   ComputationBuilder builder(client_, TestName());
-  auto input_literal = Literal::CreateR2<float>(
-      {{1.02, -0.32, 0.85, 0.90, 1.23, -0.91, -0.49, 0.80},
-       {-0.67, 0.16, -0.07, 0.39, -0.41, 0.04, 1.36, 1.25},
-       {0.41, 0.65, -1.08, 0.32, -1.45, -0.77, -1.09, 0.91},
-       {-1.03, -0.30, -1.11, -1.17, 1.50, -0.85, 0.04, 1.02},
-       {0.34, -0.61, 0.41, 0.07, -0.02, 1.42, -0.62, 0.81},
-       {0.08, 0.81, -0.30, 1.17, -0.65, -0.44, 0.92, 1.26},
-       {-1.29, 1.35, 0.08, -1.24, -0.92, 0.49, 1.17, -0.45},
-       {-1.31, -1.44, -0.13, -1.31, -0.79, 1.41, 1.21, 1.05}});
-  auto input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  auto input_literal = Literal::CreateR1<float>(
+      {1.02,  -0.32, 0.85,  0.90,  1.23,  -0.91, -0.49, 0.80,  -0.67, 0.16,
+       -0.07, 0.39,  -0.41, 0.04,  1.36,  1.25,  0.41,  0.65,  -1.08, 0.32,
+       -1.45, -0.77, -1.09, 0.91,  -1.03, -0.30, -1.11, -1.17, 1.50,  -0.85,
+       0.04,  1.02,  0.34,  -0.61, 0.41,  0.07,  -0.02, 1.42,  -0.62, 0.81,
+       0.08,  0.81,  -0.30, 1.17,  -0.65, -0.44, 0.92,  1.26,  -1.29, 1.35,
+       0.08,  -1.24, -0.92, 0.49,  1.17,  -0.45, -1.31, -1.44, -0.13, -1.31,
+       -0.79, 1.41,  1.21,  1.05});
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data,
+                          client_->TransferToServer(*input_literal));
 
   auto input = builder.Parameter(0, input_literal->shape(), "input");
   builder.Tanh(input);
 
-  ComputeAndCompareR2<float>(
+  ComputeAndCompareR1<float>(
       &builder,
-      {{0.77009583, -0.30665702, 0.69070244, 0.71401149, 0.84400684,
-        -0.71985596, -0.45764771, 0.66664988},
-       {-0.58278900, 0.16050975, -0.06770509, 0.36843640, -0.38476998,
-        0.04018109, 0.87562293, 0.84788644},
-       {0.38603750, 0.57294142, -0.79140943, 0.31032649, -0.89590985,
-        -0.64770776, -0.79625875, 0.72234446},
-       {-0.77389336, -0.28871772, -0.80428445, -0.82541436, 0.90456349,
-        -0.68856895, 0.03877772, 0.76877952},
-       {0.32561871, -0.54546672, 0.39072621, 0.07273290, -0.01924866,
-        0.88924897, -0.55283129, 0.67183107},
-       {0.08006320, 0.66944766, -0.29068485, 0.82573754, -0.57170743,
-        -0.41581789, 0.72739530, 0.85025692},
-       {-0.85931867, 0.87357593, 0.07782833, -0.84597743, -0.72748238,
-        0.45396307, 0.82449573, -0.42462519},
-       {-0.86363792, -0.89368379, -0.12621804, -0.86445558, -0.65565848,
-        0.88789743, 0.83566397, 0.78287679}},
+      {0.77009583,  -0.30665702, 0.69070244,  0.71401149,  0.84400684,
+       -0.71985596, -0.45764771, 0.66664988,  -0.58278900, 0.16050975,
+       -0.06770509, 0.36843640,  -0.38476998, 0.04018109,  0.87562293,
+       0.84788644,  0.38603750,  0.57294142,  -0.79140943, 0.31032649,
+       -0.89590985, -0.64770776, -0.79625875, 0.72234446,  -0.77389336,
+       -0.28871772, -0.80428445, -0.82541436, 0.90456349,  -0.68856895,
+       0.03877772,  0.76877952,  0.32561871,  -0.54546672, 0.39072621,
+       0.07273290,  -0.01924866, 0.88924897,  -0.55283129, 0.67183107,
+       0.08006320,  0.66944766,  -0.29068485, 0.82573754,  -0.57170743,
+       -0.41581789, 0.72739530,  0.85025692,  -0.85931867, 0.87357593,
+       0.07782833,  -0.84597743, -0.72748238, 0.45396307,  0.82449573,
+       -0.42462519, -0.86363792, -0.89368379, -0.12621804, -0.86445558,
+       -0.65565848, 0.88789743,  0.83566397,  0.78287679},
       {input_data.get()},
       // The error spec is unusually high here to account for the fact that we
       // use a rational interpolant to approximate tanh.
       ErrorSpec(0.004, 0.004));
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  // Just to help make sense of the scales here -- exp(89) saturates float32 and
+  // exp(-10) is smaller than our error spec.
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
+      {1.02,   -0.32,  0.85,   0.9,    1.23,   -0.91,  -0.49, 0.8,    -1.31,
+       -1.44,  -0.13,  -1.31,  -0.79,  1.41,   1.21,   1.05,  -195.6, -194.5,
+       -193.4, -192.3, -191.2, -190.1, -189.0, -187.9, -19.6, -18.5,  -17.4,
+       -16.3,  -15.2,  -14.1,  -13.0,  -11.9,  -10.8,  -9.7,  -8.6,   -7.5,
+       -6.4,   -5.3,   -4.2,   -3.1,   -2.0,   -0.9,   0.2,   1.3,    2.4,
+       3.5,    4.6,    5.7,    6.8,    7.9,    9.0,    10.1,  11.2,   12.3,
+       13.4,   14.5,   15.6,   16.7,   17.8,   18.9,   20.0,  21.1,   22.2,
+       23.3,   24.4,   25.5,   26.6,   27.7,   28.8,   29.9,  31.0,   32.1,
+       68.4,   69.5,   70.6,   71.7,   72.8,   73.9,   75.0,  76.1,   77.2,
+       78.3,   79.4,   80.5,   81.6,   82.7,   83.8,   84.9,  85.2,   86.3,
+       86.4,   86.5,   87.6,   87.7,   87.8,   87.9});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Exp(input);
+
+  std::vector<float> expected_result;
+  int64 input_size = input_literal->shape().dimensions(0);
+  expected_result.reserve(input_size);
+  for (int64 i = 0; i < input_size; i++) {
+    expected_result.push_back(std::exp(input_literal->Get<float>({i})));
+  }
+
+  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
+      {-1.29,    -1.41,    -1.25,    -13.5,    -11.7,    -17.9,    -198,
+       -167,     1.29,     1.41,     1.25,     13.5,     11.7,     17.9,
+       198,      167,      1.27e+03, 1.33e+03, 1.74e+03, 1.6e+04,  1.84e+04,
+       1.74e+04, 1.89e+05, 1.9e+05,  1.93e+06, 1.98e+06, 1.65e+06, 1.97e+07,
+       1.66e+07, 1e+07,    1.98e+08, 1.96e+08, 1.64e+09, 1.58e+09, 1.64e+09,
+       1.44e+10, 1.5e+10,  1.99e+10, 1.17e+11, 1.08e+11, 1.08e+12, 1.38e+12,
+       1.4e+12,  1.03e+13, 1.6e+13,  1.99e+13, 1.26e+14, 1.51e+14, 1.33e+15,
+       1.41e+15, 1.63e+15, 1.39e+16, 1.21e+16, 1.27e+16, 1.28e+17, 1.62e+17,
+       2e+18,    1.96e+18, 1.81e+18, 1.99e+19, 1.86e+19, 1.61e+19, 1.71e+20,
+       1.47e+20, 1.83e+21, 1.33e+21, 1.3e+21,  1.35e+22, 1.84e+22, 1.02e+22,
+       1.81e+23, 1.02e+23, 1.89e+24, 1.49e+24, 1.08e+24, 1.95e+25, 1.1e+25,
+       1.62e+25, 1.2e+26,  1.41e+26, 1.93e+27, 1.66e+27, 1.62e+27, 1.05e+28,
+       1.5e+28,  1.79e+28, 1.36e+29, 1.95e+29, 1.5e+30,  1.81e+30, 1.34e+30,
+       1.7e+31,  1.44e+31, 1.1e+31,  1.4e+32,  1.67e+32, 1.96e+33, 1.11e+33,
+       1.19e+33, 1.61e+34, 1.05e+34, 1.88e+34, 1.67e+35, 1.7e+35});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Log(input);
+
+  std::vector<float> expected_result;
+  int64 input_size = input_literal->shape().dimensions(0);
+  expected_result.reserve(input_size);
+  for (int64 i = 0; i < input_size; i++) {
+    expected_result.push_back(std::log(input_literal->Get<float>({i})));
+  }
+
+  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {

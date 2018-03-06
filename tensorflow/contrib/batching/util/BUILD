@@ -26,6 +26,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//third_party/eigen3",
     ],
 )
 

@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler.internal import flops_registry  # pylint: disable=unused-import
+from tensorflow.python.util.tf_export import tf_export
 
 TRAINABLE_VARIABLES = '_trainable_variables'
 REGISTERED_FLOP_STATS = 'flops'
@@ -187,6 +188,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   return tmp_op_log
 
 
+@tf_export('profiler.write_op_log')
 def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
   """Log provided 'op_log', and add additional model information below.
 

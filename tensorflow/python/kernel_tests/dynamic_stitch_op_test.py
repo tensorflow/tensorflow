@@ -48,8 +48,10 @@ class DynamicStitchTestBase(object):
 
   def testShapeInferenceForScalarWithNonConstantIndices(self):
     with self.test_session(use_gpu=True):
-      indices = [array_ops.placeholder(dtype=dtypes.int32),
-                 constant_op.constant(1)]
+      indices = [
+          array_ops.placeholder(dtype=dtypes.int32),
+          constant_op.constant(1)
+      ]
       data = [constant_op.constant(40), constant_op.constant(60)]
       for step in -1, 1:
         stitched_t = self.stitch_op(indices[::step], data)
@@ -61,7 +63,8 @@ class DynamicStitchTestBase(object):
   def testSimpleOneDimensional(self):
     with self.test_session(use_gpu=True):
       indices = [
-          constant_op.constant([0, 4, 7]), constant_op.constant([1, 6, 2, 3, 5])
+          constant_op.constant([0, 4, 7]),
+          constant_op.constant([1, 6, 2, 3, 5])
       ]
       data = [
           constant_op.constant([0, 40, 70]),
@@ -86,7 +89,8 @@ class DynamicStitchTestBase(object):
   def testSimpleTwoDimensional(self):
     with self.test_session(use_gpu=True):
       indices = [
-          constant_op.constant([0, 4, 7]), constant_op.constant([1, 6]),
+          constant_op.constant([0, 4, 7]),
+          constant_op.constant([1, 6]),
           constant_op.constant([2, 3, 5])
       ]
       data = [
@@ -104,7 +108,8 @@ class DynamicStitchTestBase(object):
   def testHigherRank(self):
     with self.test_session(use_gpu=True) as sess:
       indices = [
-          constant_op.constant(6), constant_op.constant([4, 1]),
+          constant_op.constant(6),
+          constant_op.constant([4, 1]),
           constant_op.constant([[5, 2], [0, 3]])
       ]
       data = [
@@ -127,7 +132,8 @@ class DynamicStitchTestBase(object):
 
   def testErrorIndicesMultiDimensional(self):
     indices = [
-        constant_op.constant([0, 4, 7]), constant_op.constant([[1, 6, 2, 3, 5]])
+        constant_op.constant([0, 4, 7]),
+        constant_op.constant([[1, 6, 2, 3, 5]])
     ]
     data = [
         constant_op.constant([[0, 40, 70]]),
@@ -138,7 +144,8 @@ class DynamicStitchTestBase(object):
 
   def testErrorDataNumDimsMismatch(self):
     indices = [
-        constant_op.constant([0, 4, 7]), constant_op.constant([1, 6, 2, 3, 5])
+        constant_op.constant([0, 4, 7]),
+        constant_op.constant([1, 6, 2, 3, 5])
     ]
     data = [
         constant_op.constant([0, 40, 70]),
@@ -149,7 +156,8 @@ class DynamicStitchTestBase(object):
 
   def testErrorDataDimSizeMismatch(self):
     indices = [
-        constant_op.constant([0, 4, 5]), constant_op.constant([1, 6, 2, 3])
+        constant_op.constant([0, 4, 5]),
+        constant_op.constant([1, 6, 2, 3])
     ]
     data = [
         constant_op.constant([[0], [40], [70]]),
@@ -160,7 +168,8 @@ class DynamicStitchTestBase(object):
 
   def testErrorDataAndIndicesSizeMismatch(self):
     indices = [
-        constant_op.constant([0, 4, 7]), constant_op.constant([1, 6, 2, 3, 5])
+        constant_op.constant([0, 4, 7]),
+        constant_op.constant([1, 6, 2, 3, 5])
     ]
     data = [
         constant_op.constant([0, 40, 70]),
@@ -235,13 +244,15 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
   def testHigherRankGPU(self):
     with self.test_session() as sess:
       indices = [
-          constant_op.constant(6), constant_op.constant([4, 1]),
+          constant_op.constant(6),
+          constant_op.constant([4, 1]),
           constant_op.constant([[5, 2], [0, 3]])
       ]
       data = [
           constant_op.constant([61, 62], dtype=dtypes.float32),
           constant_op.constant([[41, 42], [11, 12]], dtype=dtypes.float32),
-          constant_op.constant([[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
+          constant_op.constant(
+              [[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
       ]
       stitched_t = data_flow_ops.dynamic_stitch(indices, data)
       stitched_val = stitched_t.eval()

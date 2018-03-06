@@ -58,7 +58,9 @@ REGISTER_OP("SingleImageRandomDotStereograms")
       int colors;
       TF_RETURN_IF_ERROR(c->GetAttr("number_colors", &colors));
 
-      c->set_output(0, c->MakeShape({y_dim, x_dim, colors > 256? c->MakeDim(3) : c->MakeDim(1)}));
+      c->set_output(
+          0, c->MakeShape(
+                 {y_dim, x_dim, colors > 256 ? c->MakeDim(3) : c->MakeDim(1)}));
       return Status::OK();
     })
     .Doc(R"doc(

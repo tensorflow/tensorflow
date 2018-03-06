@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
@@ -34,20 +35,42 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
   TF_SessionOptions session_options;
-  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_EXPLICIT};
+  TFE_ContextDevicePlacementPolicy policy{
+      TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
 };
 
-struct TFE_Context {
-  explicit TFE_Context(TF_Session* s) : session(s) {}
+TFE_ContextDevicePlacementPolicy PlacementPolicy(
+    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy);
 
-  TFE_ContextDevicePlacementPolicy policy;
+struct TFE_Context {
+  explicit TFE_Context(const TFE_ContextOptions& opts, TF_Session* s)
+      : soft_placement(
+            opts.session_options.options.config.allow_soft_placement()),
+        policy(PlacementPolicy(soft_placement, opts.policy)),
+        session(s),
+        rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
+        pflr(new tensorflow::ProcessFunctionLibraryRuntime(
+            session->device_mgr, opts.session_options.options.env,
+            TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
+        log_device_placement(
+            opts.session_options.options.config.log_device_placement()) {}
+
+  const bool soft_placement;
+  const TFE_ContextDevicePlacementPolicy policy;
+
+  // Note: we cannot use C++11 thread_local here as there is no concept of a
+  // thread-local-object-local variable in C++11.
+  tensorflow::mutex policy_map_mu;
+  std::unordered_map<std::thread::id, TFE_ContextDevicePlacementPolicy>
+      thread_local_policies GUARDED_BY(policy_map_mu);
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
-  TF_Session* session;
-  tensorflow::Rendezvous* rendezvous;
+  TF_Session* const session;
+  tensorflow::Rendezvous* const rendezvous;
 
   tensorflow::mutex functions_mu;
   tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
@@ -56,14 +79,14 @@ struct TFE_Context {
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
   // session->devices[i].
-  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
+  const std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
   tensorflow::mutex cache_mu;
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
       kernel_cache GUARDED_BY(cache_mu);
 
-  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
+  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) const {
     return pflr->GetFLR(d->name());
   }
 
@@ -73,11 +96,14 @@ struct TFE_Context {
   std::atomic<bool> should_store_metadata{false};
   tensorflow::mutex metadata_mu;
   tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
+
+  const bool log_device_placement;
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
+                   tensorflow::Device* op_device)
+      : t(t), d(d), op_device(op_device) {}
 
   tensorflow::Tensor t;
   // TODO(ashankar): d == nullptr iff local CPU
@@ -89,9 +115,15 @@ struct TFE_TensorHandle {
   // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
   tensorflow::Device* d;
+
+  // Device in which the op producing this tensor was executed. Equals to d for
+  // constant tensors.
+  tensorflow::Device* op_device;
 };
 
 struct TFE_Op {
+  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
+  // primitive operation.
   TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
       : ctx(ctx), name(op), attrs(op), attr_types(t), device(nullptr) {}
 
@@ -103,7 +135,9 @@ struct TFE_Op {
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
   std::vector<tensorflow::Device*> input_devices;
+  std::vector<tensorflow::Device*> input_op_devices;
   tensorflow::Device* device;
+  bool use_xla = false;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

@@ -109,17 +109,27 @@ class StridedSliceOp : public OpKernel {
     if (is_identity) {
       VLOG(1) << "Strided slice identity ";
       Tensor tmp;
-      CHECK(tmp.CopyFrom(input, final_shape));
+      OP_REQUIRES(context, tmp.CopyFrom(input, final_shape),
+                  errors::Internal("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
     if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
-      CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+      OP_REQUIRES(context, input.dims() >= 1,
+                  errors::InvalidArgument(
+                      "Input must have rank at least 1, got: ", input.dims()));
+      // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
+      OP_REQUIRES(
+          context, begin[0] <= end[0],
+          errors::InvalidArgument("begin[0] (", begin[0],
+                                  ") must less or equal to end[0] (", end[0]));
+      Tensor slice = input.Slice(begin[0], end[0]);
       Tensor tmp;
-      CHECK(tmp.CopyFrom(input.Slice(begin[0], end[0]), final_shape));
+      OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
+                  errors::Internal("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
@@ -238,7 +248,8 @@ class StridedSliceGradOp : public OpKernel {
 
     if (processing_shape.dims() == 0) {
       auto in = context->input(4);
-      CHECK(result->CopyFrom(in, processing_shape));
+      OP_REQUIRES(context, result->CopyFrom(in, processing_shape),
+                  errors::Internal("Copy failed"));
       return;
     }
 
@@ -294,6 +305,11 @@ class StridedSliceAssignOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
       old_lhs = *v->tensor();
+      OP_REQUIRES(context, old_lhs.dtype() == DataTypeToEnum<T>::value,
+                  errors::InvalidArgument(
+                      "l-value dtype ", DataTypeString(old_lhs.dtype()),
+                      " does not match r-value dtype ",
+                      DataTypeString(DataTypeToEnum<T>::value)));
     } else {
       context->forward_ref_input_to_ref_output(0, 0);
       old_lhs = context->mutable_input(0, true);
@@ -386,7 +402,6 @@ class StridedSliceAssignOp : public OpKernel {
                           StridedSliceAssignOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
-REGISTER_STRIDED_SLICE(bfloat16);
 
 #undef REGISTER_STRIDED_SLICE
 
@@ -542,5 +557,5 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32>)
 #undef REGISTER_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

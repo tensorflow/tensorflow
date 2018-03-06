@@ -339,8 +339,8 @@ Status SetupTensorboardSqliteDb(Sqlite* db) {
   //   inserted_time: Float UNIX timestamp with µs precision. This is
   //     always the wall time of when the row was inserted into the
   //     DB. It may be used as a hint for an archival job.
-  //   node_def: Contains tf.GraphDef proto. All fields will be cleared
-  //     except those not expressed in SQL.
+  //   graph_def: Contains the tf.GraphDef proto parts leftover which
+  //     haven't been defined in SQL yet.
   s.Update(Run(db, R"sql(
     CREATE TABLE IF NOT EXISTS Graphs (
       rowid INTEGER PRIMARY KEY,
@@ -375,8 +375,8 @@ Status SetupTensorboardSqliteDb(Sqlite* db) {
   //     node_def.name proto field must not be cleared.
   //   op: Copied from tf.NodeDef proto.
   //   device: Copied from tf.NodeDef proto.
-  //   node_def: Contains tf.NodeDef proto. All fields will be cleared
-  //     except those not expressed in SQL.
+  //   node_def: Contains the tf.NodeDef proto parts leftover which
+  //     haven't been defined in SQL yet.
   //
   // TODO(jart): Make separate tables for op and device strings.
   s.Update(Run(db, R"sql(

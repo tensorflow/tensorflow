@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.profiler import option_builder
 from tensorflow.python.profiler import tfprof_logger
+from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_PROFILE_OPTIONS = 0
 _DEFAULT_ADVISE_OPTIONS = 0
@@ -121,6 +122,7 @@ def _build_advisor_options(options):
   return opts
 
 
+@tf_export('profiler.Profiler')
 class Profiler(object):
   """TensorFlow multi-step profiler.
 
@@ -304,6 +306,7 @@ class Profiler(object):
     print_mdl.WriteProfile(filename)
 
 
+@tf_export('profiler.profile')
 def profile(graph=None,
             run_meta=None,
             op_log=None,
@@ -378,6 +381,7 @@ def profile(graph=None,
   return tfprof_node
 
 
+@tf_export('profiler.advise')
 def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   """Auto profile and advise.
 

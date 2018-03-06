@@ -56,6 +56,7 @@ from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import,g-bad-import-order
 
 import sys
+from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
   import mock                # pylint: disable=g-import-not-at-top,unused-import
 else:
@@ -68,12 +69,14 @@ Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
+@tf_export('test.main')
 def main(argv=None):
   """Runs all unit tests."""
   _test_util.InstallStackTraceHandler()
   return _googletest.main(argv)
 
 
+@tf_export('test.get_temp_dir')
 def get_temp_dir():
   """Returns a temporary directory for use during tests.
 
@@ -85,6 +88,7 @@ def get_temp_dir():
   return _googletest.GetTempDir()
 
 
+@tf_export('test.test_src_dir_path')
 def test_src_dir_path(relative_path):
   """Creates an absolute test srcdir path given a relative path.
 
@@ -98,6 +102,7 @@ def test_src_dir_path(relative_path):
   return _googletest.test_src_dir_path(relative_path)
 
 
+@tf_export('test.is_built_with_cuda')
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()

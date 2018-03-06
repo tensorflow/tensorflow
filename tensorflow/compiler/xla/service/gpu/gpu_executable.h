@@ -54,7 +54,7 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::unique_ptr<const HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   // This should be called after set_ir_module_string.

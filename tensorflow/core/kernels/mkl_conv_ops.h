@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_
 
-#include <vector>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -40,19 +40,19 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
-using mkldnn::stream;
 using mkldnn::prop_kind;
+using mkldnn::stream;
 
-using mkldnn::convolution_forward;
 using mkldnn::convolution_direct;
+using mkldnn::convolution_forward;
 #endif
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 class MklDnnConvUtil {
  protected:
@@ -63,13 +63,13 @@ class MklDnnConvUtil {
 
  public:
   MklDnnConvUtil(OpKernelContext* context, const std::vector<int32>& strides,
-                 Padding pad, TensorFormat fm) : context_(context),
-    strides_(strides), padding_(pad), data_format_(fm) {}
+                 Padding pad, TensorFormat fm)
+      : context_(context), strides_(strides), padding_(pad), data_format_(fm) {}
 
   virtual ~MklDnnConvUtil() { context_ = nullptr; }
 
   // Calculate Convolution strides
-  virtual inline void GetStridesInMklOrder(memory::dims *strides) {
+  virtual inline void GetStridesInMklOrder(memory::dims* strides) {
     // For now we take the stride from the second and third dimensions only
     // (we do not support striding on the batch or depth dimension).
     CHECK_NOTNULL(strides);
@@ -82,14 +82,14 @@ class MklDnnConvUtil {
   // requires input in NCHW format. Function does not return anything.
   // But errors arising from sanity checks are returned in context's
   // status.
-  virtual inline void
-  GetInputSizeInMklOrder(const TensorShape& input_shape,
-                         memory::dims *input_dims) {
-  #define CHECK_BOUNDS(val, err_msg) do {                     \
-    OP_REQUIRES(context_, FastBoundsCheck(val,                \
-                            std::numeric_limits<int>::max()), \
-                errors::InvalidArgument(err_msg));            \
-  }while(0)
+  virtual inline void GetInputSizeInMklOrder(const TensorShape& input_shape,
+                                             memory::dims* input_dims) {
+#define CHECK_BOUNDS(val, err_msg)                                     \
+  do {                                                                 \
+    OP_REQUIRES(context_,                                              \
+                FastBoundsCheck(val, std::numeric_limits<int>::max()), \
+                errors::InvalidArgument(err_msg));                     \
+  } while (0)
 
     CHECK_NOTNULL(input_dims);
 
@@ -112,7 +112,7 @@ class MklDnnConvUtil {
     CHECK_BOUNDS(input_batch_raw, "Input batch too large");
     int input_batch = static_cast<int>(input_batch_raw);
 
-  #undef CHECK_BOUNDS
+#undef CHECK_BOUNDS
 
     // MKL-DNN always requires input in NCHW format.
     std::vector<int> mkldnn_sizes(4, -1);
@@ -138,10 +138,9 @@ class MklDnnConvUtil {
   // forward gets actual tensor as input).
   //
   // TODO(nhasabni): Add similar function for input and filter in MklShape.
-  virtual inline void
-  GetFilterSizeInMklOrder(const TensorShape& input_shape,
-                          const TensorShape& filter_shape,
-                          memory::dims *filter_dims) {
+  virtual inline void GetFilterSizeInMklOrder(const TensorShape& input_shape,
+                                              const TensorShape& filter_shape,
+                                              memory::dims* filter_dims) {
     CHECK_NOTNULL(filter_dims);
 
     OP_REQUIRES(context_, filter_shape.dims() == 4,
@@ -149,17 +148,18 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context_,
+                  FastBoundsCheck(filter_shape.dim_size(i),
+                                  std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     int input_depth = GetTensorDim(input_shape, data_format_, 'C');
 
-    OP_REQUIRES(
-        context_, input_depth == filter_shape.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                input_depth, " vs ", filter_shape.dim_size(2)));
+    OP_REQUIRES(context_, input_depth == filter_shape.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", input_depth,
+                    " vs ", filter_shape.dim_size(2)));
 
     // TF filter is always in (rows, cols, in_depth, out_depth) order.
     int filter_rows = static_cast<int>(filter_shape.dim_size(0));
@@ -182,25 +182,24 @@ class MklDnnConvUtil {
   // requires filter in OIHW format. Function does not return anything.
   // But errors arising from sanity checks are returned in context's
   // status.
-  virtual inline void
-  GetFilterSizeInMklOrder(size_t src_index, size_t filter_index,
-                          memory::dims *filter_dims) {
+  virtual inline void GetFilterSizeInMklOrder(size_t src_index,
+                                              size_t filter_index,
+                                              memory::dims* filter_dims) {
     CHECK_NOTNULL(filter_dims);
     GetFilterSizeInMklOrder(GetTfShape(context_, src_index),
-                            GetTfShape(context_, filter_index),
-                            filter_dims);
+                            GetTfShape(context_, filter_index), filter_dims);
   }
 
   // Calculate Bias size for 2D Convolution. Function does not return
   // anything, but sets error in context status.
-  virtual inline void
-  GetBiasSizeInMklOrder(size_t bias_index, memory::dims *bias_dims) {
+  virtual inline void GetBiasSizeInMklOrder(size_t bias_index,
+                                            memory::dims* bias_dims) {
     const Tensor& bias = MklGetInput(context_, bias_index);
     OP_REQUIRES(context_, bias.dims() == 1,
                 errors::InvalidArgument("bias must be 1-dimensional: ",
                                         bias.shape().DebugString()));
 
-    *bias_dims = { static_cast<int>(bias.dim_size(0)) };
+    *bias_dims = {static_cast<int>(bias.dim_size(0))};
   }
 
   // Function to calculate output and padding size for 2D convolution.
@@ -212,13 +211,11 @@ class MklDnnConvUtil {
   // status is returned via context status.
   //
   // TODO(nhasabni): Add similar function for input and filter in MklShape.
-  virtual inline void
-  GetOutputAndPadSizeInMklOrder(const TensorShape& input_shape,
-                                const TensorShape& filter_shape,
-                                const memory::dims& strides,
-                                memory::dims *output_dims_tf_order,
-                                memory::dims *output_dims_mkl_order,
-                                memory::dims *pad_l, memory::dims *pad_r) {
+  virtual inline void GetOutputAndPadSizeInMklOrder(
+      const TensorShape& input_shape, const TensorShape& filter_shape,
+      const memory::dims& strides, memory::dims* output_dims_tf_order,
+      memory::dims* output_dims_mkl_order, memory::dims* pad_l,
+      memory::dims* pad_r) {
     CHECK_NOTNULL(output_dims_tf_order);
     CHECK_NOTNULL(output_dims_mkl_order);
     CHECK_NOTNULL(pad_l);
@@ -244,16 +241,16 @@ class MklDnnConvUtil {
     int64 out_rows = 0, out_cols = 0;
     int64 pad_top = 0, pad_bottom = 0, pad_left, pad_right;
 
-    OP_REQUIRES_OK(context_,
-            GetWindowedOutputSizeVerbose(input_rows, filter_rows, stride_rows,
-                                 padding_, &out_rows, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context_,
-            GetWindowedOutputSizeVerbose(input_cols, filter_cols, stride_cols,
-                                 padding_, &out_cols, &pad_left, &pad_right));
+    OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
+                                 input_rows, filter_rows, stride_rows, padding_,
+                                 &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
+                                 input_cols, filter_cols, stride_cols, padding_,
+                                 &out_cols, &pad_left, &pad_right));
 
     // Tensorflow output is in data_format order. (NHWC or NCHW)
-    TensorShape out_shape = ShapeFromFormat(data_format_, out_batch,
-                                            out_rows, out_cols, out_depth);
+    TensorShape out_shape =
+        ShapeFromFormat(data_format_, out_batch, out_rows, out_cols, out_depth);
     *output_dims_tf_order = TFShapeToMklDnnDims(out_shape);
 
     // MKL-DNN always needs output in NCHW format.
@@ -273,12 +270,10 @@ class MklDnnConvUtil {
   // See comment on GetConvOutputAndPadSizeInMklOrder for parameters.
   //
   // Function does not return anything, but sets error in context status.
-  inline void
-  GetOutputAndPadSizeInMklOrder(size_t src_index, size_t filter_index,
-                                const memory::dims& strides,
-                                memory::dims *output_dims_tf_order,
-                                memory::dims *output_dims_mkl_order,
-                                memory::dims *pad_l, memory::dims *pad_r) {
+  inline void GetOutputAndPadSizeInMklOrder(
+      size_t src_index, size_t filter_index, const memory::dims& strides,
+      memory::dims* output_dims_tf_order, memory::dims* output_dims_mkl_order,
+      memory::dims* pad_l, memory::dims* pad_r) {
     CHECK_NOTNULL(output_dims_tf_order);
     CHECK_NOTNULL(output_dims_mkl_order);
     CHECK_NOTNULL(pad_l);
@@ -289,11 +284,11 @@ class MklDnnConvUtil {
 
     OP_REQUIRES(context_, input_tf_shape.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                          input_tf_shape.DebugString()));
+                                        input_tf_shape.DebugString()));
 
-    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape,
-                                  strides, output_dims_tf_order,
-                                  output_dims_mkl_order, pad_l, pad_r);
+    GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape, strides,
+                                  output_dims_tf_order, output_dims_mkl_order,
+                                  pad_l, pad_r);
   }
 
   // Wrapper function to calculate input, filter, and output sizes of
@@ -302,15 +297,12 @@ class MklDnnConvUtil {
   // also calculates strides and paddings for 2D Convolution.
   //
   // Function does not return anything, but sets error in context status.
-  inline void GetConvFwdSizesInMklOrder(const TensorShape& input_shape,
-                                        const TensorShape& filter_shape,
-                                        memory::dims *input_dims,
-                                        memory::dims *filter_dims,
-                                        memory::dims *strides,
-                                        memory::dims *output_dims_tf_order,
-                                        memory::dims *output_dims_mkl_order,
-                                        memory::dims *pad_l,
-                                        memory::dims *pad_r) {
+  inline void GetConvFwdSizesInMklOrder(
+      const TensorShape& input_shape, const TensorShape& filter_shape,
+      memory::dims* input_dims, memory::dims* filter_dims,
+      memory::dims* strides, memory::dims* output_dims_tf_order,
+      memory::dims* output_dims_mkl_order, memory::dims* pad_l,
+      memory::dims* pad_r) {
     CHECK_NOTNULL(input_dims);
     CHECK_NOTNULL(filter_dims);
     CHECK_NOTNULL(strides);
@@ -325,8 +317,7 @@ class MklDnnConvUtil {
     if (!context_->status().ok()) return;
     GetStridesInMklOrder(strides);
     GetOutputAndPadSizeInMklOrder(input_shape, filter_shape, *strides,
-                                  output_dims_tf_order,
-                                  output_dims_mkl_order,
+                                  output_dims_tf_order, output_dims_mkl_order,
                                   pad_l, pad_r);
     if (!context_->status().ok()) return;
   }
@@ -337,7 +328,7 @@ class MklDnnConvUtil {
 /////////////////////////////////////////////////////////////////////
 
 template <typename Device, class T>
-class MklConv2DBackpropCommonOp :  public OpKernel {
+class MklConv2DBackpropCommonOp : public OpKernel {
  public:
   ~MklConv2DBackpropCommonOp() {}
   explicit MklConv2DBackpropCommonOp(OpKernelConstruction* context)
@@ -390,6 +381,28 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
       TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
       TensorShape outbprop_tf_shape = GetTfShape(context, kOutbpropIdx);
 
+      // Corner cases: output with 0 elements and 0 batch size.
+      Tensor* output_tensor = nullptr;
+      if (input_tf_shape.num_elements() == 0 ||
+          filter_tf_shape.num_elements() == 0 ||
+          outbprop_tf_shape.num_elements() == 0) {
+        MklDnnShape output_mkl_shape;
+        output_mkl_shape.SetMklTensor(false);
+        TensorShape output_tf_shape = GetOutputTfShape(
+            input_tf_shape, filter_tf_shape, outbprop_tf_shape);
+        const int kOutputIdx = 0;
+        AllocateOutputSetMklShape(context, kOutputIdx, &output_tensor,
+                                  output_tf_shape, output_mkl_shape);
+        CHECK_NOTNULL(output_tensor);
+
+        // if output tensor has more than 0 elements, we need to 0 them out.
+        for (size_t i = 0; i < output_tf_shape.num_elements(); ++i) {
+          output_tensor->flat<T>().data()[i] = 0;
+        }
+
+        return;
+      }
+
       // By default, all dims are in MKL order. Only dims in TF order
       // are those with prefix tf_order.
       memory::dims outbprop_dims, fwd_input_dims, fwd_filter_dims;
@@ -398,12 +411,10 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
 
       // Get forward convolution parameters.
       MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_);
-      conv_utl.GetConvFwdSizesInMklOrder(input_tf_shape, filter_tf_shape,
-                                         &fwd_input_dims, &fwd_filter_dims,
-                                         &strides,
-                                         &fwd_output_dims_tf_order,
-                                         &fwd_output_dims,
-                                         &padding_l, &padding_r);
+      conv_utl.GetConvFwdSizesInMklOrder(
+          input_tf_shape, filter_tf_shape, &fwd_input_dims, &fwd_filter_dims,
+          &strides, &fwd_output_dims_tf_order, &fwd_output_dims, &padding_l,
+          &padding_r);
       if (!context->status().ok()) return;
 
       // Create Convolution forward descriptor since Convolution backward
@@ -414,20 +425,22 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
       // construct input TF layout. For TF layout, although input shape
       // required is in MKL-DNN order, the layout is Tensorflow's layout
       // (NHWC or NCHW depending on data format).
-      auto fwd_input_md = input_mkl_shape.IsMklTensor() ?
-                          input_mkl_shape.GetMklLayout() :
-                       memory::desc(fwd_input_dims, MklDnnType<T>(), tf_fmt);
+      auto fwd_input_md =
+          input_mkl_shape.IsMklTensor()
+              ? input_mkl_shape.GetMklLayout()
+              : memory::desc(fwd_input_dims, MklDnnType<T>(), tf_fmt);
       // If filter is in MKL layout, then simply grab filter layout; otherwise
       // construct filter in TF layout. For TF layout, filter is in HWIO format.
-      auto fwd_filter_md = filter_mkl_shape.IsMklTensor() ?
-                          filter_mkl_shape.GetMklLayout() :
-                          memory::desc(fwd_filter_dims, MklDnnType<T>(),
-                                       memory::format::hwio);
+      auto fwd_filter_md = filter_mkl_shape.IsMklTensor()
+                               ? filter_mkl_shape.GetMklLayout()
+                               : memory::desc(fwd_filter_dims, MklDnnType<T>(),
+                                              memory::format::hwio);
       // Tensorflow Output of Conv2D is in data_format order.
       auto fwd_out_md = memory::desc(fwd_output_dims, MklDnnType<T>(), tf_fmt);
-      auto fwd_desc = convolution_forward::desc(prop_kind::forward,
-            convolution_direct, fwd_input_md, fwd_filter_md, fwd_out_md,
-            strides, padding_l, padding_r, TFPaddingToMklDnnPadding(padding_));
+      auto fwd_desc = convolution_forward::desc(
+          prop_kind::forward, convolution_direct, fwd_input_md, fwd_filter_md,
+          fwd_out_md, strides, padding_l, padding_r,
+          TFPaddingToMklDnnPadding(padding_));
       auto fwd_pd = convolution_forward::primitive_desc(fwd_desc, cpu_engine);
 
       // Create memory for user data. Describe how the inputs and outputs of
@@ -471,19 +484,17 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
       output.SetOpMemDesc(bwd_output_dims, memory::format::any);
 
       // Operator-specific call to create and execute primitive.
-      Tensor* output_tensor = nullptr;
       CreatePrimitive(context, cpu_engine, fwd_pd, &input, &filter,
-                      &outbackprop, &output, &output_tensor,
-                      strides, padding_l, padding_r,
-                      TFPaddingToMklDnnPadding(padding_),
+                      &outbackprop, &output, &output_tensor, strides, padding_l,
+                      padding_r, TFPaddingToMklDnnPadding(padding_),
                       bwd_output_dims, bwd_output_format);
-    } catch (mkldnn::error &e) {
-     string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) +
-                       ", in file " + string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
-     OP_REQUIRES_OK(context, errors::Aborted("Operation received an exception:",
-                                            error_msg));
+    } catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 
@@ -501,17 +512,22 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
 
   /// Get TensorFlow shape of input tensor.
   virtual TensorShape MakeInputTfShape(OpKernelContext* context,
-                                      const Tensor& input_tensor) = 0;
+                                       const Tensor& input_tensor) = 0;
 
   /// Get TensorFlow shape of filter tensor.
   virtual TensorShape MakeFilterTfShape(OpKernelContext* context,
-                                       const Tensor& filter_tensor) = 0;
+                                        const Tensor& filter_tensor) = 0;
+
+  /// Get the TensorFlow shape of output tensor.
+  virtual TensorShape GetOutputTfShape(const TensorShape& input_shape,
+                                       const TensorShape& filter_shape,
+                                       const TensorShape& outbprop_shape) = 0;
 
   /// Get shape of output in MKL-DNN order. Computes shape of output from
   /// input shape (fwd_input_dims) and filter shape (fwd_filter_dims).
-  virtual
-  const memory::dims& GetOutputDims(const memory::dims& fwd_input_dims,
-                                    const memory::dims& fwd_filter_dims) = 0;
+  virtual const memory::dims& GetOutputDims(
+      const memory::dims& fwd_input_dims,
+      const memory::dims& fwd_filter_dims) = 0;
 
   /// Get data_format of output in MKL-DNN order. If output data format is
   /// same as input data format, then it simply returns value of data_format
@@ -519,24 +535,25 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
   virtual memory::format GetOutputFormat(const memory::format data_format) = 0;
 
   /// Create and execute the primitive storing output in the output_tensor.
-  virtual void CreatePrimitive(OpKernelContext* context,
-    const engine& cpu_engine,
-    const convolution_forward::primitive_desc& conv_fwd_pd,
-    MklDnnData<T>* input, MklDnnData<T>* filter, MklDnnData<T>* outbackprop,
-    MklDnnData<T>* output, Tensor** output_tensor, const memory::dims& strides,
-    const memory::dims& padding_l, const memory::dims& padding_r,
-    padding_kind padding, const memory::dims& bwd_output_dims,
-    memory::format bwd_output_format) = 0;
+  virtual void CreatePrimitive(
+      OpKernelContext* context, const engine& cpu_engine,
+      const convolution_forward::primitive_desc& conv_fwd_pd,
+      MklDnnData<T>* input, MklDnnData<T>* filter, MklDnnData<T>* outbackprop,
+      MklDnnData<T>* output, Tensor** output_tensor,
+      const memory::dims& strides, const memory::dims& padding_l,
+      const memory::dims& padding_r, padding_kind padding,
+      const memory::dims& bwd_output_dims,
+      memory::format bwd_output_format) = 0;
 
   // Get the data_format {NCHW, NHWC}
-  TensorFormat GetTFDataFormat () { return data_format_; }
+  TensorFormat GetTFDataFormat() { return data_format_; }
 
  private:
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
 };
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate
@@ -548,12 +565,12 @@ class MklDummyOp : public OpKernel {
  public:
   ~MklDummyOp() {}
 
-  explicit MklDummyOp(OpKernelConstruction* context) :
-    OpKernel(context) {}
+  explicit MklDummyOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TF_CHECK_OK(errors::Unimplemented("This is a dummy op."
-                                      "It should not have been invoked."));
+    TF_CHECK_OK(
+        errors::Unimplemented("This is a dummy op."
+                              "It should not have been invoked."));
   }
 };
 

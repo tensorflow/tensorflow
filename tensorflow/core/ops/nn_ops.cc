@@ -1155,9 +1155,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1211,9 +1211,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument("Input must have last dimension > n = ",
-                                       c->Value(n_dim), " but is ",
-                                       c->Value(last_dim));
+        return errors::InvalidArgument(
+            "Input must have last dimension > n = ", c->Value(n_dim),
+            " but is ", c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -1818,7 +1818,11 @@ REGISTER_OP("_MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
+#else
+    .Output("workspace: uint8")
+#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .SetShapeFn(shape_inference::MaxPoolShape)
@@ -1840,7 +1844,11 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
+#else
+    .Input("workspace: uint8")
+#endif
     .Input("mkl_orig_input: uint8")
     .Input("mkl_orig_output: uint8")
     .Input("mkl_grad: uint8")
@@ -1908,7 +1916,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1936,7 +1944,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")
@@ -1999,10 +2007,10 @@ REGISTER_OP("_MklFusedBatchNorm")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
 
       bool is_training;
-      c->GetAttr("is_training", &is_training);
+      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
       int number_inputs = (is_training) ? 3 : 5;
       string data_format;
-      c->GetAttr("data_format", &data_format);
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
       DimensionHandle channel_dim =
           (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
 
@@ -2068,8 +2076,8 @@ REGISTER_OP("_MklFusedBatchNormGrad")
 
       bool is_training;
       string data_format;
-      c->GetAttr("is_training", &is_training);
-      c->GetAttr("data_format", &data_format);
+      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
       DimensionHandle channel_dim = (data_format == "NHWC")
                                         ? c->Dim(y_backprop, 3)
                                         : c->Dim(y_backprop, 1);

@@ -24,6 +24,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import queue_runner_impl
 
 
@@ -231,10 +232,10 @@ class NumpyIoTest(test.TestCase):
       coord.join(threads)
 
   def testNumpyInputFnWithXAsNonDict(self):
-    x = np.arange(32, 36)
+    x = list(range(32, 36))
     y = np.arange(4)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'x must be dict'):
+      with self.assertRaisesRegexp(TypeError, 'x must be a dict or array'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x, y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -243,7 +244,15 @@ class NumpyIoTest(test.TestCase):
     x = {}
     y = np.arange(4)
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, 'x cannot be empty'):
+      with self.assertRaisesRegexp(ValueError, 'x cannot be an empty'):
+        failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
+        failing_input_fn()
+
+  def testNumpyInputFnWithXIsEmptyArray(self):
+    x = np.array([[], []])
+    y = np.arange(4)
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, 'x cannot be an empty'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
         failing_input_fn()
 
@@ -368,6 +377,82 @@ class NumpyIoTest(test.TestCase):
           ValueError, '2 duplicate keys are found in both x and y'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
         failing_input_fn()
+
+  def testNumpyInputFnWithXIsArray(self):
+    x = np.arange(4) * 1.0
+    y = np.arange(-32, -28)
+
+    input_fn = numpy_io.numpy_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+    features, target = input_fn()
+
+    with monitored_session.MonitoredSession() as session:
+      res = session.run([features, target])
+      self.assertAllEqual(res[0], [0, 1])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      session.run([features, target])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+  def testNumpyInputFnWithXIsNDArray(self):
+    x = np.arange(16).reshape(4, 2, 2) * 1.0
+    y = np.arange(-48, -32).reshape(4, 2, 2)
+
+    input_fn = numpy_io.numpy_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+    features, target = input_fn()
+
+    with monitored_session.MonitoredSession() as session:
+      res = session.run([features, target])
+      self.assertAllEqual(res[0], [[[0, 1], [2, 3]], [[4, 5], [6, 7]]])
+      self.assertAllEqual(
+          res[1], [[[-48, -47], [-46, -45]], [[-44, -43], [-42, -41]]])
+
+      session.run([features, target])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+  def testNumpyInputFnWithXIsArrayYIsDict(self):
+    x = np.arange(4) * 1.0
+    y = {'y1': np.arange(-32, -28)}
+
+    input_fn = numpy_io.numpy_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+    features_tensor, targets_tensor = input_fn()
+
+    with monitored_session.MonitoredSession() as session:
+      features, targets = session.run([features_tensor, targets_tensor])
+      self.assertEqual(len(features), 2)
+      self.assertAllEqual(features, [0, 1])
+      self.assertEqual(len(targets), 1)
+      self.assertAllEqual(targets['y1'], [-32, -31])
+
+      session.run([features_tensor, targets_tensor])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features_tensor, targets_tensor])
+
+  def testArrayAndDictGiveSameOutput(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x_arr = np.vstack((a, b))
+    x_dict = {'feature1': x_arr}
+    y = np.arange(-48, -40).reshape(2, 4)
+
+    input_fn_arr = numpy_io.numpy_input_fn(
+        x_arr, y, batch_size=2, shuffle=False, num_epochs=1)
+    features_arr, targets_arr = input_fn_arr()
+
+    input_fn_dict = numpy_io.numpy_input_fn(
+        x_dict, y, batch_size=2, shuffle=False, num_epochs=1)
+    features_dict, targets_dict = input_fn_dict()
+
+    with monitored_session.MonitoredSession() as session:
+      res_arr, res_dict = session.run([
+          (features_arr, targets_arr), (features_dict, targets_dict)])
+
+      self.assertAllEqual(res_arr[0], res_dict[0]['feature1'])
+      self.assertAllEqual(res_arr[1], res_dict[1])
 
 
 if __name__ == '__main__':

@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
 
+from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
@@ -50,6 +52,19 @@ class MetricsTest(test.TestCase):
       self.assertEqual(
           set(m.variables),
           set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)))
+      self.assertEqual(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES), [])
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
+
+  def testUseGlobalVariablesCollections(self):
+    with context.graph_mode(), ops.Graph().as_default():
+      m = metrics.Mean(use_global_variables=True)
+      m(1000)
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
+      self.assertEqual(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES), [])
       self.assertEqual(
           set(m.variables),
           set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
@@ -180,6 +195,44 @@ class MetricsTest(test.TestCase):
         m2 = metrics.Mean()
         m2(2)
 
+  def testMetricsChain(self):
+    with context.graph_mode(), self.test_session():
+      m1 = metrics.Mean()
+      m2 = metrics.Mean(name="m2")
+      update_m2 = m2(3.0)
+      update_m2_2 = m2(m1(1.0))
+      m1.init_variables().run()
+      m2.init_variables().run()
+      update_m2.eval()
+      update_m2_2.eval()
+      self.assertAllEqual(m2.result().eval(), 2.0)
+      self.assertAllEqual(m1.result().eval(), 1.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSaveRestore(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    mean = metrics.Mean()
+    checkpoint = checkpointable_utils.Checkpoint(mean=mean)
+    mean.build()
+    mean._built = True
+    self.evaluate(mean.init_variables())
+    self.evaluate(mean(100.))
+    self.evaluate(mean(200.))
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(mean(1000.))
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.evaluate(mean(300.))
+    self.assertAllEqual(200., self.evaluate(mean.value()))
+
+    restore_mean = metrics.Mean()
+    restore_checkpoint = checkpointable_utils.Checkpoint(mean=restore_mean)
+    status = restore_checkpoint.restore(save_path)
+    restore_update = restore_mean(300.)
+    status.assert_consumed().run_restore_ops()
+    self.evaluate(restore_update)
+    self.assertAllEqual(200., self.evaluate(restore_mean.value()))
+    self.assertEqual(3, self.evaluate(restore_mean.denom))
 
 if __name__ == "__main__":
   test.main()

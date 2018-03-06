@@ -39,7 +39,7 @@ py_library(
 
 cuda_py_test(
     name = "metropolis_hastings_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/metropolis_hastings_test.py"],
     additional_deps = [
         ":bayesflow_py",
@@ -100,6 +100,16 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "docstring_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/docstring_util_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "layers_conv_variational_test",
     size = "small",
     srcs = ["python/kernel_tests/layers_conv_variational_test.py"],
@@ -138,6 +148,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mcmc_diagnostics_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mcmc_diagnostics_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:spectral_ops_test_util",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_seed",
+    ],
+)
+
+cuda_py_test(
     name = "monte_carlo_test",
     size = "small",
     srcs = ["python/kernel_tests/monte_carlo_test.py"],
@@ -160,7 +190,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "halton_sequence_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/halton_sequence_test.py"],
     additional_deps = [
         ":bayesflow_py",
@@ -175,11 +205,12 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_mac"],  # b/73192243
 )
 
 cuda_py_test(
     name = "hmc_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/hmc_test.py"],
     additional_deps = [
         ":bayesflow_py",
@@ -217,6 +248,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+    tags = ["notsan"],
 )
 
 cuda_py_test(

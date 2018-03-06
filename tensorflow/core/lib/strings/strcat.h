@@ -119,11 +119,14 @@ class AlphaNum {
 
   AlphaNum(float f)  // NOLINT(runtime/explicit)
       : piece_(digits_, strlen(FloatToBuffer(f, digits_))) {}
+  AlphaNum(bfloat16 f)  // NOLINT(runtime/explicit)
+      : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {
+  }
   AlphaNum(double f)  // NOLINT(runtime/explicit)
       : piece_(digits_, strlen(DoubleToBuffer(f, digits_))) {}
 
   AlphaNum(const Eigen::half &f);  // NOLINT(runtime/explicit)
-  AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
+  AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)

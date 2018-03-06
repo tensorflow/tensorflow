@@ -12,15 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef PHOTOS_VISION_LEARNING_TENSORFLOW_MINI_QUANTIZATION_UTIL_H_
-#define PHOTOS_VISION_LEARNING_TENSORFLOW_MINI_QUANTIZATION_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_
 
 #include <cstdint>
 
 namespace tflite {
 
 // Decompose a double multiplier into a Q0.31 int32 representation of its
-// significand, and shift representation of its exponent.
+// significand, and shift representation of NEGATIVE its exponent ---
+// this is intended as a RIGHT-shift.
 //
 // Restricted to the case where the multiplier < 1 (and non-negative).
 void QuantizeMultiplierSmallerThanOne(double double_multiplier,
@@ -34,6 +35,16 @@ void QuantizeMultiplierSmallerThanOne(double double_multiplier,
 void QuantizeMultiplierGreaterThanOne(double double_multiplier,
                                       int32_t* quantized_multiplier,
                                       int* left_shift);
+
+// Decompose a double multiplier into a Q0.31 int32 representation of its
+// significand, and shift representation of its exponent.
+//
+// Handles an arbitrary positive multiplier. The 'shift' output-value is
+// basically the 'floating-point exponent' of the multiplier:
+// Negative for a right-shift (when the multiplier is <1), positive for a
+// left-shift (when the multiplier is >1)
+void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
+                        int* shift);
 
 // This first creates a multiplier in a double equivalent of
 // Q(input_integer_bits).(31-input_integer_bits) representation, with extra
@@ -52,4 +63,4 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 
 }  // namespace tflite
 
-#endif  // PHOTOS_VISION_LEARNING_TENSORFLOW_MINI_QUANTIZATION_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_

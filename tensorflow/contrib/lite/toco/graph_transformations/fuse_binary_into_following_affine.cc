@@ -285,13 +285,13 @@ bool FuseBinaryIntoFollowingAffine::Run(Model* model, std::size_t op_index) {
   AddMessageF("Fusing %s into the following %s", LogName(*binary_op),
               LogName(*following_op));
 
-  model->arrays.erase(binary_op->outputs[0]);
+  model->EraseArray(binary_op->outputs[0]);
   following_op->inputs[0] = binary_op->inputs[index_of_variable_input];
   const auto& old_constant_param_name =
       binary_op->inputs[index_of_constant_input];
   CHECK(IsConstantParameterArray(*model, old_constant_param_name));
   if (CountOpsWithInput(*model, old_constant_param_name) == 1) {
-    model->arrays.erase(old_constant_param_name);
+    model->EraseArray(old_constant_param_name);
   }
   model->operators.erase(binary_it);
   return true;

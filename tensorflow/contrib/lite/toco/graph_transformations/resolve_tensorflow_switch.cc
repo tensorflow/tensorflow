@@ -103,7 +103,7 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
   // Remove the output arrays if they are now unused.
   for (int i = 0; i < 2; i++) {
     if (!GetOpWithInput(*model, switch_op->outputs[i])) {
-      model->arrays.erase(switch_op->outputs[i]);
+      model->EraseArray(switch_op->outputs[i]);
     }
   }
   // Remove input arrays if they are only used by the switch itself and aren't
@@ -111,7 +111,7 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
   for (const auto& input : switch_op->inputs) {
     if (CountOpsWithInput(*model, input) == 1 &&
         !GetOpWithOutput(*model, input)) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
   // Remove the switch node itself.

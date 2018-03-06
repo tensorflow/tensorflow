@@ -549,7 +549,7 @@ DotOpEmitter::DotOpEmitter(
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
+  TF_RET_CHECK(F16 == type || F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, addend_array,
                            executable_run_options_value, ir_builder,
@@ -919,6 +919,12 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
+    case F16:
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF16SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF16SymbolName;
+      float_type = ir_builder_->getHalfTy();
+      break;
     case F32:
       fn_name = multi_threaded_eigen
                     ? runtime::kEigenMatMulF32SymbolName
@@ -1051,7 +1057,8 @@ static bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // The inputs and the output must
   // 1) be matrices with no padding, and
   // 2) have an allowed element type.
-  return output_shape.element_type() == F32 &&
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  return (output_primitive_type == F32 || output_primitive_type == F16) &&
          IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape);
 }

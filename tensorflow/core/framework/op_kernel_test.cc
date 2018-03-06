@@ -510,10 +510,9 @@ TEST_F(OpKernelBuilderTest, BuilderBoth) {
 }
 
 REGISTER_OP("BuildTypeAttr").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeAttr").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
   ExpectSuccess("BuildTypeAttr", DEVICE_CPU, {"T|type|DT_FLOAT"});
@@ -525,10 +524,9 @@ TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
 }
 
 REGISTER_OP("BuildTypeListAttr").Attr("T: list(type)");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeListAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bool>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeListAttr").Device(DEVICE_CPU).TypeConstraint<bool>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[]"});
@@ -574,14 +572,12 @@ TEST_F(OpKernelBuilderTest, DuplicateKernel) {
 }
 
 REGISTER_OP("DuplicateKernelForT").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   const NodeDef ndef =

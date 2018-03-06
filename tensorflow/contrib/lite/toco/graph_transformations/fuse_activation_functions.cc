@@ -68,11 +68,7 @@ bool FuseActivationFunctions::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  // TODO(dkalenichenko): Great many ops don't support activation function
-  // fusing. Switch to the whilelist approach instead.
-  if (op->type == OperatorType::kConcatenation ||
-      op->type == OperatorType::kSlice ||
-      op->type == OperatorType::kTensorFlowSplit) {
+  if (!OperatorSupportsFusedActivation(op->type)) {
     AddMessageF(
         "Not fusing activation function because the %s op doesn't support it",
         LogName(*op));
@@ -90,7 +86,7 @@ bool FuseActivationFunctions::Run(Model* model, std::size_t op_index) {
   } else {
     LOG(FATAL) << "Unhandled activation function type";
   }
-  model->arrays.erase(ac_op->inputs[0]);
+  model->EraseArray(ac_op->inputs[0]);
   op->outputs[0] = ac_op->outputs[0];
   model->operators.erase(ac_it);
   return true;

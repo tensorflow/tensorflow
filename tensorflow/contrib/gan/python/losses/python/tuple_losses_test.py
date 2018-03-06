@@ -22,8 +22,11 @@ import collections
 
 import numpy as np
 
+from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.losses.python import tuple_losses_impl as tfgan_losses
-
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -125,6 +128,7 @@ manual_tests = [
     'combine_adversarial_loss',
     'mutual_information_penalty',
     'wasserstein_gradient_penalty',
+    'cycle_consistency_loss',
 ]
 
 discriminator_keyword_args = {
@@ -137,6 +141,38 @@ generator_keyword_args = {
     'discriminator_gen_outputs': np.array([[6.2, -1.5, 2.3],
                                            [-2.9, -5.1, 0.1]]),
 }
+
+
+class CycleConsistencyLossTest(test.TestCase):
+
+  def setUp(self):
+    super(CycleConsistencyLossTest, self).setUp()
+
+    def _partial_model(generator_inputs_np):
+      model = namedtuples.GANModel(*[None] * 11)
+      return model._replace(
+          generator_inputs=constant_op.constant(
+              generator_inputs_np, dtype=dtypes.float32))
+
+    self._model_x2y = _partial_model([1, 2])
+    self._model_y2x = _partial_model([5, 6])
+
+  def test_model_type(self):
+    """Test the input model type for `cycle_consistency_loss`."""
+    with self.assertRaises(ValueError):
+      tfgan_losses.cycle_consistency_loss(self._model_x2y)
+
+  def test_correct_loss(self):
+    """Test the output of `cycle_consistency_loss`."""
+    loss = tfgan_losses.cycle_consistency_loss(
+        namedtuples.CycleGANModel(
+            model_x2y=self._model_x2y,
+            model_y2x=self._model_y2x,
+            reconstructed_x=constant_op.constant([9, 8], dtype=dtypes.float32),
+            reconstructed_y=constant_op.constant([7, 2], dtype=dtypes.float32)))
+    with self.test_session(use_gpu=True):
+      variables.global_variables_initializer().run()
+      self.assertNear(5.0, loss.eval(), 1e-5)
 
 
 if __name__ == '__main__':

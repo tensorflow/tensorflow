@@ -49,9 +49,8 @@ limitations under the License.
 //     PeriodicFunction periodic_function_;
 //   };
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_
-
+#ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_
+#define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_
 
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 
@@ -115,7 +114,7 @@ class PeriodicFunction {
   void RunLoop(int64 start) LOCKS_EXCLUDED(mutex_);
 
   const std::function<void()> function_;  // Actual client function
-  const int64 interval_micros_;    // Interval between calls.
+  const int64 interval_micros_;           // Interval between calls.
   const Options options_;
 
   // Protects state below.
@@ -132,4 +131,4 @@ class PeriodicFunction {
 }  // namespace serving
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_PERIODIC_FUNCTION_H_

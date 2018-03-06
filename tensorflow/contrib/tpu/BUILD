@@ -36,13 +36,16 @@ py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
+        "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -160,6 +163,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":datasets",
         ":profiler",
         ":tpu_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
@@ -178,6 +182,33 @@ py_library(
     ],
 )
 
+py_library(
+    name = "datasets",
+    srcs = [
+        "python/tpu/datasets.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:function",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:readers",
+    ],
+)
+
+tf_py_test(
+    name = "datasets_test",
+    srcs = ["python/tpu/datasets_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        ":datasets",
+    ],
+    grpc_enabled = True,
+)
+
 tf_py_test(
     name = "tpu_test",
     size = "small",
@@ -189,6 +220,7 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 tf_py_test(

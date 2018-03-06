@@ -361,11 +361,12 @@ class MapDatasetTest(test.TestCase):
                 .map(lambda _: counter_var.assign_add(1))
                 .make_initializable_iterator())
     init_op = iterator.initializer
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   "Failed to capture resource"):
-        sess.run(init_op)
+      sess.run(init_op)
+      with self.assertRaises(errors.NotFoundError):
+        sess.run(get_next)
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
     iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
@@ -598,6 +599,28 @@ class MapDatasetTest(test.TestCase):
         actual = sess.run(get_next)
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
         self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testParallelMapOutOfRangeError(self):
+    def raising_py_func(i):
+      if i == 100:
+        raise StopIteration()
+      else:
+        return i
+
+    iterator = (
+        dataset_ops.Dataset.range(105)
+        .map(lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
+             num_parallel_calls=2)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(100):
+        self.assertEqual(i, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

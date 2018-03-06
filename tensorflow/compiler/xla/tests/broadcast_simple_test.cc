@@ -662,7 +662,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidBinaryAndDegenerateBroadcasting) {
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("broadcast dimension 0 mismatch"));
+              HasSubstr("dimension 0 mismatch"));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
@@ -675,7 +675,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("binary op BINOP_ADD with incompatible shapes"));
+              HasSubstr("op BINOP_ADD with incompatible shapes"));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
@@ -688,7 +688,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("binary op BINOP_ADD with incompatible shapes"));
+              HasSubstr("op BINOP_ADD with incompatible shapes"));
 }
 
 }  // namespace

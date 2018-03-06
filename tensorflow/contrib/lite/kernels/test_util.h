@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
 
 #include <vector>
 
@@ -39,10 +39,10 @@ inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
                                int32_t zero_point) {
   std::vector<T> q;
   for (float f : data) {
-    q.push_back(std::max(
+    q.push_back(static_cast<T>(std::max<float>(
         std::numeric_limits<T>::min(),
-        std::min(std::numeric_limits<T>::max(),
-                 static_cast<T>(std::round(zero_point + (f / scale))))));
+        std::min<float>(std::numeric_limits<T>::max(),
+                        std::round(zero_point + (f / scale))))));
   }
   return q;
 }
@@ -85,6 +85,23 @@ struct TensorData {
   int32_t zero_point;
 };
 
+class SingleOpResolver : public OpResolver {
+ public:
+  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
+      : op_(op), registration_(registration) {}
+  TfLiteRegistration* FindOp(BuiltinOperator op) const override {
+    if (op == op_) {
+      return registration_;
+    }
+    return nullptr;
+  }
+  TfLiteRegistration* FindOp(const char* op) const override { return nullptr; }
+
+ private:
+  const BuiltinOperator op_;
+  TfLiteRegistration* registration_;
+};
+
 class SingleOpModel {
  public:
   SingleOpModel() {}
@@ -97,6 +114,10 @@ class SingleOpModel {
   // Add a TensorType input tensor and return its index.
   int AddInput(TensorType type) { return AddInput(TensorData{type}); }
   int AddInput(const TensorData& t);
+
+  // Add a Tensor containing const data and return the tensor id.
+  int AddConstInput(TensorType type, std::initializer_list<int> data,
+                    std::initializer_list<int> shape);
 
   // Add a null input tensor (optional input) and return kOptionalTensor.
   int AddNullInput();
@@ -174,14 +195,19 @@ class SingleOpModel {
     return result;
   }
 
+  void SetResolver(std::unique_ptr<OpResolver> resolver) {
+    resolver_ = std::move(resolver);
+  }
+
  protected:
   int32_t GetTensorSize(int index) const;
 
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
+  std::unique_ptr<OpResolver> resolver_;
 
  private:
-  int AddTensor(TensorData t);
+  int AddTensor(TensorData t, std::initializer_list<int> data);
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
@@ -189,7 +215,38 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
   std::vector<flatbuffers::Offset<Operator>> operators_;
+  std::vector<flatbuffers::Offset<Buffer>> buffers_;
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
+};
+
+// Base class for single op unit tests.
+// The tests are parameterized to test multiple kernels for a single op.
+// The parameters are strings like "optimized" and "reference" to have better
+// readability in test reports.
+//
+// To use this class:
+// * Define a constant map from strings to TfLiteRegistration.
+// * Implement a test class that inherits SingleOpTest.
+// * Instantiate the test cases with SingleOpTest::GetKernelTags helper
+//   function.
+// * Call GetRegistration to get the TfLiteRegistration to be used before
+//   building the interpreter.
+class SingleOpTest : public ::testing::TestWithParam<string> {
+ public:
+  static std::vector<string> GetKernelTags(
+      const std::map<string, TfLiteRegistration*>& kernel_map) {
+    std::vector<string> tags;
+    for (auto it : kernel_map) {
+      tags.push_back(it.first);
+    }
+    return tags;
+  }
+
+ protected:
+  virtual const std::map<string, TfLiteRegistration*>& GetKernelMap() = 0;
+  TfLiteRegistration* GetRegistration() {
+    return GetKernelMap().at(GetParam());
+  }
 };
 
 // Strings have a special implementation that is in test_util.cc
@@ -197,4 +254,4 @@ template <>
 std::vector<string> SingleOpModel::ExtractVector(int index);
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_

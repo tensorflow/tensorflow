@@ -80,7 +80,7 @@ bool ReadFakeQuantMinMax::Run(Model* model, std::size_t op_index) {
     // else.
     for (int i = 1; i <= 2; i++) {
       if (CountOpsWithInput(*model, fakequant_op->inputs[i]) == 1) {
-        model->arrays.erase(fakequant_op->inputs[i]);
+        model->EraseArray(fakequant_op->inputs[i]);
       }
     }
     fakequant_op->inputs.resize(1);

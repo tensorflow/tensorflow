@@ -249,7 +249,9 @@ INSTANTIATE_TEST_CASE_P(ReducePrecisionAccuracyTest,
 // ReducePrecisionInsertion passes.
 class ReducePrecisionInsertionTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionBeforeFusion) {
+// The interpreter has no fusion pass, so skip this test.
+XLA_TEST_F(ReducePrecisionInsertionTest,
+           DISABLED_ON_INTERPRETER(ReducePrecisionBeforeFusion)) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
@@ -276,7 +278,9 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionBeforeFusion) {
   ComputeAndCompareR1<float>(&builder, {0.0f}, {a_data.get()});
 }
 
-XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedAfterFusion) {
+// The interpreter has no fusion pass, so skip this test.
+XLA_TEST_F(ReducePrecisionInsertionTest,
+           DISABLED_ON_INTERPRETER(ReducePrecisionSkippedAfterFusion)) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
@@ -300,7 +304,9 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedAfterFusion) {
   ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
 }
 
-XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
+// The interpreter has no fusion pass, so skip this test.
+XLA_TEST_F(ReducePrecisionInsertionTest,
+           DISABLED_ON_INTERPRETER(ReducePrecisionAddedAfterFusion)) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
@@ -322,7 +328,9 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedAfterFusion) {
   ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
 }
 
-XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedFusionContains) {
+// The interpreter has no fusion pass, so skip this test.
+XLA_TEST_F(ReducePrecisionInsertionTest,
+           DISABLED_ON_INTERPRETER(ReducePrecisionSkippedFusionContains)) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});
@@ -345,7 +353,9 @@ XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionSkippedFusionContains) {
   ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
 }
 
-XLA_TEST_F(ReducePrecisionInsertionTest, ReducePrecisionAddedFusionContains) {
+// The interpreter has no fusion pass, so skip this test.
+XLA_TEST_F(ReducePrecisionInsertionTest,
+           DISABLED_ON_INTERPRETER(ReducePrecisionAddedFusionContains)) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({1.00001});

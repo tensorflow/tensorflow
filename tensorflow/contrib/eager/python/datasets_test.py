@@ -16,13 +16,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import time
 
 import numpy as np
 
+from tensorflow.contrib import lookup
+from tensorflow.contrib.data.python.ops import threadpool
+from tensorflow.contrib.data.python.ops import unique
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -78,6 +83,18 @@ class IteratorTest(test.TestCase):
     it = datasets.Iterator(Dataset.range(8).map(math_ops.square).filter(even))
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
+
+  def testMapCaptureLookupTable(self):
+    default_val = -1
+    keys = constant_op.constant(['brain', 'salad', 'surgery'])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup.HashTable(
+        lookup.KeyValueTensorInitializer(keys, values), default_val)
+    dataset = Dataset.from_tensor_slices(['brain', 'salad', 'surgery'])
+    dataset = dataset.map(table.lookup)
+    it = datasets.Iterator(dataset)
+    got = [x.numpy() for x in it]
+    self.assertAllEqual([0, 1, 2], got)
 
   def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
     ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)
@@ -150,6 +167,38 @@ class IteratorTest(test.TestCase):
       x = datasets.Iterator(ds).next()
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
+
+  def testOverrideThreadPool(self):
+
+    def get_thread_id(_):
+      # Python creates a dummy thread object to represent the current
+      # thread when called from an "alien" thread (such as a
+      # `PrivateThreadPool` thread in this case). It does not include
+      # the TensorFlow-given display name, but it has a unique
+      # identifier that maps one-to-one with the underlying OS thread.
+      return np.array(threading.current_thread().ident).astype(np.int64)
+
+    for num_threads in [1, 2, 4, 8, 16]:
+
+      dataset = (
+          Dataset.range(1000).map(
+              lambda x: script_ops.py_func(get_thread_id, [x], dtypes.int64),
+              num_parallel_calls=32).apply(unique.unique()))
+
+      dataset = threadpool.override_threadpool(
+          dataset,
+          threadpool.PrivateThreadPool(
+              num_threads, display_name='private_thread_pool_%d' % num_threads))
+
+      thread_ids = []
+      for next_element in datasets.Iterator(dataset):
+        thread_ids.append(next_element)
+      self.assertEqual(len(thread_ids), len(set(thread_ids)))
+      self.assertGreater(len(thread_ids), 0)
+      # NOTE(mrry): We don't control the thread pool scheduling, and
+      # so cannot guarantee that all of the threads in the pool will
+      # perform work.
+      self.assertLessEqual(len(thread_ids), num_threads)
 
 
 class DatasetConstructorBenchmark(test.Benchmark):

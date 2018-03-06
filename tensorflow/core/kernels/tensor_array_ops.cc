@@ -708,7 +708,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_GATHER_AND_PACK);
 REGISTER_GATHER_AND_PACK(quint8);
 REGISTER_GATHER_AND_PACK(qint8);
 REGISTER_GATHER_AND_PACK(qint32);
-REGISTER_GATHER_AND_PACK(bfloat16);
 
 #undef REGISTER_GATHER_AND_PACK
 
@@ -939,7 +938,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(qint32);
-REGISTER_CONCAT(bfloat16);
 
 #undef REGISTER_CONCAT
 
@@ -1106,9 +1104,9 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
       indices[1] = i;
 
       if (element_shape.num_elements() > 0) {
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);
@@ -1297,9 +1295,9 @@ class TensorArraySplitOp : public OpKernel {
         auto tensor_value_i_t = tensor_value_i->shaped<T, 3>(
             {1, tensor_lengths_t(i), elements_per_row});
 
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);

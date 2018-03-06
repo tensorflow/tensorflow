@@ -44,8 +44,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("keras.initializers.Initializer")
 class Initializer(object):
   """Initializer base class: all initializers inherit from this class.
   """
@@ -83,6 +85,8 @@ class Initializer(object):
     return cls(**config)
 
 
+@tf_export("keras.initializers.Zeros", "initializers.zeros",
+           "zeros_initializer")
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
@@ -98,6 +102,7 @@ class Zeros(Initializer):
     return {"dtype": self.dtype.name}
 
 
+@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer")
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
@@ -113,6 +118,8 @@ class Ones(Initializer):
     return {"dtype": self.dtype.name}
 
 
+@tf_export("keras.initializers.Constant", "initializers.constant",
+           "constant_initializer")
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
@@ -217,6 +224,8 @@ class Constant(Initializer):
     return {"value": self.value, "dtype": self.dtype.name}
 
 
+@tf_export("keras.initializers.RandomUniform", "initializers.random_uniform",
+           "random_uniform_initializer")
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
@@ -252,6 +261,8 @@ class RandomUniform(Initializer):
     }
 
 
+@tf_export("keras.initializers.RandomNormal", "initializers.random_normal",
+           "random_normal_initializer")
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
@@ -287,6 +298,8 @@ class RandomNormal(Initializer):
     }
 
 
+@tf_export("keras.initializers.TruncatedNormal",
+           "initializers.truncated_normal", "truncated_normal_initializer")
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
@@ -327,6 +340,8 @@ class TruncatedNormal(Initializer):
     }
 
 
+@tf_export("initializers.uniform_unit_scaling",
+           "uniform_unit_scaling_initializer")
 class UniformUnitScaling(Initializer):
   """Initializer that generates tensors without scaling variance.
 
@@ -385,6 +400,8 @@ class UniformUnitScaling(Initializer):
     return {"factor": self.factor, "seed": self.seed, "dtype": self.dtype.name}
 
 
+@tf_export("keras.initializers.VarianceScaling",
+           "initializers.variance_scaling", "variance_scaling_initializer")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
@@ -464,6 +481,8 @@ class VarianceScaling(Initializer):
     }
 
 
+@tf_export("keras.initializers.Orthogonal", "initializers.orthogonal",
+           "orthogonal_initializer")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
@@ -523,6 +542,63 @@ class Orthogonal(Initializer):
     return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
 
 
+class ConvolutionDeltaOrthogonal(Initializer):
+  """Initializer that generates a delta orthogonal kernel for ConvNets.
+
+  The shape of the tensor must have length 3, 4 or 5. The number of input
+  filters must not exceed the number of output filters. The center pixels of the
+  tensor form an orthogonal matrix. Other pixels are set to be zero.
+
+  Args:
+    gain: multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
+      applying this convolution.
+    dtype: The type of the output.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed}
+      for behavior.
+  """
+
+  def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
+    self.gain = gain
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
+    self.seed = seed
+
+  def __call__(self, shape, dtype=None, partition_info=None):
+    if dtype is None:
+      dtype = self.dtype
+    # Check the shape
+    if len(shape) < 3 or len(shape) > 5:
+      raise ValueError("The tensor to initialize must be at least "
+                       "three-dimensional and at most five-dimensional")
+
+    if shape[-2] > shape[-1]:
+      raise ValueError("In_filters cannot be greater than out_filters.")
+
+    # Generate a random matrix
+    a = random_ops.random_normal([shape[-1], shape[-1]],
+                                 dtype=dtype, seed=self.seed)
+    # Compute the qr factorization
+    q, _ = linalg_ops.qr(a, full_matrices=False)
+    q = q[:shape[-2], :]
+    q *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    if len(shape) == 3:
+      weight = array_ops.scatter_nd([[(shape[0]-1)//2]],
+                                    array_ops.expand_dims(q, 0), shape)
+    elif len(shape) == 4:
+      weight = array_ops.scatter_nd([[(shape[0]-1)//2, (shape[1]-1)//2]],
+                                    array_ops.expand_dims(q, 0), shape)
+    else:
+      weight = array_ops.scatter_nd([[(shape[0]-1)//2, (shape[1]-1)//2,
+                                      (shape[2]-1)//2]],
+                                    array_ops.expand_dims(q, 0), shape)
+    return weight
+
+  def get_config(self):
+    return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
+
+
+@tf_export("keras.initializers.Identity", "initializers.identity")
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 
@@ -566,10 +642,11 @@ uniform_unit_scaling_initializer = UniformUnitScaling
 variance_scaling_initializer = VarianceScaling
 orthogonal_initializer = Orthogonal
 identity_initializer = Identity
-
+convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
 # pylint: enable=invalid-name
 
 
+@tf_export("glorot_uniform_initializer")
 def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -593,6 +670,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
       scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
 
 
+@tf_export("glorot_normal_initializer")
 def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot normal initializer, also called Xavier normal initializer.
 

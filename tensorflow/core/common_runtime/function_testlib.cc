@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_testlib.h"
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,7 +40,9 @@ class FindDeviceOpKernel : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("FindDeviceOp").Device(tensorflow::DEVICE_CPU),
                         FindDeviceOpKernel);
-REGISTER_OP("FindDeviceOp").Output("device_name: string");
+REGISTER_OP("FindDeviceOp")
+    .Output("device_name: string")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 FunctionDef FindDevice() {
   return FDH::Define(

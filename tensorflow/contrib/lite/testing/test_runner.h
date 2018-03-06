@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
 
 #include <memory>
 #include <string>
@@ -68,6 +68,10 @@ class TestRunner {
   // satisfied.
   virtual bool CheckResults() = 0;
 
+  // Read contents of tensor into csv format.
+  // The given 'id' is guaranteed to be one of the ids returned by GetOutputs().
+  virtual string ReadOutput(int id) = 0;
+
   // Set the base path for loading models.
   void SetModelBaseDir(const string& path) {
     model_base_dir_ = path;
@@ -121,4 +125,4 @@ class TestRunner {
 
 }  // namespace testing
 }  // namespace tflite
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_TEST_RUNNER_H_

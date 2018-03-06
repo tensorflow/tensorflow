@@ -99,8 +99,9 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(
-           {{{{static_cast<bfloat16>(-1.7f)}, {static_cast<bfloat16>(-2.04f)}},
-             {{static_cast<bfloat16>(0.105f)}, {static_cast<bfloat16>(0.65f)}}},
+           {{{{static_cast<bfloat16>(-1.6875f)},
+              {static_cast<bfloat16>(-2.04f)}},
+             {{static_cast<bfloat16>(0.105f)}, {static_cast<bfloat16>(0.66f)}}},
             {{{static_cast<bfloat16>(1.89f)}, {static_cast<bfloat16>(3.35f)}},
              {{static_cast<bfloat16>(3.7f)}, {static_cast<bfloat16>(6.04f)}}}})
            .get(),

@@ -240,6 +240,12 @@ REGISTER_OP("MatrixExponential")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
+REGISTER_OP("MatrixLogarithm")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn);
+
 REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")

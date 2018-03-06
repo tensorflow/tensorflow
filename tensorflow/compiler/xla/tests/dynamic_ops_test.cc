@@ -595,6 +595,11 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElement) {
   // Single element, no wrap.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElementBF16) {
+  // Single element, no wrap.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
@@ -602,6 +607,11 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElements) {
   // Multiple element, no wrap.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElementsBF16) {
+  // Multiple element, no wrap.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/2);
 }
 
@@ -609,6 +619,11 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
   // Multiple element, wrapping.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/3, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrappingBF16) {
+  // Multiple element, wrapping.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/3, /*size=*/2);
 }
 
@@ -616,12 +631,21 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
   // Multiple element, update size larger than operand.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/5, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLargeBF16) {
+  // Multiple element, update size larger than operand.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/5, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
   std::vector<int32> operand_shape({3, 123, 247});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnalignedBF16) {
+  std::vector<int32> operand_shape({3, 123, 247});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
@@ -629,6 +653,10 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLarger)) {
   std::vector<int32> operand_shape({32, 128, 1024});
   RunR3Contiguous<float>(operand_shape, /*index=*/7, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLargerBF16)) {
+  std::vector<int32> operand_shape({32, 128, 1024});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 

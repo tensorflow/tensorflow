@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_VERSION_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_VERSION_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_VERSION_H_
+#define TENSORFLOW_CONTRIB_LITE_VERSION_H_
 
 // The version number of the Schema. Ideally all changes will be backward
 // compatible. If that ever changes, we must ensure that version is the first
 // entry in the new tflite root so that we can see that version is not 1.
 #define TFLITE_SCHEMA_VERSION (3)
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_VERSION_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_VERSION_H_

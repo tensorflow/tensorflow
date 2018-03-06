@@ -38,6 +38,8 @@ GraphView::GraphView(GraphDef* graph) : graph_(graph) {
         input.port_id = -1;
       } else {
         input.port_id = i;
+        num_regular_outputs_[fanin.node] =
+            std::max(num_regular_outputs_[fanin.node], fanin.port_id);
       }
 
       fanouts_[fanin].insert(input);
@@ -80,7 +82,7 @@ GraphView::GetFanout(const GraphView::OutputPort& port) const {
   return it->second;
 }
 
-const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
 GraphView::GetFanin(const GraphView::InputPort& port) const {
   std::unordered_set<GraphView::OutputPort, GraphView::HashPort> result;
   if (port.port_id >= 0) {
@@ -118,7 +120,27 @@ const GraphView::OutputPort GraphView::GetRegularFanin(
   return fanin;
 }
 
-const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+std::unordered_set<GraphView::InputPort, GraphView::HashPort>
+GraphView::GetFanouts(const NodeDef& node,
+                      bool include_controlled_nodes) const {
+  std::unordered_set<InputPort, HashPort> result;
+  OutputPort port;
+  port.node = const_cast<NodeDef*>(&node);
+  const int first_port_id = include_controlled_nodes ? -1 : 0;
+  auto it = num_regular_outputs_.find(&node);
+  const int last_port_id = (it != num_regular_outputs_.end()) ? it->second : -1;
+
+  for (int i = first_port_id; i <= last_port_id; ++i) {
+    port.port_id = i;
+    auto it = fanouts_.find(port);
+    if (it != fanouts_.end()) {
+      result.insert(it->second.begin(), it->second.end());
+    }
+  }
+  return result;
+}
+
+std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
 GraphView::GetFanins(const NodeDef& node,
                      bool include_controlling_nodes) const {
   std::unordered_set<OutputPort, HashPort> result;

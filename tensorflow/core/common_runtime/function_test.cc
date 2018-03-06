@@ -71,11 +71,11 @@ class FunctionTest : public ::testing::Test {
     arg_types_ = result.arg_types;
     ret_types_ = result.ret_types;
 
-    Graph* g = new Graph(OpRegistry::Global());
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -89,7 +89,7 @@ class FunctionTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, g, &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);
   }
 
@@ -415,6 +415,106 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
            "Not found: Function XTimesTwo is not defined.");
 }
 
+TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
+  auto T = DT_INT32;
+
+  // The expected sequence of outputs from this function is [6, 4, 0, 1, ...].
+  FunctionDef stateful_func = FDH::Define(
+      // Name
+      "RandomUniformWrapper",
+      // Args
+      {},
+      // Return values
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+       FDH::Const<int32>("minval", 0),
+       FDH::Const<int32>("maxval", 10),
+       // A stateful node.
+       {{"y"},
+        "RandomUniformInt",
+        {"shape", "minval", "maxval"},
+        {{"seed", 37}, {"seed2", 48}, {"Tout", T}, {"T", T}}}});
+  Init({stateful_func});
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, &handle));
+
+  FunctionLibraryRuntime::Options opts;
+  Tensor y;
+  {
+    // Simple case: instantiating with no state_handle.
+    for (int32 expected : {6, 4}) {
+      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating again with no state_handle should yield the same handle and
+    // the continuation of the same sequence.
+    FunctionLibraryRuntime::Handle handle_non_isolated;
+    TF_CHECK_OK(
+        Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
+    EXPECT_EQ(handle, handle_non_isolated);
+    for (int32 expected : {0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating with a given state handle will create new state and yield
+    // the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_1";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating with a different given state handle will create new state
+    // and yield the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_2";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Reinstantiating after releasing a handle will yield the original sequence
+    // multiple times.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_3";
+
+    for (int i = 0; i < 2; ++i) {
+      TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                              &handle_isolated));
+      EXPECT_NE(handle, handle_isolated);
+      for (int32 expected : {6, 4, 0, 1}) {
+        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+        test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      }
+      TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
+    }
+  }
+}
+
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -658,6 +758,7 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   FunctionLibraryRuntime::Options opts;
   opts.stats_collector = &stats_collector;
   TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
                                 {x}, {&y}));
@@ -686,7 +787,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_15__cf__9")
+        s.WithOpName("x4/x2/scale/_12__cf__6")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -892,13 +993,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_5__cf__10")
+        s.WithOpName("scale/_6__cf__11")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_6__cf__11")
+        s.WithOpName("Func/_1/sy/_5__cf__10")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(

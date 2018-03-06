@@ -44,6 +44,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// 128KB copy buffer
+constexpr size_t kCopyFileBufferSize = 128 * 1024;
+
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
   Status Register(const string& scheme, Factory factory) override;
@@ -92,8 +95,12 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
-    return errors::Unimplemented("File system scheme ", scheme,
-                                 " not implemented");
+    if (scheme.empty()) {
+      scheme = "[local]";
+    }
+
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
   return Status::OK();
@@ -173,8 +180,8 @@ bool Env::FilesExist(const std::vector<string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        Status s = errors::Unimplemented("File system scheme ", itr.first,
-                                         " not implemented");
+        Status s = errors::Unimplemented("File system scheme '", itr.first,
+                                         "' not implemented");
         local_status.resize(itr.second.size(), s);
       }
     } else {
@@ -272,6 +279,17 @@ Status Env::RenameFile(const string& src, const string& target) {
                                  " not implemented");
   }
   return src_fs->RenameFile(src, target);
+}
+
+Status Env::CopyFile(const string& src, const string& target) {
+  FileSystem* src_fs;
+  FileSystem* target_fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  if (src_fs == target_fs) {
+    return src_fs->CopyFile(src, target);
+  }
+  return FileSystemCopyFile(src_fs, src, target_fs, target);
 }
 
 string Env::GetExecutablePath() {
@@ -400,6 +418,29 @@ Status WriteStringToFile(Env* env, const string& fname,
     s = file->Close();
   }
   return s;
+}
+
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target) {
+  std::unique_ptr<RandomAccessFile> src_file;
+  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+
+  std::unique_ptr<WritableFile> target_file;
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+
+  uint64 offset = 0;
+  std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
+  Status s = Status::OK();
+  while (s.ok()) {
+    StringPiece result;
+    s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
+    if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
+      return s;
+    }
+    TF_RETURN_IF_ERROR(target_file->Append(result));
+    offset += result.size();
+  }
+  return target_file->Close();
 }
 
 // A ZeroCopyInputStream on a RandomAccessFile.

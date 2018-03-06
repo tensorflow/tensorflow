@@ -296,7 +296,8 @@ public class Camera2BasicFragment extends Fragment
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
     try {
-      classifier = new ImageClassifier(getActivity());
+      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
+      classifier = new ImageClassifierQuantizedMobileNet(getActivity());
     } catch (IOException e) {
       Log.e(TAG, "Failed to initialize an image classifier.");
     }
@@ -658,8 +659,7 @@ public class Camera2BasicFragment extends Fragment
       showToast("Uninitialized Classifier or invalid context.");
       return;
     }
-    Bitmap bitmap =
-        textureView.getBitmap(ImageClassifier.DIM_IMG_SIZE_X, ImageClassifier.DIM_IMG_SIZE_Y);
+    Bitmap bitmap = textureView.getBitmap(classifier.getImageSizeX(), classifier.getImageSizeY());
     String textToShow = classifier.classifyFrame(bitmap);
     bitmap.recycle();
     showToast(textToShow);

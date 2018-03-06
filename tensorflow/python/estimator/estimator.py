@@ -35,6 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
+from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
 from tensorflow.python.estimator.export.export import get_temp_export_dir
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
@@ -48,19 +49,23 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import device_setter
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import compat_internal
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
+@tf_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -96,8 +101,21 @@ class Estimator(object):
   @end_compatibility
   """
 
-  def __init__(self, model_fn, model_dir=None, config=None, params=None):
+  def __init__(self, model_fn, model_dir=None, config=None, params=None,
+               warm_start_from=None):
     """Constructs an `Estimator` instance.
+
+    See @{$estimators} for more information. To warm-start an `Estimator`:
+
+    ```python
+    estimator = tf.estimator.DNNClassifier(
+        feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
+        hidden_units=[1024, 512, 256],
+        warm_start_from="/path/to/checkpoint/dir")
+    ```
+
+    For more details on warm-start configuration, see
+    @{tf.estimator.WarmStartSettings$WarmStartSettings}.
 
     Args:
       model_fn: Model function. Follows the signature:
@@ -128,12 +146,19 @@ class Estimator(object):
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model. If `None`, the model_dir in
-        `config` will be used if set. If both are set, they must be same. If
-        both are `None`, a temporary directory will be used.
+        continue training a previously saved model. If `PathLike` object, the
+        path will be resolved. If `None`, the model_dir in `config` will be used
+        if set. If both are set, they must be same. If both are `None`, a
+        temporary directory will be used.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+      warm_start_from: Optional string filepath to a checkpoint to warm-start
+                       from, or a `tf.estimator.WarmStartSettings` object to
+                       fully configure warm-starting.  If the string filepath is
+                       provided instead of a `WarmStartSettings`, then all
+                       variables are warm-started, and it is assumed that
+                       vocabularies and Tensor names are unchanged.
 
     Raises:
       RuntimeError: If eager execution is enabled.
@@ -158,6 +183,7 @@ class Estimator(object):
       self._config = config
 
     # Model directory.
+    model_dir = compat_internal.path_to_str(model_dir)
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
         # TODO(alanyee): remove this suppression after it is no longer needed
@@ -189,6 +215,11 @@ class Estimator(object):
     _verify_model_fn_args(model_fn, params)
     self._model_fn = model_fn
     self._params = copy.deepcopy(params or {})
+
+    # pylint: disable=protected-access
+    self._warm_start_settings = (
+        warm_starting_util._get_default_warm_start_settings(warm_start_from))
+    # pylint: enable=protected-access
 
   @property
   def model_dir(self):
@@ -397,7 +428,8 @@ class Estimator(object):
               input_fn,
               predict_keys=None,
               hooks=None,
-              checkpoint_path=None):
+              checkpoint_path=None,
+              yield_single_examples=True):
     """Yields predictions for given features.
 
     Args:
@@ -423,13 +455,18 @@ class Estimator(object):
         inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
+      yield_single_examples: If False, yield the whole batch as returned by the
+        model_fn instead of decomposing the batch into individual elements. This
+        is useful if model_fn return some tensor with first dimension not
+        equal to the batch size
 
     Yields:
       Evaluated values of `predictions` tensors.
 
     Raises:
       ValueError: Could not find a trained model in model_dir.
-      ValueError: if batch length of predictions are not same.
+      ValueError: if batch length of predictions are not same and
+        yield_single_examples is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
@@ -450,15 +487,21 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
+      all_hooks.extend(list(estimator_spec.prediction_hooks or []))
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
+              master=self._config.master,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=input_hooks + hooks) as mon_sess:
+          hooks=all_hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
-          if not isinstance(predictions, dict):
+          if not yield_single_examples:
+            yield preds_evaluated
+          elif not isinstance(predictions, dict):
             for pred in preds_evaluated:
               yield pred
           else:
@@ -470,9 +513,11 @@ class Estimator(object):
 
   def _assert_members_are_not_overridden(self):
     """Asserts members of `Estimator` are not overridden."""
-    allowed_overrides = set(['_call_input_fn', '_create_global_step',
-                             '_convert_train_steps_to_hooks',
-                             '_convert_eval_steps_to_hooks'])
+    allowed_overrides = set([
+        '_call_input_fn', '_create_global_step',
+        '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
+        '_tf_api_names'
+    ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())
@@ -526,7 +571,7 @@ class Estimator(object):
       export_dir_base: A string containing a directory in which to create
         timestamped subdirectories containing exported SavedModels.
       serving_input_receiver_fn: A function that takes no argument and
-        returns a `ServingInputReceiver`.
+        returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel, or `None` if no extra assets are needed.
       as_text: whether to write the SavedModel proto in text format.
@@ -581,7 +626,6 @@ class Estimator(object):
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
-        # TODO(b/36111876): replace legacy_init_op with main_op mechanism
         # pylint: disable=protected-access
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
@@ -778,6 +822,13 @@ class Estimator(object):
       worker_hooks.extend(input_hooks)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+
+      if self._warm_start_settings:
+        logging.info('Warm-starting with WarmStartSettings: %s' %
+                     (self._warm_start_settings,))
+        # pylint: disable=protected-access
+        warm_starting_util._warm_start(self._warm_start_settings)
+        # pylint: enable=protected-access
       # Check if the user created a loss summary, and add one if they didn't.
       # We assume here that the summary is called 'loss'. If it is not, we will
       # make another one with the name 'loss' to ensure it shows up in the right
@@ -957,13 +1008,6 @@ def _get_replica_device_setter(config):
   Returns:
     A replica device setter, or None.
   """
-  ps_ops = [
-      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableV2', 'MutableHashTableOfTensors',
-      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
-      'MutableDenseHashTableV2'
-  ]
-
   if config.task_type:
     worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
   else:
@@ -974,7 +1018,7 @@ def _get_replica_device_setter(config):
         ps_tasks=config.num_ps_replicas,
         worker_device=worker_device,
         merge_devices=True,
-        ps_ops=ps_ops,
+        ps_ops=list(device_setter.STANDARD_PS_OPS),
         cluster=config.cluster_spec)
   else:
     return None
@@ -1064,7 +1108,7 @@ def _write_dict_to_summary(output_dir,
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
       summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
-    elif isinstance(dictionary[key], six.string_types):
+    elif isinstance(dictionary[key], six.binary_type):
       try:
         summ = summary_pb2.Summary.FromString(dictionary[key])
         for i, _ in enumerate(summ.value):

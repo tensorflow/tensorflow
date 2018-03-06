@@ -58,6 +58,45 @@ bool ValueIsReadOnly(const HloValue& value) {
   return IsConstantValue(value) || IsEntryParameterValue(value);
 }
 
+// Data structure describing the action which should be taken on parts of a
+// computation buffers, with respect to the adding of special case copies.
+struct SpecialCaseCopyPolicy {
+  // Insert a copy if the same buffer is found at multiple indices within the
+  // output tuple.
+  bool copy_root_replicated_buffers = false;
+  // If true, insert a copy if a buffer coming from a constant or a parameter
+  // is found wihtin the output tuple.
+  bool copy_parameters_and_constants = false;
+};
+
+SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
+                                               HloModule* module,
+                                               HloComputation* computation) {
+  SpecialCaseCopyPolicy policy;
+  if (computation == module->entry_computation()) {
+    policy.copy_parameters_and_constants = true;
+    policy.copy_root_replicated_buffers = true;
+  }
+  for (const CallSite& site : node.caller_callsites()) {
+    // The kWhile instruction does not have an handling here, as the
+    // AddCopiesForWhile() API takes care of adding its own copies.
+    if (site.instruction()->opcode() == HloOpcode::kConditional) {
+      policy.copy_parameters_and_constants = true;
+      policy.copy_root_replicated_buffers = true;
+    }
+  }
+  return policy;
+}
+
+bool ShouldCopyRootValue(const HloValue& value,
+                         const SpecialCaseCopyPolicy& policy) {
+  if (policy.copy_parameters_and_constants) {
+    return IsConstantValue(value) ||
+           value.defining_instruction()->opcode() == HloOpcode::kParameter;
+  }
+  return false;
+}
+
 // Deep copy the given instructions 'from' and 'to' at the ShapeIndexes given in
 // 'indices_to_copy'. Add control edges from the respective kCopy instructions
 // in deep copy of 'from' to the respective kCopy instruction in the deep copy
@@ -729,7 +768,8 @@ class CopyRemover {
       // has a different operand (the operand of the elided copy).
       for (const HloUse* copy_use : copy_value_node->uses) {
         operand_node->uses.push_back(copy_use);
-        if (copy_use->instruction->opcode() == HloOpcode::kCopy) {
+        if (copy_use->instruction->opcode() == HloOpcode::kCopy &&
+            ContainsKey(copy_map_, copy_use->instruction)) {
           copy_map_.at(copy_use->instruction).src = operand_node;
         }
       }
@@ -956,7 +996,8 @@ Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module) {
     }
     TF_RET_CHECK(node.context() == CallContext::kSequential);
 
-    const bool is_entry = computation == module->entry_computation();
+    SpecialCaseCopyPolicy policy =
+        GetSpecialCaseCopyPolicy(node, module, computation);
     HloInstruction* root = computation->root_instruction();
 
     // Mark nondistinct/ambiguous indices.
@@ -969,27 +1010,26 @@ Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module) {
           for (const HloBuffer* buffer : buffers_at_index) {
             buffer_seen_before |= !seen.insert(buffer).second;
           }
-          if (buffers_at_index.size() > 1 || (buffer_seen_before && is_entry)) {
-            VLOG(2) << "Index " << index << " of root of computation "
+          if (buffers_at_index.size() > 1 ||
+              (buffer_seen_before && policy.copy_root_replicated_buffers)) {
+            VLOG(2) << "Index " << index << " of computation "
                     << computation->name() << " (" << root->name()
                     << ") has ambiguous or non-distinct buffer. Copying.";
             add_index_to_copy(root, index);
           }
         });
 
-    // For entry instructions, mark any parameter or constant values.
-    if (is_entry) {
-      for (const auto& pair :
-           alias_analysis->dataflow_analysis().GetInstructionValueSet(root)) {
-        const ShapeIndex& index = pair.first;
-        const HloValueSet& value_set = pair.second;
-        for (const HloValue* value : value_set.values()) {
-          if (ValueIsReadOnly(*value)) {
-            VLOG(2) << "Root of entry computation (" << root->name()
-                    << ") has constant or entry parameter value at index "
-                    << index << ". Copying.";
-            add_index_to_copy(root, index);
-          }
+    for (const auto& pair :
+         alias_analysis->dataflow_analysis().GetInstructionValueSet(root)) {
+      const ShapeIndex& index = pair.first;
+      const HloValueSet& value_set = pair.second;
+      for (const HloValue* value : value_set.values()) {
+        if (ShouldCopyRootValue(*value, policy)) {
+          VLOG(2) << "Root of (" << root->name() << ") of computation("
+                  << computation->name()
+                  << ") has constant or parameter value at index " << index
+                  << ". Copying.";
+          add_index_to_copy(root, index);
         }
       }
     }
@@ -1011,7 +1051,6 @@ Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module) {
       instruction->parent()->set_root_instruction(deep_copy);
     }
   }
-
   return Status::OK();
 }
 
@@ -1155,7 +1194,7 @@ bool IsWhileBody(const HloComputation* computation,
     HloModule* module) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(module));
+                      HloDataflowAnalysis::Run(*module));
 
   bool changed = false;
 

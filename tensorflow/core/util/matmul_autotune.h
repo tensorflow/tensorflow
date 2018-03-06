@@ -15,8 +15,8 @@ limitations under the License.
 
 // The utility to check matmul autotune related flags.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_
+#ifndef TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_
+#define TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_
 
 namespace tensorflow {
 
@@ -25,4 +25,4 @@ bool MatmulDoFP32ComputationFP16Input();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_
+#endif  // TENSORFLOW_CORE_UTIL_MATMUL_AUTOTUNE_H_

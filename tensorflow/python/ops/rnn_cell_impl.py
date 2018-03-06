@@ -46,7 +46,9 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _BIAS_VARIABLE_NAME = "bias"
@@ -133,6 +135,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return nest.map_structure(get_state_shape, state_size)
 
 
+@tf_export("nn.rnn_cell.RNNCell")
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
@@ -253,7 +256,7 @@ class RNNCell(base_layer.Layer):
     return output
 
 
-class _LayerRNNCell(RNNCell):
+class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
   For backwards compatibility purposes, most `RNNCell` instances allow their
@@ -294,7 +297,8 @@ class _LayerRNNCell(RNNCell):
                                      *args, **kwargs)
 
 
-class BasicRNNCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.BasicRNNCell")
+class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
   Args:
@@ -351,7 +355,8 @@ class BasicRNNCell(_LayerRNNCell):
     return output, output
 
 
-class GRUCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.GRUCell")
+class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
   Args:
@@ -448,6 +453,7 @@ class GRUCell(_LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
+@tf_export("nn.rnn_cell.LSTMStateTuple")
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
@@ -467,7 +473,8 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-class BasicLSTMCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.BasicLSTMCell")
+class BasicLSTMCell(LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -591,7 +598,8 @@ class BasicLSTMCell(_LayerRNNCell):
     return new_h, new_state
 
 
-class LSTMCell(_LayerRNNCell):
+@tf_export("nn.rnn_cell.LSTMCell")
+class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -834,6 +842,7 @@ def _default_dropout_state_filter_visitor(substate):
   return True
 
 
+@tf_export("nn.rnn_cell.DropoutWrapper")
 class DropoutWrapper(RNNCell):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
@@ -980,6 +989,10 @@ class DropoutWrapper(RNNCell):
     return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
   @property
+  def wrapped_cell(self):
+    return self._cell
+
+  @property
   def state_size(self):
     return self._cell.state_size
 
@@ -1058,6 +1071,7 @@ class DropoutWrapper(RNNCell):
     return output, new_state
 
 
+@tf_export("nn.rnn_cell.ResidualWrapper")
 class ResidualWrapper(RNNCell):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
@@ -1113,6 +1127,7 @@ class ResidualWrapper(RNNCell):
     return (res_outputs, new_state)
 
 
+@tf_export("nn.rnn_cell.DeviceWrapper")
 class DeviceWrapper(RNNCell):
   """Operator that ensures an RNNCell runs on a particular device."""
 
@@ -1147,6 +1162,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
+@tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells."""
 
@@ -1172,6 +1188,12 @@ class MultiRNNCell(RNNCell):
           "cells must be a list or tuple, but saw: %s." % cells)
 
     self._cells = cells
+    for cell_number, cell in enumerate(self._cells):
+      # Add Checkpointable dependencies on these cells so their variables get
+      # saved with this object when using object-based saving.
+      if isinstance(cell, checkpointable.CheckpointableBase):
+        # TODO(allenl): Track down non-Checkpointable callers.
+        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

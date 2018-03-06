@@ -16,27 +16,27 @@
 #
 # Tests distributed TensorFlow on a locally running TF GRPC cluster.
 #
-# This script peforms the following steps:
-# 1) Build the docker-in-docker (dind) image capable of running docker and
-#    Kubernetes (k8s) cluster inside.
+# This script performs the following steps:
+# 1) Build the docker image capable of running distributed TensorFlow in docker.
 # 2) Run a container from the aforementioned image and start docker service
 #    in it
-# 3) Call a script to launch a k8s TensorFlow GRPC cluster inside the container
+# 3) Call a script to launch a distributed TensorFlow GRPC cluster inside the container
 #    and run the distributed test suite.
 #
-# Usage: local_test.sh <whl_url>
+# Usage: local_test.sh <whl_file_location>
 #                      [--leave_container_running]
 #                      [--model_name <MODEL_NAME>]
 #                      [--num_workers <NUM_WORKERS>]
 #                      [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
 #                      [--sync_replicas]
 #
-# E.g., local_test.sh <whl_url> --model_name CENSUS_WIDENDEEP
-#       local_test.sh <whl_url> --num_workers 3 --num_parameter_servers 3
+# E.g., local_test.sh <whl_file_location> --model_name CENSUS_WIDENDEEP
+#       local_test.sh <whl_file_location> --num_workers 3 --num_parameter_servers 3
 #
 # Arguments:
-# <whl_url>
-#   Specify custom TensorFlow whl file URL to install in the test Docker image.
+# whl_file_location: URL from which the TensorFlow whl file will be acquired.
+#   E.g.: https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
+#   E.g.: /path/to/folder/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
 #
 # --leave_container_running:  Do not stop the docker-in-docker container after
 #                             the termination of the tests, e.g., for debugging
@@ -63,15 +63,9 @@ die() {
 
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"
-LOCAL_K8S_CACHE=${HOME}/kubernetes
 
-# Helper function
-get_container_id_by_image_name() {
-    # Get the id of a container by image name
-    # Usage: get_docker_container_id_by_image_name <img_name>
-
-    docker ps | grep $1 | awk '{print $1}'
-}
+# Use TensorFlow v1.5.0 for Python 2.7 and CPU only as we set num_gpus to 0 in the below
+DEFAULT_WHL_FILE_LOCATION="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl"
 
 # Parse input arguments
 LEAVE_CONTAINER_RUNNING=0
@@ -81,9 +75,10 @@ NUM_WORKERS=2
 NUM_PARAMETER_SERVERS=2
 SYNC_REPLICAS_FLAG=""
 
-WHL_URL=${1}
-if [[ -z "${WHL_URL}" ]]; then
-  die "whl file URL is not specified"
+WHL_FILE_LOCATION=${1}
+if [[ -z "${WHL_FILE_LOCATION}" ]]; then
+  WHL_FILE_LOCATION=${DEFAULT_WHL_FILE_LOCATION}
+  echo "use default whl file location"
 fi
 
 while true; do
@@ -98,8 +93,8 @@ while true; do
     NUM_PARAMETER_SERVERS=$2
   elif [[ $1 == "--sync_replicas" ]]; then
     SYNC_REPLICAS_FLAG="--sync_replicas"
-  elif [[ $1 == "--whl_url" ]]; then
-    WHL_URL=$2
+  elif [[ $1 == "--WHL_FILE_LOCATION" ]]; then
+    WHL_FILE_LOCATION=$2
   fi
 
   shift
@@ -120,7 +115,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get utility functions
 source ${DIR}/scripts/utils.sh
 
-# Build docker-in-docker image for local k8s cluster.
+# Build docker image for local distributed TensorFlow cluster.
 NO_CACHE_FLAG=""
 if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
    [[ "${TF_DIST_DOCKER_NO_CACHE}" != "0" ]]; then
@@ -130,15 +125,19 @@ fi
 # Create docker build context directory.
 BUILD_DIR=$(mktemp -d)
 echo ""
-echo "Using whl file URL: ${WHL_URL}"
+echo "Using whl file location: ${WHL_FILE_LOCATION}"
 echo "Building in temporary directory: ${BUILD_DIR}"
 
 cp -r ${DIR}/* "${BUILD_DIR}"/ || \
   die "Failed to copy files to ${BUILD_DIR}"
 
-# Download whl file into the build context directory.
-wget -P "${BUILD_DIR}" ${WHL_URL} || \
-  die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+if [[ $WHL_FILE_LOCATION =~ 'http://' || $WHL_FILE_LOCATION =~ 'https://' ]]; then
+    # Download whl file into the build context directory.
+    wget -P "${BUILD_DIR}" "${WHL_FILE_LOCATION}" || \
+        die "Failed to download tensorflow whl file from URL: ${WHL_FILE_LOCATION}"
+else
+    cp "${WHL_FILE_LOCATION}" "${BUILD_DIR}"
+fi
 
 # Build docker image for test.
 docker build ${NO_CACHE_FLAG} -t ${DOCKER_IMG_NAME} \

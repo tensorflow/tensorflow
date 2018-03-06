@@ -82,7 +82,7 @@ Here's a list of columns available in the Census Income dataset:
 | hours_per_week | Continuous  | Hours worked per week.            |
 | native_country | Categorical | Country of origin of the          |
 :                :             : individual.                       :
-| income         | Categorical | ">50K" or "<=50K", meaning        |
+| income_bracket | Categorical | ">50K" or "<=50K", meaning        |
 :                :             : whether the person makes more     :
 :                :             : than $50,000 annually.            :
 

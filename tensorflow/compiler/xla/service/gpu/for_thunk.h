@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
 
 #include <vector>
 
@@ -49,4 +49,4 @@ class ForThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_

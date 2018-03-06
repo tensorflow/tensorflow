@@ -45,27 +45,30 @@ feature dimension in `operand`), the operation calculates the gradients with
 respect to `operand`, `offset` and `scale` across all the other dimensions. The
 `feature_index` must be a valid index for the feature dimension in `operand`.
 
-The three gradients are defined by the following formulas:
+The three gradients are defined by the following formulas (Assuming a
+4-dimensional tensor as `operand` and (l) is the index for feature dimension):
 
-\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+\\( coef_l = \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (\nabla y_{ijkl} * (x_{ijkl} - \mu_l) / (\sigma^2_{l}+\epsilon)) \\)
 
-\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+\\( \nabla x_{ijkl} = \gamma_{l} * (1/\sqrt{\sigma^2_{l}+\epsilon}) * [\nabla y_{ijkl} - mean(\nabla y) - (x_{ijkl} - \mu_{l}) * coef_l] \\)
 
-\\( \nabla \beta = sum(\nabla y) \\)
+\\( \nabla \beta_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} \\)
+
+\\( \nabla \gamma_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} * ((x_{ijkl} - \mu_l) / \sqrt{\sigma^2_{l}+\epsilon}) \\)
 
 The inputs `mean` and `variance` represents moments value
 across batch and spatial dimensions.
 
 The output type is a tuple of three handles:
 
-|Outputs       | Type                    | Semantics                           |
-|------------- | ----------------------- | ------------------------------------|
-|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `operand`                           :
-|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `scale`                             :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `offset`                            :
+|Outputs       | Type                    | Semantics                            |
+|------------- | ----------------------- | ------------------------------------ |
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `operand` (\\( \nabla x\\))          :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `scale` (\\( \nabla \gamma\\))       :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `offset`(\\( \nabla \beta\\))        :
 
 
 ## BatchNormInference
@@ -119,11 +122,11 @@ Normalizes an array across batch and spatial dimensions.
 | Arguments       | Type                    | Semantics                        |
 | --------------- | ----------------------- | -------------------------------- |
 | `operand`       | `ComputationDataHandle` | n dimensional array to be        |
-:                 :                         : normalized                       :
+:                 :                         : normalized (x)                   :
 | `scale`         | `ComputationDataHandle` | 1 dimensional array              |
 :                 :                         : (\\(\gamma\\))                   :
 | `offset`        | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\beta\\ )                    :
+:                 :                         : (\\(\beta\\))                    :
 | `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
 | `feature_index` | `int64`                 | Index to feature dimension       |
 :                 :                         : in `operand`                     :
@@ -135,8 +138,8 @@ element in `operand`. The `feature_index` must be a valid index for the feature
 dimension in `operand`.
 
 The algorithm goes as follows for each batch in `operand` \\(x\\) that
-contains `m` elements with `w` and `h` as the size of spatial dimensions (
-assuming `operand` is an 4 dimensional array):
+contains `m` elements with `w` and `h` as the size of spatial dimensions
+(assuming `operand` is an 4 dimensional array):
 
 - Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
 \\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
@@ -170,7 +173,7 @@ Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The dimensions must match, and
 the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
 via bitcast routine. Bitcast is implemented as a low-level cast, so machines
-with different floating point representations will give different results.
+with different floating-point representations will give different results.
 
 <b> `BitcastConvertType(operand, new_element_type)` </b>
 
@@ -252,7 +255,7 @@ Clamps an operand to within the range between a minimum and maximum value.
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
+range.  That is, `clamp(a, x, b) =  min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -351,7 +354,7 @@ each other) and contains the arguments in the order that they were specified.
 :             :                         : concatenated between the `operands`. :
 
 With the exception of `dimension` all dimensions must be the same. This is
-because XLA does not support "ragged" arrays Also note that rank-0 values
+because XLA does not support "ragged" arrays. Also note that rank-0 values
 cannot be concatenated (as it's impossible to name the dimension along which the
 concatenation occurs).
 
@@ -440,11 +443,13 @@ area and a computation is performed for each possible position of the window.
 | `lhs`            | `ComputationDataHandle` | rank n+2 array of inputs      |
 | `rhs`            | `ComputationDataHandle` | rank n+2 array of kernel      |
 :                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
-| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
+| `window_strides` | `ArraySlice<int64>`     | size n array of kernel strides|
+| `padding`        | `ArraySlice<pair<int64, | size n array of (low, high)   |
 :                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
-| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
+| `lhs_dilation`   | `ArraySlice<int64>`     | size n lhs dilation factor    |
+:                  :                         : array                         |
+| `rhs_dilation`   | `ArraySlice<int64>`     | size n rhs dilation factor
+:                  :                         : array                         |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -468,7 +473,7 @@ filter/kernel/window. The dimensions are, in this order:
     window that moves across the base area.
 
 The `window_strides` argument specifies the stride of the convolutional window
-in the spatial dimensions. For example, if the stride in a the first spatial
+in the spatial dimensions. For example, if the stride in the first spatial
 dimension is 3, then the window can only be placed at coordinates where the
 first spatial index is divisible by 3.
 
@@ -717,6 +722,7 @@ in 'dimension_numbers'.
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
 to be the same, but must be listed in the same order in both
 'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
+There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
 
 Example with contracting dimension numbers:
 
@@ -736,8 +742,9 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 ```
 
 Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, and must
-have the same dimension sizes.
+dimension number, must be listed in the same order in both arrays, must
+have the same dimension sizes, and must be ordered before contracting and
+non-contracting/non-batch dimension numbers.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
@@ -768,6 +775,10 @@ DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
 | ----------------------------------- | ----------------- | ---------------- |
 | [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
 | [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+
+It follows that the resulting dimension number starts with the batch dimension,
+then the 'lhs' non-contracting/non-batch dimension, and finally the 'rhs'
+non-contracting/non-batch dimension.
 
 ## DynamicSlice
 
@@ -936,7 +947,7 @@ expand the rank of the lower-rank operand up to the rank of the higher-rank
 operand. `broadcast_dimensions` maps the dimensions of the lower-rank shape to
 the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
-then broadcasts the shapes along these degenerate dimension to equalize the
+then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
 @{$broadcasting$broadcasting page}.
 
@@ -1021,6 +1032,213 @@ Arguments | Type                    | Semantics
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
+## Gather
+
+The XLA gather operation stitches together several slices (each slice at a
+potentially different runtime offset) of an input tensor into an output tensor.
+
+### General Semantics
+
+See also
+[`ComputationBuilder::Gather`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+For a more intuitive description, see the "Informal Description" section below.
+
+<b> `gather(operand, gather_indices, output_window_dims, elided_window_dims, window_bounds, gather_dims_to_operand_dims)` </b>
+
+|Arguments         | Type                    | Semantics                       |
+|----------------- | ----------------------- | --------------------------------|
+|`operand`         | `ComputationDataHandle` | The tensor we’re gathering      |
+:                  :                         : from.                           :
+|`gather_indices`  | `ComputationDataHandle` | Tensor containing the starting  |
+:                  :                         : indices of the slices we're     :
+:                  :                         : we're stitching together into   :
+:                  :                         : the output tensor.              :
+|`index_vector_dim`  | `int64`               | The dimension in                |
+:                  :                         : `gather_indices` that contains  :
+:                  :                         : the starting indices.           :
+|`output_window_dims` | `ArraySlice<int64>`  | The set of dimensions in the    |
+:                  :                         : output shape that are _window   :
+:                  :                         : dimensions_ (defined below).    :
+:                  :                         : Not all window dimensions may   :
+:                  :                         : be present in the output shape. :
+|`elided_window_dims` | `ArraySlice<int64>`  | The set of _window dimensions_  |
+:                  :            : that are not present in the output shape.    :
+:                  :            : `window_bounds[i]` must be `1` for all `i`   :
+:                  :            : in `elided_window_dims`.                     :
+|`window_bounds`   | `ArraySlice<int64>`    | `window_bounds[i]` is the bounds |
+:                  :            : for  window dimension `i`. This includes     :
+:                  :            : both the window dimensions that are          :
+:                  :            : explicitly part of the output shape (via     :
+:                  :            : `output_window_dims`) and the window         :
+:                  :            : dimensions that are elided (via              :
+:                  :            : `elided_window_dims`).                       :
+|`gather_dims_to_operand_dims` | `ArraySlice<int64>` | A dimension map (the    |
+:                  :            : array is interpreted as mapping `i` to       :
+:                  :            : `gather_dims_to_operand_dims[i]`)  from      :
+:                  :            : the gather indices in `gather_indices` to    :
+:                  :            : the operand index space.  It has to be       :
+:                  :            : one-to-one and total.                        :
+
+For every index `Out` in the output tensor, we compute two things (more
+precisely described later):
+
+  - An index into `gather_indices.rank` - `1` dimensions of `gather_indices`,
+    which gives us a starting index of a slice, _operand slice_, in the operand
+    tensor.  These `gather_indices.rank` - `1` dimensions are all the dimensions
+    in `gather_indices` except `index_vector_dim`.
+
+  - A _window index_ that has the same rank as the operand.  This index is
+    composed of the values in `Out` at dimensions `output_window_dims`, embedded
+    with zeroes according to `elided_window_dims`.
+
+The _window index_ is the relative index of the element in _operand slice_ that
+should be present in the output at index `Out`.
+
+The output is a tensor of rank `output_window_dims.size` + `gather_indices.rank`
+- `1`.  Additionally, as a shorthand, we define `output_gather_dims` of type
+`ArraySlice<int64>` as the set of dimensions in the output shape but not in
+`output_window_dims`, in ascending order.  E.g. if the output tensor has rank
+`5`, `output_window_dims` is {`2`, `4`} then `output_gather_dims` is {`0`, `1`,
+`3`}
+
+If `index_vector_dim` is equal to `gather_indices.rank` we implicitly
+consider `gather_indices` to have a trailing `1` dimension (i.e. if
+`gather_indices` was of shape `[6,7]` and `index_vector_dim` is `2` then
+we implicitly consider the shape of `gather_indices` to be `[6,7,1]`).
+
+The bounds for the output tensor along dimension `i` is computed as follows:
+
+  1. If `i` is present in `output_gather_dims` (i.e. is equal to
+     `output_gather_dims[k]` for some `k`) then we pick the corresponding
+     dimension bounds out of `gather_indices.shape`, skipping
+     `index_vector_dim` (i.e. pick `gather_indices.shape.dims`[`k`] if `k`
+     < `index_vector_dim` and `gather_indices.shape.dims`[`k`+`1`]
+     otherwise).
+  2. If `i` is present in `output_window_dims` (i.e. equal to
+     `output_window_dims`[`k`] for some `k`) then we pick the corresponding
+     bound out of `window_bounds` after accounting for `elided_window_dims`
+     (i.e. we pick `adjusted_window_bounds`[`k`] where `adjusted_window_bounds`
+     is `window_bounds` with the bounds at indices `elided_window_dims`
+     removed).
+
+The operand index `In` corresponding to an output index `Out` is computed as
+follows:
+
+  1. Let `G` = { `Out`[`k`] for `k` in `output_gather_dims` }.  Use `G` to slice
+     out vector `S` such that `S`[`i`] = `gather_indices`[Combine(`G`, `i`)]
+     where Combine(A, b) inserts b at position `index_vector_dim` into A.
+     Note that this is well defined even if `G` is empty -- if `G` is empty then
+     `S` = `gather_indices`.
+  2. Create an index, `S`<sub>`in`</sub>, into `operand` using `S` by
+     scattering `S` using the `gather_dims_to_operand_dims` map
+     (`S`<sub>`in`</sub> is the starting indices for _operand slice_ mentioned
+     above).  More precisely:
+       1. `S`<sub>`in`</sub>[`gather_dims_to_operand_dims`[`k`]] = `S`[`k`] if `k` <
+          `gather_dims_to_operand_dims.size`.
+       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+  3. Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
+     at the output window dimensions in `Out` according to
+     the `elided_window_dims` set (`W`<sub>`in`</sub> is the _window index_
+     mentioned above).  More precisely:
+       1. `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `Out`[`k`] if
+          `k` < `output_window_dims.size` (`window_dims_to_operand_dims` is
+          defined below).
+       2. `W`<sub>`in`</sub>[`_`] = `0` otherwise.
+  4. `In` is `W`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+     addition.
+
+`window_dims_to_operand_dims` is the monotonic function with domain [`0`,
+`output_window_dims.size`) and range [`0`, `operand.rank`) \
+`elided_window_dims`.  So if, e.g., `output_window_dims.size` is `4`,
+`operand.rank` is `6` and `elided_window_dims` is {`0`, `2`} then
+`window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+
+### Informal Description and Examples
+
+`index_vector_dim` is set to `gather_indices.rank` - `1` in all of the
+examples that follow.  More interesting values for `index_vector_dim`
+does not change the operation fundamentally, but makes the visual representation
+more cumbersome.
+
+To get an intuition on how all of the above fits together, let's look at an
+example that gathers 5 slices of shape `[8,6]` from a `[16,11]` tensor.  The
+position of a slice into the `[16,11]` tensor can be represented as an index
+vector of shape `S64[2]`, so the set of 5 positions can be represented as a
+`S64[5,2]` tensor.
+
+The behavior of the gather operation can then be depicted as an index
+transformation that takes [`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>], an index in
+the output shape, and maps it to an element in the input tensor in the following
+way:
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_0.svg">
+</div>
+
+We first select an (`X`,`Y`) vector from the gather indices tensor using `G`.
+The element in the output tensor at index
+[`G`,`W`<sub>`0`</sub>,`W`<sub>`1`</sub>] is then the element in the input
+tensor at index [`X`+`W`<sub>`0`</sub>,`Y`+`W`<sub>`1`</sub>].
+
+`window_bounds` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
+W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
+
+This gather operation acts as a batch dynamic slice with `G` as the batch
+dimension.
+
+The gather indices may be multidimensional.  For instance, a more general
+version of the example above using a "gather indices" tensor of shape `[4,5,2]`
+would translate indices like this:
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_1.svg">
+</div>
+
+Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
+`G`<sub>`1`</sub> as the batch dimensions.  The window bounds are still `[8,6]`.
+
+The gather operation in XLA generalizes the informal semantics outlined above in
+the following ways:
+
+ 1. We can configure which dimensions in the output shape are the window
+    dimensions (dimensions containing `W`<sub>`0`</sub>, `W`<sub>`1`</sub> in
+    the last example).  The output gather dimensions (dimensions containing
+    `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
+    the output dimensions that are not window dimensions.
+
+ 2. The number of output window dimensions explicitly present in the output
+    shape may be smaller than the input rank.  These "missing" dimensions, which
+    are listed explicitly as `elided_window_dims`, must have a window bound of
+    `1`.  Since they have a window bound of `1` the only valid index for them is
+    `0` and eliding them does not introduce ambiguity.
+
+ 3. The slice extracted from the "Gather Indices" tensor ((`X`, `Y`) in the last
+    example) may have fewer elements than the input tensor rank, and an explicit
+    mapping dictates how the index should be expanded to have the same rank as
+    the input.
+
+As a final example, we use (2) and (3) to implement `tf.gather_nd`:
+
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/ops_xla_gather_2.svg">
+</div>
+
+`G`<sub>`0`</sub> and `G`<sub>`1`</sub> are used to slice out a starting index
+from the gather indices tensor as usual, except the starting index has only one
+element, `X`.  Similarly, there is only one output window index with the value
+`W`<sub>`0`</sub>.  However, before being used as indices into the input tensor,
+these are expanded in accordance to "Gather Index Mapping"
+(`gather_dims_to_operand_dims` in the formal description) and "Window Mapping"
+(`window_dims_to_operand_dims` in the formal description) into
+[`0`,`W`<sub>`0`</sub>] and [`X`,`0`] respectively, adding up to
+[`X`,`W`<sub>`0`</sub>].  In other words, the output index
+[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`W`<sub>`0`</sub>] maps to the input index
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
+the semantics for `tf.gather_nd`.
+
+`window_bounds` for this case is `[1,11]`.  Intuitively this means that every
+index `X` in the gather indices tensor picks an entire row and the result is the
+concatenation of all these rows.
 
 ## GetTupleElement
 
@@ -1075,7 +1293,7 @@ result2 = while (condition, init = result1) {
 ```
 
 Nested tuple shapes are not supported. For an empty tuple shape, the Infeed
-operation is effectively a nop and proceeds without reading any data from the
+operation is effectively a no-op and proceeds without reading any data from the
 Infeed of the device.
 
 > Note: We plan to allow multiple Infeed operations without a total order, in
@@ -1138,7 +1356,7 @@ dimension.
 
 `PaddingConfig` is a repeated field of `PaddingConfigDimension`, which contains
 three fields for each dimension: `edge_padding_low`, `edge_padding_high`, and
-`interior_padding`. `edge_padding_low` and `edge_padding_high` specifies the
+`interior_padding`. `edge_padding_low` and `edge_padding_high` specify the
 amount of padding added at the low-end (next to index 0) and the high-end (next
 to the highest index) of each dimension respectively. The amount of edge padding
 can be negative -- the absolute value of negative padding indicates the number
@@ -1147,8 +1365,8 @@ the amount of padding added between any two elements in each dimension. Interior
 padding occurs logically before edge padding, so in the case of negative edge
 padding elements are removed from the interior-padded operand. This operation is
 a no-op if the edge padding pairs are all (0, 0) and the interior padding values
-are all 0. Figure below shows examples of different `edge_padding` and
-`interior_padding` values for a two dimensional array.
+are all 0. The figure below shows examples of different `edge_padding` and
+`interior_padding` values for a two-dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">

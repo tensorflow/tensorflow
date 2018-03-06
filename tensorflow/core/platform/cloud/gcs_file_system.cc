@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #endif
 
 namespace tensorflow {
-
 namespace {
 
 constexpr char kGcsUriBase[] = "https://www.googleapis.com/storage/v1/";
@@ -59,9 +59,6 @@ constexpr char kGcsUploadUriBase[] =
 constexpr char kStorageHost[] = "storage.googleapis.com";
 constexpr size_t kReadAppendableFileBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
-// Initial delay before retrying a GCS upload.
-// Subsequent delays can be larger due to exponential back-off.
-constexpr uint64 kUploadRetryDelayMicros = 1000000L;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
@@ -117,6 +114,18 @@ constexpr char kReadRequestTimeout[] = "GCS_READ_REQUEST_TIMEOUT_SECS";
 // The environment variable to configure the overall request timeout for
 // upload requests.
 constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
+// The environment variable to configure an additional header to send with
+// all requests to GCS (format HEADERNAME:HEADERCONTENT)
+constexpr char kAdditionalRequestHeader[] = "GCS_ADDITIONAL_REQUEST_HEADER";
+// The environment variable to configure the throttle (format: <int64>)
+constexpr char kThrottleRate[] = "GCS_THROTTLE_TOKEN_RATE";
+// The environment variable to configure the token bucket size (format: <int64>)
+constexpr char kThrottleBucket[] = "GCS_THROTTLE_BUCKET_SIZE";
+// The environment variable that controls the number of tokens per request.
+// (format: <int64>)
+constexpr char kTokensPerRequest[] = "GCS_TOKENS_PER_REQUEST";
+// The environment variable to configure the initial tokens (format: <int64>)
+constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
@@ -607,6 +616,11 @@ bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
   return convert(env_value, value);
 }
 
+bool StringPieceIdentity(StringPiece str, StringPiece* value) {
+  *value = str;
+  return true;
+}
+
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
@@ -668,6 +682,36 @@ GcsFileSystem::GcsFileSystem()
     VLOG(1) << "GCS DNS cache is disabled, because " << kResolveCacheSecs
             << " = 0 (or is not set)";
   }
+
+  // Get the additional header
+  StringPiece add_header_contents;
+  if (GetEnvVar(kAdditionalRequestHeader, StringPieceIdentity,
+                &add_header_contents)) {
+    size_t split = add_header_contents.find(':', 0);
+
+    if (split != StringPiece::npos) {
+      StringPiece header_name = add_header_contents.substr(0, split);
+      StringPiece header_value = add_header_contents.substr(split + 1);
+
+      if (!header_name.empty() && !header_value.empty()) {
+        additional_header_.reset(new std::pair<const string, const string>(
+            header_name.ToString(), header_value.ToString()));
+
+        VLOG(1) << "GCS additional header ENABLED. "
+                << "Name: " << additional_header_->first << ", "
+                << "Value: " << additional_header_->second;
+      } else {
+        LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                   << add_header_contents;
+      }
+    } else {
+      LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                 << add_header_contents;
+    }
+  } else {
+    VLOG(1) << "GCS additional header DISABLED. No environment variable set.";
+  }
+
   // Apply the overrides for request timeouts
   uint32 timeout_value;
   if (GetEnvVar(kRequestConnectionTimeout, strings::safe_strtou32,
@@ -687,6 +731,26 @@ GcsFileSystem::GcsFileSystem()
   if (GetEnvVar(kWriteRequestTimeout, strings::safe_strtou32, &timeout_value)) {
     timeouts_.write = timeout_value;
   }
+
+  int64 token_value;
+  if (GetEnvVar(kThrottleRate, strings::safe_strto64, &token_value)) {
+    GcsThrottleConfig config;
+    config.enabled = true;
+    config.token_rate = token_value;
+
+    if (GetEnvVar(kThrottleBucket, strings::safe_strto64, &token_value)) {
+      config.bucket_size = token_value;
+    }
+
+    if (GetEnvVar(kTokensPerRequest, strings::safe_strto64, &token_value)) {
+      config.tokens_per_request = token_value;
+    }
+
+    if (GetEnvVar(kInitialTokens, strings::safe_strto64, &token_value)) {
+      config.initial_tokens = token_value;
+    }
+    throttle_.SetConfig(config);
+  }
 }
 
 GcsFileSystem::GcsFileSystem(
@@ -696,7 +760,8 @@ GcsFileSystem::GcsFileSystem(
     uint64 stat_cache_max_age, size_t stat_cache_max_entries,
     uint64 matching_paths_cache_max_age,
     size_t matching_paths_cache_max_entries, int64 initial_retry_delay_usec,
-    TimeoutConfig timeouts)
+    TimeoutConfig timeouts,
+    std::pair<const string, const string>* additional_header)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       file_block_cache_(
@@ -705,7 +770,8 @@ GcsFileSystem::GcsFileSystem(
       matching_paths_cache_(new MatchingPathsCache(
           matching_paths_cache_max_age, matching_paths_cache_max_entries)),
       timeouts_(timeouts),
-      initial_retry_delay_usec_(initial_retry_delay_usec) {}
+      initial_retry_delay_usec_(initial_retry_delay_usec),
+      additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
@@ -718,13 +784,13 @@ Status GcsFileSystem::NewRandomAccessFile(
 // A helper function to build a FileBlockCache for GcsFileSystem.
 std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
     size_t block_size, size_t max_bytes, uint64 max_staleness) {
-  std::unique_ptr<FileBlockCache> file_block_cache(
-      new FileBlockCache(block_size, max_bytes, max_staleness,
-                         [this](const string& filename, size_t offset, size_t n,
-                                char* buffer, size_t* bytes_transferred) {
-                           return LoadBufferFromGCS(filename, offset, n, buffer,
-                                                    bytes_transferred);
-                         }));
+  std::unique_ptr<FileBlockCache> file_block_cache(new RamFileBlockCache(
+      block_size, max_bytes, max_staleness,
+      [this](const string& filename, size_t offset, size_t n, char* buffer,
+             size_t* bytes_transferred) {
+        return LoadBufferFromGCS(filename, offset, n, buffer,
+                                 bytes_transferred);
+      }));
   return file_block_cache;
 }
 
@@ -738,7 +804,9 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
 
   std::unique_ptr<HttpRequest> request;
-  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
+                                  "when reading gs://", bucket, "/", object);
+
   request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket, "/",
                                   request->EscapeString(object)));
   request->SetRange(offset, offset + n - 1);
@@ -752,6 +820,8 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   *bytes_transferred = bytes_read;
   VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
           << offset << " of size: " << bytes_read;
+
+  throttle_.RecordResponse(bytes_read);
 
   if (bytes_read < block_size()) {
     // Check stat cache to see if we encountered an interrupted read.
@@ -890,41 +960,43 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
         "'object' must be a non-empty string. (File: %s)", fname.c_str()));
   }
 
-  StatCache::ComputeFunc compute_func =
-      [this, &bucket, &object](const string& fname, FileStatistics* stat) {
-        std::vector<char> output_buffer;
-        std::unique_ptr<HttpRequest> request;
-        TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
-        request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                                        request->EscapeString(object),
-                                        "?fields=size%2Cupdated"));
-        request->SetResultBuffer(&output_buffer);
-        request->SetTimeouts(timeouts_.connect, timeouts_.idle,
-                             timeouts_.metadata);
+  StatCache::ComputeFunc compute_func = [this, &bucket, &object](
+                                            const string& fname,
+                                            FileStatistics* stat) {
+    std::vector<char> output_buffer;
+    std::unique_ptr<HttpRequest> request;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
+                                    " when reading metadata of gs://", bucket,
+                                    "/", object);
 
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
-                                        " when reading metadata of gs://",
-                                        bucket, "/", object);
+    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
+                                    request->EscapeString(object),
+                                    "?fields=size%2Cupdated"));
+    request->SetResultBuffer(&output_buffer);
+    request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
 
-        Json::Value root;
-        TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
+                                    " when reading metadata of gs://", bucket,
+                                    "/", object);
 
-        // Parse file size.
-        TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &stat->length));
+    Json::Value root;
+    TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
 
-        // Parse file modification time.
-        string updated;
-        TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
-        TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
+    // Parse file size.
+    TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &stat->length));
 
-        VLOG(1) << "Stat of: gs://" << bucket << "/" << object << " -- "
-                << " length: " << stat->length
-                << "; mtime_nsec: " << stat->mtime_nsec
-                << "; updated: " << updated;
+    // Parse file modification time.
+    string updated;
+    TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
+    TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
 
-        stat->is_directory = false;
-        return Status::OK();
-      };
+    VLOG(1) << "Stat of: gs://" << bucket << "/" << object << " -- "
+            << " length: " << stat->length
+            << "; mtime_nsec: " << stat->mtime_nsec << "; updated: " << updated;
+
+    stat->is_directory = false;
+    return Status::OK();
+  };
 
   TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(fname, stat, compute_func));
   if (stat->is_directory) {
@@ -1396,6 +1468,15 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   new_request->AddAuthBearerHeader(auth_token);
+
+  if (additional_header_) {
+    new_request->AddHeader(additional_header_->first,
+                           additional_header_->second);
+  }
+
+  if (!throttle_.AdmitRequest()) {
+    return errors::Unavailable("Request throttled");
+  }
 
   *request = std::move(new_request);
   return Status::OK();

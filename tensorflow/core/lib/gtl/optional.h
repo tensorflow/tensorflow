@@ -478,7 +478,7 @@ class optional : private internal_optional::optional_data<T>,
     return *this;
   }
 
-  // Copy assigment, standard semantics.
+  // Copy assignment, standard semantics.
   optional& operator=(const optional& src) = default;
 
   // Move assignment, standard semantics.
@@ -593,12 +593,12 @@ class optional : private internal_optional::optional_data<T>,
     assert(this->engaged_);
     return this->pointer();
   }
-  constexpr const T& operator*() const & { return reference(); }
+  constexpr const T& operator*() const& { return reference(); }
   T& operator*() & {
     assert(this->engaged_);
     return reference();
   }
-  constexpr const T&& operator*() const && { return std::move(reference()); }
+  constexpr const T&& operator*() const&& { return std::move(reference()); }
   T&& operator*() && {
     assert(this->engaged_);
     return std::move(reference());
@@ -621,7 +621,7 @@ class optional : private internal_optional::optional_data<T>,
   // Use `opt.value()` to get a reference to underlying value.  The constness
   // and lvalue/rvalue-ness of `opt` is preserved to the view of the T
   // subobject.
-  const T& value() const & {
+  const T& value() const& {
     CHECK(*this) << "Bad optional access";
     return reference();
   }
@@ -633,7 +633,7 @@ class optional : private internal_optional::optional_data<T>,
     CHECK(*this) << "Bad optional access";
     return std::move(reference());
   }
-  const T&& value() const && {  // NOLINT(build/c++11)
+  const T&& value() const&& {  // NOLINT(build/c++11)
     CHECK(*this) << "Bad optional access";
     return std::move(reference());
   }
@@ -641,7 +641,7 @@ class optional : private internal_optional::optional_data<T>,
   // Use `opt.value_or(val)` to get either the value of T or the given default
   // `val` in the empty case.
   template <class U>
-  constexpr T value_or(U&& v) const & {
+  constexpr T value_or(U&& v) const& {
     return static_cast<bool>(*this) ? **this
                                     : static_cast<T>(std::forward<U>(v));
   }
@@ -656,8 +656,8 @@ class optional : private internal_optional::optional_data<T>,
   constexpr const T& reference() const { return *this->pointer(); }
   T& reference() { return *(this->pointer()); }
 
-  // T constraint checks.  You can't have an optional of nullopt_t, in_place_t or
-  // a reference.
+  // T constraint checks.  You can't have an optional of nullopt_t, in_place_t
+  // or a reference.
   static_assert(
       !std::is_same<nullopt_t, typename std::remove_cv<T>::type>::value,
       "optional<nullopt_t> is not allowed.");

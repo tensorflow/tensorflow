@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
@@ -102,6 +102,7 @@ class SourceFileWriter : public SourceWriter {
   void DoAppend(const StringPiece& str) override {
     TF_CHECK_OK(file_->Append(str));
   }
+
  private:
   WritableFile* file_;
 };
@@ -109,20 +110,19 @@ class SourceFileWriter : public SourceWriter {
 // A writer that outputs source code into a string buffer.
 class SourceBufferWriter : public SourceWriter {
  public:
-  SourceBufferWriter()
-    : owns_buffer_(true), buffer_(new string()) {}
+  SourceBufferWriter() : owns_buffer_(true), buffer_(new string()) {}
   explicit SourceBufferWriter(string* buffer)
-    : owns_buffer_(false), buffer_(buffer) {}
+      : owns_buffer_(false), buffer_(buffer) {}
   virtual ~SourceBufferWriter() {
     if (owns_buffer_) delete buffer_;
   }
-  const string& str() {
-    return *buffer_;
-  }
+  const string& str() { return *buffer_; }
+
  protected:
   void DoAppend(const StringPiece& str) override {
     buffer_->append(str.begin(), str.end());
   }
+
  private:
   bool owns_buffer_;
   string* buffer_;

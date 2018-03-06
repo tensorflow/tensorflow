@@ -24,16 +24,15 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops.script_ops import py_func as _py_func
 from tensorflow.python.util import nest
 
-from tensorflow.python.ops.script_ops import py_func as _py_func
-
-__all__ = ["py_func"]
+__all__ = ['py_func']
 
 
 def py_func(func,
             args=(),
-            kwargs={},
+            kwargs=None,
             output_types=None,
             output_shapes=None,
             stateful=True,
@@ -88,23 +87,27 @@ def py_func(func,
       operations.
     name: A name for the operation (optional).
 
-
+  Returns:
+    Tensorflow op that wraps the input python function.
   """
+
+  if kwargs is None:
+    kwargs = {}
 
   if not isinstance(args, (list, tuple)):
     raise TypeError('args must be list and not {}. args: {}'.format(
-      type(args), args))
+        type(args), args))
 
   if not isinstance(kwargs, dict):
     raise TypeError('kwargs must be dict and not {}. args: {}'.format(
-      type(kwargs), kwargs))
+        type(kwargs), kwargs))
 
   # For dynamic type inference use callable output_types and output_shapes
   if callable(output_types):
-    # If callable, assume same signature and call with tensors and get the types
+    # If callable assume same signature and call with tensors and get the types
     output_types = output_types(*args, **kwargs)
   if callable(output_shapes):
-    # If callable, assume same signature and call with tensors and get the shapes
+    # If callable assume same signature and call with tensors and get the shapes
     output_shapes = output_shapes(*args, **kwargs)
 
   flat_output_types = nest.flatten(output_types)
@@ -115,20 +118,23 @@ def py_func(func,
     py_args, py_kwargs = nest.pack_sequence_as(args, py_args)
 
     ret = func(*py_args, **py_kwargs)
-    # ToDo: Catch Exceptions and improve msg, because tensorflow ist not able
-    # to preserve the traceback, i.e. the Exceptions does not contain any
-    # information where the Exception was raised.
+    # TODO(alextp): Catch Exceptions and improve msg, because tensorflow
+    # ist not able to preserve the traceback, i.e. the Exceptions does not
+    # contain any information where the Exception was raised.
     nest.assert_shallow_structure(output_types, ret)
     return nest.flatten(ret)
 
   flat_values = _py_func(
-      python_function_wrapper, flat_args, flat_output_types,
-      stateful=stateful, name=name)
+      python_function_wrapper,
+      flat_args,
+      flat_output_types,
+      stateful=stateful,
+      name=name)
 
   if output_shapes is not None:
     # I am not sure if this is nessesary
     output_shapes = nest.map_structure_up_to(
-      output_types, tensor_shape.as_shape, output_shapes)
+        output_types, tensor_shape.as_shape, output_shapes)
 
     flattened_shapes = nest.flatten(output_shapes)
     for ret_t, shape in zip(flat_values, flattened_shapes):

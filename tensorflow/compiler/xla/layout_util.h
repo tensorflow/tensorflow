@@ -137,7 +137,7 @@ class LayoutUtil {
   static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Shape& shape);
   static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Layout& layout);
 
-  // Major(0) is the most major logical dimension number, major(1) is the
+  // Major(0) is the most major logical dimension number, Major(1) is the
   // second-most-major logical dimension number and so on.
   //
   // This can be used to translate physical dimension numbers to logical

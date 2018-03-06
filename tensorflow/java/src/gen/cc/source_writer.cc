@@ -54,8 +54,8 @@ SourceWriter& SourceWriter::EndLine() {
 }
 
 SourceWriter& SourceWriter::Indent(int tab) {
-  left_margin_.resize(
-      std::max(static_cast<int>(left_margin_.size() + tab), 0), ' ');
+  left_margin_.resize(std::max(static_cast<int>(left_margin_.size() + tab), 0),
+                      ' ');
   return *this;
 }
 

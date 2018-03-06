@@ -3,7 +3,7 @@
 
 licenses(["notice"])  # BSD 3-clause
 
-exports_files(["LICENSE"])
+exports_files(["PKG-INFO"])
 
 py_library(
     name = "gast",
@@ -14,5 +14,6 @@ py_library(
         "gast/astn.py",
         "gast/gast.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )

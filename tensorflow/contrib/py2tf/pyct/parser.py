@@ -28,11 +28,13 @@ import gast
 from tensorflow.python.util import tf_inspect
 
 
-def parse_object(obj):
-  """Return the AST of given object."""
-  return parse_str(tf_inspect.getsource(obj))
+def parse_entity(entity):
+  """Return the AST of given entity."""
+  source = tf_inspect.getsource(entity)
+  source = textwrap.dedent(source)
+  return parse_str(source), source
 
 
 def parse_str(src):
   """Return the AST of given piece of code."""
-  return gast.parse(textwrap.dedent(src))
+  return gast.parse(src)

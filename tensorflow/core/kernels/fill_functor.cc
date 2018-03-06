@@ -18,8 +18,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 
@@ -42,6 +42,7 @@ void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
   template struct SetZeroFunctor<Eigen::ThreadPoolDevice, T>;
 DEFINE_SETZERO_CPU(bool);
 DEFINE_SETZERO_CPU(Eigen::half);
+DEFINE_SETZERO_CPU(bfloat16);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(uint8);
@@ -59,7 +60,7 @@ DEFINE_SETZERO_CPU(Variant);
 template <typename T>
 void SetZeroFunctor<Eigen::SyclDevice, T>::operator()(
     const Eigen::SyclDevice& d, typename TTypes<T>::Flat out) {
-      To32Bit(out).device(d) = To32Bit(out).constant(T(0));
+  To32Bit(out).device(d) = To32Bit(out).constant(T(0));
 }
 
 #define DEFINE_SETZERO_SYCL(T) \
@@ -87,6 +88,7 @@ void SetOneFunctor<Eigen::ThreadPoolDevice, T>::operator()(
   template struct SetOneFunctor<Eigen::ThreadPoolDevice, T>;
 DEFINE_SETONE_CPU(bool);
 DEFINE_SETONE_CPU(Eigen::half);
+DEFINE_SETONE_CPU(bfloat16);
 DEFINE_SETONE_CPU(float);
 DEFINE_SETONE_CPU(double);
 DEFINE_SETONE_CPU(uint8);
@@ -116,7 +118,8 @@ DEFINE_SETONE_SYCL(double);
 
 template <typename T>
 struct FillFunctor<Eigen::ThreadPoolDevice, T> {
-  void operator()(const Eigen::ThreadPoolDevice& d, typename TTypes<T>::Flat out,
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<T>::Flat out,
                   typename TTypes<T>::ConstScalar in) {
     out.device(d) = out.constant(in());
   }
@@ -148,8 +151,7 @@ struct FillFunctor<Eigen::SyclDevice, T> {
   }
 };
 
-#define DEFINE_FILL_SYCL(T) \
-  template struct FillFunctor<Eigen::SyclDevice, T>;
+#define DEFINE_FILL_SYCL(T) template struct FillFunctor<Eigen::SyclDevice, T>;
 DEFINE_FILL_SYCL(float);
 DEFINE_FILL_SYCL(double);
 TF_CALL_INTEGRAL_TYPES(DEFINE_FILL_SYCL)

@@ -1,4 +1,4 @@
-# Debugging TensorFlow Programs
+# TensorFlow Debugger
 
 <!-- [comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning". -->
 
@@ -23,8 +23,13 @@ debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 > installed using `pip install <your_version>.whl`, however curses on Windows
 > may not work as reliably as curses on Linux or Mac.
 
-This tutorial demonstrates how to use the **tfdbg** command-line interface
-(CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
+> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
+> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
+> **TensorBoard Debugger Plugin**, please visit
+> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+
+This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
+of [`nan`s](https://en.wikipedia.org/wiki/NaN)
 and [`inf`s](https://en.wikipedia.org/wiki/Infinity), a frequently-encountered
 type of bug in TensorFlow model development.
 The following example is for users who use the low-level
@@ -214,7 +219,7 @@ navigate between these screens by clicking the `<--` and
 ### Other Features of the tfdbg CLI
 
 In addition to the commands listed above, the tfdbg CLI provides the following
-addditional features:
+additional features:
 
 *   To navigate through previous tfdbg commands, type in a few characters
     followed by the Up or Down arrow keys. tfdbg will show you the history of
@@ -806,3 +811,13 @@ sess.run(b)
 
 the constant-folding would not occur and `tfdbg` should show the intermediate
 tensor dumps.
+
+**Q**: Is there a GUI for tfdbg?
+
+**A**: Yes, the **TensorBoard Debugger Plugin** is the GUI of tfdbg.
+       It offers features such as inspection of the computation graph,
+       real-time visualization of tensor values, continuation to tensor
+       and conditional breakpoints, and tying tensors to their
+       graph-construction source code, all in the browser environment.
+       To get started, please visit
+       [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).

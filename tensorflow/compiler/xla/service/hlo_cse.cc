@@ -119,9 +119,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
           equivalent_instructions;
       for (HloInstruction* user : operand->users()) {
         if (user != instruction &&
-            user->Identical(*instruction, eq_instructions, eq_computations) &&
-            (!is_layout_sensitive_ ||
-             ShapeUtil::Equal(user->shape(), instruction->shape()))) {
+            user->Identical(*instruction, eq_instructions, eq_computations,
+                            is_layout_sensitive_)) {
           equivalent_instructions.push_back(user);
         }
       }

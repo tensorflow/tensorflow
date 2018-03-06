@@ -27,7 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 // Get the Cudnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.

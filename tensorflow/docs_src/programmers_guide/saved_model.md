@@ -3,6 +3,9 @@
 This document explains how to save and restore
 @{$variables$variables} and models.
 
+Important: TensorFlow model files are code. Be careful with untrusted code.
+See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md)
+for details.
 
 ## Saving and restoring variables
 
@@ -285,7 +288,7 @@ with tf.Session(graph=tf.Graph()) as sess:
 ```
 
 
-### Loading a Savedmodel in C++
+### Loading a SavedModel in C++
 
 The C++ version of the SavedModel
 [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/loader.h)
@@ -303,6 +306,30 @@ LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
 ```
 
+### Loading and Serving a SavedModel in TensorFlow Serving
+
+You can easily load and serve a SavedModel with the TensorFlow Serving Model
+Server binary. See [instructions](https://www.tensorflow.org/serving/setup#installing_using_apt-get)
+on how to install the server, or build it if you wish.
+
+Once you have the Model Server, run it with:
+```
+tensorflow_model_server --port=port-numbers --model_name=your-model-name --model_base_path=your_model_base_path
+```
+Set the port and model_name flags to values of your choosing. The
+model_base_path flag expects to be to a base directory, with each version of
+your model residing in a numerically named subdirectory. If you only have a
+single version of your model, simply place it in a subdirectory like so:
+* Place the model in /tmp/model/0001
+* Set model_base_path to /tmp/model
+
+Store different versions of your model in numerically named subdirectories of a
+common base directory. For example, suppose the base directory is `/tmp/model`.
+If you have only one version of your model, store it in `/tmp/model/0001`. If
+you have two versions of your model, store the second version in
+`/tmp/model/0002`, and so on.  Set the `--model-base_path` flag to the base
+directory (`/tmp/model`, in this example).  TensorFlow Model Server will serve
+the model in the highest numbered subdirectory of that base directory.
 
 ### Standard constants
 
@@ -670,15 +697,15 @@ executing the computation graph later. For example:
 $ saved_model_cli show --dir \
 /tmp/saved_model_dir --tag_set serve --signature_def serving_default
 The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
+  inputs['x'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: x:0
 The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
+  outputs['y'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: y:0
 Method name is: tensorflow/serving/predict
 ```
 
@@ -690,32 +717,32 @@ $ saved_model_cli show --dir /tmp/saved_model_dir --all
 MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
 signature_def['classify_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/classify
 
 ...
 
 signature_def['serving_default']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/predict
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['y'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/predict
 ```
 
 
@@ -736,6 +763,7 @@ The `run` command provides the following two ways to pass inputs to the model:
 
 * `--inputs` option enables you to pass numpy ndarray in files.
 * `--input_exprs` option enables you to pass Python expressions.
+* `--input_examples` option enables you to pass `tf.train.Example`.
 
 
 #### `--inputs`
@@ -789,18 +817,30 @@ inputs that match the dtype and shape of the model's `SignatureDef`s.
 For example:
 
 ```bsh
-`input_key=[[1], [2], [3]]`
+`<input_key>=[[1],[2],[3]]`
 ```
 
 In addition to Python expressions, you may also pass numpy functions. For
 example:
 
 ```bsh
-input_key=np.ones((32, 32, 3))
+`<input_key>=np.ones((32,32,3))`
 ```
 
 (Note that the `numpy` module is already available to you as `np`.)
 
+
+#### `--inputs_examples`
+
+To pass `tf.train.Example` as inputs, specify the `--input_examples` option.
+For each input key, it takes a list of dictionary, where each dictionary is an
+instance of `tf.train.Example`. The dictionary keys are the features and the
+values are the value lists for each feature.
+For example:
+
+```bsh
+`<input_key>=[{"age":[22,24],"education":["BS","MS"]}]`
+```
 
 #### Save Output
 

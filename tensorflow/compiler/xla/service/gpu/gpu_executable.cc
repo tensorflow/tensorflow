@@ -46,12 +46,14 @@ namespace {
 class HloExecutionProfiler {
  public:
   // If profiling is enabled, start an execution timer running.
-  explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
-                                se::Stream* stream,
-                                const HloComputation* computation)
+  explicit HloExecutionProfiler(
+      bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
+      const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
+      const HloComputation* computation)
       : do_profile_(do_profile),
         profile_(profile),
         stream_(stream),
+        sub_streams_(sub_streams),
         computation_(computation) {
     if (do_profile_) {
       clock_rate_ghz_ =
@@ -70,6 +72,7 @@ class HloExecutionProfiler {
     CHECK(!finished_execution_) << "Call FinishExecution only once!";
     finished_execution_ = true;
     if (do_profile_) {
+      stream_->ThenWaitFor(&sub_streams_);
       stream_->ThenStopTimer(execution_timer_.get());
       stream_->BlockHostUntilDone().IgnoreError();
       profile_->set_total_cycles_executed(
@@ -88,6 +91,7 @@ class HloExecutionProfiler {
   // that the hlo_instruction took to execute in the profile.
   void FinishOperation(const HloInstruction* hlo_instruction) {
     if (do_profile_) {
+      stream_->ThenWaitFor(&sub_streams_);
       stream_->ThenStopTimer(per_op_timer_.get());
       stream_->BlockHostUntilDone().IgnoreError();
       profile_->SetCyclesTakenBy(
@@ -100,6 +104,7 @@ class HloExecutionProfiler {
   double clock_rate_ghz_;
   HloExecutionProfile* profile_;
   se::Stream* stream_;
+  const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
   const HloComputation* computation_;
   std::unique_ptr<se::Timer> execution_timer_;
   std::unique_ptr<se::Timer> per_op_timer_;
@@ -116,9 +121,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
@@ -147,19 +152,19 @@ Status GpuExecutable::ExecuteThunks(
     LOG(WARNING) << "PROFILING: profiling is enabled";
   }
 
-  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
-                                hlo_module_->entry_computation());
-
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
-
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
   std::vector<Pool<se::Stream>::SmartPtr> sub_streams;
+  sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(
         sub_streams.back(),
         run_options->BorrowStream(main_stream->parent()->device_ordinal()));
   }
+
+  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
+                                sub_streams, hlo_module_->entry_computation());
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   // The next event enqueued on stream N must not run until the thunk at
   // last_blocking_thunk_for_stream[N] completes.
@@ -262,9 +267,16 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      // The caller must give us a buffer for ShapeIndex {} of every parameter.
+      // It can optionally give us a buffer for other ShapeIndices, but we
+      // ignore them: Because we can't rely on these sub-buffers' addresses
+      // being available, our generated code can't use them.  Instead, it must
+      // chase pointers starting at the tuple root.
+      if (allocation.param_shape_index().empty()) {
+        auto param_no = allocation.parameter_number();
+        buffer_allocations_builder.RegisterBuffer(
+            i, arguments[param_no]->root_buffer());
+      }
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();

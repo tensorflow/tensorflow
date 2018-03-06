@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras callbacks: utilities called at certain points during model training.
+# pylint: disable=g-import-not-at-top
+"""Callbacks: utilities called at certain points during model training.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -34,14 +35,13 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
+from tensorflow.python.util.tf_export import tf_export
 
 
-# pylint: disable=g-import-not-at-top
 try:
   import requests
 except ImportError:
   requests = None
-# pylint: enable=g-import-not-at-top
 
 
 class CallbackList(object):
@@ -109,9 +109,9 @@ class CallbackList(object):
     delta_t_median = np.median(self._delta_ts_batch_begin)
     if (self._delta_t_batch > 0. and
         delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1):
-      logging.warning(
-          'Method on_batch_begin() is slow compared '
-          'to the batch update (%f). Check your callbacks.' % delta_t_median)
+      logging.warning('Method on_batch_begin() is slow compared '
+                      'to the batch update (%f). Check your callbacks.',
+                      delta_t_median)
     self._t_enter_batch = time.time()
 
   def on_batch_end(self, batch, logs=None):
@@ -132,9 +132,9 @@ class CallbackList(object):
     delta_t_median = np.median(self._delta_ts_batch_end)
     if (self._delta_t_batch > 0. and
         (delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1)):
-      logging.warning(
-          'Method on_batch_end() is slow compared '
-          'to the batch update (%f). Check your callbacks.' % delta_t_median)
+      logging.warning('Method on_batch_end() is slow compared '
+                      'to the batch update (%f). Check your callbacks.',
+                      delta_t_median)
 
   def on_train_begin(self, logs=None):
     """Called at the beginning of training.
@@ -160,10 +160,11 @@ class CallbackList(object):
     return iter(self.callbacks)
 
 
+@tf_export('keras.callbacks.Callback')
 class Callback(object):
   """Abstract base class used to build new callbacks.
 
-  # Properties
+  Attributes:
       params: dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
@@ -216,11 +217,22 @@ class Callback(object):
     pass
 
 
+@tf_export('keras.callbacks.BaseLogger')
 class BaseLogger(Callback):
   """Callback that accumulates epoch averages of metrics.
 
   This callback is automatically applied to every Keras model.
+
+  Arguments:
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is in `on_epoch_end`.
+          All others will be averaged in `on_epoch_end`.
   """
+
+  def __init__(self, stateful_metrics=None):
+    super(BaseLogger, self).__init__()
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_epoch_begin(self, epoch, logs=None):
     self.seen = 0
@@ -232,21 +244,29 @@ class BaseLogger(Callback):
     self.seen += batch_size
 
     for k, v in logs.items():
-      if k in self.totals:
-        self.totals[k] += v * batch_size
+      if k in self.stateful_metrics:
+        self.totals[k] = v
       else:
-        self.totals[k] = v * batch_size
+        if k in self.totals:
+          self.totals[k] += v * batch_size
+        else:
+          self.totals[k] = v * batch_size
 
   def on_epoch_end(self, epoch, logs=None):
     if logs is not None:
       for k in self.params['metrics']:
         if k in self.totals:
           # Make value available to next callbacks.
-          logs[k] = self.totals[k] / self.seen
+          if k in self.stateful_metrics:
+            logs[k] = self.totals[k]
+          else:
+            logs[k] = self.totals[k] / self.seen
 
 
+@tf_export('keras.callbacks.TerminateOnNaN')
 class TerminateOnNaN(Callback):
-  """Callback that terminates training when a NaN loss is encountered."""
+  """Callback that terminates training when a NaN loss is encountered.
+  """
 
   def __init__(self):
     super(TerminateOnNaN, self).__init__()
@@ -260,6 +280,7 @@ class TerminateOnNaN(Callback):
         self.model.stop_training = True
 
 
+@tf_export('keras.callbacks.ProgbarLogger')
 class ProgbarLogger(Callback):
   """Callback that prints metrics to stdout.
 
@@ -267,12 +288,16 @@ class ProgbarLogger(Callback):
       count_mode: One of "steps" or "samples".
           Whether the progress bar should
           count samples seen or steps (batches) seen.
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is.
+          All others will be averaged over time (e.g. loss, etc).
 
   Raises:
       ValueError: In case of invalid `count_mode`.
   """
 
-  def __init__(self, count_mode='samples'):
+  def __init__(self, count_mode='samples', stateful_metrics=None):
     super(ProgbarLogger, self).__init__()
     if count_mode == 'samples':
       self.use_steps = False
@@ -280,6 +305,7 @@ class ProgbarLogger(Callback):
       self.use_steps = True
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
@@ -293,7 +319,10 @@ class ProgbarLogger(Callback):
       else:
         target = self.params['samples']
       self.target = target
-      self.progbar = Progbar(target=self.target, verbose=self.verbose)
+      self.progbar = Progbar(
+          target=self.target,
+          verbose=self.verbose,
+          stateful_metrics=self.stateful_metrics)
     self.seen = 0
 
   def on_batch_begin(self, batch, logs=None):
@@ -323,9 +352,10 @@ class ProgbarLogger(Callback):
       if k in logs:
         self.log_values.append((k, logs[k]))
     if self.verbose:
-      self.progbar.update(self.seen, self.log_values, force=True)
+      self.progbar.update(self.seen, self.log_values)
 
 
+@tf_export('keras.callbacks.History')
 class History(Callback):
   """Callback that records events into a `History` object.
 
@@ -345,6 +375,7 @@ class History(Callback):
       self.history.setdefault(k, []).append(v)
 
 
+@tf_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
   """Save the model after every epoch.
 
@@ -396,7 +427,7 @@ class ModelCheckpoint(Callback):
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
-                      'fallback to auto mode.' % mode)
+                      'fallback to auto mode.', (mode), RuntimeWarning)
       mode = 'auto'
 
     if mode == 'min':
@@ -423,11 +454,11 @@ class ModelCheckpoint(Callback):
         current = logs.get(self.monitor)
         if current is None:
           logging.warning('Can save best model only with %s available, '
-                          'skipping.' % (self.monitor))
+                          'skipping.', self.monitor, RuntimeWarning)
         else:
           if self.monitor_op(current, self.best):
             if self.verbose > 0:
-              print('Epoch %05d: %s improved from %0.5f to %0.5f,'
+              print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
                     ' saving model to %s' % (epoch + 1, self.monitor, self.best,
                                              current, filepath))
             self.best = current
@@ -437,17 +468,18 @@ class ModelCheckpoint(Callback):
               self.model.save(filepath, overwrite=True)
           else:
             if self.verbose > 0:
-              print('Epoch %05d: %s did not improve' % (epoch + 1,
-                                                        self.monitor))
+              print('\nEpoch %05d: %s did not improve' % (epoch + 1,
+                                                          self.monitor))
       else:
         if self.verbose > 0:
-          print('Epoch %05d: saving model to %s' % (epoch + 1, filepath))
+          print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
         if self.save_weights_only:
           self.model.save_weights(filepath, overwrite=True)
         else:
           self.model.save(filepath, overwrite=True)
 
 
+@tf_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
   """Stop training when a monitored quantity has stopped improving.
 
@@ -486,7 +518,7 @@ class EarlyStopping(Callback):
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('EarlyStopping mode %s is unknown, '
-                      'fallback to auto mode.' % mode)
+                      'fallback to auto mode.', mode, RuntimeWarning)
       mode = 'auto'
 
     if mode == 'min':
@@ -514,8 +546,8 @@ class EarlyStopping(Callback):
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Early stopping conditioned on metric `%s` '
-                      'which is not available. Available metrics are: %s' %
-                      (self.monitor, ','.join(list(logs.keys()))))
+                      'which is not available. Available metrics are: %s',
+                      self.monitor, ','.join(list(logs.keys())), RuntimeWarning)
       return
     if self.monitor_op(current - self.min_delta, self.best):
       self.best = current
@@ -531,6 +563,7 @@ class EarlyStopping(Callback):
       print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
 
 
+@tf_export('keras.callbacks.RemoteMonitor')
 class RemoteMonitor(Callback):
   """Callback used to stream events to a server.
 
@@ -544,8 +577,6 @@ class RemoteMonitor(Callback):
       path: String; path relative to `root` to which the events will be sent.
       field: String; JSON field under which the data will be stored.
       headers: Dictionary; optional custom HTTP headers.
-          Defaults to:
-          `{'Accept': 'application/json', 'Content-Type': 'application/json'}`
   """
 
   def __init__(self,
@@ -554,11 +585,7 @@ class RemoteMonitor(Callback):
                field='data',
                headers=None):
     super(RemoteMonitor, self).__init__()
-    if headers is None:
-      headers = {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-      }
+
     self.root = root
     self.path = path
     self.field = field
@@ -581,6 +608,7 @@ class RemoteMonitor(Callback):
                       'root server at ' + str(self.root))
 
 
+@tf_export('keras.callbacks.LearningRateScheduler')
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
 
@@ -588,11 +616,13 @@ class LearningRateScheduler(Callback):
       schedule: a function that takes an epoch index as input
           (integer, indexed from 0) and returns a new
           learning rate as output (float).
+      verbose: int. 0: quiet, 1: update messages.
   """
 
-  def __init__(self, schedule):
+  def __init__(self, schedule, verbose=0):
     super(LearningRateScheduler, self).__init__()
     self.schedule = schedule
+    self.verbose = verbose
 
   def on_epoch_begin(self, epoch, logs=None):
     if not hasattr(self.model.optimizer, 'lr'):
@@ -602,8 +632,12 @@ class LearningRateScheduler(Callback):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
     K.set_value(self.model.optimizer.lr, lr)
+    if self.verbose > 0:
+      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+            'rate to %s.' % (epoch + 1, lr))
 
 
+@tf_export('keras.callbacks.TensorBoard')
 class TensorBoard(Callback):
   # pylint: disable=line-too-long
   """Tensorboard basic visualizations.
@@ -744,16 +778,24 @@ class TensorBoard(Callback):
         while i < val_size:
           step = min(self.batch_size, val_size - i)
           batch_val = []
-          batch_val.append(val_data[0][i:i + step])
-          batch_val.append(val_data[1][i:i + step])
-          batch_val.append(val_data[2][i:i + step])
+          batch_val.append(val_data[0][i:i + step]
+                           if val_data[0] is not None else None)
+          batch_val.append(val_data[1][i:i + step]
+                           if val_data[1] is not None else None)
+          batch_val.append(val_data[2][i:i + step]
+                           if val_data[2] is not None else None)
           if self.model.uses_learning_phase:
             # do not slice the learning phase
-            batch_val = [x[i:i + step] for x in val_data[:-1]]
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data[:-1]]
             batch_val.append(val_data[-1])
           else:
-            batch_val = [x[i:i + step] for x in val_data]
-          feed_dict = dict(zip(tensors, batch_val))
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data]
+          feed_dict = {}
+          for key, val in zip(tensors, batch_val):
+            if val is not None:
+              feed_dict[key] = val
           result = self.sess.run([self.merged], feed_dict=feed_dict)
           summary_str = result[0]
           self.writer.add_summary(summary_str, epoch)
@@ -773,6 +815,7 @@ class TensorBoard(Callback):
     self.writer.close()
 
 
+@tf_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
   """Reduce learning rate when a metric has stopped improving.
 
@@ -842,7 +885,7 @@ class ReduceLROnPlateau(Callback):
     """
     if self.mode not in ['auto', 'min', 'max']:
       logging.warning('Learning Rate Plateau Reducing mode %s is unknown, '
-                      'fallback to auto mode.' % (self.mode))
+                      'fallback to auto mode.', self.mode, RuntimeWarning)
       self.mode = 'auto'
     if (self.mode == 'min' or
         (self.mode == 'auto' and 'acc' not in self.monitor)):
@@ -853,7 +896,6 @@ class ReduceLROnPlateau(Callback):
       self.best = -np.Inf
     self.cooldown_counter = 0
     self.wait = 0
-    self.lr_epsilon = self.min_lr * 1e-4
 
   def on_train_begin(self, logs=None):
     self._reset()
@@ -864,8 +906,9 @@ class ReduceLROnPlateau(Callback):
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Reduce LR on plateau conditioned on metric `%s` '
-                      'which is not available. Available metrics are: %s' %
-                      (self.monitor, ','.join(list(logs.keys()))))
+                      'which is not available. Available metrics are: %s',
+                      self.monitor, ','.join(list(logs.keys())), RuntimeWarning)
+
     else:
       if self.in_cooldown():
         self.cooldown_counter -= 1
@@ -877,13 +920,13 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         if self.wait >= self.patience:
           old_lr = float(K.get_value(self.model.optimizer.lr))
-          if old_lr > self.min_lr + self.lr_epsilon:
+          if old_lr > self.min_lr:
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
             K.set_value(self.model.optimizer.lr, new_lr)
             if self.verbose > 0:
-              print('\nEpoch %05d: reducing learning rate to %s.' % (epoch,
-                                                                     new_lr))
+              print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
+                    'rate to %s.' % (epoch + 1, new_lr))
             self.cooldown_counter = self.cooldown
             self.wait = 0
         self.wait += 1
@@ -892,6 +935,7 @@ class ReduceLROnPlateau(Callback):
     return self.cooldown_counter > 0
 
 
+@tf_export('keras.callbacks.CSVLogger')
 class CSVLogger(Callback):
   """Callback that streams epoch results to a csv file.
 
@@ -899,10 +943,11 @@ class CSVLogger(Callback):
   including 1D iterables such as np.ndarray.
 
   Example:
-      ```python
-      csv_logger = CSVLogger('training.log')
-      model.fit(X_train, Y_train, callbacks=[csv_logger])
-      ```
+
+  ```python
+  csv_logger = CSVLogger('training.log')
+  model.fit(X_train, Y_train, callbacks=[csv_logger])
+  ```
 
   Arguments:
       filename: filename of the csv file, e.g. 'run/log.csv'.
@@ -942,12 +987,14 @@ class CSVLogger(Callback):
       else:
         return k
 
+    if self.keys is None:
+      self.keys = sorted(logs.keys())
+
     if self.model.stop_training:
       # We set NA so that csv parsers do not fail for this last epoch.
       logs = dict([(k, logs[k]) if k in logs else (k, 'NA') for k in self.keys])
 
     if not self.writer:
-      self.keys = sorted(logs.keys())
 
       class CustomDialect(csv.excel):
         delimiter = self.sep
@@ -969,6 +1016,7 @@ class CSVLogger(Callback):
     self.writer = None
 
 
+@tf_export('keras.callbacks.LambdaCallback')
 class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 
@@ -993,32 +1041,32 @@ class LambdaCallback(Callback):
 
   Example:
 
-      ```python
-      # Print the batch number at the beginning of every batch.
-      batch_print_callback = LambdaCallback(
-          on_batch_begin=lambda batch,logs: print(batch))
+  ```python
+  # Print the batch number at the beginning of every batch.
+  batch_print_callback = LambdaCallback(
+      on_batch_begin=lambda batch,logs: print(batch))
 
-      # Stream the epoch loss to a file in JSON format. The file content
-      # is not well-formed JSON but rather has a JSON object per line.
-      import json
-      json_log = open('loss_log.json', mode='wt', buffering=1)
-      json_logging_callback = LambdaCallback(
-          on_epoch_end=lambda epoch, logs: json_log.write(
-              json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n'),
-          on_train_end=lambda logs: json_log.close()
-      )
+  # Stream the epoch loss to a file in JSON format. The file content
+  # is not well-formed JSON but rather has a JSON object per line.
+  import json
+  json_log = open('loss_log.json', mode='wt', buffering=1)
+  json_logging_callback = LambdaCallback(
+      on_epoch_end=lambda epoch, logs: json_log.write(
+          json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n'),
+      on_train_end=lambda logs: json_log.close()
+  )
 
-      # Terminate some processes after having finished model training.
-      processes = ...
-      cleanup_callback = LambdaCallback(
-          on_train_end=lambda logs: [
-              p.terminate() for p in processes if p.is_alive()])
+  # Terminate some processes after having finished model training.
+  processes = ...
+  cleanup_callback = LambdaCallback(
+      on_train_end=lambda logs: [
+          p.terminate() for p in processes if p.is_alive()])
 
-      model.fit(...,
-                callbacks=[batch_print_callback,
-                           json_logging_callback,
-                           cleanup_callback])
-      ```
+  model.fit(...,
+            callbacks=[batch_print_callback,
+                       json_logging_callback,
+                       cleanup_callback])
+  ```
   """
 
   def __init__(self,

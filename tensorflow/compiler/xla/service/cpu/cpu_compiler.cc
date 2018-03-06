@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
@@ -275,6 +276,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
+    pass.AddPass<ConditionalSimplifier>();
   }
   pipeline.AddPass<TransposeFolding>(
       [](const HloInstruction& dot,
@@ -437,7 +439,8 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* /*stream_exec*/) {
+    perftools::gputools::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(2) << "Before optimization:";
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -450,7 +453,8 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* stream_exec) {
+    perftools::gputools::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
   XLA_SCOPED_LOGGING_TIMER(timer_message);
@@ -485,7 +489,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
-  std::unique_ptr<HloProfilePrinter> hlo_profile_printer;
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
     hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
 
@@ -505,8 +509,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
     HloCostAnalysis cost_analysis(shape_size_bytes);
     TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
-    hlo_profile_printer =
-        CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
+    hlo_profile_printer_data =
+        CreateHloProfilePrinterData(*hlo_profile_index_map, cost_analysis);
     computation_to_profile_idx =
         hlo_profile_index_map->computation_to_profile_idx();
   }
@@ -517,8 +521,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string xla_dump_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_proto_to();
+  const string xla_dump_optimized_hlo_proto_to =
+      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -538,10 +542,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -619,7 +623,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     cpu_executable.reset(new ParallelCpuExecutable(
         std::move(jit), std::move(assignment), std::move(module),
         std::move(function_names), std::move(aligned_constants),
-        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
+        std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -647,10 +651,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // Each computation is a single function.  Emit all embedded computations
@@ -698,7 +702,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new CpuExecutable(
         std::move(jit), std::move(assignment), std::move(module), function_name,
-        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
+        std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -826,12 +830,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    const string xla_dump_hlo_proto_to =
-        module->config().debug_options().xla_dump_hlo_proto_to();
-    if (!xla_dump_hlo_proto_to.empty()) {
+    const string xla_dump_optimized_hlo_proto_to =
+        module->config().debug_options().xla_dump_optimized_hlo_proto_to();
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
@@ -886,13 +890,11 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
-        post_optimization_ir_dump_hook);
-    llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
+        pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
+    std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);
-    llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();
-    ObjectFileData object_file_data(object_file_data_ref.begin(),
-                                    object_file_data_ref.end());
+    ObjectFileData object_file_data(object_file->getBufferStart(),
+                                    object_file->getBufferEnd());
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {

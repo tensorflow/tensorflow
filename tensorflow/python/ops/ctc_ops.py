@@ -25,9 +25,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access, invalid-name
+@tf_export("nn.ctc_loss")
 def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
@@ -146,7 +148,7 @@ def ctc_loss(labels, inputs, sequence_length,
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
-  loss, _ = gen_ctc_ops._ctc_loss(
+  loss, _ = gen_ctc_ops.ctc_loss(
       inputs,
       labels.indices,
       labels.values,
@@ -185,6 +187,7 @@ def _CTCLossGrad(op, grad_loss, _):
   return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
 
+@tf_export("nn.ctc_greedy_decoder")
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
 
@@ -221,13 +224,14 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
-  outputs = gen_ctc_ops._ctc_greedy_decoder(
+  outputs = gen_ctc_ops.ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
           log_probabilities)
 
 
+@tf_export("nn.ctc_beam_search_decoder")
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
                             top_paths=1, merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
@@ -268,7 +272,7 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
   """
 
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
-      gen_ctc_ops._ctc_beam_search_decoder(
+      gen_ctc_ops.ctc_beam_search_decoder(
           inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
           merge_repeated=merge_repeated))
 

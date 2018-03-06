@@ -45,10 +45,10 @@ void RemoveTileOperator(Model* model, Operator* tile_op, Operator* binary_op,
   model->operators.erase(tile_it);
   if (!CountOpsWithInput(*model, tile_multiplier_array) &&
       !GetOpWithOutput(*model, tile_multiplier_array)) {
-    model->arrays.erase(tile_multiplier_array);
+    model->EraseArray(tile_multiplier_array);
   }
   if (!CountOpsWithInput(*model, tile_output_array)) {
-    model->arrays.erase(tile_output_array);
+    model->EraseArray(tile_output_array);
   }
 }
 }  // namespace

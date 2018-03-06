@@ -64,8 +64,9 @@ class UniqueOp : public OpKernel {
         OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                     errors::InvalidArgument("unique expects a 1D vector."));
       } else {
-        OP_REQUIRES(context, (axis_tensor.dtype() == DT_INT32 ||
-                              axis_tensor.dtype() == DT_INT64),
+        OP_REQUIRES(context,
+                    (axis_tensor.dtype() == DT_INT32 ||
+                     axis_tensor.dtype() == DT_INT64),
                     errors::InvalidArgument(
                         "axis tensor should be int32 or int64, but got ",
                         axis_tensor.dtype()));
@@ -219,6 +220,16 @@ class UniqueOp : public OpKernel {
                               .TypeConstraint<int32>("out_idx"), \
                           UniqueOp<type, int32>)                 \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOp<type, int64>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          UniqueOp<type, int32>)                 \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \

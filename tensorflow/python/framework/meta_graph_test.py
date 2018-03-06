@@ -25,6 +25,7 @@ import shutil
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -34,6 +35,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn_ops
@@ -259,6 +261,29 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertEqual(node_def.attr["attr_1"].i, 1)
       self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
 
+  def testVariableObjectsAreSharedAmongCollections(self):
+    with ops.Graph().as_default() as graph1:
+      v = variables.Variable(3.0)
+      # A single instance of Variable is shared among the collections:
+      global_vars = graph1.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      trainable_vars = graph1.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertEqual(len(global_vars), 1)
+      self.assertEqual(len(trainable_vars), 1)
+      self.assertIs(global_vars[0], trainable_vars[0])
+      self.assertIs(v, global_vars[0])
+
+    orig_meta_graph, _ = meta_graph.export_scoped_meta_graph(graph=graph1)
+    del graph1  # To avoid accidental references in code involving graph2.
+
+    with ops.Graph().as_default() as graph2:
+      meta_graph.import_scoped_meta_graph(orig_meta_graph)
+      global_vars = graph2.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      trainable_vars = graph2.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertEqual(len(global_vars), 1)
+      self.assertEqual(len(trainable_vars), 1)
+      # A single instance of Variable is shared among the collections:
+      self.assertIs(global_vars[0], trainable_vars[0])
+
 
 @test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
@@ -446,6 +471,56 @@ class ScopedMetaGraphTest(test.TestCase):
       del a.collection_def["unbound_inputs"]
       del b.collection_def["unbound_inputs"]
       test_util.assert_meta_graph_protos_equal(self, a, b)
+
+  def testWhileLoopGradients(self):
+    # Create a simple while loop.
+    with ops.Graph().as_default():
+      with ops.name_scope("export"):
+        var = variables.Variable(0)
+        var_name = var.name
+        _, output = control_flow_ops.while_loop(lambda i, x: i < 5,
+                                                lambda i, x: (i + 1, x + i),
+                                                [0, var])
+        output_name = output.name
+
+      # Generate a MetaGraphDef containing the while loop with an export scope.
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          export_scope="export")
+
+      # Build and run the gradients of the while loop. We use this below to
+      # verify that the gradients are correct with the imported MetaGraphDef.
+      init_op = variables.global_variables_initializer()
+      grad = gradients_impl.gradients([output], [var])
+      with session.Session() as sess:
+        sess.run(init_op)
+        expected_grad_value = sess.run(grad)
+
+    # Restore the MetaGraphDef into a new Graph with an import scope.
+    with ops.Graph().as_default():
+      meta_graph.import_scoped_meta_graph(meta_graph_def, import_scope="import")
+
+      # Re-export and make sure we get the same MetaGraphDef.
+      new_meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          export_scope="import")
+      test_util.assert_meta_graph_protos_equal(
+          self, meta_graph_def, new_meta_graph_def)
+
+      # Make sure we can still build gradients and get the same result.
+
+      def new_name(tensor_name):
+        base_tensor_name = tensor_name.replace("export/", "")
+        return "import/" + base_tensor_name
+
+      var = ops.get_default_graph().get_tensor_by_name(new_name(var_name))
+      output = ops.get_default_graph().get_tensor_by_name(new_name(output_name))
+      grad = gradients_impl.gradients([output], [var])
+
+      init_op = variables.global_variables_initializer()
+
+      with session.Session() as sess:
+        sess.run(init_op)
+        actual_grad_value = sess.run(grad)
+        self.assertEqual(expected_grad_value, actual_grad_value)
 
   def testScopedImportUnderNameScope(self):
     graph = ops.Graph()
@@ -830,22 +905,12 @@ class ExportImportAcrossScopesTest(test.TestCase):
       with variable_scope.variable_scope("importA/keepA"):
         graph_fn(use_resource=use_resource)
 
-      if use_resource:
-        # Bringing in a collection that contains ResourceVariables adds ops
-        # to the graph, so mimic the same behavior.
-        for collection_key in sorted([
-            ops.GraphKeys.GLOBAL_VARIABLES,
-            ops.GraphKeys.TRAINABLE_VARIABLES,
-        ]):
-          for var in expected_graph.get_collection(collection_key):
-            var._read_variable_op()
-
     result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
 
     if use_resource:
       # Clear all shared_name attributes before comparing, since they are
-      # supposed to be orthogonal to scopes.
+      # orthogonal to scopes and are not updated on export/import.
       for meta_graph_def in [result, expected]:
         for node in meta_graph_def.graph_def.node:
           shared_name_attr = "shared_name"

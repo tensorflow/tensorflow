@@ -19,7 +19,7 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 
-#include <unistd.h>
+#include <unistd.h>  // NOLINT(build/include_order)
 
 #include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers.h"
 
@@ -116,5 +116,5 @@ uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
                     *channels, top_down);
 }
 
-}  // label_image
-}  // tflite
+}  // namespace label_image
+}  // namespace tflite

@@ -115,6 +115,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/data_feeder_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
@@ -170,6 +171,18 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+)
+
+py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["python/learn/export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 py_test(
@@ -177,6 +190,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/graph_actions_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -377,6 +391,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
@@ -483,7 +498,7 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
-    shard_count = 4,
+    shard_count = 20,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -572,6 +587,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/learn/python/learn/datasets",
@@ -740,20 +756,6 @@ tf_py_test(
 )
 
 py_test(
-    name = "numpy_io_test",
-    size = "small",
-    srcs = ["python/learn/learn_io/numpy_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "pandas_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/pandas_io_test.py"],
@@ -815,6 +817,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/utils/saved_model_export_utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

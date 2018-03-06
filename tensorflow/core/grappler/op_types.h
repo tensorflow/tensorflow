@@ -100,6 +100,7 @@ bool IsRecv(const NodeDef& node);
 bool IsReduction(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
+bool IsReverse(const NodeDef& node);
 bool IsReverseV2(const NodeDef& node);
 bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
@@ -108,6 +109,7 @@ bool IsSend(const NodeDef& node);
 bool IsSlice(const NodeDef& node);
 bool IsShape(const NodeDef& node);
 bool IsShapeN(const NodeDef& node);
+bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
@@ -116,6 +118,10 @@ bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
+bool IsStackOp(const NodeDef& node);
+bool IsStackCloseOp(const NodeDef& node);
+bool IsStackPushOp(const NodeDef& node);
+bool IsStackPopOp(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
 bool IsStridedSlice(const NodeDef& node);
 bool IsStridedSliceGrad(const NodeDef& node);
@@ -137,6 +143,10 @@ bool IsAggregate(const NodeDef& node);
 // Return true if the op is commutative (e.g. Mul, Add).
 // Returns false if it could not be determined to be so.
 bool IsCommutative(const NodeDef& node);
+
+// Returns true if the node is known to use persistent memory to store its
+// value.
+bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
 bool ModifiesFrameInfo(const NodeDef& node);

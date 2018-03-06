@@ -28,6 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto);
+
 class OpLevelCostEstimator {
  public:
   OpLevelCostEstimator();
@@ -132,6 +135,8 @@ class OpLevelCostEstimator {
   Costs PredictConv2DBackpropFilter(const OpContext& op_context) const;
   Costs PredictMatMul(const OpContext& op_context) const;
   Costs PredictNoOp(const OpContext& op_context) const;
+  Costs PredictIdentity(const OpContext& op_context) const;
+  Costs PredictVariable(const OpContext& op_context) const;
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
 

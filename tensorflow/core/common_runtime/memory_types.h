@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
 
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/graph/graph.h"
@@ -45,4 +45,4 @@ Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
 
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_

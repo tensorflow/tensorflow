@@ -121,18 +121,20 @@ void GPUDebugAllocator::AddFreeVisitor(Visitor visitor) {
 
 bool GPUDebugAllocator::TracksAllocationSizes() { return true; }
 
-size_t GPUDebugAllocator::RequestedSize(void* ptr) {
-  auto req_size =
-      base_allocator_->RequestedSize(static_cast<char*>(ptr) - MASK_BYTES);
+size_t GPUDebugAllocator::RequestedSize(const void* ptr) {
+  auto req_size = base_allocator_->RequestedSize(static_cast<const char*>(ptr) -
+                                                 MASK_BYTES);
   return req_size - 2 * MASK_BYTES;
 }
 
-size_t GPUDebugAllocator::AllocatedSize(void* ptr) {
-  return base_allocator_->AllocatedSize(static_cast<char*>(ptr) - MASK_BYTES);
+size_t GPUDebugAllocator::AllocatedSize(const void* ptr) {
+  return base_allocator_->AllocatedSize(static_cast<const char*>(ptr) -
+                                        MASK_BYTES);
 }
 
-int64 GPUDebugAllocator::AllocationId(void* ptr) {
-  return base_allocator_->AllocationId(static_cast<char*>(ptr) - MASK_BYTES);
+int64 GPUDebugAllocator::AllocationId(const void* ptr) {
+  return base_allocator_->AllocationId(static_cast<const char*>(ptr) -
+                                       MASK_BYTES);
 }
 
 void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
@@ -201,11 +203,11 @@ void GPUNanResetAllocator::AddFreeVisitor(Visitor visitor) {
   return base_allocator_->AddFreeVisitor(visitor);
 }
 
-size_t GPUNanResetAllocator::RequestedSize(void* ptr) {
+size_t GPUNanResetAllocator::RequestedSize(const void* ptr) {
   return base_allocator_->RequestedSize(ptr);
 }
 
-size_t GPUNanResetAllocator::AllocatedSize(void* ptr) {
+size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
 }
 
