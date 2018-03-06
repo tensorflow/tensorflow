@@ -255,6 +255,20 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "check_model_safety",
+    srcs = ["check_model_safety.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
