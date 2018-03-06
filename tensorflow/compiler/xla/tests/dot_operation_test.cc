@@ -50,6 +50,13 @@ using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
 using TypesF16F32F64CF64 =
     ::testing::Types<Eigen::half, float, double, complex64>;
+#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
+    defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) && \
+    defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
+using TypesF16F32 = ::testing::Types<Eigen::half, float>;
+using TypesF16F32F64 = ::testing::Types<Eigen::half, float>;
+using TypesF16F32F64CF64 =
+    ::testing::Types<Eigen::half, float>;
 #else
 #error "Situation not handled yet"
 #endif
