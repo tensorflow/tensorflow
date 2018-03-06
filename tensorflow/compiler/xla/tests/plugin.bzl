@@ -21,7 +21,10 @@ plugins = {
       "//tensorflow/compiler/xla/tests:test_macros_poplar",
     ],
     "disabled_manifest": "tensorflow/compiler/plugin/poplar/disabled_xla_tests_manifest.txt",
-    "copts": [],
+    "copts": [
+      "-DXLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64",
+      "-DXLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX",
+    ],
     "tags": [],
     "args": [],
     "data": [

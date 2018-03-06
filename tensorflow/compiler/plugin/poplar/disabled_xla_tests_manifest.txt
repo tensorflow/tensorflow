@@ -1,190 +1,186 @@
 ArrayElementwiseOpTest.RemF64s    POPLAR // F64
-ArrayElementwiseOpTest.MaxF64s    POPLAR // F64
-ArrayElementwiseOpTest.MinF64s    POPLAR // F64
-ScalarComputationsTest.TanhDoubleScalar    POPLAR // F64
-ScalarComputationsTest.AddTwoScalarsF64    POPLAR // F64
-ParametricDotTestWithoutLayoutAssignment.TestF64 POPLAR // F64
-ParametricDotTest.TestF64 POPLAR // F64
-DotOperationTest.VectorDotF64 POPLAR // F64
-DotOperationTest.OneElementVectorDotF64 POPLAR // F64
-DotOperationTest.NonsquareMatrixDotF64 POPLAR // F64
-DotOperationTest.SquareMatrixDotF64 POPLAR // F64
-ConvertTest.ConvertR1F32ToR1F64 POPLAR // F64
-ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
-SliceR1Test.DoIt_F64 POPLAR // F64
-MultiOutputFusionTest.DiffentTypesNoFusion POPLAR // F64
-MultiOutputFusionTest.DiffentTypesFusion POPLAR // F64
-PrngTest.HundredValuesB10p5F64 POPLAR // F64
-PrngTest.HundredValuesB10p1F64 POPLAR // F64
+ArrayElementwiseOpTest.MaxF64s    POPLAR
+ArrayElementwiseOpTest.MinF64s    POPLAR
+ScalarComputationsTest.TanhDoubleScalar    POPLAR
+ScalarComputationsTest.AddTwoScalarsF64    POPLAR
+ParametricDotTestWithoutLayoutAssignment.TestF64 POPLAR
+ParametricDotTest.TestF64 POPLAR
+DotOperationTest.VectorDotF64 POPLAR
+DotOperationTest.OneElementVectorDotF64 POPLAR
+DotOperationTest.NonsquareMatrixDotF64 POPLAR
+DotOperationTest.SquareMatrixDotF64 POPLAR
+ConvertTest.ConvertR1F32ToR1F64 POPLAR
+ConvertTest.ConvertR1F64ToR1F32 POPLAR
+SliceR1Test.DoIt_F64 POPLAR
+MultiOutputFusionTest.DiffentTypesNoFusion POPLAR
+MultiOutputFusionTest.DiffentTypesFusion POPLAR
+PrngTest.HundredValuesB10p5F64 POPLAR
+PrngTest.HundredValuesB10p1F64 POPLAR
 
 Bfloat16Test POPLAR // No bfloat16
-DynamicSliceTest.Int32R1BF16 POPLAR // No bfloat16
-DynamicSliceTest.Int32R2BF16 POPLAR // No bfloat16
-DynamicSliceTest.Int32R3BF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.Int32R1BF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.Int32R2BF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.Int32R3BF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.Int32WrapBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousSingleElementBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousMultipleElementsBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousMultipleWrappingBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousTooLargeBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousUnalignedBF16 POPLAR // No bfloat16
-DynamicUpdateSliceTest.R3ContiguousLargerBF16 POPLAR // No bfloat16
-ConvolutionTest.Convolve_bf16_1x1x1x2_1x1x1x2_Valid POPLAR // No bfloat16
-MatOpsDotAddTest_bf16.Dot_Add_2x2_2x2 POPLAR // No bfloat16
-PrngTest.ScalarBF16Tests POPLAR // No bfloat16
-PrngTest.ScalarBF16CountTests POPLAR // No bfloat16
+DynamicSliceTest.Int32R1BF16 POPLAR
+DynamicSliceTest.Int32R2BF16 POPLAR
+DynamicSliceTest.Int32R3BF16 POPLAR
+DynamicUpdateSliceTest.Int32R1BF16 POPLAR
+DynamicUpdateSliceTest.Int32R2BF16 POPLAR
+DynamicUpdateSliceTest.Int32R3BF16 POPLAR
+DynamicUpdateSliceTest.Int32WrapBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousSingleElementBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousMultipleElementsBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousMultipleWrappingBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousTooLargeBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousUnalignedBF16 POPLAR
+DynamicUpdateSliceTest.R3ContiguousLargerBF16 POPLAR
+ConvolutionTest.Convolve_bf16_1x1x1x2_1x1x1x2_Valid POPLAR
+MatOpsDotAddTest.Dot_Add_2x2_2x2BF16 POPLAR
+PrngTest.ScalarBF16Tests POPLAR
+PrngTest.ScalarBF16CountTests POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
-UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
-ReduceTest.VectorizedReduce_Add       POPLAR // U32
-ReduceTest.UnsignedInt_MaxReduce      POPLAR // U32
-ReduceTest.VectorizedReduce_Max       POPLAR // U32
-ReduceTest.VectorizedReduce_Multiply  POPLAR // U32
-ReduceTest.VectorizedReduce_Min       POPLAR // U32
-ReduceTest.UnsignedInt_MinReduce      POPLAR // U32
-ScalarComputationsTest.MulTwoScalarsU32      POPLAR // U32
-ScalarComputationsTest.CompareLtU32      POPLAR // U32
-ScalarComputationsTest.CompareLeU32      POPLAR // U32
-ScalarComputationsTest.CompareGtU32      POPLAR // U32
-ScalarComputationsTest.CompareNeU32       POPLAR // U32
-ScalarComputationsTest.CompareGeU32Equal      POPLAR // U32
-ScalarComputationsTest.CompareGeU32Greater    POPLAR // U32
-ScalarComputationsTest.MaxU32Below      POPLAR // U32
-ScalarComputationsTest.AddTwoScalarsU32      POPLAR // U32
-ScalarComputationsTest.CompareEqU32False      POPLAR // U32
-ScalarComputationsTest.MinU32Above      POPLAR // U32
-ScalarComputationsTest.MinU32Below      POPLAR // U32
-ScalarComputationsTest.RemTwoScalarsU32      POPLAR // U32
-ScalarComputationsTest.RemU32s      POPLAR // U32
-ScalarComputationsTest.DivU32s      POPLAR // U32
-ScalarComputationsTest.DivideTwoScalarsU32   POPLAR // U32
-ScalarComputationsTest.MaxU32Above      POPLAR // U32
-ScalarComputationsTest.AndU32      POPLAR // U32
-ScalarComputationsTest.NotU32      POPLAR // U32
-ScalarComputationsTest.OrU32      POPLAR // U32
-ScalarComputationsTest.ClampScalarLowU32 POPLAR // U32
-ScalarComputationsTest.ClampScalarHighU32 POPLAR // U32
-ScalarComputationsTest.ClampScalarMiddleU32 POPLAR // U32
-ArrayElementwiseOpTest.MulTwoConstantU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareLeU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareLtU32s      POPLAR // U32
-ArrayElementwiseOpTest.DivU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareGtU32s      POPLAR // U32
-ArrayElementwiseOpTest.MinU32s      POPLAR // U32
-ArrayElementwiseOpTest.MaxU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareGeU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareNeU32s      POPLAR // U32
-ArrayElementwiseOpTest.CompareEqU32s      POPLAR // U32
-ArrayElementwiseOpTest.NotU32R2      POPLAR // U32
-ArrayElementwiseOpTest.NotU32R1      POPLAR // U32
-ArrayElementwiseOpTest.AndU32R2      POPLAR // U32
-ArrayElementwiseOpTest.OrU32R2      POPLAR // U32
-ArrayElementwiseOpTest.OrU32R1      POPLAR // U32
-ArrayElementwiseOpTest.ShiftRightArithmeticU32      POPLAR // U32
-ArrayElementwiseOpTest.ShiftLeftU32      POPLAR // U32
-ArrayElementwiseOpTest.ShiftRightLogicalU32      POPLAR // U32
-ArrayElementwiseOpTest.ClampU32Vector POPLAR // U32
-ArrayElementwiseOpTest.ClampU32ScalarVector POPLAR // U32
-VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
-PrngTest.HundredValuesB10p5      POPLAR // U32
-PrngTest.HundredValuesB10p1      POPLAR // U32
-PrngTest.HundredValuesB10p5U32 POPLAR // U32
-PrngTest.HundredValuesB10p1U32 POPLAR // U32
-VecOpsSimpleTest.NegateUint32Values POPLAR // U32
-ConvertTest.ConvertR1U32ToR1F32 POPLAR // U32
-ConvertTest.ConvertR1U32ToR1S64 POPLAR // U32
+UnaryOpTest.UnsignedSignTestR1        POPLAR
+ReduceTest.VectorizedReduce_Add       POPLAR
+ReduceTest.UnsignedInt_MaxReduce      POPLAR
+ReduceTest.VectorizedReduce_Max       POPLAR
+ReduceTest.VectorizedReduce_Multiply  POPLAR
+ReduceTest.VectorizedReduce_Min       POPLAR
+ReduceTest.UnsignedInt_MinReduce      POPLAR
+ScalarComputationsTest.MulTwoScalarsU32      POPLAR
+ScalarComputationsTest.CompareLtU32      POPLAR
+ScalarComputationsTest.CompareLeU32      POPLAR
+ScalarComputationsTest.CompareGtU32      POPLAR
+ScalarComputationsTest.CompareNeU32       POPLAR
+ScalarComputationsTest.CompareGeU32Equal      POPLAR
+ScalarComputationsTest.CompareGeU32Greater    POPLAR
+ScalarComputationsTest.MaxU32Below      POPLAR
+ScalarComputationsTest.AddTwoScalarsU32      POPLAR
+ScalarComputationsTest.CompareEqU32False      POPLAR
+ScalarComputationsTest.MinU32Above      POPLAR
+ScalarComputationsTest.MinU32Below      POPLAR
+ScalarComputationsTest.RemTwoScalarsU32      POPLAR
+ScalarComputationsTest.RemU32s      POPLAR
+ScalarComputationsTest.DivU32s      POPLAR
+ScalarComputationsTest.DivideTwoScalarsU32   POPLAR
+ScalarComputationsTest.MaxU32Above      POPLAR
+ScalarComputationsTest.AndU32      POPLAR
+ScalarComputationsTest.NotU32      POPLAR
+ScalarComputationsTest.OrU32      POPLAR
+ScalarComputationsTest.ClampScalarLowU32 POPLAR
+ScalarComputationsTest.ClampScalarHighU32 POPLAR
+ScalarComputationsTest.ClampScalarMiddleU32 POPLAR
+ArrayElementwiseOpTest.MulTwoConstantU32s      POPLAR
+ArrayElementwiseOpTest.CompareLeU32s      POPLAR
+ArrayElementwiseOpTest.CompareLtU32s      POPLAR
+ArrayElementwiseOpTest.DivU32s      POPLAR
+ArrayElementwiseOpTest.CompareGtU32s      POPLAR
+ArrayElementwiseOpTest.MinU32s      POPLAR
+ArrayElementwiseOpTest.MaxU32s      POPLAR
+ArrayElementwiseOpTest.CompareGeU32s      POPLAR
+ArrayElementwiseOpTest.CompareNeU32s      POPLAR
+ArrayElementwiseOpTest.CompareEqU32s      POPLAR
+ArrayElementwiseOpTest.NotU32R2      POPLAR
+ArrayElementwiseOpTest.NotU32R1      POPLAR
+ArrayElementwiseOpTest.AndU32R2      POPLAR
+ArrayElementwiseOpTest.OrU32R2      POPLAR
+ArrayElementwiseOpTest.OrU32R1      POPLAR
+ArrayElementwiseOpTest.ShiftRightArithmeticU32      POPLAR
+ArrayElementwiseOpTest.ShiftLeftU32      POPLAR
+ArrayElementwiseOpTest.ShiftRightLogicalU32      POPLAR
+ArrayElementwiseOpTest.ClampU32Vector POPLAR
+ArrayElementwiseOpTest.ClampU32ScalarVector POPLAR
+VecOpsSimpleTest.NegateUint32Values      POPLAR
+PrngTest.HundredValuesB10p5      POPLAR
+PrngTest.HundredValuesB10p1      POPLAR
+PrngTest.HundredValuesB10p5U32 POPLAR
+PrngTest.HundredValuesB10p1U32 POPLAR
+VecOpsSimpleTest.NegateUint32Values POPLAR
+ConvertTest.ConvertR1U32ToR1F32 POPLAR
+ConvertTest.ConvertR1U32ToR1S64 POPLAR
 
 ArrayElementwiseOpTest.NegConstantS64 POPLAR // S64
-ArrayElementwiseOpTest.SubTwoConstantS64s POPLAR // S64
-ScalarComputationsTest.AddTwoScalarsS64      POPLAR // S64
-DynamicUpdateSliceTest.Int64R3 POPLAR // S64
-DynamicUpdateSliceTest.Int64R2 POPLAR // S64
-DynamicUpdateSliceTest.Int64R1 POPLAR // S64
-DynamicSliceTest.Int64R3 POPLAR // S64
-DynamicSliceTest.Int64R2 POPLAR // S64
-DynamicSliceTest.Int64R1 POPLAR // S64
-ScalarComputationsTest.CastS64ToF32 POPLAR // S64
-ConvertTest.ConvertR1S64ToR1F32 POPLAR // S64
+ArrayElementwiseOpTest.SubTwoConstantS64s POPLAR
+ScalarComputationsTest.AddTwoScalarsS64      POPLAR
+DynamicUpdateSliceTest.Int64R3 POPLAR
+DynamicUpdateSliceTest.Int64R2 POPLAR
+DynamicUpdateSliceTest.Int64R1 POPLAR
+DynamicSliceTest.Int64R3 POPLAR
+DynamicSliceTest.Int64R2 POPLAR
+DynamicSliceTest.Int64R1 POPLAR
+ScalarComputationsTest.CastS64ToF32 POPLAR
+ConvertTest.ConvertR1S64ToR1F32 POPLAR
 
 ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
-DynamicUpdateSliceTest.UInt64R3 POPLAR // U64
-DynamicUpdateSliceTest.UInt64R2 POPLAR // U64
-DynamicUpdateSliceTest.UInt64R1 POPLAR // U64
-DynamicUpdateSliceTest.UInt64Wrap POPLAR // U64
-DynamicSliceTest.UInt64R3 POPLAR // U64
-DynamicSliceTest.UInt64R2 POPLAR // U64
-DynamicSliceTest.UInt64R1 POPLAR // U64
-ArrayElementwiseOpTest.AddTwoConstantU64s POPLAR // U64
+DynamicUpdateSliceTest.UInt64R3 POPLAR
+DynamicUpdateSliceTest.UInt64R2 POPLAR
+DynamicUpdateSliceTest.UInt64R1 POPLAR
+DynamicUpdateSliceTest.UInt64Wrap POPLAR
+DynamicSliceTest.UInt64R3 POPLAR
+DynamicSliceTest.UInt64R2 POPLAR
+DynamicSliceTest.UInt64R1 POPLAR
+ArrayElementwiseOpTest.AddTwoConstantU64s POPLAR
 
 ParamsTest.ConstantR1U8Param      POPLAR // U8
-ScalarComputationsTest.AddTwoScalarsU8      POPLAR // U8
-ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR // U8
-PadTest.Pad4DU8Array POPLAR // U8
-ConvertTest.ConvertR1U8ToR1F32 POPLAR // U8
-ConvertTest.ConvertR1U8ToR1S32 POPLAR // U8
-ConvertTest.ConvertR1U8ToR1U32 POPLAR // U8
-ReduceTest.ReduceAndPredR2_128x64_To_R1 POPLAR // U8
-ReduceTest.ReduceOrPredR2_64x32_To_R1 POPLAR // U8
+ScalarComputationsTest.AddTwoScalarsU8      POPLAR
+ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR
+PadTest.Pad4DU8Array POPLAR
+ConvertTest.ConvertR1U8ToR1F32 POPLAR
+ConvertTest.ConvertR1U8ToR1S32 POPLAR
+ConvertTest.ConvertR1U8ToR1U32 POPLAR
+ReduceTest.ReduceAndPredR2_128x64_To_R1 POPLAR
+ReduceTest.ReduceOrPredR2_64x32_To_R1 POPLAR
 
 UnaryOpTest.AbsTestR1Size0 POPLAR // Complex<float>
-UnaryOpTest.AbsTestR1 POPLAR // Complex<float>
-UnaryOpTest.AbsTestR0 POPLAR // Complex<float>
-UnaryOpTest.SignTestR0 POPLAR // Complex<float>
-UnaryOpTest.SignTestR1 POPLAR // Complex<float>
-UnaryOpTest.SignAbsTestR1 POPLAR // Complex<float>
+UnaryOpTest.AbsTestR1 POPLAR
+UnaryOpTest.AbsTestR0 POPLAR
+UnaryOpTest.SignTestR0 POPLAR
+UnaryOpTest.SignTestR1 POPLAR
+UnaryOpTest.SignAbsTestR1 POPLAR
+SquareMatrixDot/3.TypesTT POPLAR
+SquareMatrixDot/3.TypesTF POPLAR
+SquareMatrixDot/3.TypesFF POPLAR
+
 ArrayElementwiseOpTest.NegConstantZeroElementC64 POPLAR // Complex<double>
-ArrayElementwiseOpTest.NegConstantC64 POPLAR // Complex<double>
-ArrayElementwiseOpTest.AddTwoConstantC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.AddTwoConstantZeroElementC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.SubTwoConstantC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.SubTwoConstantZeroElementC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.DivTwoConstantC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.DivTwoConstantZeroElementC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.MulTwoConstantC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.MulTwoConstantZeroElementC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.CompareEqC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR // Complex<double>
-ArrayElementwiseOpTest.CompareNeC64s POPLAR // Complex<double>
-DotOperationTest.SquareMatrixDotC64MinorToMajorFT POPLAR // Complex<double>
-DotOperationTest.NonsquareMatrixDotC64MajorToMinorFT POPLAR // Complex<double>
-DotOperationTest.SquareMatrixDotC64MinorToMajorTT POPLAR // Complex<double>
-DotOperationTest.SquareMatrixDotC64MinorToMajorFF POPLAR // Complex<double>
-DotOperationTest.SquareMatrixDotC64MinorToMajorTF POPLAR // Complex<double>
-DotOperationTest.NonsquareMatrixDotC64MajorToMinorFF POPLAR // Complex<double>
-DotOperationTest.NonsquareMatrixDotC64MajorToMinorTF POPLAR // Complex<double>
-DotOperationTest.NonsquareMatrixDotC64MajorToMinorTT POPLAR // Complex<double>
-DotOperationTest.MatrixVectorC64 POPLAR // Complex<double>
-TupleTest.ComplexTuples POPLAR // Complex<>
+ArrayElementwiseOpTest.NegConstantC64 POPLAR
+ArrayElementwiseOpTest.AddTwoConstantC64s POPLAR
+ArrayElementwiseOpTest.AddTwoConstantZeroElementC64s POPLAR
+ArrayElementwiseOpTest.SubTwoConstantC64s POPLAR
+ArrayElementwiseOpTest.SubTwoConstantZeroElementC64s POPLAR
+ArrayElementwiseOpTest.DivTwoConstantC64s POPLAR
+ArrayElementwiseOpTest.DivTwoConstantZeroElementC64s POPLAR
+ArrayElementwiseOpTest.MulTwoConstantC64s POPLAR
+ArrayElementwiseOpTest.MulTwoConstantZeroElementC64s POPLAR
+ArrayElementwiseOpTest.CompareEqC64s POPLAR
+ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR
+ArrayElementwiseOpTest.CompareNeC64s POPLAR
+TupleTest.ComplexTuples POPLAR
+DotOperationTest.MatrixVectorC64 POPLAR
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
 ReducePrecisionInsertionTest POPLAR // Don't support this
-ReducePrecisionAccuracyTest POPLAR // Don't support this
-
-CustomCallTest POPLAR // Don't support this
+ReducePrecisionAccuracyTest POPLAR
+CustomCallTest POPLAR
 
 DynamicSliceTest.UInt64R1Wrap POPLAR // Tests wrapping
-DynamicSliceTest.Int32R2Wrap POPLAR // Tests wrapping
-DynamicSliceTest.Int64R2Wrap POPLAR // Tests wrapping
-DynamicSliceTest.UInt64R2Wrap POPLAR // Tests wrapping
-DynamicSliceTest.Int32R3Wrap POPLAR // Tests wrapping
-DynamicSliceTest.Int64R3Wrap POPLAR // Tests wrapping
-DynamicSliceTest.UInt64R3Wrap POPLAR // Tests wrapping
-DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR // Tests wrapping
-DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Too long
+DynamicSliceTest.Int32R2Wrap POPLAR
+DynamicSliceTest.Int64R2Wrap POPLAR
+DynamicSliceTest.UInt64R2Wrap POPLAR
+DynamicSliceTest.Int32R3Wrap POPLAR
+DynamicSliceTest.Int64R3Wrap POPLAR
+DynamicSliceTest.UInt64R3Wrap POPLAR
+DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR
+
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
 CopyOpTest.CopyParameterScalar POPLAR // We return the parameter - not a copy
 
 R4ReduceWindowLargeTest POPLAR // Big
+
 ReduceWindowTest.NonstandardReduceFunction POPLAR // Don't support non-standard reductions
 
 LocalClientExecuteTest.AddZeroElementVectors POPLAR // Doesn't cope with aliasing
-LocalClientExecuteTest.TupleResult POPLAR // Doesn't cope with aliasing
-LocalClientExecuteTest.NestedTupleResult POPLAR // Doesn't cope with aliasing
-LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasing
+LocalClientExecuteTest.TupleResult POPLAR
+LocalClientExecuteTest.NestedTupleResult POPLAR
+LocalClientExecuteTest.TupleResultWithLayout POPLAR
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 
@@ -197,11 +193,20 @@ SelectAndScatterTest.ParamTest POPLAR // Timeout
 HloProfileTest POPLAR // Don't support profiling
 
 ArrayElementwiseOpTest.ShiftLeftS32 POPLAR // Shifting > word length
-ArrayElementwiseOpTest.ShiftRightArithmeticS32 POPLAR // Shifting > word length
-ArrayElementwiseOpTest.ShiftRightLogicalS32 POPLAR // Shifting > word length
+ArrayElementwiseOpTest.ShiftRightArithmeticS32 POPLAR
+ArrayElementwiseOpTest.ShiftRightLogicalS32 POPLAR
 
 SliceR1LargeTest POPLAR // Too long
 
 ParamsTest.ThreeThousandParameters POPLAR // Too long
-ParamsTest.ThreeThousandParametersAndOutputElements POPLAR // Too long
-ParamsTest.ManyParametersIntoWhileLoop POPLAR // Too long
+ParamsTest.ThreeThousandParametersAndOutputElements POPLAR
+ParamsTest.ManyParametersIntoWhileLoop POPLAR
+DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR
+
+
+ScalarComputationsTest.MinPropagatesNan POPLAR // NaN passing
+ScalarComputationsTest.MaxPropagatesNan POPLAR
+ArrayElementwiseOpTest.MinF32s POPLAR
+ArrayElementwiseOpTest.MaxF32s POPLAR
+
+MatOpsSimpleTest_F16F32.ExpTwoByTwoValues POPLAR // Precision error
