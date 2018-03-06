@@ -60,7 +60,7 @@ def get_simple_graph_def():
 
 
 def run_graph(gdef, dumm_inp):
-  """Run given graphdef once"""
+  """Run given graphdef once."""
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
   g = ops.Graph()
@@ -76,11 +76,9 @@ def run_graph(gdef, dumm_inp):
 
 
 # Use real data that is representatitive of the inference dataset
-# for calibration. For this test script it is random data
-
-
+# for calibration. For this test script it is random data.
 def run_calibration(gdef, dumm_inp):
-  """Run given calibration graph multiple times"""
+  """Run given calibration graph multiple times."""
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
   g = ops.Graph()
