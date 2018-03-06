@@ -414,7 +414,7 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -452,7 +452,7 @@ def make_export_strategy(serving_input_fn,
       The string path to the exported directory.
 
     Raises:
-      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified.
     """
     if isinstance(estimator, core_estimator.Estimator):
@@ -503,7 +503,7 @@ def make_parsing_export_strategy(feature_columns,
       that must be provided at serving time (excluding labels!).
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -765,7 +765,7 @@ def extend_export_strategy(base_export_strategy,
       The string path to the SavedModel indicated by post_export_fn.
 
     Raises:
-      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified or if post_export_fn
         does not return a valid directory.
       RuntimeError: If unable to create temporary or final export directory.

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -74,6 +76,16 @@ def smart_constant_value(pred):
     pred_value = pred
   elif isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
+    # TODO(skyewm): consider folding this into tensor_util.constant_value when
+    # _USE_C_API is removed (there may be performance and correctness bugs, so I
+    # wanted to limit the change hidden behind _USE_C_API).
+    # pylint: disable=protected-access
+    if pred_value is None and ops._USE_C_API:
+      with errors.raise_exception_on_not_ok_status() as status:
+        pred_value = c_api.TF_TryEvaluateConstant_wrapper(
+            pred.graph._c_graph, pred._as_tf_output(), status)
+    # pylint: enable=protected-access
+
   else:
     raise TypeError("`pred` must be a Tensor or a Python bool.")
   return pred_value

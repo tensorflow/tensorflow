@@ -66,7 +66,7 @@ class TPUConfig(
       cores. This is required by model-parallelism which enables partitioning
       the model to multiple cores. For example, [2, 2, 1] means the model is
       partitioned across 4 cores which span two cores in both x and y
-      coordinates.  Please refer to ${tf.contrib.tpu.TopologyProto} for the
+      coordinates.  Please refer to @{tf.contrib.tpu.Topology} for the
       geometry of a TPU mesh.
     per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
       rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`

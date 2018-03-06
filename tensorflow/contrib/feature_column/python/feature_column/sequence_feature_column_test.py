@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as sfc
@@ -106,6 +107,49 @@ class SequenceInputLayerTest(test.TestCase):
       self.assertAllEqual(
           expected_sequence_length, sequence_length.eval(session=sess))
 
+  def test_indicator_column(self):
+    vocabulary_size_a = 3
+    sparse_input_a = sparse_tensor.SparseTensorValue(
+        # example 0, ids [2]
+        # example 1, ids [0, 1]
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(2, 0, 1),
+        dense_shape=(2, 2))
+    vocabulary_size_b = 2
+    sparse_input_b = sparse_tensor.SparseTensorValue(
+        # example 0, ids [1]
+        # example 1, ids [1, 0]
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(1, 1, 0),
+        dense_shape=(2, 2))
+
+    expected_input_layer = [
+        # example 0, ids_a [2], ids_b [1]
+        [[0., 0., 1., 0., 1.], [0., 0., 0., 0., 0.]],
+        # example 1, ids_a [0, 1], ids_b [1, 0]
+        [[1., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]],
+    ]
+    expected_sequence_length = [1, 2]
+
+    categorical_column_a = sfc.sequence_categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size_a)
+    indicator_column_a = sfc._sequence_indicator_column(categorical_column_a)
+    categorical_column_b = sfc.sequence_categorical_column_with_identity(
+        key='bbb', num_buckets=vocabulary_size_b)
+    indicator_column_b = sfc._sequence_indicator_column(categorical_column_b)
+    input_layer, sequence_length = sfc.sequence_input_layer(
+        features={
+            'aaa': sparse_input_a,
+            'bbb': sparse_input_b,
+        },
+        # Test that columns are reordered alphabetically.
+        feature_columns=[indicator_column_b, indicator_column_a])
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
   def test_numeric_column(self):
     sparse_input = sparse_tensor.SparseTensorValue(
         # example 0, values [[0.], [1]]
@@ -155,14 +199,48 @@ class SequenceInputLayerTest(test.TestCase):
       self.assertAllEqual(
           expected_sequence_length, sequence_length.eval(session=sess))
 
+  def test_sequence_length_not_equal(self):
+    """Tests that an error is raised when sequence lengths are not equal."""
+    # Input a with sequence_length = [2, 1]
+    sparse_input_a = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (0, 1), (1, 0)),
+        values=(0., 1., 10.),
+        dense_shape=(2, 2))
+    # Input b with sequence_length = [1, 1]
+    sparse_input_b = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0)),
+        values=(1., 10.),
+        dense_shape=(2, 2))
+    numeric_column_a = sfc.sequence_numeric_column('aaa')
+    numeric_column_b = sfc.sequence_numeric_column('bbb')
+
+    _, sequence_length = sfc.sequence_input_layer(
+        features={
+            'aaa': sparse_input_a,
+            'bbb': sparse_input_b,
+        },
+        feature_columns=[numeric_column_a, numeric_column_b])
+
+    with monitored_session.MonitoredSession() as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Condition x == y did not hold element-wise:\] '
+          r'\[x \(sequence_input_layer/aaa/sequence_length:0\) = \] \[2 1\] '
+          r'\[y \(sequence_input_layer/bbb/sequence_length:0\) = \] \[1 1\]'):
+        sess.run(sequence_length)
+
 
 def _assert_sparse_tensor_value(test_case, expected, actual):
-  test_case.assertEqual(np.int64, np.array(actual.indices).dtype)
-  test_case.assertAllEqual(expected.indices, actual.indices)
+  _assert_sparse_tensor_indices_shape(test_case, expected, actual)
 
   test_case.assertEqual(
       np.array(expected.values).dtype, np.array(actual.values).dtype)
   test_case.assertAllEqual(expected.values, actual.values)
+
+
+def _assert_sparse_tensor_indices_shape(test_case, expected, actual):
+  test_case.assertEqual(np.int64, np.array(actual.indices).dtype)
+  test_case.assertAllEqual(expected.indices, actual.indices)
 
   test_case.assertEqual(np.int64, np.array(actual.dense_shape).dtype)
   test_case.assertAllEqual(expected.dense_shape, actual.dense_shape)
@@ -233,6 +311,145 @@ class SequenceCategoricalColumnWithIdentityTest(test.TestCase):
         values=(1, 2, 0),
         dense_shape=(5, 2))
     expected_sequence_length = [0, 1, 0, 2, 0]
+
+    sequence_length = column._sequence_length(_LazyBuilder({'aaa': inputs}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
+
+class SequenceCategoricalColumnWithHashBucketTest(test.TestCase):
+
+  def test_get_sparse_tensors(self):
+    column = sfc.sequence_categorical_column_with_hash_bucket(
+        'aaa', hash_bucket_size=10)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+
+    expected_sparse_ids = sparse_tensor.SparseTensorValue(
+        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+        # Ignored to avoid hash dependence in test.
+        values=np.array((0, 0, 0), dtype=np.int64),
+        dense_shape=(2, 2, 1))
+
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with monitored_session.MonitoredSession() as sess:
+      _assert_sparse_tensor_indices_shape(
+          self,
+          expected_sparse_ids,
+          id_weight_pair.id_tensor.eval(session=sess))
+
+  def test_sequence_length(self):
+    column = sfc.sequence_categorical_column_with_hash_bucket(
+        'aaa', hash_bucket_size=10)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    expected_sequence_length = [1, 2]
+
+    sequence_length = column._sequence_length(_LazyBuilder({'aaa': inputs}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
+
+class SequenceCategoricalColumnWithVocabularyFileTest(test.TestCase):
+
+  def _write_vocab(self, vocab_strings, file_name):
+    vocab_file = os.path.join(self.get_temp_dir(), file_name)
+    with open(vocab_file, 'w') as f:
+      f.write('\n'.join(vocab_strings))
+    return vocab_file
+
+  def setUp(self):
+    super(SequenceCategoricalColumnWithVocabularyFileTest, self).setUp()
+
+    vocab_strings = ['omar', 'stringer', 'marlo']
+    self._wire_vocabulary_file_name = self._write_vocab(vocab_strings,
+                                                        'wire_vocabulary.txt')
+    self._wire_vocabulary_size = 3
+
+  def test_get_sparse_tensors(self):
+    column = sfc.sequence_categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    expected_sparse_ids = sparse_tensor.SparseTensorValue(
+        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+        values=np.array((2, -1, 0), dtype=np.int64),
+        dense_shape=(2, 2, 1))
+
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with monitored_session.MonitoredSession() as sess:
+      _assert_sparse_tensor_value(
+          self,
+          expected_sparse_ids,
+          id_weight_pair.id_tensor.eval(session=sess))
+
+  def test_sequence_length(self):
+    column = sfc.sequence_categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    expected_sequence_length = [1, 2]
+
+    sequence_length = column._sequence_length(_LazyBuilder({'aaa': inputs}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
+
+class SequenceCategoricalColumnWithVocabularyListTest(test.TestCase):
+
+  def test_get_sparse_tensors(self):
+    column = sfc.sequence_categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    expected_sparse_ids = sparse_tensor.SparseTensorValue(
+        indices=((0, 0, 0), (1, 0, 0), (1, 1, 0)),
+        values=np.array((2, -1, 0), dtype=np.int64),
+        dense_shape=(2, 2, 1))
+
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with monitored_session.MonitoredSession() as sess:
+      _assert_sparse_tensor_value(
+          self,
+          expected_sparse_ids,
+          id_weight_pair.id_tensor.eval(session=sess))
+
+  def test_sequence_length(self):
+    column = sfc.sequence_categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    expected_sequence_length = [1, 2]
 
     sequence_length = column._sequence_length(_LazyBuilder({'aaa': inputs}))
 
@@ -337,6 +554,89 @@ class SequenceEmbeddingColumnTest(test.TestCase):
         categorical_column, dimension=2)
 
     _, sequence_length = embedding_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
+
+class SequenceIndicatorColumnTest(test.TestCase):
+
+  def test_get_sequence_dense_tensor(self):
+    vocabulary_size = 3
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids [2]
+        # example 1, ids [0, 1]
+        # example 2, ids []
+        # example 3, ids [1]
+        indices=((0, 0), (1, 0), (1, 1), (3, 0)),
+        values=(2, 0, 1, 1),
+        dense_shape=(4, 2))
+
+    expected_lookups = [
+        # example 0, ids [2]
+        [[0., 0., 1.], [0., 0., 0.]],
+        # example 1, ids [0, 1]
+        [[1., 0., 0.], [0., 1., 0.]],
+        # example 2, ids []
+        [[0., 0., 0.], [0., 0., 0.]],
+        # example 3, ids [1]
+        [[0., 1., 0.], [0., 0., 0.]],
+    ]
+
+    categorical_column = sfc.sequence_categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    indicator_column = sfc._sequence_indicator_column(categorical_column)
+
+    indicator_tensor, _ = indicator_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(expected_lookups, indicator_tensor.eval(session=sess))
+
+  def test_sequence_length(self):
+    vocabulary_size = 3
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids [2]
+        # example 1, ids [0, 1]
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(2, 0, 1),
+        dense_shape=(2, 2))
+    expected_sequence_length = [1, 2]
+
+    categorical_column = sfc.sequence_categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    indicator_column = sfc._sequence_indicator_column(categorical_column)
+
+    _, sequence_length = indicator_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      sequence_length = sess.run(sequence_length)
+      self.assertAllEqual(expected_sequence_length, sequence_length)
+      self.assertEqual(np.int64, sequence_length.dtype)
+
+  def test_sequence_length_with_empty_rows(self):
+    """Tests _sequence_length when some examples do not have ids."""
+    vocabulary_size = 3
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids []
+        # example 1, ids [2]
+        # example 2, ids [0, 1]
+        # example 3, ids []
+        # example 4, ids [1]
+        # example 5, ids []
+        indices=((1, 0), (2, 0), (2, 1), (4, 0)),
+        values=(2, 0, 1, 1),
+        dense_shape=(6, 2))
+    expected_sequence_length = [0, 1, 2, 0, 1, 0]
+
+    categorical_column = sfc.sequence_categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    indicator_column = sfc._sequence_indicator_column(categorical_column)
+
+    _, sequence_length = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))
 
     with monitored_session.MonitoredSession() as sess:

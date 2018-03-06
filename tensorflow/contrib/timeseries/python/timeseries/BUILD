@@ -426,6 +426,7 @@ py_test(
     tags = [
         "no_pip_gpu",  # b/63391119
         "no_windows",  # TODO: needs investigation on Windows
+        "nomsan",
     ],
     deps = [
         ":feature_keys",
