@@ -44,11 +44,12 @@ def get_simple_graph_def():
         dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
     e = cop.constant(
         [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
-        name="weights", dtype=dtypes.float32)
+        name="weights",
+        dtype=dtypes.float32)
     conv = nn.conv2d(
         input=a, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
-    b = cop.constant([4., 1.5, 2., 3., 5., 7.], name="bias",
-                     dtype=dtypes.float32)
+    b = cop.constant(
+        [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtypes.float32)
     t = nn.bias_add(conv, b, name="biasAdd")
     relu = nn.relu(t, "relu")
     idty = aops.identity(relu, "ID")
@@ -73,6 +74,7 @@ def run_graph(gdef, dumm_inp):
     val = sess.run(out, {inp: dumm_inp})
   return val
 
+
 # Use real data that is representatitive of the inference dataset
 # for calibration. For this test script it is random data
 
@@ -89,8 +91,8 @@ def run_calibration(gdef, dumm_inp):
     out = out.outputs[0]
   with csess.Session(
       config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
-    # run over real calibration data here, we are mimicking a
-    # calibration set of 30 different batches. Use as much calibration data as you want
+    # run over real calibration data here, we are mimicking a calibration set of
+    # 30 different batches. Use as much calibration data as you want
     for _ in range(30):
       val = sess.run(out, {inp: dumm_inp})
   return val
@@ -101,32 +103,35 @@ if "__main__" in __name__:
   dummy_input = np.random.random_sample(inp_dims)
   orig_graph = get_simple_graph_def()  # use a frozen graph for inference
   # Get optimized graph
-  trt_graph = trt.create_inference_graph(input_graph_def=orig_graph,
-                                         outputs=["output"],
-                                         max_batch_size=inp_dims[0],
-                                         max_workspace_size_bytes=1 << 25,
-                                         precision_mode="FP32",  # TRT Engine precision "FP32","FP16" or "INT8"
-                                         minimum_segment_size=2  # minimum number of nodes in an engine
-                                        )
+  trt_graph = trt.create_inference_graph(
+      input_graph_def=orig_graph,
+      outputs=["output"],
+      max_batch_size=inp_dims[0],
+      max_workspace_size_bytes=1 << 25,
+      precision_mode="FP32",  # TRT Engine precision "FP32","FP16" or "INT8"
+      minimum_segment_size=2  # minimum number of nodes in an engine
+  )
   o1 = run_graph(orig_graph, dummy_input)
   o2 = run_graph(trt_graph, dummy_input)
   o3 = run_graph(trt_graph, dummy_input)
   assert np.array_equal(o1, o2)
   assert np.array_equal(o3, o2)  # sanity check
-  fp16_graph = trt.create_inference_graph(input_graph_def=orig_graph,
-                                          outputs=["output"],
-                                          max_batch_size=inp_dims[0],
-                                          max_workspace_size_bytes=1 << 25,
-                                          precision_mode="FP16",  # TRT Engine precision "FP32","FP16" or "INT8"
-                                          minimum_segment_size=2  # minimum number of nodes in an engine
-                                         )
-  int8_calib_gdef = trt.create_inference_graph(input_graph_def=orig_graph,
-                                               outputs=["output"],
-                                               max_batch_size=inp_dims[0],
-                                               max_workspace_size_bytes=1 << 25,
-                                               precision_mode="INT8",  # TRT Engine precision "FP32","FP16" or "INT8"
-                                               minimum_segment_size=2  # minimum number of nodes in an engine
-                                              )
+  fp16_graph = trt.create_inference_graph(
+      input_graph_def=orig_graph,
+      outputs=["output"],
+      max_batch_size=inp_dims[0],
+      max_workspace_size_bytes=1 << 25,
+      precision_mode="FP16",  # TRT Engine precision "FP32","FP16" or "INT8"
+      minimum_segment_size=2  # minimum number of nodes in an engine
+  )
+  int8_calib_gdef = trt.create_inference_graph(
+      input_graph_def=orig_graph,
+      outputs=["output"],
+      max_batch_size=inp_dims[0],
+      max_workspace_size_bytes=1 << 25,
+      precision_mode="INT8",  # TRT Engine precision "FP32","FP16" or "INT8"
+      minimum_segment_size=2  # minimum number of nodes in an engine
+  )
   o4 = run_graph(fp16_graph, dummy_input)
   _ = run_calibration(int8_calib_gdef, dummy_input)
   int8_graph = trt.calib_graph_to_infer_graph(int8_calib_gdef)

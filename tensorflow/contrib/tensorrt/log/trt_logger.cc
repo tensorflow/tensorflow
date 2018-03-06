@@ -27,7 +27,7 @@ void Logger::log(Severity severity, const char* msg) {
   // Suppress info-level messages
   switch (severity) {
     case Severity::kINFO: {  // Mark TRT info messages as debug!
-      VLOG(2) << name_ << " " <<msg;
+      VLOG(2) << name_ << " " << msg;
       break;
     }
     case Severity::kWARNING: {

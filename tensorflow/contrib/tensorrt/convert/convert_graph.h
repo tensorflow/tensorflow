@@ -27,6 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
 // This method converts an already generated calibration graph which was used in
 // calibration runs to an inference graph
 tensorflow::Status ConvertCalibGraphToInferGraph(
@@ -41,6 +42,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode, int minimum_segment_size);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

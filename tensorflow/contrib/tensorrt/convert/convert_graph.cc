@@ -134,9 +134,10 @@ std::unordered_map<string, std::vector<int>> BuildTensorNameMap(
 // TODO(sami): convert references to pointers
 struct ConvertGraphParams {
   ConvertGraphParams(
-      tensorflow::Graph& inp_graph, const std::vector<string>& output_node_names,
-      const std::set<int>& subgraph_node_id_numbers, size_t max_supported_batch_size,
-      size_t max_consumed_workspace_size_bytes,
+      tensorflow::Graph& inp_graph,
+      const std::vector<string>& output_node_names,
+      const std::set<int>& subgraph_node_id_numbers,
+      size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
       int engine_precision_mode)
@@ -214,8 +215,8 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
     auto dst_input = in_edge->dst_input();
     VLOG(1) << " update edge " << trt_node->name() << ":" << src_output
             << " -> " << dst_node->name() << ":" << dst_input;
-    TF_RETURN_IF_ERROR(params->graph.UpdateEdge(
-        trt_node, src_output, dst_node, dst_input));
+    TF_RETURN_IF_ERROR(
+        params->graph.UpdateEdge(trt_node, src_output, dst_node, dst_input));
   }
   return tensorflow::Status::OK();
 }
