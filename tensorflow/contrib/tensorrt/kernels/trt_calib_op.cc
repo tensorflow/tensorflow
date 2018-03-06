@@ -120,7 +120,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
                                                 ->stream()
                                                 ->implementation()
                                                 ->CudaStreamMemberHack()));
-  calib_res->calibrator_->setBatch(input_data,*stream);
+  calib_res->calibrator_->setBatch(input_data, *stream);
   VLOG(2) << "Passed calibration data";
   // TODO(aaroey): make sure we wait for the completion of calibration on the
   // last batch in future PR.

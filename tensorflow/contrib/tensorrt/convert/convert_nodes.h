@@ -33,9 +33,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
 const int FP32MODE = 0;
 const int FP16MODE = 1;
 const int INT8MODE = 2;
+
 struct SubGraphParams {
   SubGraphParams(
       tensorflow::Graph& inp_graph,
@@ -45,7 +47,8 @@ struct SubGraphParams {
       size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
-      tensorflow::NodeDef* constructed_trt_node, int engine_precision_mode = FP32MODE)
+      tensorflow::NodeDef* constructed_trt_node,
+      int engine_precision_mode = FP32MODE)
       : graph(inp_graph),
         subgraph_node_ids(subgraph_node_id_numbers),
         input_inds(input_indices),
@@ -68,6 +71,7 @@ struct SubGraphParams {
   tensorflow::NodeDef* trt_node;
   const int precision_mode;
 };
+
 // TODO(sami): Replace references with const reference or pointers
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
