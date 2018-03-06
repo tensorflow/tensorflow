@@ -127,8 +127,9 @@ def sequence_input_layer(
                 shape=array_ops.concat([shape[:2], [num_elements]], axis=0)))
         sequence_lengths.append(sequence_length)
     fc._verify_static_batch_size_equality(output_tensors, ordered_columns)
-    # TODO(b/73160931): Verify sequence_length equality.
-    return array_ops.concat(output_tensors, -1), sequence_lengths[0]
+    fc._verify_static_batch_size_equality(sequence_lengths, ordered_columns)
+    sequence_length = _assert_all_equal_and_return(sequence_lengths)
+    return array_ops.concat(output_tensors, -1), sequence_length
 
 
 # TODO(b/73160931): Add remaining categorical columns.
@@ -310,6 +311,18 @@ def sequence_numeric_column(
       shape=shape,
       default_value=default_value,
       dtype=dtype)
+
+
+def _assert_all_equal_and_return(tensors, name=None):
+  """Asserts that all tensors are equal and returns the first one."""
+  with ops.name_scope(name, 'assert_all_equal', values=tensors):
+    if len(tensors) == 1:
+      return tensors[0]
+    assert_equal_ops = []
+    for t in tensors[1:]:
+      assert_equal_ops.append(check_ops.assert_equal(tensors[0], t))
+    with ops.control_dependencies(assert_equal_ops):
+      return array_ops.identity(tensors[0])
 
 
 class _SequenceDenseColumn(fc._FeatureColumn):

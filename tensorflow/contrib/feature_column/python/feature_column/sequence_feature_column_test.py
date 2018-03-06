@@ -198,6 +198,36 @@ class SequenceInputLayerTest(test.TestCase):
       self.assertAllEqual(
           expected_sequence_length, sequence_length.eval(session=sess))
 
+  def test_sequence_length_not_equal(self):
+    """Tests that an error is raised when sequence lengths are not equal."""
+    # Input a with sequence_length = [2, 1]
+    sparse_input_a = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (0, 1), (1, 0)),
+        values=(0., 1., 10.),
+        dense_shape=(2, 2))
+    # Input b with sequence_length = [1, 1]
+    sparse_input_b = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0)),
+        values=(1., 10.),
+        dense_shape=(2, 2))
+    numeric_column_a = sfc.sequence_numeric_column('aaa')
+    numeric_column_b = sfc.sequence_numeric_column('bbb')
+
+    _, sequence_length = sfc.sequence_input_layer(
+        features={
+            'aaa': sparse_input_a,
+            'bbb': sparse_input_b,
+        },
+        feature_columns=[numeric_column_a, numeric_column_b])
+
+    with monitored_session.MonitoredSession() as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[Condition x == y did not hold element-wise:\] '
+          r'\[x \(sequence_input_layer/aaa/sequence_length:0\) = \] \[2 1\] '
+          r'\[y \(sequence_input_layer/bbb/sequence_length:0\) = \] \[1 1\]'):
+        sess.run(sequence_length)
+
 
 def _assert_sparse_tensor_value(test_case, expected, actual):
   test_case.assertEqual(np.int64, np.array(actual.indices).dtype)
