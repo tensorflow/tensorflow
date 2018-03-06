@@ -1665,6 +1665,25 @@ cc_library(
 )
 
 cc_library(
+    name = "tflite_portable_logging",
+    srcs = [],
+    hdrs = [
+        "lib/bfloat16/bfloat16.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
+    ],
+)
+
+cc_library(
     name = "android_jpeg_internal",
     srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",

@@ -33,7 +33,7 @@ cc_library(
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/testing:util",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:tflite_portable_logging",
         "@com_google_googletest//:gtest",
     ],
 )
