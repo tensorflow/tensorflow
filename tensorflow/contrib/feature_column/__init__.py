@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
-from tensorflow.contrib.feature_column.python.feature_column.sequential_feature_column import *
+from tensorflow.contrib.feature_column.python.feature_column.sequence_feature_column import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import

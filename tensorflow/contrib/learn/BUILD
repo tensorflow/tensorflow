@@ -388,6 +388,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",

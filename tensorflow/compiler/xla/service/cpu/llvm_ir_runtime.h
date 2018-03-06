@@ -27,6 +27,8 @@ extern const char* const kTanhV4F32SymbolName;
 extern const char* const kTanhV8F32SymbolName;
 extern const char* const kExpV4F32SymbolName;
 extern const char* const kExpV8F32SymbolName;
+extern const char* const kLogV4F32SymbolName;
+extern const char* const kLogV8F32SymbolName;
 
 // The following CPU runtime functions have LLVM-IR only implementations:
 //

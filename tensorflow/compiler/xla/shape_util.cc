@@ -630,6 +630,19 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return SameDimensions(lhs, rhs);
 }
 
+/* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringFpPrecision);
+  }
+  if (SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
+    return CompatibleIgnoringElementType(lhs, rhs);
+  }
+  return false;
+}
+
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
                                            int64 dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));
@@ -1060,9 +1073,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     tensorflow::gtl::ArraySlice<int64> dimension_mapping) {
-  // Can't insert bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) &&
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 
@@ -1093,9 +1107,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
                                               const Shape& output_shape) {
-  // Can't convert reshapes into bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) ||
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 

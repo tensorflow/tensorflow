@@ -17,12 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import gen_prefetching_ops
-from tensorflow.contrib.util import loader
-from tensorflow.python.platform import resource_loader
-
-_prefetching_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("../../_prefetching_ops.so"))
+from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
+from tensorflow.contrib.data.python.ops import gen_dataset_ops
 
 
 # TODO(rohanj): Add a python class that constructs resource in the __init__
@@ -35,7 +31,7 @@ def function_buffering_resource(string_arg,
                                 thread_pool_size=1,
                                 container="",
                                 name=None):
-  return gen_prefetching_ops.function_buffering_resource(
+  return gen_dataset_ops.function_buffering_resource(
       string_arg=string_arg,
       target_device=target_device,
       shared_name=shared_name,
@@ -49,7 +45,7 @@ def function_buffering_resource(string_arg,
 def function_buffering_resource_get_next(function_buffer_resource,
                                          output_types,
                                          name=None):
-  return gen_prefetching_ops.function_buffering_resource_get_next(
+  return gen_dataset_ops.function_buffering_resource_get_next(
       function_buffer_resource=function_buffer_resource,
       output_types=output_types,
       name=name)

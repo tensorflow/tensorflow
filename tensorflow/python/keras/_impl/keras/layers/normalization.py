@@ -25,8 +25,10 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.layers import normalization as tf_normalization_layers
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.BatchNormalization')
 class BatchNormalization(tf_normalization_layers.BatchNormalization, Layer):
   """Batch normalization layer (Ioffe and Szegedy, 2014).
 

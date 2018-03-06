@@ -86,17 +86,19 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.constant_value(value.dense_shape)
-  if dense_shape_value is not None:
-    num_elements = np.prod(dense_shape_value)
-    if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+  if context.in_graph_mode():
+    dense_shape_value = tensor_util.constant_value(value.dense_shape)
+    if dense_shape_value is not None:
+      num_elements = np.prod(dense_shape_value)
+      if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+        warnings.warn(
+            "Converting sparse IndexedSlices to a dense Tensor with %d "
+            "elements. This may consume a large amount of memory." %
+            num_elements)
+    else:
       warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor with %d elements. "
-          "This may consume a large amount of memory." % num_elements)
-  else:
-    warnings.warn(
-        "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-        "This may consume a large amount of memory.")
+          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
+          "This may consume a large amount of memory.")
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
@@ -354,7 +356,7 @@ def _SymGrad(op, out_grads):
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
   # pylint: disable=protected-access
-  in_grads = functional_ops._symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   # pylint: enable=protected-access
   return in_grads
 
@@ -494,7 +496,7 @@ def gradients(ys,
       list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = [
-        x.handle if isinstance(x, resource_variable_ops.ResourceVariable) else x
+        x.handle if resource_variable_ops.is_resource_variable(x) else x
         for x in xs
     ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(

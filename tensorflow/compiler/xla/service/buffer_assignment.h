@@ -91,6 +91,13 @@ class BufferAllocation {
     return parameter_number_;
   }
 
+  // If this allocation is for a parameter of the entry computation, this
+  // function returns which subshape of the parameter the allocation is for.
+  const ShapeIndex& param_shape_index() const {
+    CHECK(is_entry_computation_parameter_);
+    return param_shape_index_;
+  }
+
   // Returns whether this allocation is assigned a LogicalBuffer which may
   // be live out of the entry computation.
   bool maybe_live_out() const { return maybe_live_out_; }
@@ -203,9 +210,11 @@ class BufferAllocation {
   // Adds a LogicalBuffer to the set assigned to this buffer.
   void AddAssignment(const LogicalBuffer& buffer, int64 offset, int64 size);
 
-  void set_entry_computation_parameter(int64 parameter_number) {
+  void set_entry_computation_parameter(int64 parameter_number,
+                                       ShapeIndex param_shape_index) {
     is_entry_computation_parameter_ = true;
     parameter_number_ = parameter_number;
+    param_shape_index_ = std::move(param_shape_index);
   }
   void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
   void set_index(Index index) { index_ = index; }
@@ -234,6 +243,10 @@ class BufferAllocation {
   // If this allocation holds an entry computation parameter, this field
   // indicates the index (starting from 0) of the parameter.
   int64 parameter_number_ = 0;
+
+  // If this buffer is for an entry computation parameter, which subshape of the
+  // parameter is it for?
+  ShapeIndex param_shape_index_;
 
   // Whether the allocation contains a LogicalBuffer which may be live-out of
   // the entry computation. Note that this flag is conservatively computed by
@@ -528,15 +541,13 @@ class BufferAssigner {
       const std::vector<const LogicalBuffer*>& colocated_set,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
-  // Conceptually the same as AddSetToColocatedBufferSets, but specific to the
-  // colocated buffers for while instructions.
-  void AddWhileSetToColocatedBufferSets(
-      const std::vector<const LogicalBuffer*>& colocated_set,
-      const LogicalBuffer* while_init_buffer,
-      const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
-      const HloComputation& computation, const BufferLiveness& buffer_liveness,
-      const LogicalBuffer::SizeFunction& buffer_size,
-      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
+  // Given a list of colocated buffer sets (each colocated buffer set represents
+  // the logical buffers that would be assigned to the same physical buffer),
+  // try to merge the sets if the buffers can be shared. Returns the merged set.
+  std::vector<ColocatedBufferSet> MergeColocatedBufferSets(
+      const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
+      const BufferLiveness& buffer_liveness,
+      const LogicalBuffer::SizeFunction& buffer_size);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.

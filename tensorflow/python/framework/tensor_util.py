@@ -557,17 +557,18 @@ def MakeNdarray(tensor):
   dtype = tensor_dtype.as_numpy_dtype
 
   if tensor.tensor_content:
-    return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
-  elif tensor_dtype == dtypes.float16:
+    return (np.frombuffer(tensor.tensor_content, dtype=dtype).copy()
+            .reshape(shape))
+  elif tensor_dtype == dtypes.float16 or tensor_dtype == dtypes.bfloat16:
     # the half_val field of the TensorProto stores the binary representation
     # of the fp16: we need to reinterpret this as a proper float16
     if len(tensor.half_val) == 1:
       tmp = np.array(tensor.half_val[0], dtype=np.uint16)
-      tmp.dtype = np.float16
+      tmp.dtype = tensor_dtype.as_numpy_dtype
       return np.repeat(tmp, num_elements).reshape(shape)
     else:
       tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
-      tmp.dtype = np.float16
+      tmp.dtype = tensor_dtype.as_numpy_dtype
       return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
@@ -585,8 +586,7 @@ def MakeNdarray(tensor):
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
   elif tensor_dtype in [
       dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16, dtypes.int8,
-      dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16,
-      dtypes.bfloat16
+      dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16
   ]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),

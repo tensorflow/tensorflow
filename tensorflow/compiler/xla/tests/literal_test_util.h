@@ -40,10 +40,16 @@ namespace xla {
 
 // Structure describing permissible absolute and relative error bounds.
 struct ErrorSpec {
-  explicit ErrorSpec(float aabs, float arel = 0) : abs(aabs), rel(arel) {}
+  explicit ErrorSpec(float aabs, float arel = 0, bool relaxed_nans = false)
+      : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
 
   float abs;  // Absolute error bound.
   float rel;  // Relative error bound.
+
+  // If relaxed_nans is true then any result is valid if we are expecting NaNs.
+  // In effect, this allows the tested operation to produce incorrect results
+  // for inputs outside its mathematical domain.
+  bool relaxed_nans;
 };
 
 // Utility class for making expectations/assertions related to XLA literals.

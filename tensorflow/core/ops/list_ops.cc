@@ -241,6 +241,7 @@ REGISTER_OP("TensorListSetItem")
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
       auto* handle_data = c->input_handle_shapes_and_types(0);
+      c->set_output(0, c->Scalar());
       if (handle_data == nullptr) {
         c->set_output_handle_shapes_and_types(0, {{c->UnknownShape(), t}});
         return Status::OK();

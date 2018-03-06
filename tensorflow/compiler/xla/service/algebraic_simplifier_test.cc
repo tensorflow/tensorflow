@@ -162,6 +162,37 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   EXPECT_EQ(root, param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
+  HloComputation::Builder builder(TestName());
+  builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({3.14f, 3.14f, 3.14f})));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_EQ(3.14f, root->operand(0)->literal().GetFirstElement<float>());
+}
+
+TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
+  HloComputation::Builder builder(TestName());
+  builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({3.14, 3.14, 4})));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_FALSE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+}
+
 // Test that A - 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, SubZero) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -2768,6 +2799,29 @@ DotOfConcatTestSpec kDotOfConcatTestSpecs[] = {
     {/*m=*/20, /*k=*/20, /*n=*/1},  //
     {/*m=*/1, /*k=*/16, /*n=*/1},   //
 };
+
+// Test that DynamicUpdateSlice update param with any dimension equal to zero
+// gets removed.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
+  HloComputation::Builder builder(TestName());
+  const Shape dslice_shape = ShapeUtil::MakeShape(F32, {10});
+  HloInstruction* const operand = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, dslice_shape, "operand"));
+  const Shape update_shape = ShapeUtil::MakeShape(F32, {0});
+  HloInstruction* const update = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, update_shape, "update"));
+  HloInstruction* const start_indices = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int>({0})));
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      dslice_shape, operand, update, start_indices));
+  const HloComputation* const computation =
+      module().AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), operand);
+}
 
 INSTANTIATE_TEST_CASE_P(DotOfConcatSimplificationTestInstantiation,
                         DotOfConcatSimplificationTest,

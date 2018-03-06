@@ -105,8 +105,8 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
   return utils.smart_cond(
       pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
                           1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_norm(inputs, sequence_lengths, transition_params):
@@ -166,8 +166,8 @@ def crf_log_likelihood(inputs,
     sequence_lengths: A [batch_size] vector of true sequence lengths.
     transition_params: A [num_tags, num_tags] transition matrix, if available.
   Returns:
-    log_likelihood: A scalar containing the log-likelihood of the given sequence
-        of tag indices.
+    log_likelihood: A [batch_size] `Tensor` containing the log-likelihood of
+      each example, given the sequence of tag indices.
     transition_params: A [num_tags, num_tags] transition matrix. This is either
         provided by the caller or created in this function.
   """
@@ -182,7 +182,7 @@ def crf_log_likelihood(inputs,
                                        transition_params)
   log_norm = crf_log_norm(inputs, sequence_lengths, transition_params)
 
-  # Normalize the scores to get the log-likelihood.
+  # Normalize the scores to get the log-likelihood per example.
   log_likelihood = sequence_scores - log_norm
   return log_likelihood, transition_params
 
@@ -511,7 +511,7 @@ def crf_decode(potentials, transition_params, sequence_length):
     return decode_tags, best_score
 
   return utils.smart_cond(
-      pred=math_ops.equal(
-          potentials.shape[1].value or array_ops.shape(potentials)[1], 1),
-      fn1=_single_seq_fn,
-      fn2=_multi_seq_fn)
+      pred=math_ops.equal(potentials.shape[1].value or
+                          array_ops.shape(potentials)[1], 1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)

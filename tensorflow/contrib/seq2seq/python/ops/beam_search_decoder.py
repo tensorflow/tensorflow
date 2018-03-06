@@ -724,7 +724,7 @@ def _mask_probs(probs, eos_token, finished):
       eos_token,
       vocab_size,
       dtype=probs.dtype,
-      on_value=0.,
+      on_value=ops.convert_to_tensor(0., dtype=probs.dtype),
       off_value=probs.dtype.min)
   finished_probs = array_ops.tile(
       array_ops.reshape(finished_row, [1, 1, -1]),

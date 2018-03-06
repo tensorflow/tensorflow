@@ -40,6 +40,7 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
@@ -138,6 +139,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
+@tf_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -318,6 +320,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
+@tf_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -414,6 +417,7 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
+@tf_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -613,6 +617,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     _SHARED_SEQUENCES[self.uid] = None
 
 
+@tf_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 

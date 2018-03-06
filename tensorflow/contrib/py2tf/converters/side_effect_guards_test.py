@@ -18,153 +18,147 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.converters import side_effect_guards
-from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class TestNamer(side_effect_guards.SymbolNamer):
-
-  def new_symbol(self, name_root, _):
-    return 'renamed_%s' % name_root
-
-
 class SideEffectGuardsTest(converter_test_base.TestCase):
-
-  def _transform_and_compile(self, test_fn):
-    ns = {
-        'control_flow_ops': control_flow_ops,
-        'constant_op': constant_op,
-        'gen_math_ops': gen_math_ops,
-        'ops': ops,
-        'state_ops': state_ops,
-    }
-    node = self.parse_and_analyze(
-        test_fn, ns,
-        namer=TestNamer())
-    node = side_effect_guards.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
-    self.attach_namespace(result, **ns)
-    result.tf = self.make_fake_tf(array_ops.identity, control_flow_ops.Assert,
-                                  gen_math_ops.greater,
-                                  ops.control_dependencies, ops.Tensor)
-    result.py2tf_utils = utils
-    return result.test_fn, node
 
   def test_side_effect_on_return_only_variable(self):
 
+    tf = None
+
     def test_fn(a):
-      state_ops.assign(a, a + 1)
+      tf.assign(a, a + 1)
       return a
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
-    with self.test_session() as sess:
-      v = variables.Variable(2)
-      sess.run(v.initializer)
-      # NOTE: We don't expect the assignment to execute in this case, because
-      # variables cannot be reliably guarded.
-      self.assertEqual(2, sess.run(tf_test_fn(v)))
+    with self.compiled(node, state_ops.assign) as result:
+      self.assertEqual(len(node.body[0].body), 1)
+      with self.test_session() as sess:
+        v = variables.Variable(2)
+        sess.run(v.initializer)
+        # NOTE: We don't expect the assignment to execute in this case, because
+        # variables cannot be reliably guarded.
+        self.assertEqual(2, sess.run(result.test_fn(v)))
 
   def test_side_effect_on_used_variable(self):
 
+    tf = None
+
     def test_fn(a):
-      state_ops.assign(a, a + 1)
+      tf.assign(a, a + 1)
       return a + 1
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
-    with self.test_session() as sess:
-      v = variables.Variable(2)
-      sess.run(v.initializer)
-      # NOTE: Unlike test_side_effect_on_return_only_variable, the variable was
-      # used in the local scope and so we could catch the assign's side effect.
-      self.assertEqual(4, sess.run(tf_test_fn(v)))
+    with self.compiled(node, state_ops.assign) as result:
+      self.assertEqual(len(node.body[0].body), 1)
+      with self.test_session() as sess:
+        v = variables.Variable(2)
+        sess.run(v.initializer)
+        # NOTE: Unlike test_side_effect_on_return_only_variable, the variable
+        # was used in the local scope and so we could catch the assign's side
+        # effect.
+        self.assertEqual(4, sess.run(result.test_fn(v)))
 
   def test_side_effect_on_tensor(self):
 
+    tf = None
+
     def test_fn(a):
-      control_flow_ops.Assert(gen_math_ops.greater(a, 0), ['expected in throw'])
+      tf.Assert(a > 0, ['expected in throw'])
       return a
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
-    with self.test_session() as sess:
-      # NOTE: In this case we can also capture the side effect because the
-      # argument is a tensor ans we can wrap it inside an identity.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   'expected in throw'):
-        sess.run(tf_test_fn(constant_op.constant(-1)))
+    with self.compiled(node, control_flow_ops.Assert) as result:
+      self.assertEqual(len(node.body[0].body), 1)
+      with self.test_session() as sess:
+        # NOTE: In this case we can also capture the side effect because the
+        # argument is a tensor ans we can wrap it inside an identity.
+        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                     'expected in throw'):
+          sess.run(result.test_fn(constant_op.constant(-1)))
 
   def test_multiline_block(self):
 
+    tf = None
+
     def test_fn(a):
-      state_ops.assign(a, a + 1)
+      tf.assign(a, a + 1)
       b = a + 1
-      state_ops.assign(a, b + 1)
+      tf.assign(a, b + 1)
       c = b + 1
       d = c + 1
       return d
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
-    with self.test_session() as sess:
-      v = variables.Variable(2)
-      sess.run(v.initializer)
-      self.assertEqual(6, sess.run(tf_test_fn(v)))
+    with self.compiled(node, state_ops.assign) as result:
+      self.assertEqual(len(node.body[0].body), 1)
+      with self.test_session() as sess:
+        v = variables.Variable(2)
+        sess.run(v.initializer)
+        self.assertEqual(6, sess.run(result.test_fn(v)))
 
   def test_multiline_nested_block(self):
 
+    tf = None
+
     def test_fn(a):
-      with ops.name_scope('foo'):
-        state_ops.assign(a, a + 1)
+      with tf.name_scope('foo'):
+        tf.assign(a, a + 1)
         b = a + 1
-        # state_ops.assign(a, b + 1)
         c = b + 1
         d = c + 1
       return d
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body[0].body), 1)
-    with self.test_session() as sess:
-      v = variables.Variable(2)
-      sess.run(v.initializer)
-      self.assertEqual(6, sess.run(tf_test_fn(v)))
+    with self.compiled(node, state_ops.assign, ops.name_scope) as result:
+      self.assertEqual(len(node.body[0].body[0].body), 1)
+      with self.test_session() as sess:
+        v = variables.Variable(2)
+        sess.run(v.initializer)
+        self.assertEqual(6, sess.run(result.test_fn(v)))
 
   def test_multiline_block_unsafe(self):
 
+    tf = None
+
     def test_fn(a):
-      state_ops.assign(a, a + 1)
+      tf.assign(a, a + 1)
       b = a + 1
-      state_ops.assign(a, a + 1)
+      tf.assign(a, a + 1)
       c = b + 1
       d = c + 1
       return d
 
-    tf_test_fn, node = self._transform_and_compile(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
+    node = side_effect_guards.transform(node, self.ctx)
 
-    self.assertEqual(len(node.body[0].body), 1)
-    with self.test_session() as sess:
-      v = variables.Variable(2)
-      sess.run(v.initializer)
-      # NOTE: This intentionally highlights the flakiness. The test should be
-      # tightened down once that is solved.
-      self.assertTrue(sess.run(tf_test_fn(v)) in (6, 7))
+    with self.compiled(node, state_ops.assign) as result:
+      self.assertEqual(len(node.body[0].body), 1)
+      with self.test_session() as sess:
+        v = variables.Variable(2)
+        sess.run(v.initializer)
+        # NOTE: This intentionally highlights the flakiness. The test should be
+        # tightened down once that is solved.
+        self.assertTrue(sess.run(result.test_fn(v)) in (6, 7))
 
 
 if __name__ == '__main__':

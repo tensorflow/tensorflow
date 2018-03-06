@@ -45,11 +45,12 @@ class Uniform(distribution.Distribution):
   Z = b - a
   ```
 
-  where:
-  * `low = a`,
-  * `high = b`,
-  * `Z` is the normalizing constant, and,
-  * `I[predicate]` is the [indicator function](
+  where
+
+  - `low = a`,
+  - `high = b`,
+  - `Z` is the normalizing constant, and
+  - `I[predicate]` is the [indicator function](
     https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
 
   The parameters `low` and `high` must be shaped in a way that supports

@@ -32,12 +32,14 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
   if (IsStopGradient(node)) {
     return true;
   }
-  if (IsIdentity(node) &&
-      !(rewriter.FeedsMerge(node) &&
-        rewriter.IsDrivenByControlDependency(node)) &&
-      !(rewriter.IsDrivenBySwitch(node) &&
-        rewriter.DrivesControlDependency(node))) {
-    return true;
+  if (IsIdentity(node)) {
+    if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
+        rewriter.IsDrivenByControlDependency(node) ||
+        rewriter.DrivesControlDependency(node)) {
+      return false;
+    } else {
+      return true;
+    }
   }
   if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
     return true;
@@ -48,7 +50,7 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
-  const std::unordered_set<string>& nodes_to_preserve = item.NodesToPreserve();
+  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
 
   // Prune all the nodes that won't be executed, ie all the nodes that aren't in
   // the fanin of a fetch node. If fetch nodes aren't specified, we'll assume
@@ -57,6 +59,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (!nodes_to_preserve.empty()) {
     std::vector<string> terminal_nodes(nodes_to_preserve.begin(),
                                        nodes_to_preserve.end());
+    std::sort(terminal_nodes.begin(), terminal_nodes.end());
     bool ill_formed = false;
     std::vector<const NodeDef*> keep =
         ComputeTransitiveFanin(item.graph, terminal_nodes, &ill_formed);
@@ -65,7 +68,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
       // let's be conservative and preserve the graph as is.
       return errors::InvalidArgument("Invalid input graph.");
     }
-    // Try to keep the nodes ordored somewhat topologically since this helps
+    // Try to keep the nodes ordered somewhat topologically since this helps
     // further optimizations perform better.
     for (int i = keep.size() - 1; i >= 0; --i) {
       *runnable_item.graph.add_node() = *keep[i];

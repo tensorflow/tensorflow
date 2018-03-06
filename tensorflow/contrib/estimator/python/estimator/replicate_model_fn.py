@@ -110,7 +110,8 @@ def replicate_model_fn(model_fn,
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
     - Losses from all towers are reduced according to `loss_reduction`.
-    - Gradients are reduced using sum for each trainable variable.
+    - Gradients from all towers are reduced according to `loss_reduction`
+      for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
       reduced using concatenation.
@@ -790,7 +791,7 @@ def _extract_tensors(tensors_and_vars):
     tensor, _ = tensor_and_var
     if isinstance(tensor, ops_lib.IndexedSlices):
       tensors.append(tensor.values)
-    else:
+    elif tensor is not None:
       tensors.append(tensor)
   return tensors
 

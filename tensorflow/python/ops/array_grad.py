@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -115,6 +116,19 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
                                                         non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
+      if constant_op.is_constant(concat_dim):
+        # If concat_dim is a constant defined in a different context,
+        # then we duplicate it in the current context to avoid passing it
+        # through an Enter node.
+        # This is a small optimization in general, but it is required when
+        # compiling with XLA, as XLA needs the concat input to be folded into a
+        # constant.
+        grad_context = control_flow_util.GetOutputContext(grad.op)
+        dim_context = control_flow_util.GetOutputContext(concat_dim.op)
+        if dim_context != grad_context:
+          value = tensor_util.constant_value(concat_dim)
+          concat_dim = constant_op.constant(value=value, dtype=concat_dim.dtype)
+
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
@@ -125,7 +139,6 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
       # cases when switching implementations at N=16, but it is possible that
       # there will be a small number of performance regressions.
-      # pylint: disable=protected-access
       if len(sizes) > 16:
         # extract the size of each input along the concat dimension
         sizes = array_ops.squeeze(
@@ -134,10 +147,9 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
                 [1, -1]))
         out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
       else:
-        offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
+        offset = gen_array_ops.concat_offset(non_neg_concat_dim, sizes)
         for (begin, size) in zip(offset, sizes):
           out_grads.append(array_ops.slice(grad, begin, size))
-      # pylint: enable=protected-access
   elif isinstance(grad, ops.IndexedSlices):
     # Using mod here for convenience since concat_dim is already verified
     # in concat implementation to be within the allowed [-rank, rank) range.
@@ -613,9 +625,7 @@ def _ReverseSequenceGrad(op, grad):
 @ops.RegisterGradient("Reverse")
 def _ReverseGrad(op, grad):
   reverse_dims = op.inputs[1]
-  # pylint: disable=protected-access
-  return gen_array_ops._reverse(grad, reverse_dims), None
-  # pylint: enable=protected-access
+  return gen_array_ops.reverse(grad, reverse_dims), None
 
 
 @ops.RegisterGradient("ReverseV2")
@@ -686,17 +696,13 @@ ops.NotDifferentiable("OneHot")
 @ops.RegisterGradient("MirrorPad")
 def _MirrorPadGrad(op, grad):
   mode = op.get_attr("mode")
-  # pylint: disable=protected-access
-  return [gen_array_ops._mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
-  # pylint: enable=protected-access
+  return [gen_array_ops.mirror_pad_grad(grad, op.inputs[1], mode=mode), None]
 
 
 @ops.RegisterGradient("MirrorPadGrad")
 def _MirrorPadGradGrad(op, grad):
   mode = op.get_attr("mode")
-  # pylint: disable=protected-access
-  return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
-  # pylint: enable=protected-access
+  return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")

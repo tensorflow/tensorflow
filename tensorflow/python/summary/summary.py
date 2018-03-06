@@ -72,8 +72,10 @@ from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('summary.scalar')
 def scalar(name, tensor, collections=None, family=None):
   """Outputs a `Summary` protocol buffer containing a single scalar value.
 
@@ -102,6 +104,7 @@ def scalar(name, tensor, collections=None, family=None):
   return val
 
 
+@tf_export('summary.image')
 def image(name, tensor, max_outputs=3, collections=None, family=None):
   """Outputs a `Summary` protocol buffer with images.
 
@@ -149,13 +152,13 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   """
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._image_summary(
+    val = _gen_logging_ops.image_summary(
         tag=tag, tensor=tensor, max_images=max_outputs, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
+@tf_export('summary.histogram')
 def histogram(name, values, collections=None, family=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
@@ -195,6 +198,7 @@ def histogram(name, values, collections=None, family=None):
   return val
 
 
+@tf_export('summary.audio')
 def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
           family=None):
   # pylint: disable=line-too-long
@@ -232,16 +236,16 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   """
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
     sample_rate = _ops.convert_to_tensor(
         sample_rate, dtype=_dtypes.float32, name='sample_rate')
-    val = _gen_logging_ops._audio_summary_v2(
+    val = _gen_logging_ops.audio_summary_v2(
         tag=tag, tensor=tensor, max_outputs=max_outputs,
         sample_rate=sample_rate, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
+@tf_export('summary.merge')
 def merge(inputs, collections=None, name=None):
   # pylint: disable=line-too-long
   """Merges summaries.
@@ -280,12 +284,12 @@ def merge(inputs, collections=None, name=None):
         'Use tf.contrib.summary instead.')
   name = _summary_op_util.clean_tag(name)
   with _ops.name_scope(name, 'Merge', inputs):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._merge_summary(inputs=inputs, name=name)
+    val = _gen_logging_ops.merge_summary(inputs=inputs, name=name)
     _summary_op_util.collect(val, collections, [])
   return val
 
 
+@tf_export('summary.merge_all')
 def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   """Merges all summaries collected in the default graph.
 
@@ -318,6 +322,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
     return merge(summary_ops)
 
 
+@tf_export('summary.get_summary_description')
 def get_summary_description(node_def):
   """Given a TensorSummary node_def, retrieve its SummaryDescription.
 

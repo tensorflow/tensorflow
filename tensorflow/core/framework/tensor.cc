@@ -1025,9 +1025,8 @@ StringPiece Tensor::tensor_data() const {
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {
-  CHECK_NE(nullptr, buf_);
-  CHECK_NE(nullptr, b.buf_);
-  return buf_->root_buffer() == b.buf_->root_buffer();
+  return buf_ != nullptr && b.buf_ != nullptr &&
+         buf_->root_buffer() == b.buf_->root_buffer();
 }
 
 string Tensor::DebugString() const {

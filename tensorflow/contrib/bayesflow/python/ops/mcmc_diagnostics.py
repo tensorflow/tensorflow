@@ -25,6 +25,7 @@ from tensorflow.contrib.bayesflow.python.ops.mcmc_diagnostics_impl import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    "effective_sample_size",
     "potential_scale_reduction",
 ]
 

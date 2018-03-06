@@ -33,7 +33,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -98,6 +101,18 @@ class TFETest(test_util.TensorFlowTestCase):
                      cpu_stats.device)
     self.assertEqual(len(cpu_stats.node_stats), 1)
     self.assertEqual(cpu_stats.node_stats[0].node_name, 'Add')
+
+  def testShouldCopy(self):
+    if not context.context().num_gpus():
+      self.skipTest('No devices other than CPUs found')
+    with ops.device('gpu:0'):
+      x = constant_op.constant(1.0)
+    y = array_ops.identity(x)
+    # The value we're testing y.device against will depend on what the behavior
+    # of not explicitly specifying a device in the context is.  This behavior is
+    # subject to change (for example, in the future we may want to use GPUs, if
+    # available, when no device is explicitly provided)
+    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   def testContextStackContainsEagerMode(self):
     # Eager execution has been enabled, and no other context
@@ -167,6 +182,18 @@ class TFETest(test_util.TensorFlowTestCase):
         b'Add', 1, inputs=[x, y],
         attrs=('T', x.dtype.as_datatype_enum))[0].cpu().numpy()
     self.assertEqual(3, result)
+
+  def testResourceTensorPlacement(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    with context.device('gpu:0'):
+      v = resource_variable_ops.ResourceVariable(1.0)
+    with context.device('cpu:0'):
+      # Check that even though we specified the cpu device we'll run the read op
+      # in the device where the handle is.
+      self.assertAllEqual(
+          gen_resource_variable_ops.read_variable_op(v.handle, v.dtype), 1.0)
 
   def testCopyBetweenDevices(self):
     if not context.context().num_gpus():

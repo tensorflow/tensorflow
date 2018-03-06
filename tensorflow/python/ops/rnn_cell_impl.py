@@ -46,6 +46,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -255,7 +256,7 @@ class RNNCell(base_layer.Layer):
     return output
 
 
-class _LayerRNNCell(RNNCell):
+class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
   For backwards compatibility purposes, most `RNNCell` instances allow their
@@ -297,7 +298,7 @@ class _LayerRNNCell(RNNCell):
 
 
 @tf_export("nn.rnn_cell.BasicRNNCell")
-class BasicRNNCell(_LayerRNNCell):
+class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
   Args:
@@ -355,7 +356,7 @@ class BasicRNNCell(_LayerRNNCell):
 
 
 @tf_export("nn.rnn_cell.GRUCell")
-class GRUCell(_LayerRNNCell):
+class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
   Args:
@@ -473,7 +474,7 @@ class LSTMStateTuple(_LSTMStateTuple):
 
 
 @tf_export("nn.rnn_cell.BasicLSTMCell")
-class BasicLSTMCell(_LayerRNNCell):
+class BasicLSTMCell(LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -598,7 +599,7 @@ class BasicLSTMCell(_LayerRNNCell):
 
 
 @tf_export("nn.rnn_cell.LSTMCell")
-class LSTMCell(_LayerRNNCell):
+class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -1187,6 +1188,12 @@ class MultiRNNCell(RNNCell):
           "cells must be a list or tuple, but saw: %s." % cells)
 
     self._cells = cells
+    for cell_number, cell in enumerate(self._cells):
+      # Add Checkpointable dependencies on these cells so their variables get
+      # saved with this object when using object-based saving.
+      if isinstance(cell, checkpointable.CheckpointableBase):
+        # TODO(allenl): Track down non-Checkpointable callers.
+        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

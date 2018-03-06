@@ -103,15 +103,93 @@ llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
   }
 }
 
-llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a, double low,
-                                         double high) {
+llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a,
+                                         const llvm::APFloat& low,
+                                         const llvm::APFloat& high) {
   AssertCorrectTypes({a});
   llvm::Type* type = a->getType();
-  CHECK_LT(low, high);
+  CHECK(low.compare(high) == llvm::APFloat::cmpLessThan);
   CHECK(scalar_type_->isFloatingPointTy());
   return llvm_ir::EmitFloatMin(
-      llvm_ir::EmitFloatMax(a, llvm::ConstantFP::get(type, low), ir_builder_),
-      llvm::ConstantFP::get(type, high), ir_builder_);
+      llvm_ir::EmitFloatMax(a, GetConstantFloat(type, low), ir_builder_),
+      GetConstantFloat(type, high), ir_builder_);
+}
+
+llvm::Value* VectorSupportLibrary::FCmpEQMask(llvm::Value* lhs,
+                                              llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  return I1ToFloat(ir_builder()->CreateFCmpOEQ(lhs, rhs, name()));
+}
+
+llvm::Value* VectorSupportLibrary::FCmpOLTMask(llvm::Value* lhs,
+                                               llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  return I1ToFloat(ir_builder()->CreateFCmpOLT(lhs, rhs, name()));
+}
+
+llvm::Value* VectorSupportLibrary::FCmpULEMask(llvm::Value* lhs,
+                                               llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  return I1ToFloat(ir_builder()->CreateFCmpULE(lhs, rhs, name()));
+}
+
+llvm::Value* VectorSupportLibrary::I1ToFloat(llvm::Value* i1) {
+  bool is_vector = llvm::isa<llvm::VectorType>(i1->getType());
+  llvm::Type* integer_type = IntegerTypeForFloatSize(is_vector);
+  return ir_builder()->CreateBitCast(
+      ir_builder()->CreateSExt(i1, integer_type, name()),
+      is_vector ? vector_type() : scalar_type(), name());
+}
+
+llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
+  CHECK(scalar_type()->isFloatingPointTy());
+  const llvm::DataLayout& data_layout =
+      ir_builder()->GetInsertBlock()->getModule()->getDataLayout();
+  int64 float_size_bits = data_layout.getTypeSizeInBits(scalar_type());
+  llvm::Type* scalar_int_type = ir_builder()->getIntNTy(float_size_bits);
+  if (vector) {
+    return llvm::VectorType::get(scalar_int_type, vector_size());
+  } else {
+    return scalar_int_type;
+  }
+}
+
+llvm::Value* VectorSupportLibrary::BroadcastScalar(llvm::Value* x) {
+  CHECK_EQ(x->getType(), scalar_type());
+  return ir_builder()->CreateVectorSplat(vector_size(), x, name());
+}
+
+llvm::Value* VectorSupportLibrary::FloatAnd(llvm::Value* lhs,
+                                            llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  llvm::Type* int_type =
+      IntegerTypeForFloatSize(lhs->getType() == vector_type());
+  return ir_builder()->CreateBitCast(
+      ir_builder()->CreateAnd(
+          ir_builder()->CreateBitCast(lhs, int_type, name()),
+          ir_builder()->CreateBitCast(rhs, int_type, name()), name()),
+      vector_type());
+}
+
+llvm::Value* VectorSupportLibrary::FloatNot(llvm::Value* lhs) {
+  AssertCorrectTypes({lhs});
+  llvm::Type* int_type =
+      IntegerTypeForFloatSize(lhs->getType() == vector_type());
+  return ir_builder()->CreateBitCast(
+      ir_builder()->CreateNot(
+          ir_builder()->CreateBitCast(lhs, int_type, name()), name()),
+      vector_type());
+}
+
+llvm::Value* VectorSupportLibrary::FloatOr(llvm::Value* lhs, llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  llvm::Type* int_type =
+      IntegerTypeForFloatSize(lhs->getType() == vector_type());
+  return ir_builder()->CreateBitCast(
+      ir_builder()->CreateOr(ir_builder()->CreateBitCast(lhs, int_type, name()),
+                             ir_builder()->CreateBitCast(rhs, int_type, name()),
+                             name()),
+      vector_type(), name());
 }
 
 llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
@@ -292,6 +370,9 @@ std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
 std::vector<llvm::Value*>
 VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
+  // vectors are N llvm vector values, each with N elements.
+  int64 lane_width = vectors.size();
+
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
     for (int i = 0; i < vectors.size(); i += 2) {
@@ -312,10 +393,14 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
     high = AddInternal(ExtractHighHalf(init_values), high);
   }
 
+  // `low` has the first `lane_width / 2` horizontal reductions, and `high` has
+  // the next `lane_width / 2` horizontal reductions.
+
   std::vector<llvm::Value*> results;
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < lane_width; i++) {
     llvm::Value* scalar_result = ir_builder()->CreateExtractElement(
-        i < 4 ? low : high, ir_builder()->getInt32(i % 4), name());
+        i < (lane_width / 2) ? low : high,
+        ir_builder()->getInt32(i % (lane_width / 2)), name());
     results.push_back(scalar_result);
   }
 

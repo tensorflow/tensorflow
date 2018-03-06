@@ -12,8 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Abstractions for the head(s) of a model.
+"""Abstractions for the head(s) of a model (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -47,10 +52,15 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import training
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 
 
 class Head(object):
   """Interface for the head/top of a model.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Given logits (or output of a hidden layer), a Head knows how to compute
   predictions, loss, default metric and export signature. It is meant to,
@@ -177,11 +187,13 @@ class Head(object):
     raise NotImplementedError("Calling an abstract method.")
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def regression_head(label_name=None,
                     weight_column_name=None,
                     label_dimension=1,
                     enable_centered_bias=False,
-                    head_name=None):
+                    head_name=None,
+                    link_fn=None):
   """Creates a `Head` for linear regression.
 
   Args:
@@ -199,6 +211,8 @@ def regression_head(label_name=None,
     head_name: name of the head. If provided, predictions, summary and metrics
       keys will be suffixed by `"/" + head_name` and the default variable scope
       will be `head_name`.
+    link_fn: link function to convert logits to predictions. If provided,
+      this link function will be used instead of identity.
 
   Returns:
     An instance of `Head` for linear regression.
@@ -210,9 +224,10 @@ def regression_head(label_name=None,
       enable_centered_bias=enable_centered_bias,
       head_name=head_name,
       loss_fn=_mean_squared_loss,
-      link_fn=array_ops.identity)
+      link_fn=(link_fn if link_fn is not None else array_ops.identity))
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def poisson_regression_head(label_name=None,
                             weight_column_name=None,
                             label_dimension=1,
@@ -251,6 +266,7 @@ def poisson_regression_head(label_name=None,
 # TODO(zakaria): Consider adding a _RegressionHead for logistic_regression
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def multi_class_head(n_classes,
                      label_name=None,
                      weight_column_name=None,
@@ -332,6 +348,7 @@ def multi_class_head(n_classes,
       label_keys=label_keys)
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def binary_svm_head(
     label_name=None,
     weight_column_name=None,
@@ -367,6 +384,7 @@ def binary_svm_head(
       thresholds=thresholds)
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def multi_label_head(n_classes,
                      label_name=None,
                      weight_column_name=None,
@@ -427,6 +445,7 @@ def multi_label_head(n_classes,
       loss_fn=_wrap_custom_loss_fn(loss_fn) if loss_fn else None)
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def loss_only_head(loss_fn, head_name=None):
   """Creates a Head that contains only loss terms.
 
@@ -444,6 +463,7 @@ def loss_only_head(loss_fn, head_name=None):
   return _LossOnlyHead(loss_fn, head_name=head_name)
 
 
+@deprecated(None, "Please switch to tf.contrib.estimator.*_head.")
 def multi_head(heads, loss_weights=None):
   """Creates a MultiHead stemming from same logits/hidden layer.
 
@@ -476,6 +496,7 @@ def multi_head(heads, loss_weights=None):
   return _MultiHead(heads, loss_merger=_weighted_loss_merger)
 
 
+@deprecated(None, "Use 'lambda _: tf.no_op()'.")
 def no_op_train_fn(loss):
   del loss
   return control_flow_ops.no_op()

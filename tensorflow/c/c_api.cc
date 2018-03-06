@@ -64,6 +64,7 @@ using tensorflow::AllocationDescription;
 using tensorflow::DataType;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
+using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
@@ -77,6 +78,7 @@ using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
 using tensorflow::Status;
+using tensorflow::string;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
@@ -87,8 +89,6 @@ using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::mutex_lock;
-using tensorflow::string;
 using tensorflow::strings::StrCat;
 
 extern "C" {
@@ -202,8 +202,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     // (any alignment requirements will be taken care of by TF_TensorToTensor
     // and TF_TensorFromTensor).
     //
-    // Other types have the same representation, so copy only if it is safe to do
-    // so.
+    // Other types have the same representation, so copy only if it is safe to
+    // do so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -215,7 +215,13 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf->deallocator_ = deallocator;
     buf->deallocator_arg_ = deallocator_arg;
   }
-  return new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  TF_Tensor* ret = new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret->shape.num_elements())) {
+    delete ret;
+    return nullptr;
+  }
+  return ret;
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {

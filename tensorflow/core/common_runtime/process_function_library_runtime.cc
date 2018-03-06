@@ -246,7 +246,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   string target_device;
   {
     mutex_lock l(mu_);
-    CHECK_EQ(1, function_data_.count(handle));
+    CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
     target_device = function_data_[handle].target_device;
   }
   flr = GetFLR(target_device);

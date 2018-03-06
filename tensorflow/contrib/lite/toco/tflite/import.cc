@@ -64,6 +64,9 @@ void ImportTensors(const ::tflite::Model& input_model, Model* model) {
 
     auto shape = input_tensor->shape();
     if (shape) {
+      // If the shape is 0-dimensional, make sure to record it as such,
+      // as oppose to leaving the array without a shape.
+      array.mutable_shape()->mutable_dims()->clear();
       for (int i = 0; i < shape->Length(); ++i) {
         auto d = shape->Get(i);
         array.mutable_shape()->mutable_dims()->push_back(d);
