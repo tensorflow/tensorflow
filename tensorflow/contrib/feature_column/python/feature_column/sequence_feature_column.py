@@ -132,7 +132,6 @@ def sequence_input_layer(
     return array_ops.concat(output_tensors, -1), sequence_length
 
 
-# TODO(b/73160931): Add remaining categorical columns.
 def sequence_categorical_column_with_identity(
     key, num_buckets, default_value=None):
   """Returns a feature column that represents sequences of integers.
@@ -143,7 +142,7 @@ def sequence_categorical_column_with_identity(
   watches = sequence_categorical_column_with_identity(
       'watches', num_buckets=1000)
   watches_embedding = embedding_column(watches, dimension=10)
-  columns = [watches]
+  columns = [watches_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   input_layer, sequence_length = sequence_input_layer(features, columns)
@@ -169,6 +168,141 @@ def sequence_categorical_column_with_identity(
           key=key,
           num_buckets=num_buckets,
           default_value=default_value))
+
+
+def sequence_categorical_column_with_hash_bucket(
+    key, hash_bucket_size, dtype=dtypes.string):
+  """A sequence of categorical terms where ids are set by hashing.
+
+  Example:
+
+  ```python
+  tokens = sequence_categorical_column_with_hash_bucket(
+      'tokens', hash_bucket_size=1000)
+  tokens_embedding = embedding_column(tokens, dimension=10)
+  columns = [tokens_embedding]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    key: A unique string identifying the input feature.
+    hash_bucket_size: An int > 1. The number of buckets.
+    dtype: The type of features. Only string and integer types are supported.
+
+  Returns:
+    A `_SequenceCategoricalColumn`.
+  """
+  return _SequenceCategoricalColumn(
+      fc.categorical_column_with_hash_bucket(
+          key=key,
+          hash_bucket_size=hash_bucket_size,
+          dtype=dtype))
+
+
+def sequence_categorical_column_with_vocabulary_file(
+    key, vocabulary_file, vocabulary_size=None, num_oov_buckets=0,
+    default_value=None, dtype=dtypes.string):
+  """A sequence of categorical terms where ids use a vocabulary file.
+
+  Example:
+
+  ```python
+  states = sequence_categorical_column_with_vocabulary_file(
+      key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
+      num_oov_buckets=5)
+  states_embedding = embedding_column(states, dimension=10)
+  columns = [states_embedding]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    key: A unique string identifying the input feature.
+    vocabulary_file: The vocabulary file name.
+    vocabulary_size: Number of the elements in the vocabulary. This must be no
+      greater than length of `vocabulary_file`, if less than length, later
+      values are ignored. If None, it is set to the length of `vocabulary_file`.
+    num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
+      buckets. All out-of-vocabulary inputs will be assigned IDs in the range
+      `[vocabulary_size, vocabulary_size+num_oov_buckets)` based on a hash of
+      the input value. A positive `num_oov_buckets` can not be specified with
+      `default_value`.
+    default_value: The integer ID value to return for out-of-vocabulary feature
+      values, defaults to `-1`. This can not be specified with a positive
+      `num_oov_buckets`.
+    dtype: The type of features. Only string and integer types are supported.
+
+  Returns:
+    A `_SequenceCategoricalColumn`.
+  """
+  return _SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_file(
+          key=key,
+          vocabulary_file=vocabulary_file,
+          vocabulary_size=vocabulary_size,
+          num_oov_buckets=num_oov_buckets,
+          default_value=default_value,
+          dtype=dtype))
+
+
+def sequence_categorical_column_with_vocabulary_list(
+    key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
+  """A sequence of categorical terms where ids use an in-memory list.
+
+  Example:
+
+  ```python
+  colors = sequence_categorical_column_with_vocabulary_list(
+      key='colors', vocabulary_list=('R', 'G', 'B', 'Y'),
+      num_oov_buckets=2)
+  colors_embedding = embedding_column(colors, dimension=3)
+  columns = [colors_embedding]
+
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  input_layer, sequence_length = sequence_input_layer(features, columns)
+
+  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
+  outputs, state = tf.nn.dynamic_rnn(
+      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  ```
+
+  Args:
+    key: A unique string identifying the input feature.
+    vocabulary_list: An ordered iterable defining the vocabulary. Each feature
+      is mapped to the index of its value (if present) in `vocabulary_list`.
+      Must be castable to `dtype`.
+    dtype: The type of features. Only string and integer types are supported.
+      If `None`, it will be inferred from `vocabulary_list`.
+    default_value: The integer ID value to return for out-of-vocabulary feature
+      values, defaults to `-1`. This can not be specified with a positive
+      `num_oov_buckets`.
+    num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
+      buckets. All out-of-vocabulary inputs will be assigned IDs in the range
+      `[len(vocabulary_list), len(vocabulary_list)+num_oov_buckets)` based on a
+      hash of the input value. A positive `num_oov_buckets` can not be specified
+      with `default_value`.
+
+  Returns:
+    A `_SequenceCategoricalColumn`.
+  """
+  return _SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_list(
+          key=key,
+          vocabulary_list=vocabulary_list,
+          dtype=dtype,
+          default_value=default_value,
+          num_oov_buckets=num_oov_buckets))
 
 
 # TODO(b/73160931): Merge with embedding_column
