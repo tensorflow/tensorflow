@@ -350,6 +350,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["nomsan"],
 )
 
 cuda_py_test(
