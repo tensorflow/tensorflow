@@ -33,16 +33,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
-
+const int FP32MODE = 0;
+const int FP16MODE = 1;
+const int INT8MODE = 2;
 struct SubGraphParams {
   SubGraphParams(
-      tensorflow::Graph& inp_graph, const std::set<int>& subgraph_node_id_numbers,
+      tensorflow::Graph& inp_graph,
+      const std::set<int>& subgraph_node_id_numbers,
       const std::vector<std::pair<int, int>>& input_indices,
       const std::vector<std::pair<int, int>>& output_indices,
       size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
       const tensorflow::grappler::GraphProperties& current_graph_properties,
       std::unordered_map<string, std::pair<int, string>>* output_edges,
-      tensorflow::NodeDef* constructed_trt_node, int engine_precision_mode = 0)
+      tensorflow::NodeDef* constructed_trt_node, int engine_precision_mode = FP32MODE)
       : graph(inp_graph),
         subgraph_node_ids(subgraph_node_id_numbers),
         input_inds(input_indices),
