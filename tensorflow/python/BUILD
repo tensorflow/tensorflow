@@ -91,6 +91,7 @@ py_library(
         ":sets",
         ":sparse_ops",
         ":spectral_ops",
+        ":spectral_ops_test_util",
         ":standard_ops",
         ":state_ops",
         ":string_ops",
