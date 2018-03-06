@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Dataset utilities and synthetic/reference datasets."""
+"""Dataset utilities and synthetic/reference datasets (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +32,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.datasets import mnist
 from tensorflow.contrib.learn.python.learn.datasets import synthetic
 from tensorflow.contrib.learn.python.learn.datasets import text_datasets
+from tensorflow.python.util.deprecation import deprecated
 
 # Export load_iris and load_boston.
 load_iris = base.load_iris
@@ -51,6 +57,7 @@ SYNTHETIC = {
 }
 
 
+@deprecated(None, 'Please use tf.data.')
 def load_dataset(name, size='small', test_with_fake_data=False):
   """Loads dataset by name.
 
@@ -73,8 +80,9 @@ def load_dataset(name, size='small', test_with_fake_data=False):
     return DATASETS[name]()
 
 
+@deprecated(None, 'Please use tf.data.')
 def make_dataset(name, n_samples=100, noise=None, seed=42, *args, **kwargs):
-  """Creates binary synthetic datasets
+  """Creates binary synthetic datasets.
 
   Args:
     name: str, name of the dataset to generate

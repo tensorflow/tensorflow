@@ -229,6 +229,10 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleHostCompute(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
@@ -526,6 +530,11 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
   }
   current_should_compute_bottleneck_time_ = false;
 
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather does not issue any flops.
   return Status::OK();
 }
 

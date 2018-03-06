@@ -26,6 +26,7 @@
 @@Identity
 @@Inline
 @@Invert
+@@Kumaraswamy
 @@MaskedAutoregressiveFlow
 @@Permute
 @@PowerTransform
@@ -59,6 +60,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.gumbel import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
+from tensorflow.contrib.distributions.python.ops.bijectors.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *

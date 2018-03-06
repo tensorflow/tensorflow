@@ -419,7 +419,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   auto alias_analysis = WrapUnique(new HloAliasAnalysis(module));
   TF_ASSIGN_OR_RETURN(
       alias_analysis->dataflow_analysis_,
-      HloDataflowAnalysis::Run(module, /*ssa_form=*/true,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                /*bitcast_defines_value=*/false));
 
   BufferValueMap buffer_map(alias_analysis->dataflow_analysis());

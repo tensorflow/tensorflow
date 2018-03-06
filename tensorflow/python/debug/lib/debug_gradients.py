@@ -156,11 +156,12 @@ class GradientsDebugger(object):
     # TODO(cais): Implement value_stack.
     grad_debug_op_name = _tensor_to_grad_debug_op_name(input_tensor, self._uuid)
     # pylint: disable=protected-access
-    identity_op = (gen_array_ops._debug_gradient_ref_identity
-                   if input_tensor.dtype._is_ref_dtype
-                   else gen_array_ops._debug_gradient_identity)
-    debug_grad_identity = identity_op(input_tensor, name=grad_debug_op_name)
+    identity_op = (
+        gen_array_ops.debug_gradient_ref_identity
+        if input_tensor.dtype._is_ref_dtype else
+        gen_array_ops.debug_gradient_identity)
     # pylint: enable=protected-access
+    debug_grad_identity = identity_op(input_tensor, name=grad_debug_op_name)
     assert debug_grad_identity.dtype == input_tensor.dtype
     if debug_grad_identity.op.name != grad_debug_op_name:
       raise ValueError(

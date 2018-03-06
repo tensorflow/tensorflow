@@ -24,6 +24,7 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.qual_names import QN
 from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 # TODO(mdan): Add support for PY3 (e.g. Param vs arg).
@@ -236,6 +237,18 @@ class ActivityAnalizer(transformer.Base):
     for after_child in after_children:
       self.scope.merge_from(after_child)
     return parent
+
+  def visit_FunctionDef(self, node):
+    if self.scope:
+      qn = QN(node.name)
+      self.scope.mark_write(qn)
+    current_scope = self.scope
+    fndef_scope = Scope(current_scope, isolated=True)
+    self.scope = fndef_scope
+    self.generic_visit(node)
+    anno.setanno(node, NodeAnno.BODY_SCOPE, fndef_scope)
+    self.scope = current_scope
+    return node
 
   def visit_If(self, node):
     self.visit(node.test)

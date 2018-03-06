@@ -349,31 +349,32 @@ results, but if you intend to deploy your model on mobile devices or other
 resource-constrained environments you may want to trade off a little accuracy
 for much smaller file sizes or faster speeds. To help with that, the
 [retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)
-supports 32 different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
+supports different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
 
 These are a little less precise than Inception v3, but can result in far
-smaller file sizes (down to less than a megabyte) and can be many times faster
+smaller file sizes (a few megabytes) and can be many times faster
 to run. To train with one of these models, pass in the `--architecture` flag,
 for example:
 
 ```
 python tensorflow/examples/image_retraining/retrain.py \
-    --image_dir ~/flower_photos --architecture mobilenet_0.25_128_quantized
+    --image_dir ~/flower_photos --architecture mobilenet_0.25_128
 ```
 
-This will create a 941KB model file in `/tmp/output_graph.pb`, with 25% of the
-parameters of the full Mobilenet, taking 128x128 sized input images, and with
-its weights quantized down to eight bits on disk. You can choose '1.0', '0.75',
-'0.50', or '0.25' to control the number of weight parameters, and so the file
-size (and to some extent the speed), '224', '192', '160', or '128' for the input
-image size, with smaller sizes giving faster speeds, and an optional
-'_quantized' at the end to indicate whether the file should contain 8-bit or
-32-bit float weights.
+This will create a 1.9MB model file in `/tmp/output_graph.pb`, with only 25% of
+the number of neurons of the full Mobilenet, and trained to take 128x128 sized
+input images.
+
+You can choose '1.0', '0.75', '0.50', or '0.25' to control the number of
+neurons (activations of hidden layers); the number of weights (and hence to
+some extent the file size and speed) shrinks like the square of that fraction.
+You can choose '224', '192', '160', or '128' for the input image size,
+with smaller sizes giving faster speeds.
 
 The speed and size advantages come at a loss to accuracy of course, but for many
 purposes this isn't critical. They can also be somewhat offset with improved
 training data. For example, training with distortions allows me to get above 80%
-accuracy on the flower data set even with the 0.25/128/quantized graph above.
+accuracy on the flower data set even with the 0.25/128 graph above.
 
 If you're going to be using the Mobilenet models in label_image or your own
 programs, you'll need to feed in an image of the specified size converted to a
@@ -395,3 +396,9 @@ python tensorflow/examples/label_image/label_image.py \
 --input_mean=128 --input_std=128 \
 --image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
 ```
+
+For more information on deploying the retrained model to a mobile device, see
+the [codelab version](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0)
+of this tutorial, especially [part 2](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2-tflite/#0), which describes
+[TensorFlow Lite](/mobile/tflite/) and the additional optimizations it offers
+(including quantization of model weights).

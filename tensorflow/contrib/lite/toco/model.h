@@ -115,6 +115,8 @@ enum class OperatorType {
   kTensorFlowTile,
   kTranspose,
   kTopK_V2,
+  kDynamicPartition,
+  kDynamicStitch,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -244,6 +246,8 @@ struct GenericBuffer {
   // in containers and have the containers call the right subclass destructor.
   virtual ~GenericBuffer() {}
 
+  virtual int Length() const = 0;
+
   const ArrayDataType type;
 
  protected:
@@ -255,6 +259,8 @@ struct GenericBuffer {
 template <ArrayDataType A>
 struct Buffer : GenericBuffer {
   Buffer() : GenericBuffer(A) {}
+
+  int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
 };
@@ -359,7 +365,8 @@ struct ConvOperator : Operator {
   // A dilation_rate of 0 is invalid and this field is an optional attribute.
   // Thus initializing it to 1 to allow default conv behavior when the
   // attribute is not present.
-  int dilation_rate = 1;
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depthwise-separable convolution operator.
@@ -1407,6 +1414,30 @@ struct SvdfOperator : Operator {
 //    input tensor and top_k scalar.
 struct TopKV2Operator : Operator {
   TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
+};
+
+// DynamicPartition operator:
+//
+// Inputs:
+//  inputs[0]: required: data.
+//  inputs[1]: required: partitions.
+//
+// TensorFlow equivalent: DynamicPartition
+struct DynamicPartitionOperator : Operator {
+  DynamicPartitionOperator() : Operator(OperatorType::kDynamicPartition) {}
+  int num_partitions;
+};
+
+// DynamicStitch operator:
+//
+// Inputs:
+//  inputs[0,N): required: indices.
+//  inputs[N,2N): required: data.
+//
+// TensorFlow equivalent: DynamicStitch/ParallelDynamicStitch
+struct DynamicStitchOperator : Operator {
+  DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
+  int num_partitions;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

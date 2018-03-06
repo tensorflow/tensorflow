@@ -1,226 +1,253 @@
-# How to Quantize Neural Networks with TensorFlow
+# Fixed Point Quantization
 
-When modern neural networks were being developed, the biggest challenge was
-getting them to work at all! That meant that accuracy and speed during training
-were the top priorities. Using floating point arithmetic was the easiest way to
-preserve accuracy, and GPUs were well-equipped to accelerate those calculations,
-so it's natural that not much attention was paid to other numerical formats.
+Quantization techniques store and calculate numbers in more compact formats.
+[TensorFlow Lite](/mobile/tflite/) adds quantization that uses an 8-bit fixed
+point representation.
 
-These days, we actually have a lot of models being deployed in commercial
-applications. The computation demands of training grow with the number of
-researchers, but the cycles needed for inference expand in proportion to users.
-That means pure inference efficiency has become a burning issue for a lot of
-teams.
+Since a challenge for modern neural networks is optimizing for high accuracy, the
+priority has been improving accuracy and speed during training. Using floating
+point arithmetic is an easy way to preserve accuracy and GPUs are designed to
+accelerate these calculations.
 
-That is where quantization comes in. It's an umbrella term that covers a lot of
-different techniques to store numbers and perform calculations on them in more
-compact formats than 32-bit floating point. I am going to focus on eight-bit
-fixed point, for reasons I'll go into more detail on later.
+However, as more machine learning models are deployed to mobile devices,
+inference efficiency has become a critical issue. Where the computational demand
+for *training* grows with the amount of models trained on different
+architectures, the computational demand for *inference* grows in proportion to
+the amount of users.
 
-[TOC]
+## Quantization benefits
 
-## Why does Quantization Work?
 
-Training neural networks is done by applying many tiny nudges to the weights,
-and these small increments typically need floating point precision to work
-(though there are research efforts to use quantized representations here too).
+Using 8-bit calculations help your models run faster and use less power. This is
+especially important for mobile devices and embedded applications that can't run
+floating point code efficiently, for example, Internet of Things (IoT) and
+robotics devices. There are additional opportunities to extend this support to
+more backends and research lower precision networks.
 
-Taking a pre-trained model and running inference is very different. One of the
-magical qualities of deep networks is that they tend to cope very well with high
-levels of noise in their inputs. If you think about recognizing an object in a
-photo you've just taken, the network has to ignore all the CCD noise, lighting
-changes, and other non-essential differences between it and the training
-examples it's seen before, and focus on the important similarities instead. This
-ability means that they seem to treat low-precision calculations as just another
-source of noise, and still produce accurate results even with numerical formats
-that hold less information.
+### Smaller file sizes {: .hide-from-toc}
 
-## Why Quantize?
+Neural network models require a lot of space on disk. For example, the original
+AlexNet requires over 200 MB for the float format—almost all of that for the
+model's millions of weights. Because the weights are slightly different
+floating point numbers, simple compression formats perform poorly (like zip).
 
-Neural network models can take up a lot of space on disk, with the original
-AlexNet being over 200 MB in float format for example. Almost all of that size
-is taken up with the weights for the neural connections, since there are often
-many millions of these in a single model. Because they're all slightly different
-floating point numbers, simple compression formats like zip don't compress them
-well. They are arranged in large layers though, and within each layer the
-weights tend to be normally distributed within a certain range, for example -3.0
-to 6.0.
+Weights fall in large layers of numerical values. For each layer, weights tend to
+be normally distributed within a range. Quantization can shrink file sizes by
+storing the minimum and maximum weight for each layer, then compress each
+weight's float value to an 8-bit integer representing the closest real number in
+a linear set of 256 within the range.
 
-The simplest motivation for quantization is to shrink file sizes by storing the
-min and max for each layer, and then compressing each float value to an
-eight-bit integer representing the closest real number in a linear set of 256
-within the range. For example with the -3.0 to 6.0 range, a 0 byte would
-represent -3.0, a 255 would stand for 6.0, and 128 would represent about 1.5.
-I'll go into the exact calculations later, since there's some subtleties, but
-this means you can get the benefit of a file on disk that's shrunk by 75%, and
-then convert back to float after loading so that your existing floating-point
-code can work without any changes.
+### Faster inference {: .hide-from-toc}
 
-Another reason to quantize is to reduce the computational resources you need to
-do the inference calculations, by running them entirely with eight-bit inputs
-and outputs. This is a lot more difficult since it requires changes everywhere
-you do calculations, but offers a lot of potential rewards. Fetching eight-bit
-values only requires 25% of the memory bandwidth of floats, so you'll make much
-better use of caches and avoid bottlenecking on RAM access. You can also
-typically use SIMD operations that do many more operations per clock cycle. In
-some case you'll have a DSP chip available that can accelerate eight-bit
-calculations too, which can offer a lot of advantages.
+Since calculations are run entirely on 8-bit inputs and outputs, quantization
+reduces the computational resources needed for inference calculations. This is
+more involved, requiring changes to all floating point calculations, but results
+in a large speed-up for inference time.
 
-Moving calculations over to eight bit will help you run your models faster, and
-use less power (which is especially important on mobile devices). It also opens
-the door to a lot of embedded systems that can't run floating point code
-efficiently, so it can enable a lot of applications in the IoT world.
+### Memory efficiency {: .hide-from-toc}
 
-## Why Not Train in Lower Precision Directly?
+Since fetching 8-bit values only requires 25% of the memory bandwidth of floats,
+more efficient caches avoid bottlenecks for RAM access. In many cases, the power
+consumption for running a neural network is dominated by memory access. The
+savings from using fixed-point 8-bit weights and activations are significant. 
 
-There have been some experiments training at lower bit depths, but the results
-seem to indicate that you need higher than eight bit to handle the back
-propagation and gradients. That makes implementing the training more
-complicated, and so starting with inference made sense. We also already have a
-lot of float models already that we use and know well, so being able to convert
-them directly is very convenient.
+Typically, SIMD operations are available that run more operations per clock
+cycle. In some cases, a DSP chip is available that accelerates 8-bit calculations
+resulting in a massive speedup.
 
-## How Can You Quantize Your Models?
+## Fixed point quantization techniques
 
-TensorFlow has production-grade support for eight-bit calculations built in. It
-also has a process for converting many models trained in floating-point over to
-equivalent graphs using quantized calculations for inference. For example,
-here's how you can translate the latest GoogLeNet model into a version that uses
-eight-bit computations:
+The goal is to use the same precision for weights and activations during both
+training and inference. But an important difference is that training consists of
+a forward pass and a backward pass, while inference only uses a forward pass.
+When we train the model with quantization in the loop, we ensure that the forward
+pass matches precision for both training and inference.
 
-```sh
-curl -L "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz" |
-  tar -C tensorflow/examples/label_image/data -xz
-bazel build tensorflow/tools/graph_transforms:transform_graph
-bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
-  --in_graph=tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb \
-  --out_graph=/tmp/quantized_graph.pb \
-  --inputs=input \
-  --outputs=InceptionV3/Predictions/Reshape_1 \
-  --transforms='add_default_attributes strip_unused_nodes(type=float, shape="1,299,299,3")
-    remove_nodes(op=Identity, op=CheckNumerics) fold_constants(ignore_errors=true)
-    fold_batch_norms fold_old_batch_norms quantize_weights quantize_nodes
-    strip_unused_nodes sort_by_execution_order'
-```
+To minimize the loss in accuracy for fully fixed point models (weights and
+activations), train the model with quantization in the loop. This simulates
+quantization in the forward pass of a model so weights tend towards values that
+perform better during quantized inference. The backward pass uses quantized
+weights and activations and models quantization as a straight through estimator.
+(See Bengio et al., [2013](https://arxiv.org/abs/1308.3432))
 
-This will produce a new model that runs the same operations as the original, but
-with eight bit calculations internally, and all weights quantized as well. If
-you look at the file size, you'll see it's about a quarter of the original (23MB
-versus 91MB). You can still run this model using exactly the same inputs and
-outputs though, and you should get equivalent results. Here's an example:
+Additionally, the minimum and maximum values for activations are determined
+during training. This allows a model trained with quantization in the loop to be
+converted to a fixed point inference model with little effort, eliminating the
+need for a separate calibration step.
 
-```sh
-bazel build tensorflow/examples/label_image:label_image
-bazel-bin/tensorflow/examples/label_image/label_image \
---graph=/tmp/quantized_graph.pb \
-```
+## Quantization training with TensorFlow
 
-You'll see that this runs the newly-quantized graph, and outputs a very similar
-answer to the original.
+TensorFlow can train models with quantization in the loop. Because training
+requires small gradient adjustments, floating point values are still used. To
+keep models as floating point while adding the quantization error in the training
+loop, @{$array_ops#Fake_quantization$fake quantization} nodes simulate the
+effect of quantization in the forward and backward passes.
 
-You can run the same process on your own models saved out as GraphDefs, with the
-input and output names adapted to those your network requires. I recommend that
-you run them through the freeze_graph script first, to convert checkpoints into
-constants stored in the file.
-
-## How Does the Quantization Process Work?
-
-We've implemented quantization by writing equivalent eight-bit versions of
-operations that are commonly used during inference. These include convolution,
-matrix multiplication, activation functions, pooling operations and
-concatenation. The conversion script first replaces all the individual ops it
-knows about with quantized equivalents. These are small sub-graphs that have
-conversion functions before and after to move the data between float and
-eight-bit. Below is an example of what they look like. First here's the original
-Relu operation, with float inputs and outputs:
-
-![Relu Diagram](https://www.tensorflow.org/images/quantization0.png)
-
-Then, this is the equivalent converted subgraph, still with float inputs and
-outputs, but with internal conversions so the calculations are done in eight
-bit.
-
-![Converted Diagram](https://www.tensorflow.org/images/quantization1.png)
-
-The min and max operations actually look at the values in the input float
-tensor, and then feeds them into the Dequantize operation that converts the
-tensor into eight-bits. There are more details on how the quantized representation
-works later on.
-
-Once the individual operations have been converted, the next stage is to remove
-unnecessary conversions to and from float. If there are consecutive sequences of
-operations that all have float equivalents, then there will be a lot of adjacent
-Dequantize/Quantize ops. This stage spots that pattern, recognizes that they
-cancel each other out, and removes them, like this:
-
-![Stripping Diagram](https://www.tensorflow.org/images/quantization2.png)
-
-Applied on a large scale to models where all of the operations have quantized
-equivalents, this gives a graph where all of the tensor calculations are done in
-eight bit, without having to convert to float.
-
-## What Representation is Used for Quantized Tensors?
-
-We approach converting floating-point arrays of numbers into eight-bit
-representations as a compression problem. We know that the weights and
-activation tensors in trained neural network models tend to have values that are
-distributed across comparatively small ranges (for example you might have -15 to
-+15 for weights, -500 to 1000 for activations on an image model, though the
-exact numbers will vary). We also know from experiment that neural nets tend to
-be very robust in the face of noise, and so the noise-like error produced by
-quantizing down to a small set of values will not hurt the precision of the
-overall results very much. We also want to pick a representation that's easy to
-perform calculations on, especially the large matrix multiplications that form
-the bulk of the work that's needed to run a model.
-
-These led us to pick a representation that has two floats to store the overall
-minimum and maximum values that are represented by the lowest and highest
-quantized value. Each entry in the quantized array represents a float value in
-that range, distributed linearly between the minimum and maximum. For example,
-if we have minimum = -10.0, and maximum = 30.0f, and an eight-bit array, here's
-what the quantized values represent:
+Since it's difficult to add these fake quantization operations to all the
+required locations in the model, there's a function available that rewrites the
+training graph. To create a fake quantized training graph:
 
 ```
-Quantized | Float
---------- | -----
-0         | -10.0
-255       | 30.0
-128       | 10.0
+# Build forward pass of model.
+loss = tf.losses.get_total_loss()
+
+# Call the training rewrite which rewrites the graph in-place with
+# FakeQuantization nodes and folds batchnorm for training. It is
+# often needed to fine tune a floating point model for quantization
+# with this training tool. When training from scratch, quant_delay
+# can be used to activate quantization after training to converge
+# with the float graph, effectively fine-tuning the model.
+tf.contrib.quantize.create_training_graph(quant_delay=2000000)
+
+# Call backward pass optimizer as usual.
+optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+optimizer.minimize(loss)
 ```
 
-The advantages of this format are that it can represent arbitrary magnitudes of
-ranges, they don't have to be symmetrical, it can represent signed and unsigned
-values, and the linear spread makes doing multiplications straightforward. There
-are alternatives like [Song Han's code books](http://arxiv.org/pdf/1510.00149.pdf)
-that can use lower bit depths by non-linearly distributing the float values
-across the representation, but these tend to be more expensive to calculate on.
+The rewritten *eval graph* is non-trivially different from the *training graph*
+since the quantization ops affect the batch normalization step. Because of this,
+we've added a separate rewrite for the *eval graph*:
 
-The advantage of having a strong and clear definition of the quantized format is
-that it's always possible to convert back and forth from float for operations
-that aren't quantization-ready, or to inspect the tensors for debugging
-purposes. One implementation detail in TensorFlow that we're hoping to improve
-in the future is that the minimum and maximum float values need to be passed as
-separate tensors to the one holding the quantized values, so graphs can get a
-bit dense!
+```
+# Build eval model
+logits = tf.nn.softmax_cross_entropy_with_logits(...)
 
-The nice thing about the minimum and maximum ranges is that they can often be
-pre-calculated. Weight parameters are constants known at load time, so their
-ranges can also be stored as constants. We often know the ranges for inputs (for
-examples images are usually RGB values in the range 0.0 to 255.0), and many
-activation functions have known ranges too. This can avoid having to analyze the
-outputs of an operation to determine the range, which we need to do for math ops
-like convolution or matrix multiplication which produce 32-bit accumulated
-results from 8-bit inputs.
+# Call the eval rewrite which rewrites the graph in-place with
+# FakeQuantization nodes and fold batchnorm for eval.
+tf.contrib.quantize.create_eval_graph()
 
-## What's Next?
+# Save the checkpoint and eval graph proto to disk for freezing
+# and providing to TFLite.
+with open(eval_graph_file, ‘w’) as f:
+  f.write(str(g.as_graph_def()))
+saver = tf.train.Saver()
+saver.save(sess, checkpoint_name)
+```
 
-We've found that we can get extremely good performance on mobile and embedded
-devices by using eight-bit arithmetic rather than floating-point. You can see
-the framework we use to optimize matrix multiplications at
-[gemmlowp](https://github.com/google/gemmlowp). We still need to apply all the
-lessons we've learned to the TensorFlow ops to get maximum performance on
-mobile, but we're actively working on that. Right now, this quantized
-implementation is a reasonably fast and accurate reference implementation that
-we're hoping will enable wider support for our eight-bit models on a wider
-variety of devices. We also hope that this demonstration will encourage the
-community to explore what's possible with low-precision neural networks.
+Methods to rewrite the training and eval graphs are an active area of research
+and experimentation. Although rewrites and quantized training might not work or
+improve performance for all models, we are working to generalize these
+techniques.
+
+## Generating fully quantized models
+
+The previously demonstrated after-rewrite eval graph only *simulates*
+quantization. To generate real fixed point computations from a trained
+quantization model, convert it to a fixed point kernel. Tensorflow Lite supports
+this conversion from the graph resulting from `create_eval_graph`.
+
+First, create a frozen graph that will be the input for the TensorFlow Lite
+toolchain:
+
+```
+bazel build tensorflow/python/tools:freeze_graph && \
+  bazel-bin/tensorflow/python/tools/freeze_graph \
+  --input_graph=eval_graph_def.pb \
+  --input_checkpoint=checkpoint \
+  --output_graph=frozen_eval_graph.pb --output_node_names=outputs
+```
+
+Provide this to the TensorFlow Lite Optimizing Converter (TOCO) to get a fully
+quantized TensorFLow Lite model:
+
+```
+bazel build tensorflow/contrib/lite/toco:toco && \
+  ./bazel-bin/third_party/tensorflow/contrib/lite/toco/toco \
+  --input_file=frozen_eval_graph.pb \
+  --output_file=tflite_model.tflite \
+  --input_format=TENSORFLOW_GRAPHDEF --output_format=TFLITE \
+  --inference_type=QUANTIZED_UINT8 \
+  --input_shape="1,224, 224,3" \
+  --input_array=input \
+  --output_array=outputs \
+  --std_value=127.5 --mean_value=127.5
+```
+
+See the documentation for @{tf.contrib.quantize} and
+[TensorFlow Lite](/mobile/tflite/).
+
+## Quantized accuracy
+
+Fixed point [MobileNet](https://arxiv.org/abs/1704.0486) models are released with
+8-bit weights and activations. Using the rewriters, these models achieve the
+Top-1 accuracies listed in Table 1. For comparison, the floating point accuracies
+are listed for the same models. The code used to generate these models
+[is available](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md)
+along with links to all of the pretrained mobilenet_v1 models.
+
+<figure>
+  <table>
+    <tr>
+      <th>Image Size</th>
+      <th>Depth</th>
+      <th>Top-1 Accuracy:<br>Floating point</th>
+      <th>Top-1 Accuracy:<br>Fixed point: 8 bit weights and activations</th>
+    </tr>
+    <tr><td>128</td><td>0.25</td><td>0.415</td><td>0.399</td></tr>
+    <tr><td>128</td><td>0.5</td><td>0.563</td><td>0.549</td></tr>
+    <tr><td>128</td><td>0.75</td><td>0.621</td><td>0.598</td></tr>
+    <tr><td>128</td><td>1</td><td>0.652</td><td>0.64</td></tr>
+    <tr><td>160</td><td>0.25</td><td>0.455</td><td>0.435</td></tr>
+    <tr><td>160</td><td>0.5</td><td>0.591</td><td>0.577</td></tr>
+    <tr><td>160</td><td>0.75</td><td>0.653</td><td>0.639</td></tr>
+    <tr><td>160</td><td>1</td><td>0.68</td><td>0.673</td></tr>
+    <tr><td>192</td><td>0.25</td><td>0.477</td><td>0.458</td></tr>
+    <tr><td>192</td><td>0.5</td><td>0.617</td><td>0.604</td></tr>
+    <tr><td>192</td><td>0.75</td><td>0.672</td><td>0.662</td></tr>
+    <tr><td>192</td><td>1</td><td>0.7</td><td>0.69</td></tr>
+    <tr><td>224</td><td>0.25</td><td>0.498</td><td>0.482</td></tr>
+    <tr><td>224</td><td>0.5</td><td>0.633</td><td>0.622</td></tr>
+    <tr><td>224</td><td>0.75</td><td>0.684</td><td>0.679</td></tr>
+    <tr><td>224</td><td>1</td><td>0.709</td><td>0.697</td></tr>
+  </table>
+  <figcaption>
+    <b>Table 1</b>: MobileNet Top-1 accuracy on Imagenet Validation dataset.
+  </figcaption>
+</figure>
+
+## Representation for quantized tensors
+
+TensorFlow approaches the conversion of floating-point arrays of numbers into
+8-bit representations as a compression problem. Since the weights and activation
+tensors in trained neural network models tend to have values that are distributed
+across comparatively small ranges (for example, -15 to +15 for weights or -500 to
+1000 for image model activations). And since neural nets tend to be robust
+handling noise, the error introduced by quantizing to a small set of values
+maintains the precision of the overall results within an acceptable threshold. A
+chosen representation must perform fast calculations, especially the large matrix
+multiplications that comprise the bulk of the computations while running a model.
+
+This is represented with two floats that store the overall minimum and maximum
+values corresponding to the lowest and highest quantized value. Each entry in the
+quantized array represents a float value in that range, distributed linearly
+between the minimum and maximum. For example, with a minimum of -10.0 and maximum
+of 30.0f, and an 8-bit array, the quantized values represent the following:
+
+<figure>
+  <table>
+    <tr><th>Quantized</th><th>Float</th></tr>
+    <tr><td>0</td><td>-10.0</td></tr>
+    <tr><td>255</td><td>30.0</td></tr>
+    <tr><td>128</td><td>10.0</td></tr>
+  </table>
+  <figcaption>
+    <b>Table 2</b>: Example quantized value range
+  </figcaption>
+</figure>
+
+The advantages of this representation format are:
+
+* It efficiently represents an arbitrary magnitude of ranges.
+* The values don't have to be symmetrical.
+* The format represents both signed and unsigned values.
+* The linear spread makes multiplications straightforward.
+
+Alternative techniques use lower bit depths by non-linearly distributing the
+float values across the representation, but currently are more expensive in terms
+of computation time. (See Han et al.,
+[2016](https://arxiv.org/abs/1510.00149).)
+
+The advantage of having a clear definition of the quantized format is that it's
+always possible to convert back and forth from fixed-point to floating-point for
+operations that aren't quantization-ready, or to inspect the tensors for
+debugging.

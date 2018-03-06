@@ -1060,9 +1060,7 @@ def reduce_weighted_logsumexp(
     wx_over_max_absw_x = (
         math_ops.sign(w) * math_ops.exp(log_absw_x - max_log_absw_x))
     sum_wx_over_max_absw_x = math_ops.reduce_sum(
-        wx_over_max_absw_x,
-        axis=axis,
-        keepdims=keep_dims)
+        wx_over_max_absw_x, axis=axis, keepdims=keep_dims)
     if not keep_dims:
       max_log_absw_x = array_ops.squeeze(max_log_absw_x, axis)
     sgn = math_ops.sign(sum_wx_over_max_absw_x)
@@ -1180,8 +1178,7 @@ def process_quadrature_grid_and_probs(
     grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
     probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
                                   dtype=dtype)
-    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keepdims=True,
-                             name="probs")
+    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keepdims=True, name="probs")
 
     def _static_event_size(x):
       """Returns the static size of a specific dimension or `None`."""

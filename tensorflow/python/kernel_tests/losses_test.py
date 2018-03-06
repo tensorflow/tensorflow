@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -32,9 +33,23 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
+
+
+safe_div = losses_impl._safe_div  # pylint: disable=protected-access
+
+
+class SafeDivTest(test.TestCase):
+
+  def testEager(self):
+    with context.eager_mode():
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   constant_op.constant(0.0)), 0.0)
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   0.0), 0.0)
 
 
 class AbsoluteDifferenceLossTest(test.TestCase):

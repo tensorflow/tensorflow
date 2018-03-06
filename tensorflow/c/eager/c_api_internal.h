@@ -43,15 +43,23 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
 };
 
+TFE_ContextDevicePlacementPolicy PlacementPolicy(
+    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy);
+
 struct TFE_Context {
   explicit TFE_Context(const TFE_ContextOptions& opts, TF_Session* s)
-      : policy(opts.policy),
+      : soft_placement(
+            opts.session_options.options.config.allow_soft_placement()),
+        policy(PlacementPolicy(soft_placement, opts.policy)),
         session(s),
         rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
             session->device_mgr, opts.session_options.options.env,
-            TF_GRAPH_DEF_VERSION, &func_lib_def, {})) {}
+            TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
+        log_device_placement(
+            opts.session_options.options.config.log_device_placement()) {}
 
+  const bool soft_placement;
   const TFE_ContextDevicePlacementPolicy policy;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a
@@ -88,11 +96,14 @@ struct TFE_Context {
   std::atomic<bool> should_store_metadata{false};
   tensorflow::mutex metadata_mu;
   tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
+
+  const bool log_device_placement;
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
+                   tensorflow::Device* op_device)
+      : t(t), d(d), op_device(op_device) {}
 
   tensorflow::Tensor t;
   // TODO(ashankar): d == nullptr iff local CPU
@@ -104,6 +115,10 @@ struct TFE_TensorHandle {
   // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
   tensorflow::Device* d;
+
+  // Device in which the op producing this tensor was executed. Equals to d for
+  // constant tensors.
+  tensorflow::Device* op_device;
 };
 
 struct TFE_Op {
@@ -120,6 +135,7 @@ struct TFE_Op {
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
   std::vector<tensorflow::Device*> input_devices;
+  std::vector<tensorflow::Device*> input_op_devices;
   tensorflow::Device* device;
   bool use_xla = false;
 };

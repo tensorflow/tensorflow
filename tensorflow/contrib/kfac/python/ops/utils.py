@@ -241,19 +241,22 @@ class SubGraph(object):
     # Set of all ancestor Tensors, Ops to 'outputs'.
     self._members = set()
 
-    self._recurse_add(outputs)
+    self._iter_add(outputs)
 
-  def _recurse_add(self, nodes):
-    """Recursively adds all of nodes' ancestors."""
-    for node in nodes:
-      if node in self._members:
-        continue
-      self._members.add(node)
+  def _iter_add(self, root):
+    """Iteratively adds all of nodes' ancestors using depth first search."""
+    stack = [root]
+    while stack:
+      nodes = stack.pop()
+      for node in nodes:
+        if node in self._members:
+          continue
+        self._members.add(node)
 
-      if isinstance(node, ops.Tensor):
-        self._recurse_add((node.op,))
-      elif isinstance(node, ops.Operation):
-        self._recurse_add(node.inputs)
+        if isinstance(node, ops.Tensor):
+          stack.append((node.op,))
+        elif isinstance(node, ops.Operation):
+          stack.append(node.inputs)
 
   def is_member(self, node):
     """Check if 'node' is in this subgraph."""

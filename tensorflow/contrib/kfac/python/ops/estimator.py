@@ -83,9 +83,9 @@ class FisherEstimator(object):
   """
 
   def __init__(self,
+               damping_fn,
                variables,
                cov_ema_decay,
-               damping,
                layer_collection,
                estimation_mode="gradients",
                colocate_gradients_with_ops=True,
@@ -94,16 +94,12 @@ class FisherEstimator(object):
     """Create a FisherEstimator object.
 
     Args:
+      damping_fn: Function, accepts no arguments and returns damping value.
       variables: A list of the variables for which to estimate the Fisher. This
           must match the variables registered in layer_collection (if it is not
           None).
       cov_ema_decay: The decay factor used when calculating the covariance
           estimate moving averages.
-      damping: The damping factor used to stabilize training due to errors in
-          the local approximation with the Fisher information matrix, and to
-          regularize the update direction by making it closer to the gradient.
-          (Higher damping means the update looks more like a standard gradient
-          update - see Tikhonov regularization.)
       layer_collection: The layer collection object, which holds the fisher
           blocks, kronecker factors, and losses associated with the
           graph.
@@ -135,10 +131,9 @@ class FisherEstimator(object):
     Raises:
       ValueError: If no losses have been registered with layer_collection.
     """
-
+    self._damping_fn = damping_fn
     self._cov_ema_decay = cov_ema_decay
     self._variables = variables
-    self._damping = damping
     self._estimation_mode = estimation_mode
     self._layers = layer_collection
     self._layers.create_subgraph()
@@ -182,7 +177,7 @@ class FisherEstimator(object):
 
   @property
   def damping(self):
-    return self._damping
+    return self._damping_fn()
 
   def _apply_transformation(self, vecs_and_vars, transform):
     """Applies an block-wise transformation to the corresponding vectors.

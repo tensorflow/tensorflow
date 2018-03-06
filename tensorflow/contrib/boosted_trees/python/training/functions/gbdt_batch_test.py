@@ -47,6 +47,38 @@ def _squared_loss(label, unused_weights, predictions):
   return loss
 
 
+def _append_to_leaf(leaf, c_id, w):
+  """Helper method for building tree leaves.
+
+  Appends weight contributions for the given class index to a leaf node.
+
+  Args:
+    leaf: leaf node to append to.
+    c_id: class Id for the weight update.
+    w: weight contribution value.
+  """
+  leaf.sparse_vector.index.append(c_id)
+  leaf.sparse_vector.value.append(w)
+
+
+def _set_float_split(split, feat_col, thresh, l_id, r_id):
+  """Helper method for building tree float splits.
+
+  Sets split feature column, threshold and children.
+
+  Args:
+    split: split node to update.
+    feat_col: feature column for the split.
+    thresh: threshold to split on forming rule x <= thresh.
+    l_id: left child Id.
+    r_id: right child Id.
+  """
+  split.feature_column = feat_col
+  split.threshold = thresh
+  split.left_id = l_id
+  split.right_id = r_id
+
+
 class GbdtTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -917,6 +949,350 @@ class GbdtTest(test_util.TensorFlowTestCase):
           output.trees[0].nodes[2].leaf.sparse_vector.value[0],
           atol=1e-4, rtol=1e-4)
 
+  def testTrainFnChiefFeatureSelectionReachedLimitNoGoodSplit(self):
+    """Tests the train function running on chief with feature selection."""
+    with self.test_session() as sess:
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.max_number_of_unique_feature_columns = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float_0"] = array_ops.ones([4, 1], dtypes.float32)
+      # Feature 1 is predictive but it won't be used because we have reached the
+      # limit of num_used_handlers >= max_number_of_unique_feature_columns
+      features["dense_float_1"] = array_ops.constant([0, 0, 1, 1],
+                                                     dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = variables.Variable(
+          initial_value=0,
+          name="ensemble_stamp",
+          trainable=False,
+          dtype=dtypes.int64)
+
+      predictions_dict = {
+          "predictions":
+              predictions,
+          "predictions_no_dropout":
+              predictions,
+          "partition_ids":
+              partition_ids,
+          "ensemble_stamp":
+              ensemble_stamp,
+          "num_trees":
+              12,
+          "num_used_handlers":
+              array_ops.constant(1, dtype=dtypes.int64),
+          "used_handlers_mask":
+              array_ops.constant([True, False], dtype=dtypes.bool),
+      }
+
+      labels = array_ops.constant([0, 0, 1, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      # Create train op.
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              _squared_loss(labels, weights, predictions)),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect no splits to be chosen because the quantile
+      # buckets will not be ready.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 0)
+      self.assertEquals(len(output.tree_weights), 0)
+      self.assertEquals(stamp_token.eval(), 1)
+
+      # Update the stamp to be able to run a second time.
+      sess.run([ensemble_stamp.assign_add(1)])
+
+      # On second run, expect a trivial split to be chosen to basically
+      # predict the average.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertAllClose(output.tree_weights, [0.1])
+      self.assertEquals(stamp_token.eval(), 2)
+      expected_tree = """
+          nodes {
+            dense_float_binary_split {
+              feature_column: 0
+              threshold: 1.0
+              left_id: 1
+              right_id: 2
+            }
+            node_metadata {
+              gain: 0
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -0.25
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 0.0
+              }
+            }
+          }"""
+      self.assertProtoEquals(expected_tree, output.trees[0])
+
+  def testTrainFnChiefFeatureSelectionWithGoodSplits(self):
+    """Tests the train function running on chief with feature selection."""
+    with self.test_session() as sess:
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.max_number_of_unique_feature_columns = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float_0"] = array_ops.ones([4, 1], dtypes.float32)
+      # Feature 1 is predictive and is in our selected features so it will be
+      # used even when we're at the limit.
+      features["dense_float_1"] = array_ops.constant([0, 0, 1, 1],
+                                                     dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = variables.Variable(
+          initial_value=0,
+          name="ensemble_stamp",
+          trainable=False,
+          dtype=dtypes.int64)
+
+      predictions_dict = {
+          "predictions":
+              predictions,
+          "predictions_no_dropout":
+              predictions,
+          "partition_ids":
+              partition_ids,
+          "ensemble_stamp":
+              ensemble_stamp,
+          "num_trees":
+              12,
+          "num_used_handlers":
+              array_ops.constant(1, dtype=dtypes.int64),
+          "used_handlers_mask":
+              array_ops.constant([False, True], dtype=dtypes.bool),
+      }
+
+      labels = array_ops.constant([0, 0, 1, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      # Create train op.
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              _squared_loss(labels, weights, predictions)),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect no splits to be chosen because the quantile
+      # buckets will not be ready.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 0)
+      self.assertEquals(len(output.tree_weights), 0)
+      self.assertEquals(stamp_token.eval(), 1)
+
+      # Update the stamp to be able to run a second time.
+      sess.run([ensemble_stamp.assign_add(1)])
+
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+
+      self.assertEquals(len(output.trees), 1)
+      self.assertAllClose(output.tree_weights, [0.1])
+      self.assertEquals(stamp_token.eval(), 2)
+      expected_tree = """
+          nodes {
+            dense_float_binary_split {
+              feature_column: 1
+              left_id: 1
+              right_id: 2
+            }
+            node_metadata {
+              gain: 0.5
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: 0.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector {
+                value: -0.5
+              }
+            }
+          }"""
+      self.assertProtoEquals(expected_tree, output.trees[0])
+
+  def testTrainFnChiefFeatureSelectionReachedLimitIncrementAttemptedLayer(self):
+    """Tests the train function running on chief with feature selection."""
+    with self.test_session() as sess:
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      tree = tree_ensemble_config.trees.add()
+
+      _set_float_split(tree.nodes.add()
+                       .sparse_float_binary_split_default_right.split, 2, 4.0,
+                       1, 2)
+      _append_to_leaf(tree.nodes.add().leaf, 0, 0.5)
+      _append_to_leaf(tree.nodes.add().leaf, 1, 1.2)
+      tree_ensemble_config.tree_weights.append(1.0)
+      metadata = tree_ensemble_config.tree_metadata.add()
+      metadata.is_finalized = False
+      metadata.num_layers_grown = 1
+      tree_ensemble_config = tree_ensemble_config.SerializeToString()
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config=tree_ensemble_config,
+          name="tree_ensemble")
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.max_number_of_unique_feature_columns = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      # Both features will be disabled since the feature selection limit is
+      # already reached.
+      features["dense_float_0"] = array_ops.ones([4, 1], dtypes.float32)
+      features["dense_float_1"] = array_ops.constant([0, 0, 1, 1],
+                                                     dtypes.float32)
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features)
+
+      predictions = array_ops.constant(
+          [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
+      partition_ids = array_ops.zeros([4], dtypes.int32)
+      ensemble_stamp = variables.Variable(
+          initial_value=0,
+          name="ensemble_stamp",
+          trainable=False,
+          dtype=dtypes.int64)
+
+      predictions_dict = {
+          "predictions":
+              predictions,
+          "predictions_no_dropout":
+              predictions,
+          "partition_ids":
+              partition_ids,
+          "ensemble_stamp":
+              ensemble_stamp,
+          "num_trees":
+              12,
+          # We have somehow reached our limit 1. Both of the handlers will be
+          # disabled.
+          "num_used_handlers":
+              array_ops.constant(1, dtype=dtypes.int64),
+          "used_handlers_mask":
+              array_ops.constant([False, False], dtype=dtypes.bool),
+      }
+
+      labels = array_ops.constant([0, 0, 1, 1], dtypes.float32)
+      weights = array_ops.ones([4, 1], dtypes.float32)
+      # Create train op.
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              _squared_loss(labels, weights, predictions)),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # On first run, expect no splits to be chosen because the quantile
+      # buckets will not be ready.
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      self.assertEquals(len(output.trees), 1)
+      self.assertEquals(output.growing_metadata.num_layers_attempted, 1)
+      self.assertEquals(stamp_token.eval(), 1)
+
+      # Update the stamp to be able to run a second time.
+      sess.run([ensemble_stamp.assign_add(1)])
+
+      train_op.run()
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+      # Make sure the trees are not modified, but the num_layers_attempted is
+      # incremented so that eventually the training stops.
+      self.assertEquals(len(output.trees), 1)
+      self.assertEquals(len(output.trees[0].nodes), 3)
+
+      self.assertEquals(output.growing_metadata.num_layers_attempted, 2)
 
 if __name__ == "__main__":
   googletest.main()

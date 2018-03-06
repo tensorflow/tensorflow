@@ -535,6 +535,13 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           // If no operand has a compatible shape, prefer an operand that has
           // the same rank at least.
           for (const HloInstruction* operand : operands) {
+            // Skip tuple-shaped operands; calling ShapeUtil::Rank on a
+            // tuple-shaped Shape is illegal.  Perhaps more correct would be to
+            // recurse into them, but TODO(kramerb): Remove this code after
+            // assigning layouts to fusion nodes.
+            if (ShapeUtil::IsTuple(operand->shape())) {
+              continue;
+            }
             if (ShapeUtil::Rank(*input_shape) ==
                 ShapeUtil::Rank(operand->shape())) {
               // Do not use CopyLayoutBetweenShapes because input_shape and
@@ -2062,6 +2069,11 @@ GetHloBufferSlices(const HloInstruction* hlo,
   }
 
   return slices;
+}
+
+Status IrEmitterUnnested::HandleGather(HloInstruction* gather) {
+  // TODO(b/72710576): Gather is not implemented on GPUs
+  return Unimplemented("Gather is not implemented on GPUs.");
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(

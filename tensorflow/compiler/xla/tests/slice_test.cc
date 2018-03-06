@@ -237,6 +237,12 @@ INSTANTIATE_TEST_CASE_P(
     SliceR1TestInstantiation,
     SliceR1Test,
     ::testing::Values(
+// TODO(b/69425338): This uses too much memory on GPU.
+#ifndef XLA_TEST_BACKEND_GPU
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
+#endif
         R1Spec{10, 0, 0, 1},
         R1Spec{10, 7, 7, 1},
         R1Spec{10, 0, 5, 1},
@@ -267,13 +273,15 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{64 * 1024, 1024 + 1, 63 * 1024 - 1, 1},
         R1Spec{64 * 1024, 32 * 1024, 33 * 1024, 1},
         R1Spec{64 * 1024, 32 * 1024 + 1, 33 * 1024 - 1, 1},
-        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1},
-// TODO(b/69425338): This uses too much memory on GPU.
-#ifndef XLA_TEST_BACKEND_GPU
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
-        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
-#endif
+        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1}
+    ),
+    SliceR1TestDataToString
+);
+
+INSTANTIATE_TEST_CASE_P(
+    SliceStridedR1TestInstantiation,
+    SliceR1Test,
+    ::testing::Values(
         R1Spec{10, 2, 4, 2},
         R1Spec{10, 0, 10, 2},
         R1Spec{10, 0, 10, 3},
@@ -285,8 +293,24 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{2047, 1024 - 24, 1024 + 160, 31},
         R1Spec{2047, 1, 2046, 3 * 128},
         R1Spec{4096, 1024 + 3, 4095, 500},
-        R1Spec{8192, 0, 8192, 1024 * 3 + 400}
-        ),
+        R1Spec{8192, 0, 8192, 1024 * 3 + 400},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 2},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 8},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 7},
+        R1Spec{1024 * 1024, 0, 1024 * 1024, 125},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 - 9, 125},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024, 3, 1024 * 512 - 9, 125},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 2},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 8},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 7},
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125}
+    ),
     SliceR1TestDataToString
 );
 // clang-format on

@@ -136,6 +136,9 @@ struct SplitOptionsT;
 struct StridedSliceOptions;
 struct StridedSliceOptionsT;
 
+struct LogSoftmaxOptions;
+struct LogSoftmaxOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -240,11 +243,14 @@ enum BuiltinOperator {
   BuiltinOperator_EXP = 47,
   BuiltinOperator_TOPK_V2 = 48,
   BuiltinOperator_SPLIT = 49,
+  BuiltinOperator_LOG_SOFTMAX = 50,
+  BuiltinOperator_DELEGATE = 51,
+  BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM = 52,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SPLIT
+  BuiltinOperator_MAX = BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[47] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[50] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -292,7 +298,10 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[47] {
     BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
     BuiltinOperator_EXP,
     BuiltinOperator_TOPK_V2,
-    BuiltinOperator_SPLIT
+    BuiltinOperator_SPLIT,
+    BuiltinOperator_LOG_SOFTMAX,
+    BuiltinOperator_DELEGATE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM
   };
   return values;
 }
@@ -349,6 +358,9 @@ inline const char **EnumNamesBuiltinOperator() {
     "EXP",
     "TOPK_V2",
     "SPLIT",
+    "LOG_SOFTMAX",
+    "DELEGATE",
+    "BIDIRECTIONAL_SEQUENCE_LSTM",
     nullptr
   };
   return names;
@@ -396,11 +408,12 @@ enum BuiltinOptions {
   BuiltinOptions_ExpOptions = 33,
   BuiltinOptions_TopKV2Options = 34,
   BuiltinOptions_SplitOptions = 35,
+  BuiltinOptions_LogSoftmaxOptions = 36,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SplitOptions
+  BuiltinOptions_MAX = BuiltinOptions_LogSoftmaxOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[36] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[37] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -437,7 +450,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[36] {
     BuiltinOptions_StridedSliceOptions,
     BuiltinOptions_ExpOptions,
     BuiltinOptions_TopKV2Options,
-    BuiltinOptions_SplitOptions
+    BuiltinOptions_SplitOptions,
+    BuiltinOptions_LogSoftmaxOptions
   };
   return values;
 }
@@ -480,6 +494,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "ExpOptions",
     "TopKV2Options",
     "SplitOptions",
+    "LogSoftmaxOptions",
     nullptr
   };
   return names;
@@ -632,6 +647,10 @@ template<> struct BuiltinOptionsTraits<TopKV2Options> {
 
 template<> struct BuiltinOptionsTraits<SplitOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SplitOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LogSoftmaxOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LogSoftmaxOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -944,6 +963,14 @@ struct BuiltinOptionsUnion {
   const SplitOptionsT *AsSplitOptions() const {
     return type == BuiltinOptions_SplitOptions ?
       reinterpret_cast<const SplitOptionsT *>(value) : nullptr;
+  }
+  LogSoftmaxOptionsT *AsLogSoftmaxOptions() {
+    return type == BuiltinOptions_LogSoftmaxOptions ?
+      reinterpret_cast<LogSoftmaxOptionsT *>(value) : nullptr;
+  }
+  const LogSoftmaxOptionsT *AsLogSoftmaxOptions() const {
+    return type == BuiltinOptions_LogSoftmaxOptions ?
+      reinterpret_cast<const LogSoftmaxOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3568,6 +3595,46 @@ inline flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(
 
 flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const StridedSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct LogSoftmaxOptionsT : public flatbuffers::NativeTable {
+  typedef LogSoftmaxOptions TableType;
+  LogSoftmaxOptionsT() {
+  }
+};
+
+struct LogSoftmaxOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LogSoftmaxOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  LogSoftmaxOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LogSoftmaxOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LogSoftmaxOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogSoftmaxOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LogSoftmaxOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit LogSoftmaxOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LogSoftmaxOptionsBuilder &operator=(const LogSoftmaxOptionsBuilder &);
+  flatbuffers::Offset<LogSoftmaxOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LogSoftmaxOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  LogSoftmaxOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogSoftmaxOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -3790,6 +3857,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SplitOptions *builtin_options_as_SplitOptions() const {
     return builtin_options_type() == BuiltinOptions_SplitOptions ? static_cast<const SplitOptions *>(builtin_options()) : nullptr;
   }
+  const LogSoftmaxOptions *builtin_options_as_LogSoftmaxOptions() const {
+    return builtin_options_type() == BuiltinOptions_LogSoftmaxOptions ? static_cast<const LogSoftmaxOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -3954,6 +4024,10 @@ template<> inline const TopKV2Options *Operator::builtin_options_as<TopKV2Option
 
 template<> inline const SplitOptions *Operator::builtin_options_as<SplitOptions>() const {
   return builtin_options_as_SplitOptions();
+}
+
+template<> inline const LogSoftmaxOptions *Operator::builtin_options_as<LogSoftmaxOptions>() const {
+  return builtin_options_as_LogSoftmaxOptions();
 }
 
 struct OperatorBuilder {
@@ -5415,6 +5489,29 @@ inline flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(flatbu
       _shrink_axis_mask);
 }
 
+inline LogSoftmaxOptionsT *LogSoftmaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LogSoftmaxOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LogSoftmaxOptions::UnPackTo(LogSoftmaxOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<LogSoftmaxOptions> LogSoftmaxOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogSoftmaxOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLogSoftmaxOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogSoftmaxOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LogSoftmaxOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateLogSoftmaxOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -5735,6 +5832,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SplitOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_LogSoftmaxOptions: {
+      auto ptr = reinterpret_cast<const LogSoftmaxOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -5893,6 +5994,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SplitOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_LogSoftmaxOptions: {
+      auto ptr = reinterpret_cast<const LogSoftmaxOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -6039,6 +6144,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SplitOptionsT *>(value);
       return CreateSplitOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_LogSoftmaxOptions: {
+      auto ptr = reinterpret_cast<const LogSoftmaxOptionsT *>(value);
+      return CreateLogSoftmaxOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6183,6 +6292,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SplitOptions: {
       value = new SplitOptionsT(*reinterpret_cast<SplitOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LogSoftmaxOptions: {
+      value = new LogSoftmaxOptionsT(*reinterpret_cast<LogSoftmaxOptionsT *>(u.value));
       break;
     }
     default:
@@ -6364,6 +6477,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SplitOptions: {
       auto ptr = reinterpret_cast<SplitOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LogSoftmaxOptions: {
+      auto ptr = reinterpret_cast<LogSoftmaxOptionsT *>(value);
       delete ptr;
       break;
     }
