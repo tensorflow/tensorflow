@@ -34,16 +34,13 @@ def my_model(features, labels, mode):
     else:
       loss = None
     if mode == tf.estimator.ModeKeys.TRAIN:
-      train = tf.train.GradientDescentOptimizer(0.01).minimize(loss,
-                                                               tf.train.get_global_step())
+      optimizer = tf.train.GradientDescentOptimizer(0.01)
+      train = optimizer.minimize(loss, tf.train.get_global_step())
     else:
       train = None
 
-  return tf.estimator.EstimatorSpec(
-    mode=mode,
-    predictions=x,
-    loss=loss,
-    train_op=train)
+  return tf.estimator.EstimatorSpec(mode=mode, predictions=x, loss=loss,
+                                    train_op=train)
 
 
 def main():
