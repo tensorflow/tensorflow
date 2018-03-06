@@ -2254,7 +2254,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   auto weight_rmgr = trt_rmgr->getManager("WeightStore");
   auto ws = new tensorflow::tensorrt::TRTWeightStore();
   TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
-  Converter converter(op_res->network_, ws, s.precision_mode == 1);
+  Converter converter(op_res->network_, ws, s.precision_mode == FP16MODE);
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (const std::pair<int, int>& input : s.input_inds) {
@@ -2460,7 +2460,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   TF_CHECK_OK(weight_rmgr->Create(engine_name, engine_name, ws));
 
   // Build the network
-  Converter converter(trt_network.get(), ws, s.precision_mode == 1);
+  Converter converter(trt_network.get(), ws, s.precision_mode == FP16MODE);
 
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
@@ -2607,7 +2607,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   trt_builder->setMaxWorkspaceSize(s.max_workspace_size_bytes);
   VLOG(0) << "Max batch size= " << s.max_batch_size
           << " max workspace size= " << s.max_workspace_size_bytes;
-  if (s.precision_mode == 1) {
+  if (s.precision_mode == FP16MODE) {
     trt_builder->setHalf2Mode(true);
     VLOG(0) << "Using FP16 precision mode";
   }

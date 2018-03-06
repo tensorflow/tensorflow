@@ -401,7 +401,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     ConvertGraphParams p(graph, output_names, subgraph_node_ids, max_batch_size,
                          max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);
-    if (precision_mode == FP16MODE) {
+    if (precision_mode == INT8MODE) {
       TF_RETURN_IF_ERROR(GetCalibNode(&p));
     } else {
       tensorflow::Status status = ConvertSubGraphToTensorRT(&p);
