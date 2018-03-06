@@ -30,7 +30,7 @@ The `tf.data` API introduces two new abstractions to TensorFlow:
   element of a `Dataset` when executed, and typically acts as the interface
   between input pipeline code and your model. The simplest iterator is a
   "one-shot iterator", which is associated with a particular `Dataset` and
-  iterates through it once. For more sophisticated users, the
+  iterates through it once. For more sophisticated uses, the
   `Iterator.initializer` operation enables you to reinitialize and parameterize
   an iterator with different datasets, so that you can, for example, iterate
   over training and validation data multiple times in the same program.
@@ -65,7 +65,7 @@ type of iterator, and the options are outlined below.
 
 ### Dataset structure
 
-A dataset comprises elements that each has the same structure. An element
+A dataset comprises elements that each have the same structure. An element
 contains one or more `tf.Tensor` objects, called *components*. Each component
 has a `tf.DType` representing the type of elements in the tensor, and a
 `tf.TensorShape` representing the (possibly partially specified) static shape of
