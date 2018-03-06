@@ -99,7 +99,7 @@ class Network(base_layer.Layer):
     self._losses = []   # Used in symbolic mode only.
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    if context.in_eager_mode:
+    if context.in_eager_mode():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
