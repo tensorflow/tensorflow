@@ -2059,20 +2059,25 @@ class MetaGraphTest(test.TestCase):
     self._testGraphExtensionRestore(test_dir)
     self._testRestoreFromTrainGraphWithControlContext(test_dir)
 
-  def _testWhileLoopAndGradientSerDes(self, outer_body_fn):
-    # Build a while loop with `outer_body_fn`, export it, and verify that it can
-    # be imported and the gradient can be built and run correctly.
+  def _testGradientSerDes(self, graph_fn):
+    """Tests that gradients can be computed after exporting and importing.
 
+    Builds a graph, exports it, and verifies that it can be imported and the
+    gradient can be built and run correctly.
+
+    Args:
+      graph_fn: takes a single float Tensor argument as input, outputs a single
+        Tensor
+    """
     test_dir = self._get_test_dir("nested_control_flow")
     filename = os.path.join(test_dir, "metafile")
     saver_ckpt = os.path.join(test_dir, "saver.ckpt")
 
     # Create while loop using `outer_body_fn`.
     with ops_lib.Graph().as_default():
-      var = variables.Variable(0)
+      var = variables.Variable(0.0)
       var_name = var.name
-      _, output = control_flow_ops.while_loop(lambda i, x: i < 5, outer_body_fn,
-                                              [0, var])
+      output = graph_fn(var)
       output_name = output.name
       init_op = variables.global_variables_initializer()
 
@@ -2109,12 +2114,21 @@ class MetaGraphTest(test.TestCase):
         actual_grad_value = sess.run(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
+  def _testWhileLoopAndGradientSerDes(self, outer_body_fn):
+    # Build a while loop with `outer_body_fn`, export it, and verify that it can
+    # be imported and the gradient can be built and run correctly.
+    # pylint: disable=g-long-lambda
+    return self._testGradientSerDes(
+        lambda x: control_flow_ops.while_loop(
+            lambda i, y: i < 5, outer_body_fn, [0, x])[1])
+    # pylint: enable=g-long-lambda
+
   def testNestedWhileLoopsSerDes(self):
     # Test two simple nested while loops.
     def body(i, x):
       _, r = control_flow_ops.while_loop(lambda j, y: j < 3,
                                          lambda j, y: (j + 1, y + x),
-                                         [0, 0])
+                                         [0, 0.0])
       return i + 1, x + r
     self._testWhileLoopAndGradientSerDes(body)
 
@@ -2127,11 +2141,24 @@ class MetaGraphTest(test.TestCase):
           lambda: control_flow_ops.while_loop(
               lambda j, y: j < 3,
               lambda j, y: (j + 1, y + x),
-              [0, 0])[1],
+              [0, 0.0])[1],
           lambda: x)
       return i + 1, cond_result
     # pylint: enable=g-long-lambda
     self._testWhileLoopAndGradientSerDes(body)
+
+  def testNestedCondsSerDes(self):
+    # Test conds in a cond.
+    # pylint: disable=g-long-lambda
+    self._testGradientSerDes(lambda x: control_flow_ops.cond(
+        x > 0,
+        lambda: control_flow_ops.cond(x > 3,
+                                      lambda: array_ops.identity(x),
+                                      lambda: math_ops.multiply(x, 2.0)),
+        lambda: control_flow_ops.cond(x < -3,
+                                      lambda: constant_op.constant(1.0),
+                                      lambda: math_ops.multiply(x, -1.0))))
+    # pylint: enable=g-long-lambda
 
   def testStrippedOpListDef(self):
     with self.test_session():
