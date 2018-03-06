@@ -188,7 +188,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       min_damping: `float`(Optional), Minimum value the damping parameter
         can take. Default value 1e-5.
       damping_adaptation_decay: `float`(Optional), The `damping` parameter is
-        multipled by the `damping_adaptation_decay` every
+        multiplied by the `damping_adaptation_decay` every
         `damping_adaptation_interval` number of iterations. Default value 0.99.
       damping_adaptation_interval: `int`(Optional), Number of steps in between
         updating the `damping` parameter. Default value 5.

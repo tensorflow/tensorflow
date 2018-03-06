@@ -511,7 +511,7 @@ def sample_annealed_importance_chain(
       current_state_parts = (list(current_state)
                              if _is_list_like(current_state)
                              else [current_state])
-      # TODO(b/72994218): Consider refactoring things to avoid this unecessary
+      # TODO(b/72994218): Consider refactoring things to avoid this unnecessary
       # call.
       ais_weights += ((target_log_prob_fn(*current_state_parts)
                        - proposal_log_prob_fn(*current_state_parts))

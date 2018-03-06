@@ -60,7 +60,7 @@ def _is_namedtuple(instance, strict=False):
   Returns:
     True if `instance` is a `namedtuple`.
   """
-  # Attemp to limit the test to plain namedtuple (not stuff inheriting from it).
+  # Attempt to limit the test to plain namedtuple (not stuff inheriting from it).
   if not isinstance(instance, tuple):
     return False
   if strict and instance.__class__.__base__ != tuple:

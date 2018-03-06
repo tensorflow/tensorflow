@@ -1243,7 +1243,7 @@ def main(_):
                         (datetime.now(), i, cross_entropy_value))
         # TODO(suharshs): Make this use an eval graph, to avoid quantization
         # moving averages being updated by the validation set, though in
-        # practice this makes a negligable difference.
+        # practice this makes a negligible difference.
         validation_bottlenecks, validation_ground_truth, _ = (
             get_random_cached_bottlenecks(
                 sess, image_lists, FLAGS.validation_batch_size, 'validation',
