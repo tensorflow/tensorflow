@@ -142,10 +142,13 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L),
       "Disabling signals");
-  TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
-      libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
-                                 CURL_HTTP_VERSION_2_0),
-      "Setting HTTP version");
+  // We don't log an error here because HTTP/2 support may not be built into
+  // cURL, and we'd spam the logs.
+  //
+  // TODO(jhseu): Enable HTTP/2.
+  CURLcodeToStatus(libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                                              CURL_HTTP_VERSION_2_0))
+      .IgnoreError();
 
   // Set up the progress meter.
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(

@@ -2308,6 +2308,11 @@ class _InputsWithStoppingSignals(_Inputs):
     """
 
     def _map_fn(*args):
+      """The map fn to insert signals."""
+      if len(args) == 1:
+        # Unpack the single Tensor/dict argument as features. This is required
+        # for the input_fn returns no labels.
+        args = args[0]
       features, labels = _Inputs._parse_inputs(args)
       new_input_dict = {}
       new_input_dict['features'] = features

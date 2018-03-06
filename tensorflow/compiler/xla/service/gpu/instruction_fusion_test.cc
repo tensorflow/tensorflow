@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -161,6 +162,50 @@ TEST_F(InstructionFusionTest, GetTupleElementFused) {
   // Check that operands of 'fused_root' are GTE.
   EXPECT_EQ(HloOpcode::kGetTupleElement, fused_root->operand(0)->opcode());
   EXPECT_EQ(HloOpcode::kGetTupleElement, fused_root->operand(1)->opcode());
+}
+
+TEST_F(InstructionFusionTest, BitcastIntoAdd) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
+
+    ENTRY BroadcastIntoAdd {
+      p0 = f32[4,1,1]{2,1,0} parameter(0)
+      p1 = f32[4,1]{1,0} parameter(1)
+      bitcast = f32[4,1]{1,0} bitcast(p0)
+      ROOT add = f32[4,1] add(bitcast, p1)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Add(op::Bitcast(op::Parameter()), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, AddIntoBitcast) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
+
+    ENTRY BroadcastIntoAdd {
+      p0 = f32[4,1,1]{2,1,0} parameter(0)
+      p1 = f32[4,1]{1,0} parameter(1)
+      add = f32[4,1] add(p0, p1)
+      ROOT bitcast = f32[4,1,1] bitcast(add)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Bitcast(op::Add(op::Parameter(), op::Parameter())));
 }
 
 }  // namespace gpu

@@ -643,6 +643,16 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([outputs])), 0)
 
+  def testLayerGraphSetInFirstApply(self):
+    with ops.Graph().as_default():
+      layer = core_layers.Dense(1)  # Graph at construction time is ignored
+    with ops.Graph().as_default():
+      layer.apply(constant_op.constant([[1]]))
+      # layer is now bound to second Graph
+    with ops.Graph().as_default(), self.assertRaisesRegexp(
+        ValueError, 'Input graph and Layer graph are not the same'):
+      layer.apply(constant_op.constant([[1]]))
+
 
 if __name__ == '__main__':
   test.main()

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import operator
 import threading
@@ -41,26 +40,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-
-
-class _TensorCache(object):
-  """Simple cache which evicts items based on length in a FIFO manner."""
-
-  def __init__(self, max_items=256):
-    self._data = collections.OrderedDict()
-    self._max_items = max_items if max_items else 256
-
-  def put(self, key, value):
-    self._data[key] = value
-
-    if len(self._data) > self._max_items:
-      self._data.popitem(last=False)
-
-  def get(self, key):
-    return self._data.get(key, None)
-
-  def flush(self):
-    self._data = {}
 
 
 _op_attr_type_cache = {}
@@ -622,7 +601,7 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_zeros_cache = _TensorCache()
+_zeros_cache = context._TensorCache()  # pylint: disable=protected-access
 
 
 def _fast_fill(value, shape, dtype):

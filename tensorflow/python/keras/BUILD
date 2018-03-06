@@ -9,6 +9,11 @@ package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
+config_setting(
+    name = "empty_condition",
+    values = {"define": "UNUSED=unused"},
+)
+
 py_library(
     name = "keras",
     srcs = [
@@ -126,7 +131,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
+        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -165,7 +174,6 @@ py_library(
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/saved_model",
-        "@six_archive//:six",
     ],
 )
 

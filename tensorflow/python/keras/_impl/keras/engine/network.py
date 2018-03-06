@@ -99,7 +99,7 @@ class Network(base_layer.Layer):
     self._losses = []   # Used in symbolic mode only.
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    if context.in_eager_mode:
+    if context.in_eager_mode():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
@@ -396,7 +396,7 @@ class Network(base_layer.Layer):
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
-      _, output_masks = self._run_internal_graph(inputs, masks)
+      _, output_masks = self._run_internal_graph(inputs, mask=masks)
       return output_masks
 
   @property
@@ -495,7 +495,10 @@ class Network(base_layer.Layer):
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
@@ -530,7 +533,10 @@ class Network(base_layer.Layer):
     if context.in_eager_mode():
       return losses
 
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):

@@ -388,10 +388,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   if context.in_eager_mode() and not isinstance(
       input, (sparse_tensor.SparseTensor,
               sparse_tensor.SparseTensorValue)):
-    size_ = 1
-    for dim in ops.convert_to_tensor(input)._shape_tuple():  # pylint: disable=protected-access
-      size_ *= dim
-    return size_
+    return np.prod(ops.convert_to_tensor(input)._shape_tuple())  # pylint: disable=protected-access
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
@@ -797,8 +794,8 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable.  See ${tf.Tensor$`Tensor.__getitem__`}
-  for detailed examples of slicing.
+  of a variable. See @{tf.Tensor.__getitem__} for detailed examples
+  of slicing.
 
   This function in addition also allows assignment to a sliced range.
   This is similar to `__setitem__` functionality in Python. However,

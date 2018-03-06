@@ -145,7 +145,7 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
-      LOG(ERROR) << "Could not find device: " << device_name;
+      VLOG(1) << "Could not find device: " << device_name;
       return nullptr;
     }
   }

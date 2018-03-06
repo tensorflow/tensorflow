@@ -30,6 +30,7 @@ limitations under the License.
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -73,6 +74,7 @@ using tensorflow::NodeBuilder;
 using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
+using tensorflow::OutputTensor;
 using tensorflow::PartialTensorShape;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
@@ -2680,6 +2682,24 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
   TF_Run_Helper(session->session, handle, nullptr, input_pairs, output_names,
                 output_values, target_names, nullptr, status);
+}
+
+unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
+                                     TF_Tensor** result, TF_Status* status) {
+  *result = nullptr;
+  mutex_lock l(graph->mu);
+  OutputTensor tensor(&output.oper->node, output.index);
+  bool evaluated;
+  Tensor result_tensor;
+  status->status = EvaluateConstantTensor(
+      tensor, graph->refiner, *graph->graph.op_registry(),
+      graph->graph.versions().producer(), &evaluated, &result_tensor);
+  if (evaluated) {
+    DCHECK(status->status.ok());
+    *result = TF_TensorFromTensor(result_tensor, status);
+    if (!status->status.ok()) evaluated = false;
+  }
+  return evaluated;
 }
 
 TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {

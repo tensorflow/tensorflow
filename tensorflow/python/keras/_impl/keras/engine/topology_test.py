@@ -531,7 +531,9 @@ class TopologyConstructionTest(test.TestCase):
 
       e = keras.layers.Input(shape=(32,), name='input_e')
       f = keras.layers.Input(shape=(32,), name='input_f')
+      self.assertEqual(len(model.inputs), 2)
       g, h = model([e, f])
+      self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
       self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
@@ -713,7 +715,9 @@ class TopologyConstructionTest(test.TestCase):
 
     j = keras.layers.Input(shape=(32,), name='input_j')
     k = keras.layers.Input(shape=(32,), name='input_k')
+    self.assertEqual(len(model.inputs), 2)
     m, n = model([j, k])
+    self.assertEqual(len(model.inputs), 2)
     tf_model = keras.models.Model([j, k], [m, n])
 
     j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
