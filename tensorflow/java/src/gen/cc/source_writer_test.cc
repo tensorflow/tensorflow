@@ -243,26 +243,25 @@ TEST(StreamTest, Types) {
   SourceBufferWriter writer;
   Type generic = Type::Generic("T").add_supertype(Type::Class("Number"));
 
-  writer.Append(Type::Int()).Append(", ")
-        .Append(Type::Class("String")).Append(", ")
-        .Append(generic).Append(", ")
-        .Append(Type::ListOf(generic)).Append(", ")
-        .Append(Type::ListOf(Type::IterableOf(generic))).Append(", ")
-        .Append(Type::ListOf(Type::Generic()));
+  writer.AppendType(Type::Int()).Append(", ")
+        .AppendType(Type::Class("String")).Append(", ")
+        .AppendType(generic).Append(", ")
+        .AppendType(Type::ListOf(generic)).Append(", ")
+        .AppendType(Type::ListOf(Type::IterableOf(generic))).Append(", ")
+        .AppendType(Type::ListOf(Type::Generic()));
 
   const char* expected =
       "int, String, T, List<T>, List<Iterable<T>>, List<?>";
   ASSERT_STREQ(expected, writer.str().data());
 }
 
-TEST(StreamTest, Snippets) {
+TEST(StreamTest, FileSnippet) {
   SourceBufferWriter writer;
-  Snippet snippet =
-      Snippet::Create(io::JoinPath(kGenResourcePath, "test.snippet.java"));
+  const string& fname = "tensorflow/java/src/gen/resources/test.snippet.java";
 
-  writer.Write(snippet.data())
+  writer.WriteFromFile(fname)
         .BeginBlock()
-        .Write(snippet.data())
+        .WriteFromFile(fname)
         .EndBlock();
 
   const char* expected =

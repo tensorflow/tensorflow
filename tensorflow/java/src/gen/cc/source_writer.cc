@@ -21,26 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace java {
-namespace {
-
-template <typename TypeVisitor>
-void VisitType(const Type& type, TypeVisitor* visitor) {
-  (*visitor)(type);
-  for (auto it = type.parameters().cbegin(); it != type.parameters().cend();
-      ++it) {
-    VisitType(*it, visitor);
-  }
-  for (auto it = type.annotations().cbegin(); it != type.annotations().cend();
-      ++it) {
-    VisitType(*it, visitor);
-  }
-  for (auto it = type.supertypes().cbegin(); it != type.supertypes().cend();
-      ++it) {
-    VisitType(*it, visitor);
-  }
-}
-
-}  // namespace
 
 SourceWriter::SourceWriter() {
   // push an empty generic namespace at start, for simplification
@@ -58,21 +38,27 @@ SourceWriter& SourceWriter::Prefix(const char* line_prefix) {
   return *this;
 }
 
-SourceWriter& SourceWriter::Write(const string& str) {
+SourceWriter& SourceWriter::Write(const StringPiece& str) {
   size_t line_pos = 0;
   do {
     size_t start_pos = line_pos;
     line_pos = str.find('\n', start_pos);
     if (line_pos != string::npos) {
       ++line_pos;
-      Append(StringPiece(str.data() + start_pos, line_pos - start_pos));
+      Append(str.substr(start_pos, line_pos - start_pos));
       newline_ = true;
     } else {
-      Append(StringPiece(str.data() + start_pos, str.size() - start_pos));
+      Append(str.substr(start_pos, str.size() - start_pos));
     }
   } while (line_pos != string::npos && line_pos < str.size());
 
   return *this;
+}
+
+SourceWriter& SourceWriter::WriteFromFile(const string& fname, Env* env) {
+  string data_;
+  TF_CHECK_OK(ReadFileToString(env, fname, &data_));
+  return Write(data_);
 }
 
 SourceWriter& SourceWriter::Append(const StringPiece& str) {
@@ -86,8 +72,7 @@ SourceWriter& SourceWriter::Append(const StringPiece& str) {
   return *this;
 }
 
-// Writes the signature of a Java type.
-SourceWriter& SourceWriter::Append(const Type& type) {
+SourceWriter& SourceWriter::AppendType(const Type& type) {
   if (type.kind() == Type::Kind::GENERIC && type.name().empty()) {
     Append("?");
   } else {
@@ -95,12 +80,11 @@ SourceWriter& SourceWriter::Append(const Type& type) {
   }
   if (!type.parameters().empty()) {
     Append("<");
-    for (std::vector<Type>::const_iterator it = type.parameters().cbegin();
-        it != type.parameters().cend(); ++it) {
-      if (it != type.parameters().cbegin()) {
+    for (const Type& t : type.parameters()) {
+      if (&t != &type.parameters().front()) {
         Append(", ");
       }
-      Append(*it);
+      AppendType(t);
     }
     Append(">");
   }
@@ -116,11 +100,10 @@ SourceWriter& SourceWriter::EndLine() {
 SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
   if (!method.constructor()) {
-    VisitType(method.return_type(), generic_namespace);
+    generic_namespace->Visit(method.return_type());
   }
-  for (std::vector<Variable>::const_iterator it = method.arguments().cbegin();
-      it != method.arguments().cend(); ++it) {
-    VisitType(it->type(), generic_namespace);
+  for (const Variable& v : method.arguments()) {
+    generic_namespace->Visit(v.type());
   }
   EndLine();
   WriteDoc(method.description(), method.return_description(),
@@ -134,15 +117,14 @@ SourceWriter& SourceWriter::BeginMethod(const Method& method, int modifiers) {
     Append(" ");
   }
   if (!method.constructor()) {
-    Append(method.return_type()).Append(" ");
+    AppendType(method.return_type()).Append(" ");
   }
   Append(method.name()).Append("(");
-  for (std::vector<Variable>::const_iterator it = method.arguments().cbegin();
-      it != method.arguments().cend(); ++it) {
-    if (it != method.arguments().cbegin()) {
+  for (const Variable& v : method.arguments()) {
+    if (&v != &method.arguments().front()) {
       Append(", ");
     }
-    Append(it->type()).Append(it->variadic() ? "... " : " ").Append(it->name());
+    AppendType(v.type()).Append(v.variadic() ? "... " : " ").Append(v.name());
   }
   return Append(")").BeginBlock();
 }
@@ -159,20 +141,13 @@ SourceWriter& SourceWriter::BeginType(const Type& type,
     Append("package ").Append(type.package()).Append(";").EndLine();
   }
   if (dependencies != nullptr && !dependencies->empty()) {
-    std::set<string> imports;
-    auto import_scanner = [&](const Type& t) {
-      if (!t.package().empty() && t.package() != type.package()) {
-        imports.insert(t.package() + '.' + t.name());
-      }
-    };
-    for (std::vector<Type>::const_iterator it = dependencies->cbegin();
-        it != dependencies->cend(); ++it) {
-      VisitType(*it, &import_scanner);
+    TypeImporter type_importer(type.package());
+    for (const Type& t : *dependencies) {
+      type_importer.Visit(t);
     }
     EndLine();
-    for (std::set<string>::const_iterator it = imports.cbegin();
-        it != imports.cend(); ++it) {
-      Append("import ").Append(*it).Append(";").EndLine();
+    for (const string& s : type_importer.imports()) {
+      Append("import ").Append(s).Append(";").EndLine();
     }
   }
   return BeginInnerType(type, modifiers);
@@ -180,29 +155,30 @@ SourceWriter& SourceWriter::BeginType(const Type& type,
 
 SourceWriter& SourceWriter::BeginInnerType(const Type& type, int modifiers) {
   GenericNamespace* generic_namespace = PushGenericNamespace(modifiers);
-  VisitType(type, generic_namespace);
+  generic_namespace->Visit(type);
   EndLine();
   WriteDoc(type.description());
   if (!type.annotations().empty()) {
     WriteAnnotations(type.annotations());
   }
   WriteModifiers(modifiers);
-  if (type.kind() != Type::Kind::CLASS) {
-    // Add support for other kind of types only when required
-    LOG(FATAL) << type.kind() << " types are not supported yet";
-  }
+  CHECK_EQ(Type::Kind::CLASS, type.kind()) << ": Not supported yet";
   Append("class ").Append(type.name());
   if (!generic_namespace->declared_types().empty()) {
     WriteGenerics(generic_namespace->declared_types());
   }
   if (!type.supertypes().empty()) {
-    std::deque<Type>::const_iterator first = type.supertypes().cbegin();
-    if (first->kind() == Type::CLASS) {  // superclass is always first in list
-      Append(" extends ").Append(*first++);
-    }
-    for (std::deque<Type>::const_iterator it = first;
-        it != type.supertypes().cend(); ++it) {
-      Append((it == first) ? " implements " : ", ").Append(*it);
+    bool first_interface = true;
+    for (Type t : type.supertypes()) {
+      if (t.kind() == Type::CLASS) {  // superclass is always first in list
+        Append(" extends ");
+      } else if (first_interface) {
+        Append(" implements ");
+        first_interface = false;
+      } else {
+        Append(", ");
+      }
+      AppendType(t);
     }
   }
   return BeginBlock();
@@ -214,13 +190,13 @@ SourceWriter& SourceWriter::EndType() {
   return *this;
 }
 
-SourceWriter& SourceWriter::WriteFields(
-    const std::vector<Variable>& fields, int modifiers) {
+SourceWriter& SourceWriter::WriteFields(const std::vector<Variable>& fields,
+    int modifiers) {
   EndLine();
-  for (std::vector<Variable>::const_iterator it = fields.cbegin();
-      it != fields.cend(); ++it) {
+  for (const Variable& v : fields) {
     WriteModifiers(modifiers);
-    Append(it->type()).Append(" ").Append(it->name()).Append(";").EndLine();
+    AppendType(v.type()).Append(" ").Append(v.name()).Append(";");
+    EndLine();
   }
   return *this;
 }
@@ -259,11 +235,10 @@ SourceWriter& SourceWriter::WriteDoc(const string& description,
       EndLine();
       do_line_break = false;
     }
-    for (std::vector<Variable>::const_iterator it = parameters->begin();
-        it != parameters->end(); ++it) {
-      Append("@param ").Append(it->name());
-      if (!it->description().empty()) {
-        Append(" ").Write(it->description());
+    for (const Variable& v : *parameters) {
+      Append("@param ").Append(v.name());
+      if (!v.description().empty()) {
+        Append(" ").Write(v.description());
       }
       EndLine();
     }
@@ -280,11 +255,10 @@ SourceWriter& SourceWriter::WriteDoc(const string& description,
 
 SourceWriter& SourceWriter::WriteAnnotations(
     const std::vector<Annotation>& annotations) {
-  for (std::vector<Annotation>::const_iterator it = annotations.cbegin();
-      it != annotations.cend(); ++it) {
-    Append("@" + it->name());
-    if (!it->attributes().empty()) {
-      Append("(").Append(it->attributes()).Append(")");
+  for (const Annotation& a : annotations) {
+    Append("@" + a.name());
+    if (!a.attributes().empty()) {
+      Append("(").Append(a.attributes()).Append(")");
     }
     EndLine();
   }
@@ -294,14 +268,13 @@ SourceWriter& SourceWriter::WriteAnnotations(
 SourceWriter& SourceWriter::WriteGenerics(
     const std::vector<const Type*>& generics) {
   Append("<");
-  for (std::vector<const Type*>::const_iterator it = generics.cbegin();
-      it != generics.cend(); ++it) {
-    if (it != generics.cbegin()) {
+  for (const Type* pt : generics) {
+    if (pt != generics.front()) {
       Append(", ");
     }
-    Append((*it)->name());
-    if (!(*it)->supertypes().empty()) {
-      Append(" extends ").Append((*it)->supertypes().front());
+    Append(pt->name());
+    if (!pt->supertypes().empty()) {
+      Append(" extends ").AppendType(pt->supertypes().front());
     }
   }
   return Append(">");
@@ -325,13 +298,32 @@ void SourceWriter::PopGenericNamespace() {
   delete generic_namespace;
 }
 
-void SourceWriter::GenericNamespace::operator()(const Type& type) {
+void SourceWriter::TypeVisitor::Visit(const Type& type) {
+  DoVisit(type);
+  for (const Type& t : type.parameters()) {
+    DoVisit(t);
+  }
+  for (const Type& t : type.annotations()) {
+    DoVisit(t);
+  }
+  for (const Type& t : type.supertypes()) {
+    DoVisit(t);
+  }
+}
+
+void SourceWriter::GenericNamespace::DoVisit(const Type& type) {
   // ignore non-generic parameters, wildcards and generics already declared
   if (type.kind() == Type::GENERIC
       && !type.IsWildcard()
       && generic_names_.find(type.name()) == generic_names_.end()) {
     declared_types_.push_back(&type);
     generic_names_.insert(type.name());
+  }
+}
+
+void SourceWriter::TypeImporter::DoVisit(const Type& type) {
+  if (!type.package().empty() && type.package() != current_package_) {
+    imports_.insert(type.package() + '.' + type.name());
   }
 }
 

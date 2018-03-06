@@ -20,13 +20,8 @@ limitations under the License.
 #include <vector>
 #include <deque>
 
-#include "tensorflow/core/platform/env.h"
-
 namespace tensorflow {
 namespace java {
-
-/// Path to the directory containing resource files for this generator
-const char kGenResourcePath[] = "tensorflow/java/src/gen/resources/";
 
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
@@ -252,22 +247,6 @@ class Method {
 
   Method(const string& name, const Type& return_type, bool constructor)
     : name_(name), return_type_(return_type), constructor_(constructor) {}
-};
-
-// A piece of code to read from a file.
-class Snippet {
- public:
-  static Snippet Create(const string& fname, Env* env = Env::Default()) {
-    return Snippet(fname, env);
-  }
-  const string& data() const { return data_; }
-
- private:
-  string data_;
-
-  Snippet(const string& fname, Env* env) {
-    TF_CHECK_OK(ReadFileToString(env, fname, &data_));
-  }
 };
 
 }  // namespace java

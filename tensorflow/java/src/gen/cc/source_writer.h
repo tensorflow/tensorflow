@@ -22,12 +22,13 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {
 namespace java {
 
-// A utility class for writing Java source code.
+// A class for writing Java source code.
 class SourceWriter {
  public:
   SourceWriter();
@@ -54,24 +55,31 @@ class SourceWriter {
   // An empty value ("") will remove any line prefix that was previously set.
   SourceWriter& Prefix(const char* line_prefix);
 
-  // Writes a block of code or text.
+  // Writes a source code snippet.
   //
   // The data might potentially contain newline characters, therefore it will
   // be scanned to ensure that each line is indented and prefixed properly,
   // making it a bit slower than Append().
-  SourceWriter& Write(const string& text);
+  SourceWriter& Write(const StringPiece& text);
 
-  // Appends a piece of code or text.
+  // Writes a source code snippet read from a file.
+  //
+  // All lines of the file at the provided path will be read and written back
+  // to the output of this writer in regard of its current attributes (e.g.
+  // the indentation, prefix, etc.)
+  SourceWriter& WriteFromFile(const string& fname, Env* env = Env::Default());
+
+  // Appends a piece of source code.
   //
   // It is expected that no newline character is present in the data provided,
   // otherwise Write() must be used.
   SourceWriter& Append(const StringPiece& str);
 
-  // Appends the signature of a type to the current line.
+  // Appends a type to the current line.
   //
   // The type is written in its simple form (i.e. not prefixed by its package)
   // and followed by any parameter types it has enclosed in brackets (<>).
-  SourceWriter& Append(const Type& type);
+  SourceWriter& AppendType(const Type& type);
 
   // Appends a newline character.
   //
@@ -79,7 +87,7 @@ class SourceWriter {
   // of the current indentation.
   SourceWriter& EndLine();
 
-  // Begins a block of code.
+  // Begins a block of source code.
   //
   // This method appends a new opening brace to the current data and indent the
   // next lines according to Google Java Style Guide. The block can optionally
@@ -88,7 +96,7 @@ class SourceWriter {
     return Append(newline_ ? "{" : " {").EndLine().Indent(2);
   }
 
-  // Ends the current block of code
+  // Ends the current block of source code.
   //
   // This method appends a new closing brace to the current data and outdent the
   // next lines back to the margin used before BeginBlock() was invoked.
@@ -148,20 +156,48 @@ class SourceWriter {
   virtual void DoAppend(const StringPiece& str) = 0;
 
  private:
-  class GenericNamespace {
+  // A utility base class for visiting elements of a type.
+  class TypeVisitor {
+   public:
+    virtual ~TypeVisitor() = default;
+    void Visit(const Type& type);
+
+   protected:
+    virtual void DoVisit(const Type& type) = 0;
+  };
+
+  // A utility class for keeping track of declared generics in a given scope.
+  class GenericNamespace : public TypeVisitor {
    public:
     GenericNamespace() = default;
     explicit GenericNamespace(const GenericNamespace* parent)
       : generic_names_(parent->generic_names_) {}
-
     std::vector<const Type*> declared_types() {
       return declared_types_;
     }
-    void operator()(const Type& type);  // type visitor
+   protected:
+    virtual void DoVisit(const Type& type);
 
    private:
     std::vector<const Type*> declared_types_;
     std::set<string> generic_names_;
+  };
+
+  // A utility class for collecting a list of import statements to declare.
+  class TypeImporter : public TypeVisitor {
+   public:
+    explicit TypeImporter(const string& current_package)
+      : current_package_(current_package) {}
+    virtual ~TypeImporter() = default;
+    const std::set<string> imports() {
+      return imports_;
+    }
+   protected:
+    virtual void DoVisit(const Type& type);
+
+   private:
+    string current_package_;
+    std::set<string> imports_;
   };
 
   string left_margin_;
