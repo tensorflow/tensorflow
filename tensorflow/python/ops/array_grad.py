@@ -744,11 +744,11 @@ def _ExtractImagePatchesGrad(op, grad):
                                 array_ops.stack((-1, batch_size * channels)))
 
   # Source indices
-  input_rc_size = rows_in * cols_in
+  input_size = rows_in * cols_in
   src_idx = math_ops.cast(
     math_ops.linspace(1.0,
-                      math_ops.cast(input_rc_size, ops.dtypes.float32),
-                      input_rc_size),
+                      math_ops.cast(input_size, ops.dtypes.float32),
+                      input_size),
     ops.dtypes.int64)
   src_idx = array_ops.reshape(src_idx,
                               array_ops.stack((rows_in, cols_in)))
@@ -759,11 +759,11 @@ def _ExtractImagePatchesGrad(op, grad):
   valid_idx = array_ops.where(src_idx > 0)
 
   # Destination indices
-  total_output_size = rows_out * cols_out * ksize_r * ksize_c
+  output_size = rows_out * cols_out * ksize_r * ksize_c
   dst_idx = math_ops.cast(
     math_ops.linspace(0.0,
-                      math_ops.cast(total_output_size - 1, ops.dtypes.float32),
-                      total_output_size),
+                      math_ops.cast(output_size - 1, ops.dtypes.float32),
+                      output_size),
     ops.dtypes.int64)
   dst_idx = array_ops.reshape(dst_idx, (-1,))
 
@@ -771,8 +771,7 @@ def _ExtractImagePatchesGrad(op, grad):
                          dst_idx), axis=1)
   idx = array_ops.gather(idx, valid_idx)[:, 0]
 
-  sp_shape = array_ops.stack((rows_in * cols_in,
-                              rows_out * cols_out * ksize_r * ksize_c))
+  sp_shape = array_ops.stack((input_size, output_size))
 
   sp_mat = sparse_tensor.SparseTensor(
     idx, array_ops.ones((array_ops.shape(idx)[0],), dtype=ops.dtypes.float32),
