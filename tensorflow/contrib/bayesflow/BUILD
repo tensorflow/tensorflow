@@ -57,29 +57,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "csiszar_divergence_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/csiszar_divergence_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/distributions:distributions_py",
-        "//tensorflow/python/ops/distributions",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-    ],
-    tags = [
-        "manual",  # b/64490288
-        "notap",
-    ],
-)
-
-cuda_py_test(
     name = "custom_grad_test",
     size = "small",
     srcs = ["python/kernel_tests/custom_grad_test.py"],
@@ -227,6 +204,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+    tags = ["nomsan"],
 )
 
 cuda_py_test(

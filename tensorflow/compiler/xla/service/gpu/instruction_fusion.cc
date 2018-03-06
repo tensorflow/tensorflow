@@ -26,6 +26,7 @@ namespace {
 
 bool IsFusile(const HloInstruction& hlo) {
   return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
+         hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||

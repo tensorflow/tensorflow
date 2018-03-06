@@ -125,7 +125,7 @@ def multi_gpu_model(model, gpus):
     if gpus <= 1:
       raise ValueError('For multi-gpu usage to be effective, '
                        'call `multi_gpu_model` with `gpus >= 2`. '
-                       'Received: `gpus=%d`' % gpus)
+                       'Received: `gpus=%s`' % gpus)
     num_gpus = gpus
     target_gpu_ids = range(num_gpus)
 
@@ -136,7 +136,7 @@ def multi_gpu_model(model, gpus):
   ]
   for device in target_devices:
     if device not in available_devices:
-      raise ValueError('To call `multi_gpu_model` with `gpus=%d`, '
+      raise ValueError('To call `multi_gpu_model` with `gpus=%s`, '
                        'we expect the following devices to be available: %s. '
                        'However this machine only has: %s. '
                        'Try reducing `gpus`.' % (gpus, target_devices,

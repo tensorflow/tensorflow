@@ -127,7 +127,7 @@ class Layer(checkpointable.CheckpointableBase):
     # return tensors. When using graph execution, _losses is a list of ops.
     self._losses = []
     self._reuse = kwargs.get('_reuse')
-    self._graph = ops.get_default_graph()
+    self._graph = None  # Will be set at build time.
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
@@ -630,7 +630,8 @@ class Layer(checkpointable.CheckpointableBase):
     # the same graph as where it was created.
     if in_graph_mode:
       try:
-        ops._get_graph_from_inputs(input_list, graph=self.graph)  # pylint: disable=protected-access
+        # Set layer's "graph" at build time
+        self._graph = ops._get_graph_from_inputs(input_list, graph=self._graph)  # pylint: disable=protected-access
       except ValueError as e:
         raise ValueError('Input graph and Layer graph are not the same: %s' % e)
     if in_graph_mode or in_deferred_mode:

@@ -218,6 +218,7 @@ _allowed_symbols_gradients = [
     # Documented in training.py:
     # Not importing training.py to avoid complex graph dependencies.
     "AggregationMethod",
+    "custom_gradient",
     "gradients",  # tf.gradients = gradients.gradients
     "hessians",
 ]
