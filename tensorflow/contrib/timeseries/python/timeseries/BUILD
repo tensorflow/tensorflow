@@ -425,6 +425,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip_gpu",  # b/63391119
+        "nomsan",
     ],
     deps = [
         ":feature_keys",
