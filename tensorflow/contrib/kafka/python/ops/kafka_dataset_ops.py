@@ -59,8 +59,8 @@ class KafkaDataset(Dataset):
         timeout, dtype=dtypes.int64, name="timeout")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._topics, self._servers, self._group,
-                                       self._eof, self._timeout)
+    return gen_dataset_ops.kafka_dataset(self._topics, self._servers,
+                                         self._group, self._eof, self._timeout)
 
   @property
   def output_classes(self):
