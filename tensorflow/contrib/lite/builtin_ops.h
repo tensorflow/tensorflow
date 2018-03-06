@@ -77,6 +77,7 @@ typedef enum {
   kTfLiteBuiltinLogSoftmax = 50,
   kTfLiteBuiltinDelegate = 51,
   kTfLiteBuiltinBidirectionalSequenceLstm = 52,
+  kTfLiteBuiltinCast = 53,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
