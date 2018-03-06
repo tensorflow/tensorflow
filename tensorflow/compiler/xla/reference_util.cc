@@ -30,52 +30,48 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::TransposeArray2D(
-    const Array2D<float>& operand) {
-  auto result = MakeUnique<Array2D<float>>(operand.width(), operand.height());
-  for (int64 w = 0; w < operand.width(); ++w) {
-    for (int64 h = 0; h < operand.height(); ++h) {
-      (*result)(w, h) = operand(h, w);
-    }
-  }
+namespace {
 
+template <typename T>
+std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
+    const Array2D<T>& lhs, const Array2D<T>& rhs,
+    const std::function<void(
+        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
+        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
+  CHECK_EQ(lhs.width(), rhs.height());
+  int m = lhs.height();
+  int n = rhs.width();
+  int k = lhs.width();
+  auto result = MakeUnique<Array2D<T>>(m, n);
+  // Because Eigen is a header-oriented library, make sure that the Eigen code
+  // is the same as the code used by the CPU backend (otherwise the linker will
+  // randomly pick *some* definition).
+  impl_fn(
+      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
+      k,
+      /*transpose_lhs=*/0,
+      /*transpose_rhs=*/0);
   return result;
+}
+
+}  // namespace
+
+/* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
+    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
+  return MatmulArray2DImpl<Eigen::half>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = MakeUnique<Array2D<float>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
+  return MatmulArray2DImpl<float>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = MakeUnique<Array2D<double>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  __xla_cpu_runtime_EigenSingleThreadedMatMulF64(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
+  return MatmulArray2DImpl<double>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(

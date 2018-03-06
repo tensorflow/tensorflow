@@ -872,7 +872,7 @@ class ComputationBuilder {
                   Window* window);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  ComputationDataHandle UnaryOp(UnaryOperation binop,
+  ComputationDataHandle UnaryOp(UnaryOperation unop,
                                 const ComputationDataHandle& operand);
 
   // Internal helper method that does the building for an arbitrary binary op.

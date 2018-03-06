@@ -31,12 +31,16 @@ PYTHON_LITERALS = {
 DEFAULT_UNCOMPILED_MODULES = set((
     ('tensorflow',),
     (utils.__name__,),
+
+    # All of tensorflow's subpackages. Unlike the root tf module, they don't
+    # have well-known names. Not refering to the module directly to avoid
+    # circular imports.
+    (utils.__name__[:-len('.contrib.py2tf.utils')],),
 ))
 
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
 # TODO(mdan): Also allow controlling the generated names (for testability).
-# TODO(mdan): Make sure copybara renames the reference below.
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',
     'import tensorflow as tf',

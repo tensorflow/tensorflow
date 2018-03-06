@@ -187,20 +187,21 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
     Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
-    Output addn =
-        ops::AddN(s.WithOpName("addn"),
-                  {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
-                   matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
+    Output concat =
+        ops::Concat(s.WithOpName("concat"),
+                    {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
+                     matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2},
+                    0);
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    item.fetch = {"addn", "matmul3", "matmul4"};
+    item.fetch = {"concat", "matmul3", "matmul4"};
 
     ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef output;
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
 
-    EXPECT_EQ(27, output.node_size());
+    EXPECT_EQ(28, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -286,10 +287,9 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("x", node.input(0));
         EXPECT_EQ("^zeros", node.input(1));
       } else if (name == "sub2") {
-        // We don't handle this case yet.
-        EXPECT_EQ("Sub", node.op());
-        EXPECT_EQ("zeros", node.input(0));
-        EXPECT_EQ("y", node.input(1));
+        EXPECT_EQ("Neg", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
       }
       const std::set<string> square_zero_const{"mul1", "mul2",    "mul5",
                                                "mul6", "matmul1", "matmul2"};
@@ -415,7 +415,6 @@ TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_UnknownOutputShape) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(15, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
@@ -1548,8 +1547,158 @@ TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {
   EXPECT_EQ(6, found);
 }
 
+TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
+  std::function<Output(const Scope&, InputList)> addn_fun =
+      [](const Scope& scope, InputList inputs) {
+        return ops::AddN(scope, inputs);
+      };
+  std::function<Output(const Scope&, InputList)> accumulate_fun =
+      [](const Scope& scope, InputList inputs) {
+        return ops::AccumulateNV2(scope, inputs, TensorShape({2, 2}));
+      };
+  for (bool use_add_n : {true, false}) {
+    auto fun = use_add_n ? addn_fun : accumulate_fun;
+    const string op_name = use_add_n ? "AddN" : "AccumulateNV2";
+    Scope s = Scope::NewRootScope();
+    Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({2, 2})));
+    Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({2, 2})));
+    Output z = ops::Placeholder(s.WithOpName("z"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({2, 2})));
+    Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {2, 2});
+    Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2, 2});
+    Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {2, 2});
+    Output acc0 = fun(s.WithOpName("acc0"), {c1, c2, c3});
+    Output acc1 = fun(s.WithOpName("acc1"), {x, y, z});
+    Output acc2 = fun(s.WithOpName("acc2"), {c1, x, y});
+    Output acc3 = fun(s.WithOpName("acc3"), {c1, c2, z});
+    Output acc4 = fun(s.WithOpName("acc4"), {c1, y, c2});
+    Output acc5 = fun(s.WithOpName("acc5"), {x, c1, c2});
+    Output acc6 = fun(s.WithOpName("acc6"), {x, c1, y, c2});
+    Output concat = ops::Concat(s.WithOpName("concat"),
+                                {acc0, acc1, acc2, acc3, acc4, acc5, acc6}, 0);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"concat"};
+
+    ConstantFolding optimizer(nullptr /* cpu_device */);
+    GraphDef output;
+    Status status = optimizer.Optimize(nullptr, item, &output);
+    TF_EXPECT_OK(status);
+
+    EXPECT_EQ(17, output.node_size());
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "acc0") {
+        EXPECT_EQ("Const", node.op());
+      }
+      if (node.name() == "acc1") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(3, node.input_size());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("y", node.input(1));
+        EXPECT_EQ("z", node.input(2));
+      }
+      if (node.name() == "acc2") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(3, node.input_size());
+        EXPECT_EQ("c1", node.input(0));
+        EXPECT_EQ("x", node.input(1));
+        EXPECT_EQ("y", node.input(2));
+      }
+      if (node.name() == "acc3") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(2, node.input_size());
+        EXPECT_EQ("ConstantFolding/acc3_partial_split_2", node.input(0));
+        EXPECT_EQ("z", node.input(1));
+      }
+      if (node.name() == "acc4") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(2, node.input_size());
+        EXPECT_EQ("ConstantFolding/acc4_partial_split_2", node.input(0));
+        EXPECT_EQ("y", node.input(1));
+      }
+      if (node.name() == "acc5") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(2, node.input_size());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("ConstantFolding/acc5_partial_split_2", node.input(1));
+      }
+      if (node.name() == "acc6") {
+        EXPECT_EQ(op_name, node.op());
+        EXPECT_EQ(3, node.input_size());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("ConstantFolding/acc6_partial_split_2", node.input(1));
+        EXPECT_EQ("y", node.input(2));
+      }
+      if (StringPiece(node.name()).starts_with("ConstantFolding/")) {
+        EXPECT_EQ("Const", node.op());
+      }
+    }
+
+    std::vector<string> fetch = {"acc0"};
+    auto tensors_expected = EvaluateNodes(item.graph, fetch);
+    auto tensors = EvaluateNodes(output, fetch);
+    EXPECT_EQ(1, tensors_expected.size());
+    EXPECT_EQ(1, tensors.size());
+    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  }
+}
+
+TEST_F(ConstantFoldingTest, IdenticalN) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({})));
+  Output c1 = ops::Const(scope.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(scope.WithOpName("c2"), 2.0f, {2, 2});
+  auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {c1, x, c2});
+  auto id0 = ops::Identity(scope.WithOpName("id0"), id_n[1]);
+  auto id1 = ops::Identity(scope.WithOpName("id1"), id_n[0]);
+  auto add0 = ops::Add(scope.WithOpName("add0"), id_n[0], id_n[1]);
+  auto add1 = ops::Add(scope.WithOpName("add1"), id_n[0], id_n[2]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("id0");
+  item.fetch.push_back("id1");
+  item.fetch.push_back("add0");
+  item.fetch.push_back("add1");
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(8, output.node_size());
+  // id_n should remain unchanged.
+  EXPECT_EQ("id_n", output.node(3).name());
+  EXPECT_EQ(3, output.node(3).input_size());
+  EXPECT_EQ("c1", output.node(3).input(0));
+  EXPECT_EQ("x", output.node(3).input(1));
+  EXPECT_EQ("c2", output.node(3).input(2));
+  // id0 is unchanged.
+  EXPECT_EQ("id0", output.node(4).name());
+  EXPECT_EQ(1, output.node(4).input_size());
+  // id1 should have the constant input forwarded to it,
+  // and a control dependency from id_n.
+  EXPECT_EQ("id1", output.node(5).name());
+  EXPECT_EQ(2, output.node(5).input_size());
+  EXPECT_EQ("c1", output.node(5).input(0));
+  EXPECT_EQ("^id_n", output.node(5).input(1));
+
+  EXPECT_EQ("add0", output.node(6).name());
+  EXPECT_EQ(2, output.node(6).input_size());
+  EXPECT_EQ("c1", output.node(6).input(0));
+  EXPECT_EQ("id_n:1", output.node(6).input(1));
+
+  EXPECT_EQ("add1", output.node(7).name());
+  EXPECT_EQ(3, output.node(7).input_size());
+  EXPECT_EQ("c1", output.node(7).input(0));
+  EXPECT_EQ("c2", output.node(7).input(1));
+  EXPECT_EQ("^id_n", output.node(7).input(2));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
-
-//  LocalWords:  NewRootScope

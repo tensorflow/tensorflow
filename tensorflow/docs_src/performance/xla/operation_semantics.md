@@ -45,27 +45,30 @@ feature dimension in `operand`), the operation calculates the gradients with
 respect to `operand`, `offset` and `scale` across all the other dimensions. The
 `feature_index` must be a valid index for the feature dimension in `operand`.
 
-The three gradients are defined by the following formulas:
+The three gradients are defined by the following formulas (Assuming a
+4-dimensional tensor as `operand` and (l) is the index for feature dimension):
 
-\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+\\( coef_l = \frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (\nabla y_{ijkl} * (x_{ijkl} - \mu_l) / (\sigma^2_{l}+\epsilon)) \\)
 
-\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+\\( \nabla x_{ijkl} = \gamma_{l} * (1/\sqrt{\sigma^2_{l}+\epsilon}) * [\nabla y_{ijkl} - mean(\nabla y) - (x_{ijkl} - \mu_{l}) * coef_l] \\)
 
-\\( \nabla \beta = sum(\nabla y) \\)
+\\( \nabla \beta_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} \\)
+
+\\( \nabla \gamma_l = \sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h \nabla y_{ijkl} * ((x_{ijkl} - \mu_l) / \sqrt{\sigma^2_{l}+\epsilon}) \\)
 
 The inputs `mean` and `variance` represents moments value
 across batch and spatial dimensions.
 
 The output type is a tuple of three handles:
 
-|Outputs       | Type                    | Semantics                           |
-|------------- | ----------------------- | ------------------------------------|
-|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `operand`                           :
-|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `scale`                             :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `offset`                            :
+|Outputs       | Type                    | Semantics                            |
+|------------- | ----------------------- | ------------------------------------ |
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `operand` (\\( \nabla x\\))          :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `scale` (\\( \nabla \gamma\\))       :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input       |
+:              :                         : `offset`(\\( \nabla \beta\\))        :
 
 
 ## BatchNormInference
@@ -119,7 +122,7 @@ Normalizes an array across batch and spatial dimensions.
 | Arguments       | Type                    | Semantics                        |
 | --------------- | ----------------------- | -------------------------------- |
 | `operand`       | `ComputationDataHandle` | n dimensional array to be        |
-:                 :                         : normalized                       :
+:                 :                         : normalized (x)                   :
 | `scale`         | `ComputationDataHandle` | 1 dimensional array              |
 :                 :                         : (\\(\gamma\\))                   :
 | `offset`        | `ComputationDataHandle` | 1 dimensional array              |
@@ -1050,6 +1053,9 @@ For a more intuitive description, see the "Informal Description" section below.
 :                  :                         : indices of the slices we're     :
 :                  :                         : we're stitching together into   :
 :                  :                         : the output tensor.              :
+|`index_vector_dim`  | `int64`               | The dimension in                |
+:                  :                         : `gather_indices` that contains  :
+:                  :                         : the starting indices.           :
 |`output_window_dims` | `ArraySlice<int64>`  | The set of dimensions in the    |
 :                  :                         : output shape that are _window   :
 :                  :                         : dimensions_ (defined below).    :
@@ -1066,22 +1072,20 @@ For a more intuitive description, see the "Informal Description" section below.
 :                  :            : `output_window_dims`) and the window         :
 :                  :            : dimensions that are elided (via              :
 :                  :            : `elided_window_dims`).                       :
-|`gather_dims_to_operand_dims` | `ArraySlice<int64>` | A dimension map (the  |
+|`gather_dims_to_operand_dims` | `ArraySlice<int64>` | A dimension map (the    |
 :                  :            : array is interpreted as mapping `i` to       :
 :                  :            : `gather_dims_to_operand_dims[i]`)  from      :
 :                  :            : the gather indices in `gather_indices` to    :
 :                  :            : the operand index space.  It has to be       :
 :                  :            : one-to-one and total.                        :
 
-If `gather_indices` is a vector with `N` elements then we implicitly reshape it
-to a tensor of shape `[N,1]` before proceeding.
-
 For every index `Out` in the output tensor, we compute two things (more
 precisely described later):
 
-  - An index into the first `gather_indices.rank` - `1` dimensions of
-    `gather_indices`, which gives us a starting index of a slice, _operand
-    slice_, in the operand tensor.
+  - An index into `gather_indices.rank` - `1` dimensions of `gather_indices`,
+    which gives us a starting index of a slice, _operand slice_, in the operand
+    tensor.  These `gather_indices.rank` - `1` dimensions are all the dimensions
+    in `gather_indices` except `index_vector_dim`.
 
   - A _window index_ that has the same rank as the operand.  This index is
     composed of the values in `Out` at dimensions `output_window_dims`, embedded
@@ -1093,29 +1097,42 @@ should be present in the output at index `Out`.
 The output is a tensor of rank `output_window_dims.size` + `gather_indices.rank`
 - `1`.  Additionally, as a shorthand, we define `output_gather_dims` of type
 `ArraySlice<int64>` as the set of dimensions in the output shape but not in
-`output_window_dims`, in ascending order.  E.g. if the output tensor has rank 5,
-`output_window_dims` is {`2`, `4`} then `output_gather_dims` is {`0`, `1`, `3`}
+`output_window_dims`, in ascending order.  E.g. if the output tensor has rank
+`5`, `output_window_dims` is {`2`, `4`} then `output_gather_dims` is {`0`, `1`,
+`3`}
+
+If `index_vector_dim` is equal to `gather_indices.rank` we implicitly
+consider `gather_indices` to have a trailing `1` dimension (i.e. if
+`gather_indices` was of shape `[6,7]` and `index_vector_dim` is `2` then
+we implicitly consider the shape of `gather_indices` to be `[6,7,1]`).
 
 The bounds for the output tensor along dimension `i` is computed as follows:
 
   1. If `i` is present in `output_gather_dims` (i.e. is equal to
-    `output_gather_dims[k]` for some `k`) then we pick the corresponding
-    dimension bounds out of `gather_indices.shape` (i.e. pick
-    `gather_indices.shape.dims[k]`).
+     `output_gather_dims[k]` for some `k`) then we pick the corresponding
+     dimension bounds out of `gather_indices.shape`, skipping
+     `index_vector_dim` (i.e. pick `gather_indices.shape.dims`[`k`] if `k`
+     < `index_vector_dim` and `gather_indices.shape.dims`[`k`+`1`]
+     otherwise).
   2. If `i` is present in `output_window_dims` (i.e. equal to
-     `output_window_dims[k]` for some `k`) then we pick the corresponding bound
-     out of `window_bounds` after accounting for `elided_window_dims` (i.e. we
-     pick `adjusted_window_bounds[k]` where `adjusted_window_bounds` is
-     `window_bounds` with the bounds at indices `elided_window_dims` removed).
+     `output_window_dims`[`k`] for some `k`) then we pick the corresponding
+     bound out of `window_bounds` after accounting for `elided_window_dims`
+     (i.e. we pick `adjusted_window_bounds`[`k`] where `adjusted_window_bounds`
+     is `window_bounds` with the bounds at indices `elided_window_dims`
+     removed).
 
 The operand index `In` corresponding to an output index `Out` is computed as
 follows:
 
   1. Let `G` = { `Out`[`k`] for `k` in `output_gather_dims` }.  Use `G` to slice
-     out vector `S` such that `S`[`i`] = `gather_indices`[`G`, `i`].
-  2. Create an index, `S`<sub>`in`</sub>, into `operand` using `S` by scattering
-     `S` using the `gather_dims_to_operand_dims` map (`S`<sub>`in`</sub> is the
-     starting indices for _operand slice_ mentioned above.).  More precisely:
+     out vector `S` such that `S`[`i`] = `gather_indices`[Combine(`G`, `i`)]
+     where Combine(A, b) inserts b at position `index_vector_dim` into A.
+     Note that this is well defined even if `G` is empty -- if `G` is empty then
+     `S` = `gather_indices`.
+  2. Create an index, `S`<sub>`in`</sub>, into `operand` using `S` by
+     scattering `S` using the `gather_dims_to_operand_dims` map
+     (`S`<sub>`in`</sub> is the starting indices for _operand slice_ mentioned
+     above).  More precisely:
        1. `S`<sub>`in`</sub>[`gather_dims_to_operand_dims`[`k`]] = `S`[`k`] if `k` <
           `gather_dims_to_operand_dims.size`.
        2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
@@ -1136,7 +1153,12 @@ follows:
 `operand.rank` is `6` and `elided_window_dims` is {`0`, `2`} then
 `window_dims_to_operand_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
 
-### Informal Description
+### Informal Description and Examples
+
+`index_vector_dim` is set to `gather_indices.rank` - `1` in all of the
+examples that follow.  More interesting values for `index_vector_dim`
+does not change the operation fundamentally, but makes the visual representation
+more cumbersome.
 
 To get an intuition on how all of the above fits together, let's look at an
 example that gathers 5 slices of shape `[8,6]` from a `[16,11]` tensor.  The

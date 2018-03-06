@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -783,13 +784,13 @@ Status GcsFileSystem::NewRandomAccessFile(
 // A helper function to build a FileBlockCache for GcsFileSystem.
 std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
     size_t block_size, size_t max_bytes, uint64 max_staleness) {
-  std::unique_ptr<FileBlockCache> file_block_cache(
-      new FileBlockCache(block_size, max_bytes, max_staleness,
-                         [this](const string& filename, size_t offset, size_t n,
-                                char* buffer, size_t* bytes_transferred) {
-                           return LoadBufferFromGCS(filename, offset, n, buffer,
-                                                    bytes_transferred);
-                         }));
+  std::unique_ptr<FileBlockCache> file_block_cache(new RamFileBlockCache(
+      block_size, max_bytes, max_staleness,
+      [this](const string& filename, size_t offset, size_t n, char* buffer,
+             size_t* bytes_transferred) {
+        return LoadBufferFromGCS(filename, offset, n, buffer,
+                                 bytes_transferred);
+      }));
   return file_block_cache;
 }
 

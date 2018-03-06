@@ -38,7 +38,8 @@ namespace xla {
 // be bitwise identical to that without this pass; this is possible if the
 // backend already reduces precision to BF16 on some HLO instructions.
 //
-// This pass will not modify the signature of any non-fusion computation.
+// This pass will not modify the signature of a computation, unless it is a
+// fusion computation or its only caller is a while.
 //
 // !!! WARNING !!! This pass can introduce mixed precision in individual HLOs,
 // which has two issues:
@@ -92,7 +93,22 @@ class BFloat16Propagation : public HloPassInterface {
                                               bool skip_parameters);
 
   // Special handling in the mutation pass for fusion computations.
+  //
+  // Precondition: hlo->opcode() == kFusion
   void DetermineAndMutateFusionComputationPrecision(HloInstruction* fusion);
+
+  // Special handling in the mutation pass for while computations.
+  //
+  // Precondition: hlo->opcode() == kWhile
+  void DetermineAndMutateWhileComputationsPrecision(HloInstruction* while_hlo);
+
+  // The set of HloInstructions that have been visited in the mutation pass.
+  tensorflow::gtl::FlatSet<const HloInstruction*>
+      instructions_visited_in_mutation_pass_;
+
+  // The set of HloComputations that have been visited in the mutation pass.
+  tensorflow::gtl::FlatSet<const HloComputation*>
+      computations_visited_in_mutation_pass_;
 
   // ***************************
   // Functions called by the final inconsistency resolving pass.
@@ -102,9 +118,20 @@ class BFloat16Propagation : public HloPassInterface {
   // same precision.
   Status ResolveInconsistencyOfAliasingBuffers(HloModule* module);
 
-  // Makes the fusion parameters match the precision of the actual parameters
-  // passed to the fusion node.
-  void AdjustFusionParameters(HloInstruction* fusion);
+  // Resolves inconsistency of aliasing buffers for the given computation, and
+  // recursively runs on a while instruction's condition and body until a fixed
+  // point is reached.
+  bool ResolveInconsistencyOfAliasingBuffersHelper(
+      HloComputation* computation,
+      tensorflow::gtl::FlatSet<const HloComputation*>* visited_computations);
+
+  // Makes the parameters of called computations match how they are called by
+  // the given HLO.
+  void AdjustCalledComputationParameters(HloInstruction* hlo);
+
+  // Makes the root instructions of called computations match how they are used
+  // by the given HLO.
+  void AdjustCalledComputationRoot(HloInstruction* hlo);
 
   // ***************************
   // Functions called and state used by two or more passes.
@@ -117,8 +144,10 @@ class BFloat16Propagation : public HloPassInterface {
   // The set of F32 HLO values that must be kept in F32.
   tensorflow::gtl::FlatSet<const HloValue*> values_that_must_be_kept_as_f32_;
 
-  // ***************************
-  // State used by both passes.
+  // Mapping from each HloComputation to the number of callers to it in the
+  // module. Populated at the beginning of this pass.
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> caller_counts_;
+
   const BFloat16Support* bfloat16_support_;
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 

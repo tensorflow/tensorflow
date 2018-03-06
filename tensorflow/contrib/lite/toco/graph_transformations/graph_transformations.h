@@ -177,6 +177,7 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStridedSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFill)
 DECLARE_GRAPH_TRANSFORMATION(ResolveMultiplyByZero)
 DECLARE_GRAPH_TRANSFORMATION(Dequantize)
+DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 
 class ResolveReshapeAttributes : public GraphTransformation {
  public:

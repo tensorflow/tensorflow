@@ -11,6 +11,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":checkpointable_utils",
         ":datasets",
         ":metrics",
         ":network",
@@ -116,6 +117,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -241,13 +243,13 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "checkpointable_utils_test",
     srcs = ["checkpointable_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":checkpointable_utils",
         ":network",
+        "@six_archive//:six",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -262,7 +264,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "@six_archive//:six",
+        "//tensorflow/python/keras",
     ],
 )
 

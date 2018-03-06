@@ -248,7 +248,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
     and l2_regularizer != 0 due to poor accuracy.
   """
 
-  # pylint: disable=protected-access,long-lambda
+  # pylint: disable=long-lambda
   def _use_composite_impl(fast, tensor_shape):
     """Determines whether to use the composite or specialized CPU kernel.
 
@@ -323,9 +323,8 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   if _use_composite_impl(fast, tensor_shape):
     return _composite_impl(matrix, rhs, l2_regularizer)
   else:
-    return gen_linalg_ops._matrix_solve_ls(
+    return gen_linalg_ops.matrix_solve_ls(
         matrix, rhs, l2_regularizer, fast=fast, name=name)
-  # pylint: enable=protected-access
 
 
 @tf_export('self_adjoint_eig', 'linalg.eigh')
@@ -346,8 +345,7 @@ def self_adjoint_eig(tensor, name=None):
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
-  # pylint: disable=protected-access
-  e, v = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=True, name=name)
+  e, v = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=True, name=name)
   return e, v
 
 
@@ -369,8 +367,7 @@ def self_adjoint_eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  # pylint: disable=protected-access
-  e, _ = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=False, name=name)
+  e, _ = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=False, name=name)
   return e
 
 
@@ -435,10 +432,8 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   ````
   @end_compatibility
   """
-  # pylint: disable=protected-access
-  s, u, v = gen_linalg_ops._svd(
+  s, u, v = gen_linalg_ops.svd(
       tensor, compute_uv=compute_uv, full_matrices=full_matrices, name=name)
-  # pylint: enable=protected-access
   if compute_uv:
     return math_ops.real(s), u, v
   else:

@@ -36,7 +36,10 @@ namespace xla {
 // This class is not thread-safe.
 class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
-  HloEvaluator();
+  // Only evaluate up to max_loop_iterations per while-loop execution if
+  // specified.
+  explicit HloEvaluator(int64 max_loop_iterations = -1);
+
   // Evaluates an HLO module and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
   // Precondition: The indices of arg_literals correspond to the parameter
@@ -153,6 +156,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleConditional(HloInstruction* conditional) override;
+
+  Status HandleCall(HloInstruction* call) override;
+
+  Status HandleWhile(HloInstruction* while_hlo) override;
+
  private:
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
@@ -189,6 +198,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // each invocation to the Evaluate* method.
   // Must be cleared for each evaluation.
   std::vector<const Literal*> arg_literals_;
+
+  // Max loop iterations to execute with no maximum if negative.
+  int64 max_loop_iterations_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };

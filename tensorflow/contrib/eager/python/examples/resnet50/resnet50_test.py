@@ -194,11 +194,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     with tf.device(device):
       images, _ = random_batch(batch_size)
       for _ in xrange(num_burn):
-        model(images).cpu()
+        model(images, training=False).cpu()
       gc.collect()
       start = time.time()
       for _ in xrange(num_iters):
-        model(images).cpu()
+        model(images, training=False).cpu()
       self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_apply(self):

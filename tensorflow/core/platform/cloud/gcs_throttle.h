@@ -109,11 +109,20 @@ class GcsThrottle {
    * purpose of this function is to make available to monitoring or other
    * instrumentation the number of available tokens in the pool.
    */
-  inline int64 available_tokens() {
+  inline int64 available_tokens() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    if (!config_.enabled) return 0;
     UpdateState();
     return available_tokens_;
+  }
+
+  /**
+   * is_enabled determines if the throttle is enabled.
+   *
+   * If !is_enabled(), AdmitRequest() will always return true.
+   */
+  bool is_enabled() LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    return config_.enabled;
   }
 
  private:

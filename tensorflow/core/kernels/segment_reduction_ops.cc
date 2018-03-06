@@ -679,7 +679,12 @@ class SparseSegmentReductionOpBase : public OpKernel {
     // we need to explicitly set missing indices to the default value.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (num_indices == 0) return;
+    if (num_indices == 0) {
+      if (output_rows > 0) {
+        output->flat_outer_dims<T>().setConstant(default_value_);
+      }
+      return;
+    }
     OP_REQUIRES(context, output_rows > 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();

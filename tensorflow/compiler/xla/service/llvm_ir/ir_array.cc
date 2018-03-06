@@ -106,16 +106,13 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
   }
 }
 
-// Returns whether given linear index valid on given shape.
+// Returns whether the given linear index is valid on the given shape.
 bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
-  auto b = ShapeUtil::MakeShape(PRED /* irrelevant */, dims_);
+  auto b = ShapeUtil::MakeShape(a.element_type(), dims_);
   *b.mutable_layout() = layout_;
   return linear_ != nullptr &&
-         ContainersEqual(
-             ShapeUtil::StripDegenerateDimensions(a).dimensions(),
-             ShapeUtil::StripDegenerateDimensions(b).dimensions()) &&
-         LayoutUtil::Equal(ShapeUtil::StripDegenerateDimensions(a).layout(),
-                           ShapeUtil::StripDegenerateDimensions(b).layout());
+         ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
+         ShapeUtil::ReshapeIsBitcast(a, b);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
@@ -160,7 +157,8 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     }
   }
 
-  if (linear() != nullptr &&
+  if (linear() != nullptr && LayoutUtil::HasLayout(input_shape) &&
+      LayoutUtil::HasLayout(output_shape) &&
       ShapeUtil::ReshapeIsBitcast(input_shape, output_shape)) {
     return Index(source_multidim_index, linear(), input_shape);
   }
@@ -195,10 +193,13 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> operand_multidim_index =
       Permute(dimension_mapping, multidim());
-  if (linear() != nullptr &&
+
+  if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
+      LayoutUtil::HasLayout(shape) &&
       ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
     return Index(operand_multidim_index, linear(), operand_shape);
   }
+
   return Index(operand_multidim_index);
 }
 
