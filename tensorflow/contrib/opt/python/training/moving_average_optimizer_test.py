@@ -85,7 +85,7 @@ class MovingAverageOptimizerTest(test.TestCase):
               state_ops.assign_add(ema_var1, [4.0, 4.0])
           ])
 
-          # Test taht saver with missing ema variables will fail.
+          # Test that saver with missing ema variables will fail.
           with self.assertRaisesRegexp(ValueError, r'Variable to swap'):
             opt.swapping_saver(var_list=[var0])
 

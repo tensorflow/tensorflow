@@ -247,7 +247,7 @@ class _PotentialScaleReductionTest(object):
   @property
   def use_static_shape(self):
     raise NotImplementedError(
-        "Subclass failed to impliment `use_static_shape`.")
+        "Subclass failed to implement `use_static_shape`.")
 
   def testListOfStatesWhereFirstPassesSecondFails(self):
     """Simple test showing API with two states.  Read first!."""
@@ -379,7 +379,7 @@ class _ReduceVarianceTest(object):
   @property
   def use_static_shape(self):
     raise NotImplementedError(
-        "Subclass failed to impliment `use_static_shape`.")
+        "Subclass failed to implement `use_static_shape`.")
 
   def check_versus_numpy(self, x_, axis, biased, keepdims):
     with self.test_session():
