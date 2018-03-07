@@ -529,16 +529,9 @@ Status CurlHttpRequest::Send() {
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
-      if (curl_result != CURLE_OK) {
-        // This means the server executed the request successfully, but then
-        // something went wrong during the transmission of the response.
-        result = errors::Unavailable(response_to_error_message(
-            response_code_, GetResponse(), response_to_error_limit_,
-            curl_result, error_buffer));
-      } else {
-        result = Status::OK();
-      }
+      result = Status::OK();
       break;
+
     case 416:  // Requested Range Not Satisfiable
       // The requested range had no overlap with the available range.
       // This doesn't indicate an error, but this does mean an empty response
