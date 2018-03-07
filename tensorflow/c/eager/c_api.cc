@@ -98,22 +98,15 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
-  TF_Graph* graph = TF_NewGraph();
-  TF_Session* session = TF_NewSession(graph, &opts->session_options, status);
-  if (status->status.ok()) {
-    if (session->device_mgr == nullptr || session->devices.empty()) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Provided TF_SessionOptions are not compatible with eager execution "
-          "(perhaps the TF_SessionOptions alluded to session execution in a "
-          "remote address space?)");
-    }
-  }
+  std::vector<tensorflow::Device*> devices;
+  status->status = tensorflow::DeviceFactory::AddDevices(
+      opts->session_options.options, "/job:localhost/replica:0/task:0",
+      &devices);
   if (!status->status.ok()) {
-    TF_DeleteGraph(graph);
     return nullptr;
   }
-
-  return new TFE_Context(*opts, session);
+  return new TFE_Context(*opts, std::unique_ptr<tensorflow::DeviceMgr>(
+                                    new tensorflow::DeviceMgr(devices)));
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
@@ -122,15 +115,14 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
     tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
   }
-  TF_Graph* graph = ctx->session->graph;
-  TF_DeleteSession(ctx->session, status);
-  TF_DeleteGraph(graph);
   ctx->rendezvous->Unref();
   delete ctx;
 }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
-  return TF_SessionListDevices(ctx->session, status);
+  TF_DeviceList* list = new TF_DeviceList;
+  ctx->device_manager->ListDeviceAttributes(&list->response);
+  return list;
 }
 
 void TFE_ContextClearCaches(TFE_Context* ctx) {
@@ -205,13 +197,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::Device* dstd = ctx->devices()[0];
+  tensorflow::Device* dstd = ctx->devices[0];
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
+    status->status = ctx->device_manager->LookupDevice(device_name, &dstd);
     if (!status->status.ok()) return nullptr;
   }
 
-  tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
+  tensorflow::Device* srcd = h->d == nullptr ? ctx->devices[0] : h->d;
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
@@ -295,8 +287,7 @@ void TFE_DeleteOp(TFE_Op* op) { delete op; }
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status =
-        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status = op->ctx->device_manager->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   op->device = d;
@@ -304,7 +295,7 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device =
-      (op->device == nullptr) ? op->ctx->devices()[0] : op->device;
+      (op->device == nullptr) ? op->ctx->devices[0] : op->device;
   return device->name().c_str();
 }
 
@@ -798,7 +789,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
 tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
                                  TFE_Context* ctx, TF_Status* status) {
   tensorflow::DeviceSet ds;
-  for (tensorflow::Device* d : ctx->devices()) {
+  for (tensorflow::Device* d : ctx->devices) {
     ds.AddDevice(d);
   }
   tensorflow::DeviceTypeVector final_devices;
@@ -812,7 +803,7 @@ tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
         "Could not find valid device for node ", ndef.DebugString());
     return nullptr;
   }
-  for (tensorflow::Device* d : ctx->devices()) {
+  for (tensorflow::Device* d : ctx->devices) {
     if (d->device_type() == final_devices[0].type_string()) {
       return d;
     }
@@ -845,7 +836,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     if (op->inputs[i].dtype() == tensorflow::DT_RESOURCE &&
         op->input_op_devices[i] != device) {
       tensorflow::Device* d = op->input_op_devices[i] == nullptr
-                                  ? ctx->devices()[0]
+                                  ? ctx->devices[0]
                                   : op->input_op_devices[i];
       VLOG(1) << "Changing device of operation " << op->name << " to "
               << d->name() << " because input #" << i
@@ -855,8 +846,8 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     }
   }
   if (!ctx->soft_placement && device == nullptr) {
-    // TODO(ashankar): ASSUMPTION: ctx->devices()[0] is always CPU
-    device = ctx->devices()[0];
+    // TODO(ashankar): ASSUMPTION: ctx->devices[0] is always CPU
+    device = ctx->devices[0];
   }
 
   std::vector<tensorflow::Tensor> outputs(1);
@@ -924,7 +915,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
 
   std::vector<TFE_TensorHandle*> copied_tensors;
   status->status = ValidateInputTypeAndPlacement(
-      ctx, ctx->devices()[0], device, op, kernel->kernel(), &copied_tensors);
+      ctx, ctx->devices[0], device, op, kernel->kernel(), &copied_tensors);
   output_memory_types = &kernel->kernel()->output_memory_types();
   if (!status->status.ok()) {
     for (auto* t : copied_tensors) {
@@ -963,13 +954,13 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       auto* step_stats = ctx->run_metadata.mutable_step_stats();
       // Lazily initialize the RunMetadata with information about all devices if
       // this is the first call.
-      while (step_stats->dev_stats_size() < ctx->devices().size()) {
+      while (step_stats->dev_stats_size() < ctx->devices.size()) {
         step_stats->add_dev_stats();
       }
       // Find the current device's index.
       int device_idx = 0;
-      for (int i = 0; i < ctx->devices().size(); ++i) {
-        if (ctx->devices()[i] == device) {
+      for (int i = 0; i < ctx->devices.size(); ++i) {
+        if (ctx->devices[i] == device) {
           device_idx = i;
           break;
         }
