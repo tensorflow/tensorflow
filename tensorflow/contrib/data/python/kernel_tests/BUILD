@@ -495,6 +495,23 @@ py_test(
     ],
 )
 
+tf_py_test(
+    name = "slide_dataset_op_test",
+    size = "small",
+    srcs = ["slide_dataset_op_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
