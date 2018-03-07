@@ -287,6 +287,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_EXP:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_CAST:
       break;
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =

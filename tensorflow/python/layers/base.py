@@ -127,12 +127,12 @@ class Layer(checkpointable.CheckpointableBase):
     # return tensors. When using graph execution, _losses is a list of ops.
     self._losses = []
     self._reuse = kwargs.get('_reuse')
-    self._graph = ops.get_default_graph()
+    self._graph = None  # Will be set at build time.
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    call_fn_args = estimator_util.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in call_fn_args or
+    self._call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
-    self._call_has_scope_arg = 'scope' in call_fn_args
+    self._call_has_scope_arg = 'scope' in self._call_fn_args
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -630,7 +630,8 @@ class Layer(checkpointable.CheckpointableBase):
     # the same graph as where it was created.
     if in_graph_mode:
       try:
-        ops._get_graph_from_inputs(input_list, graph=self.graph)  # pylint: disable=protected-access
+        # Set layer's "graph" at build time
+        self._graph = ops._get_graph_from_inputs(input_list, graph=self._graph)  # pylint: disable=protected-access
       except ValueError as e:
         raise ValueError('Input graph and Layer graph are not the same: %s' % e)
     if in_graph_mode or in_deferred_mode:
@@ -641,8 +642,9 @@ class Layer(checkpointable.CheckpointableBase):
     if (not hasattr(self, '_compute_previous_mask') or
         self._compute_previous_mask):
       previous_mask = _collect_previous_mask(inputs)
-      if ('mask' in estimator_util.fn_args(self.call) and
-          'mask' not in kwargs and
+      if not hasattr(self, '_call_fn_args'):
+        self._call_fn_args = estimator_util.fn_args(self.call)
+      if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not _is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
         # to __call__, hence we set previous_mask as the default value.
@@ -698,7 +700,9 @@ class Layer(checkpointable.CheckpointableBase):
           # TODO(agarwal): Fix the sub-classes and avoid this complexity.
           call_has_scope_arg = self._call_has_scope_arg
         except AttributeError:
-          call_has_scope_arg = 'scope' in estimator_util.fn_args(self.call)
+          self._call_fn_args = estimator_util.fn_args(self.call)
+          self._call_has_scope_arg = 'scope' in self._call_fn_args
+          call_has_scope_arg = self._call_has_scope_arg
         if call_has_scope_arg:
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.

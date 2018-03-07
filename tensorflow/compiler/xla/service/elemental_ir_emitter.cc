@@ -1722,6 +1722,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(if_data.after_block, ir_builder_);
         return ir_builder_->CreateLoad(ret_value_addr);
       };
+    case HloOpcode::kBitcast:
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
                ShapeUtil::ElementsIn(hlo->operand(0)->shape()));

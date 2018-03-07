@@ -54,6 +54,26 @@ DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
 
 
+class _TensorCache(object):
+  """Simple cache which evicts items based on length in a FIFO manner."""
+
+  def __init__(self, max_items=256):
+    self._data = collections.OrderedDict()
+    self._max_items = max_items if max_items else 256
+
+  def put(self, key, value):
+    self._data[key] = value
+
+    if len(self._data) > self._max_items:
+      self._data.popitem(last=False)
+
+  def get(self, key):
+    return self._data.get(key, None)
+
+  def flush(self):
+    self._data = {}
+
+
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
   """Thread local eager context."""
@@ -67,6 +87,7 @@ class _EagerContext(threading.local):
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
+    self.ones_rank_cache = _TensorCache()
 
 
 ContextStackEntry = collections.namedtuple(
@@ -250,6 +271,10 @@ class Context(object):
   def scalar_cache(self):
     """Per-device cache for scalars."""
     return self._eager_context.scalar_cache
+
+  def ones_rank_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.ones_rank_cache
 
   @property
   def scope_name(self):

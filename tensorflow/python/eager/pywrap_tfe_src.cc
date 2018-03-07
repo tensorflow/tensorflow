@@ -93,6 +93,34 @@ Py_ssize_t TensorShapeNumDims(PyObject* value) {
   return size;
 }
 
+bool IsInteger(PyObject* py_value) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_Check(py_value);
+#else
+  return PyInt_Check(py_value);
+#endif
+}
+
+bool ParseDimensionValue(const string& key, PyObject* py_value,
+                         TF_Status* status, int64_t* value) {
+  if (IsInteger(py_value)) {
+    return ParseInt64Value(key, py_value, status, value);
+  }
+
+  tensorflow::Safe_PyObjectPtr dimension_value(
+      PyObject_GetAttrString(py_value, "_value"));
+  if (dimension_value == nullptr) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Expecting a Dimension for attr ", key,
+                                    ", got ", py_value->ob_type->tp_name)
+            .c_str());
+    return false;
+  }
+
+  return ParseInt64Value(key, dimension_value.get(), status, value);
+}
+
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
                       const char** value) {
   if (PyBytes_Check(py_value)) {
@@ -119,14 +147,6 @@ bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
   return true;
 }
 
-bool IsInteger(PyObject* py_value) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_Check(py_value);
-#else
-  return PyInt_Check(py_value);
-#endif
-}
-
 // The passed in py_value is expected to be an object of the python type
 // dtypes.DType or an int.
 bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
@@ -135,7 +155,8 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
     return ParseIntValue(key, py_value, status, value);
   }
 
-  PyObject* py_type_enum = PyObject_GetAttrString(py_value, "_type_enum");
+  tensorflow::Safe_PyObjectPtr py_type_enum(
+      PyObject_GetAttrString(py_value, "_type_enum"));
   if (py_type_enum == nullptr) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
@@ -145,13 +166,7 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
     return false;
   }
 
-  if (!ParseIntValue(key, py_type_enum, status, value)) {
-    Py_DECREF(py_type_enum);
-    return false;
-  }
-
-  Py_DECREF(py_type_enum);
-  return true;
+  return ParseIntValue(key, py_type_enum.get(), status, value);
 }
 
 bool SetOpAttrList(
@@ -240,7 +255,8 @@ bool SetOpAttrList(
           auto inner_py_value = PySequence_ITEM(py_value, j);
           if (inner_py_value == Py_None) {
             *offset = -1;
-          } else if (!ParseInt64Value(key, inner_py_value, status, offset)) {
+          } else if (!ParseDimensionValue(key, inner_py_value, status,
+                                          offset)) {
             return false;
           }
           ++offset;
@@ -424,7 +440,8 @@ bool SetOpAttrScalar(
         auto inner_py_value = PySequence_ITEM(py_value, i);
         if (inner_py_value == Py_None) {
           dims[i] = -1;
-        } else if (!ParseInt64Value(key, inner_py_value, status, &dims[i])) {
+        } else if (!ParseDimensionValue(key, inner_py_value, status,
+                                        &dims[i])) {
           return false;
         }
       }

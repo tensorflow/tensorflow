@@ -171,6 +171,7 @@ py_test(
         "no_cuda_on_cpu_tap",
         "no_oss",
         "no_pip",
+        "nomsan",
     ],
     deps = [
         ":dataset_serialization_test",
