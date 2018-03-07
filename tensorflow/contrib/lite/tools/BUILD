@@ -4,6 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 py_binary(
@@ -111,6 +112,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    tags = [
+        "tflite_not_portable",
+    ],
     deps = [
         ":mutable_op_resolver",
         ":verifier",
@@ -124,3 +128,5 @@ cc_test(
         "@flatbuffers",
     ],
 )
+
+tflite_portable_test_suite()
