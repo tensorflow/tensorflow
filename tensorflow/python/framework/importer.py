@@ -475,16 +475,21 @@ def import_graph_def(graph_def,
     _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                      return_elements)
 
-    with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          results = c_api.TF_GraphImportGraphDefWithResults(
-              graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
-      except errors.InvalidArgumentError as e:
-        # Convert to ValueError for backwards compatibility.
-        raise ValueError(str(e))
+    # _ProcessNewOps mutates the new operations. _lock ensures a Session.run
+    # call cannot occur between creating the TF_Operations in the
+    # TF_GraphImportGraphDefWithResults call and mutating the them in
+    # _ProcessNewOps.
+    with graph._lock:  # pylint: disable=protected-access
+      with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+        try:
+          with errors.raise_exception_on_not_ok_status() as status:
+            results = c_api.TF_GraphImportGraphDefWithResults(
+                graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+        except errors.InvalidArgumentError as e:
+          # Convert to ValueError for backwards compatibility.
+          raise ValueError(str(e))
 
-    _ProcessNewOps(graph)
+      _ProcessNewOps(graph)
 
     # Create _DefinedFunctions for any imported functions.
     #

@@ -2933,8 +2933,11 @@ class WhileContext(ControlFlowContext):
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
-      original_body_result, exit_vars = self._BuildLoop(
-          pred, body, original_loop_vars, loop_vars, shape_invariants)
+      # _BuildLoop calls _update_input in several places. _lock ensures a
+      # Session.run call cannot occur between creating and mutating new ops.
+      with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+        original_body_result, exit_vars = self._BuildLoop(
+            pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
       self.Exit()
 
