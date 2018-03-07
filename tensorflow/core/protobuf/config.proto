@@ -150,8 +150,21 @@ message IPUOptions {
     };
     IpuModelConfig ipu_model_config = 2;
 
-    // Set to enable compilation profiling to be generated
-    bool enable_profile = 3;
+    // Options to control IPU profiling
+    message Profiling {
+      // Set to enable compilation trace
+      bool enable_compilation_trace = 1;
+
+      // Set to enable I/O trace
+      bool enable_io_trace = 2;
+
+      // Set to enable execution trace
+      bool enable_execution_trace = 3;
+    };
+    Profiling profiling = 3;
+
+    // Options to control Poplar compilation
+    repeated string compilation_options = 4;
   };
 
   // Options controlling the configuration of each IPU device

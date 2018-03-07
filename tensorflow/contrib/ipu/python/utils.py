@@ -41,7 +41,9 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None):
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
   dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-  dev.enable_profile = profiling
+  dev.profiling.enable_compilation_trace = profiling
+  dev.profiling.enable_io_trace = profiling
+  dev.profiling.enable_execution_trace = profiling
 
   if num_ipus:
     dev.ipu_model_config.num_ipus = num_ipus

@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
+import test_utils as tu
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
@@ -32,11 +33,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with tf.device('cpu'):
       report = gen_ipu_ops.ipu_summary()
 
-    opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.enable_profile = True
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
+    with tu.ipu_session() as sess:
 
         result = sess.run(r, {v:np.zeros([500], np.int32)})
         self.assertAllClose(result[1], np.broadcast_to(45, [500]))

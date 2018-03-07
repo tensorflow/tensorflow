@@ -109,7 +109,8 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 PoplarExecutor::PoplarExecutor() :
     poplar_device_(poplar::Device::createCPUDevice()),
     device_open_(true),
-    profile_enabled_(false) {}
+    profile_execution_(false),
+    profile_io_(false) {}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -258,7 +259,8 @@ port::Status PoplarExecutor::InitializePoplarDevice(
         model.tilesPerIPU = cfg.ipu_model_config().tiles_per_ipu();
       }
       poplar_device_ = model.createDevice();
-      profile_enabled_ = cfg.enable_profile();
+      profile_execution_ = cfg.profiling().enable_execution_trace();
+      profile_io_ = cfg.profiling().enable_io_trace();
       break;
     }
     case tensorflow::IPUOptions::DeviceConfig::CPU:
@@ -280,7 +282,8 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   if (device_open_) {
     //poplar_device_.release();
     device_open_ = false;
-    profile_enabled_ = false;
+    profile_execution_ = false;
+    profile_io_ = false;
     reports_.clear();
   }
   return port::Status::OK();
@@ -519,7 +522,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
       engine->run(0);
 
       try {
-        if (profile_enabled_ && dump_report_) {
+        if (profile_execution_ && dump_report_) {
 
           poplar::Engine::ReportOptions opts;
           opts.doLayerWiseProfile = true;

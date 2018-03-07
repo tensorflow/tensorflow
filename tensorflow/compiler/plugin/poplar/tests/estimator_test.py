@@ -75,7 +75,9 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
     opts = config_pb2.IPUOptions()
     dev = opts.device_config.add()
     dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.enable_profile = True
+    dev.profiling.enable_compilation_trace = True
+    dev.profiling.enable_io_trace = True
+    dev.profiling.enable_execution_trace = True
 
     sess_cfg = tf.ConfigProto(ipu_options=opts)
     run_cfg = tf.estimator.RunConfig(session_config=sess_cfg)

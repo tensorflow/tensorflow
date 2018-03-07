@@ -275,7 +275,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   std::list<TensorControl*> allocations_;
 
-  bool profile_enabled_;
+  bool profile_execution_;
+  bool profile_io_;
 
   std::list<std::string> reports_;
 };

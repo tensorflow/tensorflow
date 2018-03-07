@@ -23,7 +23,9 @@ def ipu_session():
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
   dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-  dev.enable_profile = True
+  dev.profiling.enable_compilation_trace = True
+  dev.profiling.enable_io_trace = True
+  dev.profiling.enable_execution_trace = True
   with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 
