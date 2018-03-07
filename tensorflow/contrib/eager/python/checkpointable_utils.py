@@ -493,8 +493,9 @@ class NameBasedSaverStatus(_LoadStatus):
     """Load the name-based training checkpoint using a new `tf.train.Saver`."""
     if session is None and not context.executing_eagerly():
       session = ops.get_default_session()
-    saver_lib.Saver(self._object_saver._global_variable_names()).restore(  # pylint: disable=protected-access
-        sess=session, save_path=self._save_path)
+    with ops.device("/cpu:0"):
+      saver_lib.Saver(self._object_saver._global_variable_names()).restore(  # pylint: disable=protected-access
+          sess=session, save_path=self._save_path)
 
   def initialize_or_restore(self, session=None):
     """Alias for `run_restore_ops`."""
