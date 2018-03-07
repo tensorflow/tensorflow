@@ -650,6 +650,9 @@ def _remove_first_line_indent(string):
   return '\n'.join([line[indent:] for line in string.split('\n')])
 
 
+PAREN_NUMBER_RE = re.compile("^\(([0-9.e-]+)\)")
+
+
 def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
@@ -705,7 +708,11 @@ def _generate_signature(func, reverse_index):
       if id(default) in reverse_index:
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
-        default_text = astor.to_source(ast_default)
+        default_text = (
+            astor.to_source(ast_default).rstrip('\n').replace('\t','\\t')
+                 .replace('\n','\\n').replace('"""',"'"))
+        default_text = PAREN_NUMBER_RE.sub('\\1',default_text)
+
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
           # TODO(wicke): This should be replaced with a lookup in the index.
