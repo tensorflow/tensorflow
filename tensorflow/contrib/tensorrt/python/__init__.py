@@ -19,16 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
-try:
-  from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
-  from tensorflow.contrib.tensorrt.python.trt_convert import calib_graph_to_infer_graph
-  from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
-except:
-  no_trt_message = (
-      '**** Failed to initialize TensorRT. This is either because the TensorRT'
-      ' installation path is not in LD_LIBRARY_PATH, or because you do not have it'
-      ' installed. If not installed, please go to'
-      ' https://developer.nvidia.com/tensorrt to download and install'
-      ' TensorRT ****')
-  raise RuntimeError(no_trt_message)
+from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+from tensorflow.contrib.tensorrt.python.trt_convert import calib_graph_to_infer_graph
+from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
 # pylint: enable=unused-import,line-too-long
