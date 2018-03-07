@@ -164,6 +164,36 @@ TEST_F(InstructionFusionTest, GetTupleElementFused) {
   EXPECT_EQ(HloOpcode::kGetTupleElement, fused_root->operand(1)->opcode());
 }
 
+// Tests that broadcasts fused into a fusion with a reduce root.
+TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
+  auto module = tools::Parse(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY BroadcastIntoReduce {
+      constant = f32[] constant(1)
+      broadcast = f32[16,16,16,16]{3,2,1,0} broadcast(constant), dimensions={}
+      constant.1 = f32[] constant(0)
+      ROOT reduce = f32[] reduce(broadcast, constant.1), dimensions={0,1,2,3},
+                                                         to_apply=add
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Reduce(op::Broadcast(op::Parameter()), op::Parameter()));
+}
+
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
   auto module = tools::Parse(R"(
     HloModule test_module
