@@ -1809,7 +1809,10 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
-    if (array.final_data_type != ArrayDataType::kNone) {
+    // If the final data type is int16, the data type may be float, for example
+    // after dequantization.
+    if (array.final_data_type != ArrayDataType::kNone &&
+        array.final_data_type != ArrayDataType::kInt16) {
       CHECK(array.final_data_type == array.data_type)
           << "Array \"" << array_entry.first
           << "\" has mis-matching actual and final data types ("
