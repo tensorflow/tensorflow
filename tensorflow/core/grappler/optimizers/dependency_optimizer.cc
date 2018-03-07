@@ -346,16 +346,23 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
           CHECK(!IsControlInput(input_to_forward));
           for (int j = 0; j < consumer->input_size(); ++j) {
             const string& old_input = consumer->input(j);
-            if (old_input == node_name) {
-              new_input = input_to_forward;
-              node_map_->UpdateInput(consumer->name(), old_input, new_input);
-              consumer->set_input(j, new_input);
-              found_input = true;
-            } else if (old_input == AsControlDependency(NodeName(node_name))) {
-              new_input = AsControlDependency(NodeName(input_to_forward));
-              node_map_->UpdateInput(consumer->name(), old_input, new_input);
-              consumer->set_input(j, new_input);
-              found_input = true;
+            int old_input_pos;
+            string old_input_node_name =
+                ParseNodeName(old_input, &old_input_pos);
+            if (old_input_node_name == node_name) {
+              if (old_input_pos >= 0) {
+                // Regular input
+                new_input = input_to_forward;
+                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                consumer->set_input(j, new_input);
+                found_input = true;
+              } else {
+                // Control dependency
+                new_input = AsControlDependency(NodeName(input_to_forward));
+                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                consumer->set_input(j, new_input);
+                found_input = true;
+              }
             }
           }
           CHECK(found_input);
