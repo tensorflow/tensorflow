@@ -1,38 +1,33 @@
-# Saving and Restoring
+# Save and Restore
 
-This document explains how to save and restore
-@{$variables$variables} and models.
+The @{tf.train.Saver} class provides methods to save and restore models. The
+@{tf.saved_model.simple_save} function is an easy way to build a
+@{tf.saved_model$saved model} suitable for serving.
+[Estimators](/programmers_guide/estimators) automatically save and restore
+variables in the `model_dir`.
 
-Important: TensorFlow model files are code. Be careful with untrusted code.
-See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md)
-for details.
+## Save and restore variables
 
-## Saving and restoring variables
+TensorFlow @{$variables} are the best way to represent shared, persistent state
+manipulated by your program. The `tf.train.Saver` constructor adds `save` and
+`restore` ops to the graph for all, or a specified list, of the variables in the
+graph.  The `Saver` object provides methods to run these ops, specifying paths
+for the checkpoint files to write to or read from.
 
-A TensorFlow variable provides the best way to represent shared, persistent
-state manipulated by your program. (See @{$variables$Variables} for details.)
-This section explains how to save and restore variables.
-Note that Estimators automatically saves and restores variables
-(in the `model_dir`).
-
-The `tf.train.Saver` class provides methods for saving and restoring models.
-The `tf.train.Saver` constructor adds `save` and `restore` ops to the graph
-for all, or a specified list, of the variables in the graph.  The `Saver`
-object provides methods to run these ops, specifying paths for the checkpoint
-files to write to or read from.
-
-The saver will restore all variables already defined in your model. If you're
+`Saver` restores all variables already defined in your model. If you're
 loading a model without knowing how to build its graph (for example, if you're
 writing a generic program to load models), then read the
 [Overview of saving and restoring models](#models) section
 later in this document.
 
-TensorFlow saves variables in binary **checkpoint files** that,
-roughly speaking, map variable names to tensor values.
+TensorFlow saves variables in binary *checkpoint files* that map variable
+names to tensor values.
 
+Caution: TensorFlow model files are code. Be careful with untrusted code.
+See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md)
+for details.
 
-
-### Saving variables
+### Save variables
 
 Create a `Saver` with `tf.train.Saver()` to manage all variables in the
 model. For example, the following snippet demonstrates how to call the
@@ -64,9 +59,7 @@ with tf.Session() as sess:
   print("Model saved in path: %s" % save_path)
 ```
 
-
-
-### Restoring variables
+### Restore variables
 
 The `tf.train.Saver` object not only saves variables to checkpoint files, it
 also restores variables. Note that when you restore variables you do not have
@@ -95,14 +88,11 @@ with tf.Session() as sess:
   print("v2 : %s" % v2.eval())
 ```
 
-Notes:
+Note: There is not a physical file called `/tmp/model.ckpt`. It is the *prefix* of
+filenames created for the checkpoint. Users only interact with the prefix
+instead of physical checkpoint files.
 
-*  There is not a physical file called "/tmp/model.ckpt". It is the **prefix**
-   of filenames created for the checkpoint. Users only interact with the
-   prefix instead of physical checkpoint files.
-
-
-### Choosing which variables to save and restore
+### Choose variables to save and restore
 
 If you do not pass any arguments to `tf.train.Saver()`, the saver handles all
 variables in the graph.  Each variable is saved under the name that was passed
@@ -201,29 +191,42 @@ chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v2', all_t
 
 
 <a name="models"></a>
-## Overview of saving and restoring models
+## Save and restore models
 
-When you want to save and load variables, the graph, and the
-graph's metadata--basically, when you want to save or restore
-your model--we recommend using SavedModel.
-**SavedModel** is a language-neutral, recoverable, hermetic
-serialization format.  SavedModel enables higher-level systems
-and tools to produce, consume, and transform TensorFlow models.
-TensorFlow provides several mechanisms for interacting with
-SavedModel, including tf.saved_model APIs, Estimator APIs and a CLI.
+Use `SavedModel` to save and load your model—variables, the graph, and the
+graph's metadata. This is a language-neutral, recoverable, hermetic
+serialization format that enables higher-level systems and tools to produce,
+consume, and transform TensorFlow models. TensorFlow provides several ways to
+interact with `SavedModel`, including the @{tf.saved_model} APIs,
+@{tf.estimator.Estimator}, and a command-line interface.
 
 
-## APIs to build and load a SavedModel
+## Build and load a SavedModel
 
-This section focuses on the APIs for building and loading a SavedModel,
-particularly when using lower-level TensorFlow APIs.
+### Simple save
 
+The easiest way to create a `SavedModel` is to use the @{tf.saved_model.simple_save}
+function:
 
-### Building a SavedModel
+```python
+simple_save(session,
+            export_dir,
+            inputs={"x": x, "y": y},
+            outputs={"z": z})
+```
 
-We provide a Python implementation of the SavedModel
-@{tf.saved_model.builder$builder}.
-The `SavedModelBuilder` class provides functionality to
+This configures the `SavedModel` so it can be loaded by
+[TensorFlow serving](/serving/serving_basic) and supports the
+[Predict API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
+To access the classify, regress, or multi-inference APIs, use the manual
+`SavedModel` builder APIs or an @{tf.estimator.Estimator}.
+
+### Manually build a SavedModel
+
+If your use case isn't covered by @{tf.saved_model.simple_save}, use the manual
+@{tf.saved_model.builder$builder APIs} to create a `SavedModel`.
+
+The @{tf.saved_model.builder.SavedModelBuilder} class provides functionality to
 save multiple `MetaGraphDef`s.  A **MetaGraph** is a dataflow graph, plus
 its associated variables, assets, and signatures.  A **`MetaGraphDef`**
 is the protocol buffer representation of a MetaGraph.  A **signature** is
@@ -264,7 +267,7 @@ builder.save()
 ```
 
 
-### Loading a SavedModel in Python
+### Load a SavedModel in Python
 
 The Python version of the SavedModel
 @{tf.saved_model.loader$loader}
@@ -288,7 +291,7 @@ with tf.Session(graph=tf.Graph()) as sess:
 ```
 
 
-### Loading a SavedModel in C++
+### Load a SavedModel in C++
 
 The C++ version of the SavedModel
 [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/loader.h)
@@ -306,7 +309,7 @@ LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
 ```
 
-### Loading and Serving a SavedModel in TensorFlow Serving
+### Load and serve a SavedModel in TensorFlow serving
 
 You can easily load and serve a SavedModel with the TensorFlow Serving Model
 Server binary. See [instructions](https://www.tensorflow.org/serving/setup#installing_using_apt-get)
@@ -374,7 +377,7 @@ SavedModel format. This section explains how to:
 * Serve the model from a local server and request predictions.
 
 
-### Preparing serving inputs
+### Prepare serving inputs
 
 During training, an @{$premade_estimators#input_fn$`input_fn()`} ingests data
 and prepares it for use by the model.  At serving time, similarly, a
@@ -448,7 +451,7 @@ to expect and how to map them to your model's expected inputs.
 By contrast, the *output* portion of the signature is determined by the model.
 
 
-### Performing the export
+### Perform the export
 
 To export your trained Estimator, call
 @{tf.estimator.Estimator.export_savedmodel} with the export base path and
@@ -471,7 +474,7 @@ Session.
 > Note: It is your responsibility to garbage-collect old exports.
 > Otherwise, successive exports will accumulate under `export_dir_base`.
 
-### Specifying the outputs of a custom model
+### Specify the outputs of a custom model
 
 When writing a custom `model_fn`, you must populate the `export_outputs` element
 of the @{tf.estimator.EstimatorSpec} return value. This is a dict of
@@ -503,7 +506,7 @@ indicating which `SignatureDef` will be served when an inference request
 does not specify one.
 
 
-### Serving the exported model locally
+### Serve the exported model locally
 
 For local deployment, you can serve your model using
 [TensorFlow Serving](https://github.com/tensorflow/serving), an open-source project that loads a
@@ -522,7 +525,7 @@ bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server --port=9000 -
 Now you have a server listening for inference requests via gRPC on port 9000!
 
 
-### Requesting predictions from a local server
+### Request predictions from a local server
 
 The server responds to gRPC requests according to the
 [PredictionService](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/prediction_service.proto#L15)
@@ -615,7 +618,7 @@ passing in sample inputs in various formats (for example, Python
 expressions) and then fetching the output.
 
 
-### Installing the SavedModel CLI
+### Install the SavedModel CLI
 
 Broadly speaking, you can install TensorFlow in either of the following
 two ways:
@@ -842,7 +845,7 @@ For example:
 `<input_key>=[{"age":[22,24],"education":["BS","MS"]}]`
 ```
 
-#### Save Output
+#### Save output
 
 By default, the SavedModel CLI writes output to stdout. If a directory is
 passed to `--outdir` option, the outputs will be saved as npy files named after
@@ -851,7 +854,7 @@ output tensor keys under the given directory.
 Use `--overwrite` to overwrite existing output files.
 
 
-#### TensorFlow Debugger (tfdbg) Integration
+#### TensorFlow debugger (tfdbg) integration
 
 If `--tf_debug` option is set, the SavedModel CLI will use the
 TensorFlow Debugger (tfdbg) to watch the intermediate Tensors and runtime
@@ -958,6 +961,3 @@ of checkpoints and assets:
 
 Each graph is associated with a specific set of tags, which enables
 identification during a load or restore operation.
-
-
-
