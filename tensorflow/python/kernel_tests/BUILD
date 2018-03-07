@@ -1087,6 +1087,7 @@ cuda_py_test(
     tags = [
         "no_windows",
         "noasan",
+        "notap",
     ],
 )
 
