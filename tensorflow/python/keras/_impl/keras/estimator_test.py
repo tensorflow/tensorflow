@@ -496,6 +496,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
             keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
+<<<<<<< HEAD
   def test_gpu_config(self):
     keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
     keras_model.compile(
@@ -512,6 +513,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
                      ._config.gpu_options.per_process_gpu_memory_fraction,
                      gpu_options.per_process_gpu_memory_fraction)
 
+=======
+>>>>>>> google/r1.6
 
 if __name__ == '__main__':
   test.main()
