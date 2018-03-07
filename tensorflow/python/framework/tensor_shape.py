@@ -456,6 +456,7 @@ class TensorShape(object):
       else:
         # Got a list of dimensions
         self._dims = [as_dimension(d) for d in dims_iter]
+    self._ndims = None
 
   def __repr__(self):
     return "TensorShape(%r)" % self._dims
@@ -473,19 +474,26 @@ class TensorShape(object):
     """Returns a list of Dimensions, or None if the shape is unspecified."""
     return self._dims
 
+  @dims.setter
+  def dims(self, dims):
+    self._dims = dims
+    self._ndims = None
+
   @property
   def ndims(self):
     """Returns the rank of this shape, or None if it is unspecified."""
     if self._dims is None:
       return None
     else:
-      return len(self._dims)
+      if self._ndims is None:
+        self._ndims = len(self._dims)
+      return self._ndims
 
   def __len__(self):
     """Returns the rank of this shape, or raises ValueError if unspecified."""
     if self._dims is None:
       raise ValueError("Cannot take the length of Shape with unknown rank.")
-    return len(self._dims)
+    return self.ndims
 
   def __bool__(self):
     """Returns True if this shape contains non-zero information."""

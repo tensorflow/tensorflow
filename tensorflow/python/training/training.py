@@ -28,6 +28,7 @@ See the @{$python/train} guide.
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
 @@RMSPropOptimizer
+@@custom_gradient
 @@gradients
 @@AggregationMethod
 @@stop_gradient

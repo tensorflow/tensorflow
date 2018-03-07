@@ -18,6 +18,7 @@
 @@Affine
 @@AffineLinearOperator
 @@Bijector
+@@BatchNormalization
 @@Chain
 @@CholeskyOuterProduct
 @@ConditionalBijector
@@ -53,6 +54,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import *
+from tensorflow.contrib.distributions.python.ops.bijectors.batch_normalization import *
 from tensorflow.contrib.distributions.python.ops.bijectors.chain import *
 from tensorflow.contrib.distributions.python.ops.bijectors.cholesky_outer_product import *
 from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector import *

@@ -493,4 +493,19 @@ std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
   return input_strs;
 }
 
+PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
+                                         TF_Status* status) {
+  TF_Tensor* result_tensor;
+  bool evaluated =
+      TF_TryEvaluateConstant(graph, output, &result_tensor, status);
+  if (!evaluated || TF_GetCode(status) != TF_OK) Py_RETURN_NONE;
+
+  Safe_TF_TensorPtr safe_result_tensor(result_tensor);
+  PyObject* out;
+  Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
+  Set_TF_Status_from_Status(status, s);
+  if (!s.ok()) Py_RETURN_NONE;
+  return out;
+}
+
 }  // namespace tensorflow

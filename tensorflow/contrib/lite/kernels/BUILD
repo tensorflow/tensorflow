@@ -33,7 +33,7 @@ cc_library(
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/testing:util",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:tflite_portable_logging",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -106,6 +106,7 @@ cc_library(
         "batch_to_space_nd.cc",
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
+        "cast.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
@@ -226,6 +227,18 @@ tf_cc_test(
     name = "batch_to_space_nd_test",
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "cast_test",
+    size = "small",
+    srcs = ["cast_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -152,7 +153,7 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  See the ${variables} documentation for more details.
+  See the @{$python/state_ops$`Variables`} documentation for more details.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -483,6 +484,7 @@ class ResourceVariable(variables.Variable):
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
+    self._cached_shape_as_list = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -529,6 +531,7 @@ class ResourceVariable(variables.Variable):
     self._graph_element = g.get_tensor_by_name(
         self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
+    self._cached_shape_as_list = None
 
   def __nonzero__(self):
     return self.__bool__()
@@ -560,6 +563,20 @@ class ResourceVariable(variables.Variable):
   def shape(self):
     """The shape of this variable."""
     return self._shape
+
+  def _shape_as_list(self):
+    if self._cached_shape_as_list:
+      return self._cached_shape_as_list
+    if self.shape.ndims is None:
+      return None
+    self._cached_shape_as_list = [dim.value for dim in self.shape.dims]
+    return self._cached_shape_as_list
+
+  def _shape_tuple(self):
+    shape = self._shape_as_list()
+    if shape is None:
+      return None
+    return tuple(shape)
 
   @property
   def create(self):
@@ -934,6 +951,7 @@ class ResourceVariable(variables.Variable):
 
 
 pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
+math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
@@ -985,6 +1003,7 @@ class _UnreadVariable(ResourceVariable):
 
   def set_shape(self, shape):
     self._shape = shape
+    self._cached_shape_as_list = None
 
   @property
   def op(self):

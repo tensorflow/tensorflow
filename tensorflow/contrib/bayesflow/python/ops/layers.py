@@ -14,7 +14,7 @@
 # ==============================================================================
 """Probabilistic neural layers.
 
-See ${python/contrib.bayesflow.layers}.
+See @{tf.contrib.bayesflow.layers}.
 """
 
 from __future__ import absolute_import
