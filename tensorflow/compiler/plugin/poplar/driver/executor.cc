@@ -292,11 +292,21 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   return port::Status::OK();
 }
 
-void PoplarExecutor::AddCompilerReport(const std::string& report) {
-  reports_.push_back(std::move(report));
+void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
+                                    const std::string& content) {
+  tensorflow::IpuTraceEvent evt;
+  evt.set_timestamp(0.0);
+  evt.set_type(type);
+  evt.set_data(std::move(content));
+  reports_.push_back(evt);
 }
 
-port::Status PoplarExecutor::GetCompilerReports(std::list<std::string>& out) {
+void PoplarExecutor::AddCompilerReport(const std::string& report) {
+  AddEventRecord(tensorflow::IpuTraceEvent::COMPILE, report);
+}
+
+port::Status
+PoplarExecutor::GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out) {
   std::lock_guard <std::recursive_mutex> g(mutex_);
   out.splice(out.end(), std::move(reports_));
   reports_.clear();
@@ -537,7 +547,8 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
 
           std::stringstream stream;
           engine->reportDynamic(stream, opts);
-          reports_.push_back(stream.str());
+          AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE,
+                         stream.str());
         }
       } catch (std::logic_error e) {
         VLOG(2) << "Error producing execution report: " << e.what();

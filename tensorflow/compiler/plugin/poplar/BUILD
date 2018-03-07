@@ -108,7 +108,7 @@ cc_library(
     ],
     deps = [
         ":optimizers",
-        ":protos_cc",
+        ":protos_cc_impl",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:batchnorm_expander",

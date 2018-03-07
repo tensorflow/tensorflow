@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
+namespace tensorflow {
+  class IpuTraceEvent;
+}
+
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
@@ -75,7 +79,7 @@ class PoplarPlatform : public Platform {
 
   port::Status ClosePoplarDevice(int ordinal);
 
-  port::Status GetCompilerReports(std::list<std::string>& out);
+  port::Status GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out);
 
  private:
   // This platform's name.

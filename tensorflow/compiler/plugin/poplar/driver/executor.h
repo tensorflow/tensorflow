@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+
 
 #include <list>
 #include <mutex>
@@ -212,7 +214,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   void AddCompilerReport(const std::string& report);
 
-  port::Status GetCompilerReports(std::list<std::string>& out);
+  port::Status GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out);
 
   port::StatusOr<DeviceMemoryBase>
   ExecuteEngine(perftools::gputools::StreamExecutor* executor,
@@ -269,6 +271,9 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   port::Status MoveDeviceToHost(TensorControl* tc) const;
 
+  void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
+                      const std::string& content);
+
   std::recursive_mutex mutex_;
 
   std::shared_ptr<poplar::Engine> current_engine_;
@@ -283,7 +288,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   bool profile_execution_;
   bool profile_io_;
 
-  std::list<std::string> reports_;
+  std::list<tensorflow::IpuTraceEvent> reports_;
 };
 
 }  // namespace poplarplugin

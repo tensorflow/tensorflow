@@ -11,7 +11,6 @@ import test_utils as tu
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 class IpuIpuModelTest(test_util.TensorFlowTestCase):
@@ -39,7 +38,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result[1], np.broadcast_to(45, [500]))
 
         rep = sess.run(report)
-        print(rep[0])
+
+        print(tu.extract_all_strings_from_event_trace(rep))
 
 if __name__ == "__main__":
     googletest.main()

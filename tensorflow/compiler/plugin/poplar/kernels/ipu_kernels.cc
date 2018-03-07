@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -41,11 +43,16 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
 
   auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
 
-  std::list<std::string> out;
+  std::list<tensorflow::IpuTraceEvent> out;
   OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
 
   std::vector<std::string> vec;
-  vec.insert(vec.end(), out.begin(), out.end());
+  for (auto& e : out) {
+    std::string str;
+    e.SerializeToString(&str);
+
+    vec.push_back(str);
+  }
 
   int num = vec.size();
 

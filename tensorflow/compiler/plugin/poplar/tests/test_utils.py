@@ -8,6 +8,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.framework import ops
 from tensorflow.core.framework import summary_pb2
@@ -36,6 +37,13 @@ def check_all_compute_sets_in_list(cs_list, whitelist):
     if len([x for x in whitelist if cs.startswith(x)]) == 0:
       return False
   return True
+
+def extract_all_strings_from_event_trace(events):
+  result = ""
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    result = result + evt.data
+  return result
 
 def ipu_compile_summary(name, op_list, collections=None):
 

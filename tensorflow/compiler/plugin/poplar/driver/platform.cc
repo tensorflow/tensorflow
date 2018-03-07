@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -135,7 +136,8 @@ port::Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
   return e->ClosePoplarDevice();
 }
 
-port::Status PoplarPlatform::GetCompilerReports(std::list<std::string>& out) {
+port::Status
+PoplarPlatform::GetCompilerReports(std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
     StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
