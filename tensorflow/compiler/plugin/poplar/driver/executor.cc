@@ -280,6 +280,8 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   if (device_open_) {
     //poplar_device_.release();
     device_open_ = false;
+    profile_enabled_ = false;
+    reports_.clear();
   }
   return port::Status::OK();
 }
