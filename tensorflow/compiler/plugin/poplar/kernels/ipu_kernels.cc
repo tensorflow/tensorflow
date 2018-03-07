@@ -46,15 +46,7 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
   std::list<tensorflow::IpuTraceEvent> out;
   OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
 
-  std::vector<std::string> vec;
-  for (auto& e : out) {
-    std::string str;
-    e.SerializeToString(&str);
-
-    vec.push_back(str);
-  }
-
-  int num = vec.size();
+  int num = out.size();
 
   Tensor* output_tensor = nullptr;
   OP_REQUIRES_OK(ctx,
@@ -62,8 +54,13 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
                                       &output_tensor));
   auto output_flat = output_tensor->flat<string>();
 
-  for (int i=0; i<out.size(); i++) {
-    output_flat(i) = vec[i];
+  unsigned i=0;
+  for (auto& e : out) {
+    std::string str;
+    e.SerializeToString(&str);
+
+    output_flat(i) = str;
+    i++;
   }
 }
 
