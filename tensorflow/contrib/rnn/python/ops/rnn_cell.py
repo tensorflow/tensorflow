@@ -2131,7 +2131,7 @@ class Conv1DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_1d_lstm_cell", **kwargs):
     """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
+    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, name=name, **kwargs)
 
 
 class Conv2DLSTMCell(ConvLSTMCell):
@@ -2142,7 +2142,7 @@ class Conv2DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_2d_lstm_cell", **kwargs):
     """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, name=name, **kwargs)
 
 
 class Conv3DLSTMCell(ConvLSTMCell):
@@ -2153,7 +2153,7 @@ class Conv3DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_3d_lstm_cell", **kwargs):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
+    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, name=name, **kwargs)
 
 
 def _conv(args, filter_size, num_features, bias, bias_start=0.0):
