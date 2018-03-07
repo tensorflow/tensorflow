@@ -1031,57 +1031,92 @@ class RNNCellTest(test.TestCase):
     num_units = 4
     number_of_groups = 1
 
-    with self.test_session() as sess:
-      with variable_scope.variable_scope(
-          "root1", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.ones([batch_size, num_units])
-        # When number_of_groups = 1, G-LSTM is equivalent to regular LSTM
-        gcell = contrib_rnn_cell.GLSTMCell(
-            num_units=num_units, number_of_groups=number_of_groups)
-        cell = rnn_cell.LSTMCell(num_units=num_units)
-        self.assertTrue(isinstance(gcell.state_size, tuple))
-        zero_state = gcell.zero_state(
-            batch_size=batch_size, dtype=dtypes.float32)
-        gh, gs = gcell(x, zero_state)
-        h, g = cell(x, zero_state)
+    # Try with input dimension equal to num_units or not.
+    for num_inputs in [num_units, num_units + number_of_groups]:
+      with self.test_session() as sess:
+        with variable_scope.variable_scope(
+            "root1_%d" % num_inputs,
+            initializer=init_ops.constant_initializer(0.5)):
+          x = array_ops.ones([batch_size, num_inputs])
+          # When number_of_groups = 1, G-LSTM is equivalent to regular LSTM
+          gcell = contrib_rnn_cell.GLSTMCell(
+              num_units=num_units, number_of_groups=number_of_groups)
+          cell = rnn_cell.LSTMCell(num_units=num_units)
+          self.assertTrue(isinstance(gcell.state_size, tuple))
+          zero_state = gcell.zero_state(
+              batch_size=batch_size, dtype=dtypes.float32)
+          gh, gs = gcell(x, zero_state)
+          h, g = cell(x, zero_state)
 
-        sess.run([variables.global_variables_initializer()])
-        glstm_result = sess.run([gh, gs])
-        lstm_result = sess.run([h, g])
+          sess.run([variables.global_variables_initializer()])
+          glstm_result = sess.run([gh, gs])
+          lstm_result = sess.run([h, g])
 
-        self.assertAllClose(glstm_result[0], lstm_result[0], 1e-5)
-        self.assertAllClose(glstm_result[1], lstm_result[1], 1e-5)
+          self.assertAllClose(glstm_result[0], lstm_result[0], 1e-5)
+          self.assertAllClose(glstm_result[1], lstm_result[1], 1e-5)
 
     # Test that G-LSTM subgroup act like corresponding sub-LSTMs
     batch_size = 2
     num_units = 4
     number_of_groups = 2
 
-    with self.test_session() as sess:
+    # Try with num_inputs equal to or not equal to num_units.
+    for num_inputs in [num_units, num_units + number_of_groups]:
+      with self.test_session() as sess:
+        with variable_scope.variable_scope(
+            "root2_%d" % num_inputs,
+            initializer=init_ops.constant_initializer(0.5)):
+          # input for G-LSTM with 2 groups
+          glstm_input = array_ops.ones([batch_size, num_inputs])
+          gcell = contrib_rnn_cell.GLSTMCell(
+              num_units=num_units, number_of_groups=number_of_groups)
+          gcell_zero_state = gcell.zero_state(
+              batch_size=batch_size, dtype=dtypes.float32)
+          gh, gs = gcell(glstm_input, gcell_zero_state)
+
+          # input for LSTM cell simulating single G-LSTM group
+          lstm_input = array_ops.ones(
+              [batch_size, num_inputs / number_of_groups])
+          # note division by number_of_groups. This cell one simulates G-LSTM
+          # group
+          cell = rnn_cell.LSTMCell(num_units=int(num_units / number_of_groups))
+          cell_zero_state = cell.zero_state(
+              batch_size=batch_size, dtype=dtypes.float32)
+          h, g = cell(lstm_input, cell_zero_state)
+
+          sess.run([variables.global_variables_initializer()])
+          [gh_res, h_res] = sess.run([gh, h])
+          self.assertAllClose(gh_res[:, 0:int(num_units / number_of_groups)],
+                              h_res, 1e-5)
+          self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
+                              h_res, 1e-5)
+
+  def testGLSTMCellFailure(self):
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 2
+    with self.test_session():
       with variable_scope.variable_scope(
-          "root2", initializer=init_ops.constant_initializer(0.5)):
-        # input for G-LSTM with 2 groups
-        glstm_input = array_ops.ones([batch_size, num_units])
+          "glstm_failure", initializer=init_ops.constant_initializer(0.5)):
         gcell = contrib_rnn_cell.GLSTMCell(
             num_units=num_units, number_of_groups=number_of_groups)
         gcell_zero_state = gcell.zero_state(
             batch_size=batch_size, dtype=dtypes.float32)
-        gh, gs = gcell(glstm_input, gcell_zero_state)
 
-        # input for LSTM cell simulating single G-LSTM group
-        lstm_input = array_ops.ones([batch_size, num_units / number_of_groups])
-        # note division by number_of_groups. This cell one simulates G-LSTM group
-        cell = rnn_cell.LSTMCell(num_units=int(num_units / number_of_groups))
-        cell_zero_state = cell.zero_state(
-            batch_size=batch_size, dtype=dtypes.float32)
-        h, g = cell(lstm_input, cell_zero_state)
+        # Try an input with statically-unknown innermost dimension.
+        glstm_input = array_ops.placeholder(
+            dtypes.float32, shape=[batch_size, None])
+        with self.assertRaisesRegexp(ValueError,
+                                     "input size must be statically known"):
+          gcell(glstm_input, gcell_zero_state)
 
-        sess.run([variables.global_variables_initializer()])
-        [gh_res, h_res] = sess.run([gh, h])
-        self.assertAllClose(gh_res[:, 0:int(num_units / number_of_groups)],
-                            h_res, 1e-5)
-        self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
-                            h_res, 1e-5)
+        # Try an input whose innermost dimension isn't divisible into groups.
+        glstm_input = array_ops.placeholder(
+            dtypes.float32, shape=[batch_size, 3])
+        with self.assertRaisesRegexp(
+            ValueError,
+            r"input size \(3\) must be divisible by number_of_groups \(2\)"):
+          gcell(glstm_input, gcell_zero_state)
 
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
