@@ -90,7 +90,6 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
   CHECK_EQ(shape.dimensions_size(), multidim.size());
   CHECK(LayoutUtil::HasLayout(shape));
-  linear_ = Linearize(AsInt64Slice(shape.dimensions()), ir_builder);
 }
 
 IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
