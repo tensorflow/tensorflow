@@ -283,7 +283,7 @@ class SliceTest(test.TestCase):
     # unintended behavior is prevented.
     c = constant_op.constant(5.0)
     with self.assertRaisesWithPredicateMatch(
-        TypeError, lambda e: "`Tensor` objects are not iterable" in str(e)):
+        TypeError, lambda e: "Tensor objects are not iterable" in str(e)):
       for _ in c:
         pass
 

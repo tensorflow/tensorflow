@@ -91,7 +91,7 @@ class SaverTest(test.TestCase):
       v2_init = v2.insert("k1", 30.0)
 
       # Initialize all variables
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate([variables.global_variables_initializer(), v2_init])
 
         # Check that the parameter nodes have been initialized.
@@ -119,7 +119,7 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Assert that the variables are not initialized.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertEqual(
             len(variables.report_uninitialized_variables().eval()), 2)
         self.assertEqual(0, len(v2.keys().eval()))
@@ -142,7 +142,7 @@ class SaverTest(test.TestCase):
       v2_init = v2_2.insert("k1000", 3000.0)
 
       # Check that the parameter nodes have been initialized.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         init_all_op = [variables.global_variables_initializer(), v2_init]
         self.evaluate(init_all_op)
         # TODO(xpan): Why _mutable_hash_table_v2 doesn't create empty
@@ -251,10 +251,10 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0",
                                                  name="v")
-      if context.in_graph_mode():
-        self.evaluate(variables.global_variables_initializer())
-      else:
+      if context.executing_eagerly():
         sess = None
+      else:
+        self.evaluate(variables.global_variables_initializer())
       save = saver_module.Saver([v])
       save.save(sess, save_path)
 
@@ -517,7 +517,7 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       var = resource_variable_ops.ResourceVariable(var_value, name=var_name)
       save = saver_module.Saver({var_name: var})
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate(var.initializer)
       val = save.save(sess, save_path)
       self.assertEqual(save_path, val)
@@ -677,11 +677,11 @@ class SaverTest(test.TestCase):
             {
                 var._shared_name: var
             }, pad_step_number=pad_step_number)
-        if context.in_graph_mode():
+        if context.executing_eagerly():
+          sess = None
+        else:
           self.evaluate(var.initializer)
           sess = ops_lib.get_default_session()
-        else:
-          sess = None
         if use_tensor:
           global_step = constant_op.constant(global_step_int)
           val = save.save(sess, save_path, global_step=global_step)
@@ -1066,7 +1066,7 @@ class MaxToKeepTest(test.TestCase):
       v = variable_scope.variable(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
       self.evaluate(variables.global_variables_initializer())
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertEqual([], save.last_checkpoints)
 
       s1 = save.save(None, os.path.join(save_dir, "s1"))
@@ -1479,7 +1479,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       v0 = variable_op(-1.0, name="v0")
       v1 = variable_op(-1.0, name="v1")
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with self.assertRaisesOpError("uninitialized"):
           self.evaluate(v0)
         with self.assertRaisesOpError("uninitialized"):
@@ -1489,7 +1489,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       save.restore(sess, save_path)
 
       # Check that the parameter nodes have been restored.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertEqual(10.0, self.evaluate(v0))
         self.assertEqual(20.0, self.evaluate(v1))
 
@@ -1499,7 +1499,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       v0 = variable_op(-1.0, name="restore_prefix/v0")
       v1 = variable_op(-1.0, name="restore_prefix/v1")
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with self.assertRaisesOpError("uninitialized"):
           self.evaluate(v0)
         with self.assertRaisesOpError("uninitialized"):

@@ -128,9 +128,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if context.in_graph_mode():
-    return gen_array_ops.identity(input, name=name)
-  else:
+  if context.executing_eagerly():
     input = ops.convert_to_tensor(input)
     in_device = input.device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
@@ -140,6 +138,8 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     if context_device != in_device:
       return input._copy()  # pylint: disable=protected-access
     return input
+  else:
+    return gen_array_ops.identity(input, name=name)
 
 
 # pylint: disable=redefined-builtin,protected-access
@@ -305,7 +305,7 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
                           sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         input_tensor = ops.convert_to_tensor(input)
         input_shape = input_tensor.get_shape()
         if optimize and input_shape.is_fully_defined():
@@ -330,7 +330,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
   """
 
   output = gen_array_ops.shape_n(input, out_type=out_type, name=name)
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     for i, input_tensor in enumerate(input):
       input_tensor = ops.convert_to_tensor(input_tensor)
       input_shape = input_tensor.get_shape()
@@ -385,9 +385,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
-  if context.in_eager_mode() and not isinstance(
-      input, (sparse_tensor.SparseTensor,
-              sparse_tensor.SparseTensorValue)):
+  if context.executing_eagerly() and not isinstance(
+      input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
     return np.prod(ops.convert_to_tensor(input)._shape_tuple())  # pylint: disable=protected-access
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
@@ -783,7 +782,7 @@ def strided_slice(input_,
         new_axis_mask=new_axis_mask,
         shrink_axis_mask=shrink_axis_mask)
 
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     # TODO(apassos) In eager mode assignment will be done by overriding
     # __setitem__ instead.
     op.assign = assign
@@ -1469,7 +1468,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
       ret = transpose_fn(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         input_shape = ret.op.inputs[0].get_shape().dims
         if input_shape is not None:
           ret.set_shape(input_shape[::-1])
@@ -1634,7 +1633,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if dtype is not None and dtype != tensor.dtype:
         return zeros(
             shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
@@ -1690,7 +1689,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
     if dtype is None:
       dtype = tensor.dtype
     ret = ones(ones_shape, dtype=dtype, name=name)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       ret.set_shape(tensor.get_shape())
     return ret
 
@@ -1771,7 +1770,7 @@ def placeholder(dtype, shape=None, name=None):
   Raises:
     RuntimeError: if eager execution is enabled
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError("tf.placeholder() is not compatible with "
                        "eager execution.")
 
@@ -1834,7 +1833,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
   Raises:
     RuntimeError: if eager execution is enabled
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError("tf.placeholder() is not compatible with "
                        "eager execution.")
 
@@ -1933,7 +1932,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     raise ValueError("Unknown padding mode: %s" % mode)
 
   # Restore shape information where possible.
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     paddings_constant = tensor_util.constant_value(
         result.op.inputs[1], partial=True)
     input_shape = result.op.inputs[0].shape

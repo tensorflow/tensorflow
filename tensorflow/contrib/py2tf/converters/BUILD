@@ -29,6 +29,7 @@ py_library(
         "logical_expressions.py",
         "name_scopes.py",
         "side_effect_guards.py",
+        "single_return.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -178,6 +179,17 @@ py_test(
     ],
     deps = [
         ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "single_return_test",
+    srcs = ["single_return_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )

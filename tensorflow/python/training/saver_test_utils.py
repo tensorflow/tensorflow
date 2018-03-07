@@ -40,7 +40,7 @@ class CheckpointedOp(object):
     else:
       self.table_ref = table_ref
     self._name = name
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self._saveable = CheckpointedOp.CustomSaveable(self, name)
       ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
                                 self._saveable)
@@ -51,10 +51,10 @@ class CheckpointedOp(object):
 
   @property
   def saveable(self):
-    if context.in_graph_mode():
-      return self._saveable
-    else:
+    if context.executing_eagerly():
       return CheckpointedOp.CustomSaveable(self, self.name)
+    else:
+      return self._saveable
 
   def insert(self, keys, values):
     return gen_lookup_ops.lookup_table_insert_v2(self.table_ref, keys, values)

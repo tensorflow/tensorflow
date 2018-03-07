@@ -2462,15 +2462,7 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 // TF_Session functions ----------------------------------------------
 
 TF_Session::TF_Session(tensorflow::Session* s, TF_Graph* g)
-    : session(s),
-      graph(g),
-      last_num_graph_nodes(0),
-      device_mgr(nullptr),
-      extend_before_run(true) {
-  if (s->LocalDeviceManager(&device_mgr).ok()) {
-    devices = device_mgr->ListDevices();
-  }
-}
+    : session(s), graph(g), last_num_graph_nodes(0), extend_before_run(true) {}
 
 TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
                           TF_Status* status) {

@@ -108,14 +108,14 @@ class InterfaceTests(test.TestCase):
                          [0., 0.]], self.evaluate(bare_initializer))
     self.assertEqual("a_variable:0", obj.a_variable.name)
     self.assertEqual("duplicate:0", other_duplicate.name)
-    if context.in_graph_mode():
-      # The .name attribute may be globally influenced, but the checkpoint name
-      # won't be (tested below).
-      self.assertEqual("duplicate_1:0", duplicate.name)
-    else:
+    if context.executing_eagerly():
       # When executing eagerly, there's no uniquification of variable names. The
       # checkpoint name will be the same.
       self.assertEqual("duplicate:0", duplicate.name)
+    else:
+      # The .name attribute may be globally influenced, but the checkpoint name
+      # won't be (tested below).
+      self.assertEqual("duplicate_1:0", duplicate.name)
     named_variables, _ = checkpointable_utils._serialize_object_graph(obj)
     expected_checkpoint_names = (
         "a_variable/.ATTRIBUTES/VARIABLE_VALUE",
@@ -165,7 +165,7 @@ class CheckpointingTests(test.TestCase):
     optimizer_step = training_util.get_or_create_global_step()
     root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, model=model, optimizer_step=optimizer_step)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       optimizer.minimize(
           lambda: model(input_value),
           global_step=optimizer_step)
@@ -268,7 +268,7 @@ class CheckpointingTests(test.TestCase):
     root_checkpointable = checkpointable_utils.Checkpoint(
         optimizer=optimizer, model=model)
     input_value = constant_op.constant([[3.]])
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       optimizer.minimize(
           lambda: model(input_value))
     else:
@@ -293,7 +293,7 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([42.], self.evaluate(model._named_dense.variables[1]))
     self.assertAllEqual(1, self.evaluate(root_checkpointable.save_counter))
     self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
     on_create_optimizer = adam.AdamOptimizer(0.001)
@@ -400,7 +400,7 @@ class CheckpointingTests(test.TestCase):
             optimizer.minimize,
             functools.partial(model, input_value),
             global_step=root.global_step)
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           train_fn = functools.partial(self.evaluate, train_fn())
         status.initialize_or_restore()
         for _ in range(num_training_steps):
@@ -524,7 +524,9 @@ class CheckpointingTests(test.TestCase):
     root.var = checkpointable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      optimizer.minimize(root.var.read_value)
+    else:
       train_op = optimizer.minimize(root.var)
       # Note that `optimizer` has not been added as a dependency of
       # `root`. Create a one-off grouping so that slot variables for `root.var`
@@ -532,8 +534,6 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(checkpointable_utils.gather_initializers(
           checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
       self.evaluate(train_op)
-    else:
-      optimizer.minimize(root.var.read_value)
     self.evaluate(state_ops.assign(root.var, 12.))
     no_slots_path = checkpointable_utils.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "no_slots"))
@@ -561,7 +561,7 @@ class CheckpointingTests(test.TestCase):
     with self.assertRaisesRegexp(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Slot variables are only created with restoring initializers when
       # executing eagerly.
       self.assertEqual(14., self.evaluate(
@@ -569,7 +569,9 @@ class CheckpointingTests(test.TestCase):
     else:
       self.assertIs(new_root.optimizer.get_slot(name="m", var=new_root.var),
                     None)
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      new_root.optimizer.minimize(new_root.var.read_value)
+    else:
       train_op = new_root.optimizer.minimize(new_root.var)
       # The slot variable now exists; restore() didn't create it, but we should
       # now have a restore op for it.
@@ -577,8 +579,6 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual(14., self.evaluate(
           new_root.optimizer.get_slot(name="m", var=new_root.var)))
       self.evaluate(train_op)
-    else:
-      new_root.optimizer.minimize(new_root.var.read_value)
     slot_status.assert_consumed()
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)

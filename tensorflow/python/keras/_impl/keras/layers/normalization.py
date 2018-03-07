@@ -111,7 +111,7 @@ class BatchNormalization(tf_normalization_layers.BatchNormalization, Layer):
     if training is None:
       training = K.learning_phase()
     output = super(BatchNormalization, self).call(inputs, training=training)
-    if context.in_graph_mode() and training is K.learning_phase():
+    if not context.executing_eagerly() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 

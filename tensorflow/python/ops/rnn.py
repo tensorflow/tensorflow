@@ -575,7 +575,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     # Create a new scope in which the caching device is either
     # determined by the parent scope, or is set to place the cached
     # Variable using the same placement as for the rest of the RNN.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -616,7 +616,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if context.in_graph_mode() and sequence_length is not None:
+    if not context.executing_eagerly() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -742,7 +742,7 @@ def _dynamic_rnn_loop(cell,
                                         element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   if in_graph_mode:
     output_ta = tuple(
         _create_ta(
@@ -1027,7 +1027,7 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1242,7 +1242,7 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 

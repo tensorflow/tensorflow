@@ -70,7 +70,7 @@ class PadOp : public OpKernel {
             "The first dimension of paddings must be the rank of inputs",
             in1.shape().DebugString(), " ", in0.shape().DebugString()));
 
-    T pad_value(0);
+    T pad_value = T();
     if (context->num_inputs() == 3) {
       const Tensor& constant_values = context->input(2);
       OP_REQUIRES(
@@ -186,6 +186,7 @@ class PadOp : public OpKernel {
                           PadOp<CPUDevice, type, int64>);
 
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
+TF_CALL_string(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA

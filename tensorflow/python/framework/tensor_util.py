@@ -828,7 +828,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return tensor_shape.as_shape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 

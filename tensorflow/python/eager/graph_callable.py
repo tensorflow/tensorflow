@@ -406,7 +406,7 @@ def graph_callable(shape_and_dtypes):
     A callable graph object.
   """
   # TODO(alive,apassos): support initialized_value and friends from tf.Variable.
-  assert context.in_eager_mode(), (
+  assert context.executing_eagerly(), (
       "graph_callable can only be used when Eager execution is enabled.")
   def decorator(func):
     return tf_decorator.make_decorator(func,
