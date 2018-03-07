@@ -83,6 +83,7 @@ cc_library(
         "kernels/trt_engine_op.h",
     ],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
         ":trt_resources",
