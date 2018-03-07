@@ -317,7 +317,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     result = func(*[x.numpy() for x in inp])
     result = nest.flatten(result)
 

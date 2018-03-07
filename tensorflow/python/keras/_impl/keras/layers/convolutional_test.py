@@ -553,7 +553,7 @@ class ZeroPaddingTest(test.TestCase):
       layer = keras.layers.ZeroPadding1D(padding=2)
       layer.build(shape)
       output = layer(keras.backend.variable(inputs))
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         np_output = output.numpy()
       else:
         np_output = keras.backend.eval(output)
@@ -564,7 +564,7 @@ class ZeroPaddingTest(test.TestCase):
       layer = keras.layers.ZeroPadding1D(padding=(1, 2))
       layer.build(shape)
       output = layer(keras.backend.variable(inputs))
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         np_output = output.numpy()
       else:
         np_output = keras.backend.eval(output)
@@ -610,7 +610,7 @@ class ZeroPaddingTest(test.TestCase):
             padding=(2, 2), data_format=data_format)
         layer.build(inputs.shape)
         output = layer(keras.backend.variable(inputs))
-        if context.in_eager_mode():
+        if context.executing_eagerly():
           np_output = output.numpy()
         else:
           np_output = keras.backend.eval(output)
@@ -629,7 +629,7 @@ class ZeroPaddingTest(test.TestCase):
             padding=((1, 2), (3, 4)), data_format=data_format)
         layer.build(inputs.shape)
         output = layer(keras.backend.variable(inputs))
-        if context.in_eager_mode():
+        if context.executing_eagerly():
           np_output = output.numpy()
         else:
           np_output = keras.backend.eval(output)
@@ -683,7 +683,7 @@ class ZeroPaddingTest(test.TestCase):
       layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2))
       layer.build(inputs.shape)
       output = layer(keras.backend.variable(inputs))
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         np_output = output.numpy()
       else:
         np_output = keras.backend.eval(output)
@@ -737,7 +737,7 @@ class UpSamplingTest(test.TestCase):
                 size=(length_row, length_col), data_format=data_format)
             layer.build(inputs.shape)
             output = layer(keras.backend.variable(inputs))
-            if context.in_eager_mode():
+            if context.executing_eagerly():
               np_output = output.numpy()
             else:
               np_output = keras.backend.eval(output)
@@ -790,7 +790,7 @@ class UpSamplingTest(test.TestCase):
                   data_format=data_format)
               layer.build(inputs.shape)
               output = layer(keras.backend.variable(inputs))
-              if context.in_eager_mode():
+              if context.executing_eagerly():
                 np_output = output.numpy()
               else:
                 np_output = keras.backend.eval(output)
@@ -865,7 +865,7 @@ class CroppingTest(test.TestCase):
             cropping=cropping, data_format=data_format)
         layer.build(inputs.shape)
         output = layer(keras.backend.variable(inputs))
-        if context.in_eager_mode():
+        if context.executing_eagerly():
           np_output = output.numpy()
         else:
           np_output = keras.backend.eval(output)
@@ -892,7 +892,7 @@ class CroppingTest(test.TestCase):
             cropping=cropping, data_format=data_format)
         layer.build(inputs.shape)
         output = layer(keras.backend.variable(inputs))
-        if context.in_eager_mode():
+        if context.executing_eagerly():
           np_output = output.numpy()
         else:
           np_output = keras.backend.eval(output)
@@ -937,7 +937,7 @@ class CroppingTest(test.TestCase):
                 cropping=cropping, data_format=data_format)
             layer.build(inputs.shape)
             output = layer(keras.backend.variable(inputs))
-            if context.in_eager_mode():
+            if context.executing_eagerly():
               np_output = output.numpy()
             else:
               np_output = keras.backend.eval(output)
@@ -954,7 +954,7 @@ class CroppingTest(test.TestCase):
                                     cropping[2][0]:-cropping[2][1], :]
             np.testing.assert_allclose(np_output, expected_out)
 
-     # test incorrect use
+    # test incorrect use
     with self.assertRaises(ValueError):
       keras.layers.Cropping3D(cropping=(1, 1))
     with self.assertRaises(ValueError):

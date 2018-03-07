@@ -456,7 +456,7 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
 
   def IsZero(g):
     # Some introspection to check if the gradient is feeding zeros
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # TODO(apassos) add an efficient way to detect eager zeros here.
       return False
     if g.op.type in ("ZerosLike", "Zeros"):

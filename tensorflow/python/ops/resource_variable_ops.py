@@ -135,10 +135,10 @@ class EagerResourceDeleter(object):
       # valid, and so on. Printing warnings in these cases is silly
       # (exceptions raised from __del__ are printed as warnings to stderr).
       pass  # 'NoneType' object is not callable when the handle has been
-            # partially unloaded.
+      # partially unloaded.
     except AttributeError:
       pass  # 'NoneType' object has no attribute 'eager_mode' when context has
-            # been unloaded. Will catch other module unloads as well.
+      # been unloaded. Will catch other module unloads as well.
 
 
 def shape_safe_assign_variable_handle(handle, shape, value, name=None):
@@ -267,9 +267,9 @@ class ResourceVariable(variables.Variable):
       if initial_value is not None:
         raise ValueError("variable_def and initial_value are mutually "
                          "exclusive.")
-      if not context.in_graph_mode():
-        raise ValueError("Creating ResourceVariable from variable_def"
-                         " only supported in GRAPH mode.")
+      if context.executing_eagerly():
+        raise ValueError("Creating ResourceVariable from variable_def is "
+                         "not supported when eager execution is enabled.")
       self._init_from_proto(variable_def, import_scope=import_scope)
     else:
       self._init_from_args(
@@ -363,7 +363,7 @@ class ResourceVariable(variables.Variable):
     # this graph.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     with ops.init_scope():
-      self._in_graph_mode = context.in_graph_mode()
+      self._in_graph_mode = not context.executing_eagerly()
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
@@ -470,7 +470,7 @@ class ResourceVariable(variables.Variable):
               self._cached_value = self._read_variable_op()
           else:
             self._cached_value = None
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
@@ -489,7 +489,7 @@ class ResourceVariable(variables.Variable):
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
     # Note that init_from_proto is currently not supported in Eager mode.
-    assert context.in_graph_mode()
+    assert not context.executing_eagerly()
     self._in_graph_mode = True
     assert isinstance(variable_def, variable_pb2.VariableDef)
     if not variable_def.is_resource:
@@ -582,7 +582,8 @@ class ResourceVariable(variables.Variable):
   def create(self):
     """The op responsible for initializing this variable."""
     if not self._in_graph_mode:
-      raise RuntimeError("Calling create in EAGER mode not supported.")
+      raise RuntimeError("Calling create is not supported when eager execution"
+                         " is enabled.")
     return self._initializer_op
 
   @property
@@ -610,7 +611,7 @@ class ResourceVariable(variables.Variable):
   @property
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("initial_value not supported in EAGER mode.")
     return self._initial_value
 
@@ -631,15 +632,15 @@ class ResourceVariable(variables.Variable):
 
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
 
   def numpy(self):
-    if context.in_graph_mode():
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
-    return self.read_value().numpy()
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    raise NotImplementedError(
+        "numpy() is only available when eager execution is enabled.")
 
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -720,7 +721,7 @@ class ResourceVariable(variables.Variable):
       A `VariableDef` protocol buffer, or `None` if the `Variable` is not
       in the specified name scope.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("to_proto not supported in EAGER mode.")
     if export_scope is None or self.handle.name.startswith(export_scope):
       var_def = variable_pb2.VariableDef()
@@ -747,7 +748,7 @@ class ResourceVariable(variables.Variable):
 
   @staticmethod
   def from_proto(variable_def, import_scope=None):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
@@ -984,10 +985,10 @@ class _UnreadVariable(ResourceVariable):
     self._is_initialized_op = None
     self._initializer_op = None
     self._parent_op = parent_op
-    if context.in_graph_mode():
-      self._graph_element = self.read_value()
-    else:
+    if context.executing_eagerly():
       self._graph_element = None
+    else:
+      self._graph_element = self.read_value()
     self._handle_deleter = deleter
 
   def value(self):

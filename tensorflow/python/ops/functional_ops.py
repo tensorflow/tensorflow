@@ -90,7 +90,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldl", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -178,7 +178,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldr", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -343,7 +343,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -536,7 +536,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "scan", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager

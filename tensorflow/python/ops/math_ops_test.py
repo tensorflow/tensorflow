@@ -60,7 +60,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testReduceInvalidAxis(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # The shape check is in run a graph construction time. In eager mode,
       # it misses the check, magically return result given wrong shape.
       return
@@ -249,7 +249,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testAcceptsRefs(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       var = resource_variable_ops.ResourceVariable(10, name="var")
     else:
       var = variables.Variable(10)

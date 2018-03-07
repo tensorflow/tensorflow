@@ -57,8 +57,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testContext(self):
     ctx = context.Context()
-    self.assertFalse(ctx.in_graph_mode())
-    self.assertTrue(ctx.in_eager_mode())
+    self.assertTrue(ctx.executing_eagerly())
 
     self.assertEqual('', ctx.scope_name)
     ctx.scope_name = 'foo'
@@ -150,9 +149,9 @@ class TFETest(test_util.TensorFlowTestCase):
 
     def get_context_values(ctx):
       return [
-          ctx.in_graph_mode(),
-          ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
-          ctx.device_name, ctx.num_gpus()
+          ctx.executing_eagerly(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.device_name,
+          ctx.num_gpus()
       ]
 
     def get_values(ctx, values):

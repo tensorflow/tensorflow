@@ -305,7 +305,7 @@ class Supervisor(object):
     `Supervisor`s are not supported when eager execution is enabled.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
@@ -762,7 +762,7 @@ class Supervisor(object):
     execution is enabled, use the `tf.data` API.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)

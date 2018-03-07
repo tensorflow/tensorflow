@@ -173,7 +173,7 @@ class ReaderBase(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "Readers are not supported when eager execution is enabled. "
           "Instead, please use tf.data to get data into your model.")

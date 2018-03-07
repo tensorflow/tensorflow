@@ -99,11 +99,11 @@ class Network(base_layer.Layer):
     self._losses = []   # Used in symbolic mode only.
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-        # A Network does not create weights of its own, thus has no dtype.
+      # A Network does not create weights of its own, thus has no dtype.
     self._dtype = None
 
     # All layers in order of horizontal graph traversal.
@@ -126,7 +126,7 @@ class Network(base_layer.Layer):
       self.outputs = [outputs]
 
     # User-prodived argument validation.
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Check that all inputs/outputs are DeferredTensors.
       for tensor in self.inputs:
         if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
@@ -275,7 +275,7 @@ class Network(base_layer.Layer):
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
         # layer.input gives an error in eager mode
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
@@ -317,7 +317,7 @@ class Network(base_layer.Layer):
     raise NotImplementedError('`add_variable` is not supported on Networks.')
 
   def add_loss(self, *args, **kwargs):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError('`add_loss` is not supported on Networks '
                                 'when eager execution is enabled.')
     super(Network, self).add_loss(*args, **kwargs)
@@ -483,7 +483,7 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return []
 
     if not self.trainable and not self.stateful:
@@ -530,7 +530,7 @@ class Network(base_layer.Layer):
     losses = []
     for layer in self.layers:
       losses += layer.losses
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return losses
 
     if self.inputs:
@@ -623,7 +623,7 @@ class Network(base_layer.Layer):
     else:
       masks = nest.flatten(mask)
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
       # on these exact inputs.
       cache_key = (tf_layers_util.object_list_uid(inputs)
@@ -829,7 +829,7 @@ class Network(base_layer.Layer):
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
 
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               if layer.activity_regularizer is not None:
                 regularization_losses = [
                     layer.activity_regularizer(x) for x in output_tensors
@@ -859,7 +859,7 @@ class Network(base_layer.Layer):
       if output_masks is not None:
         output_masks = output_masks[0]
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Update cache;
       # keys are based on ids on input tensors and inputs masks.
       cache_key = (tf_layers_util.object_list_uid(inputs)
