@@ -289,9 +289,9 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   return port::Status::OK();
 }
 
-port::Status PoplarExecutor::GetCompilerReports(std::vector<std::string>& out) {
+port::Status PoplarExecutor::GetCompilerReports(std::list<std::string>& out) {
   std::lock_guard <std::recursive_mutex> g(mutex_);
-  out.insert(out.end(), reports_.begin(), reports_.end());
+  out.splice(out.end(), std::move(reports_));
   reports_.clear();
   return port::Status::OK();
 }

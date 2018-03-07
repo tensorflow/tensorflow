@@ -135,7 +135,7 @@ port::Status PoplarPlatform::ClosePoplarDevice(int ordinal) {
   return e->ClosePoplarDevice();
 }
 
-port::Status PoplarPlatform::GetCompilerReports(std::vector<std::string>& out) {
+port::Status PoplarPlatform::GetCompilerReports(std::list<std::string>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
     StreamExecutor* executor;
     TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));

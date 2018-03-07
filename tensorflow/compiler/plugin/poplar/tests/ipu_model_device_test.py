@@ -40,7 +40,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
         with tf.device('cpu'):
             with tf.control_dependencies([output]):
-                report = gen_ipu_ops.ipu_summary()
+                report = gen_ipu_ops.ipu_event_trace()
 
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()
@@ -61,7 +61,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
         with tf.device('cpu'):
             with tf.control_dependencies([output]):
-                report = gen_ipu_ops.ipu_summary()
+                report = gen_ipu_ops.ipu_event_trace()
 
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()
@@ -86,7 +86,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
         with tf.device('cpu'):
             with tf.control_dependencies([out1, out2]):
-                report = gen_ipu_ops.ipu_summary()
+                report = gen_ipu_ops.ipu_event_trace()
 
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()
@@ -114,7 +114,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
         with tf.device('cpu'):
             with tf.control_dependencies([output]):
-                report = gen_ipu_ops.ipu_summary()
+                report = gen_ipu_ops.ipu_event_trace()
 
         opts = config_pb2.IPUOptions()
         dev = opts.device_config.add()

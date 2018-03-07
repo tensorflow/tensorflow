@@ -41,10 +41,13 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
 
   auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
 
-  std::vector<std::string> out;
+  std::list<std::string> out;
   OP_REQUIRES_OK(ctx, p->GetCompilerReports(out));
 
-  int num = out.size();
+  std::vector<std::string> vec;
+  vec.insert(vec.end(), out.begin(), out.end());
+
+  int num = vec.size();
 
   Tensor* output_tensor = nullptr;
   OP_REQUIRES_OK(ctx,
@@ -53,13 +56,13 @@ void IpuSummaryOp::Compute(OpKernelContext* ctx) {
   auto output_flat = output_tensor->flat<string>();
 
   for (int i=0; i<out.size(); i++) {
-    output_flat(i) = out[i];
+    output_flat(i) = vec[i];
   }
 }
 
 IpuSummaryOp::~IpuSummaryOp() {}
 
-REGISTER_KERNEL_BUILDER(Name("IpuSummary").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IpuEventTrace").Device(DEVICE_CPU),
     IpuSummaryOp);
 
 }  // namespace tensorflow

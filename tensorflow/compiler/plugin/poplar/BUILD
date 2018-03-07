@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -13,6 +14,19 @@ genrule(
     outs = ["tf.gp"],
     tools = ["@local_config_poplar//poplar:popc"],
     cmd = "$(location @local_config_poplar//poplar:popc) -I . -o $@ $<",
+)
+
+tf_proto_library(
+    name = "protos",
+    srcs = [
+      "driver/trace.proto",
+    ],
+    cc_api_version = 2,
+    default_header = True,
+    go_api_version = 2,
+    j2objc_api_version = 1,
+    java_api_version = 2,
+    js_api_version = 2,
 )
 
 cc_library(
@@ -94,6 +108,7 @@ cc_library(
     ],
     deps = [
         ":optimizers",
+        ":protos_cc",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
@@ -179,6 +194,7 @@ cc_library(
     ],
     data = [
         ":tf_graph_program",
+        ":protos_py",
         "@local_config_poplar//poplar:poplar_lib",
     ],
     linkstatic=1,

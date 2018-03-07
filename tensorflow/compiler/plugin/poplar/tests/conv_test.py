@@ -55,7 +55,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       output = nn_ops.bias_add(output, bi)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -84,7 +84,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       output = nn_ops.bias_add(output, bia)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -113,7 +113,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       output = c + pc
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -153,7 +153,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       output = c + pc
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {

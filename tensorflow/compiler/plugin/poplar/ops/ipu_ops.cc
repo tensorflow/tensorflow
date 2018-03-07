@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("IpuSummary")
+REGISTER_OP("IpuEventTrace")
 .Output("out: string")
 .SetIsStateful()
-.Doc("IPU compiler statistics summary.");
+.Doc("Fetch IPU trace events.");
 
 }  // namespace tensorflow

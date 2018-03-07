@@ -37,16 +37,11 @@ def ipu_compile_summary(name, op, collections=None):
   with ops.device("cpu"):
     with ops.control_dependencies([op]):
 
-      reports = gen_ipu_ops.ipu_summary()
-
-      reports = string_ops.reduce_join(reports, 0, separator="</PRE><PRE>")
-      reports = string_ops.string_join([constant_op.constant("<PRE>"),
-                                        reports,
-                                        constant_op.constant("</PRE>")])
+      reports = gen_ipu_ops.ipu_event_trace()
 
       summary_metadata = summary_pb2.SummaryMetadata(
         plugin_data=summary_pb2.SummaryMetadata.PluginData(
-          plugin_name="text"))
+          plugin_name="ipu"))
 
       t_summary = tensor_summary(name=name, tensor=reports,
                                  summary_metadata=summary_metadata,

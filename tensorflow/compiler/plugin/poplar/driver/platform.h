@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
+#include <list>
 
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -75,7 +75,7 @@ class PoplarPlatform : public Platform {
 
   port::Status ClosePoplarDevice(int ordinal);
 
-  port::Status GetCompilerReports(std::vector<std::string>& out);
+  port::Status GetCompilerReports(std::list<std::string>& out);
 
  private:
   // This platform's name.

@@ -9,8 +9,6 @@ import tensorflow as tf
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.python.ops import string_ops
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.ops.summary_ops import tensor_summary
@@ -43,7 +41,7 @@ def ipu_compile_summary(name, op_list, collections=None):
 
   with ops.device("cpu"):
     with ops.control_dependencies(op_list):
-      reports = gen_ipu_ops.ipu_summary()
+      reports = gen_ipu_ops.ipu_event_trace()
 
       summary_metadata = summary_pb2.SummaryMetadata(
         plugin_data=summary_pb2.SummaryMetadata.PluginData(plugin_name="ipu"))

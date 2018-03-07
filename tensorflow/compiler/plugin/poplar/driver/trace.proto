@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package tensorflow;
+
+message IpuTraceEvent {
+  // Timestamp. Seconds since the epoch. As python time()
+  double timestamp = 1;
+
+  enum Type {
+    COMPILE = 0;
+    HOST_TO_DEVICE_TRANSFER = 1;
+    DEVICE_TO_HOST_TRANSFER = 2;
+    LOAD_ENGINE = 3;
+    EXECUTE = 4;
+  };
+  Type type = 2;
+
+  bytes data = 3;
+};

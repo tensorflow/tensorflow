@@ -31,7 +31,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       r = tf.while_loop(cond, body, [i, v])
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
 

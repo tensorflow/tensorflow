@@ -23,7 +23,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       c = tf.sigmoid(pa)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -47,7 +47,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       c = gen_math_ops.sigmoid_grad(pa, pb)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -70,7 +70,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       c = nn_ops.relu(pa)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -94,7 +94,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       c = gen_nn_ops.relu_grad(pa, pb)
 
     with tf.device('cpu'):
-      report = gen_ipu_ops.ipu_summary()
+      report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
       fd = {
