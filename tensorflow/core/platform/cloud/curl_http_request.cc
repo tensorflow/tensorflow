@@ -282,8 +282,8 @@ void CurlHttpRequest::SetPutEmptyBody() {
   method_ = RequestMethod::kPut;
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1), "Setting put request");
-  curl_headers_ =
-      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  AddHeader("Content-Length", "0");
+  AddHeader("Transfer-Encoding", "identity");
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                  reinterpret_cast<void*>(this)),
@@ -323,8 +323,8 @@ void CurlHttpRequest::SetPostEmptyBody() {
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1),
       "Setting POST request");
-  curl_headers_ =
-      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  AddHeader("Content-Length", "0");
+  AddHeader("Transfer-Encoding", "identity");
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                  reinterpret_cast<void*>(this)),
