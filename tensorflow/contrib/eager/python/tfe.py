@@ -60,8 +60,8 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@Checkpointable
 @@CheckpointableSaver
 
+@@executing_eagerly
 @@in_eager_mode
-@@in_graph_mode
 
 @@run_test_in_graph_and_eager_modes
 
@@ -93,8 +93,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
-from tensorflow.python.eager.context import in_eager_mode
-from tensorflow.python.eager.context import in_graph_mode
+from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
@@ -122,5 +121,6 @@ implicit_value_and_gradients = backprop.implicit_val_and_grad
 gradients_function = backprop.gradients_function
 value_and_gradients_function = backprop.val_and_grad_function
 GradientTape = backprop.GradientTape  # pylint: disable=invalid-name
+in_eager_mode = executing_eagerly
 
 remove_undocumented(__name__)

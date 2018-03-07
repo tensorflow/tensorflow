@@ -136,7 +136,7 @@ def _num_present(losses, weights, per_batch=False):
       `[batch_size]`. Otherwise, a single scalar tensor is returned.
   """
   if ((isinstance(weights, float) and weights != 0.0) or
-      (context.in_eager_mode() and weights._rank() == 0  # pylint: disable=protected-access
+      (context.executing_eagerly() and weights._rank() == 0  # pylint: disable=protected-access
        and not math_ops.equal(weights, 0.0))):
     return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:

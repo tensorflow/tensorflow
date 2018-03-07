@@ -152,7 +152,7 @@ def Assert(condition, data, summarize=None, name=None):
     @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
     is not true
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if not condition:
       xs = ops.convert_n_to_tensor(data)
       data_str = [_summarize_eager(x, summarize) for x in xs]
@@ -178,7 +178,7 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
 
       guarded_assert = cond(condition, no_op, true_assert, name="AssertGuard")
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         return
       return guarded_assert.op
 
@@ -2025,7 +2025,7 @@ def cond(pred,
     raise TypeError("false_fn must be callable.")
 
   with ops.name_scope(name, "cond", [pred]):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if pred:
         return _UnpackIfSingleton(true_fn())
       return _UnpackIfSingleton(false_fn())
@@ -3177,7 +3177,7 @@ def while_loop(cond,
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
       if maximum_iterations is not None:
@@ -3271,7 +3271,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return output_tensor
   with ops.name_scope(name, "control_dependency",
                       list(dependencies) + [output_tensor]) as name:
@@ -3316,7 +3316,7 @@ def group(*inputs, **kwargs):
   Raises:
     ValueError: If an unknown keyword argument is provided.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return None
   name = kwargs.pop("name", None)
   if kwargs:
@@ -3396,7 +3396,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
       objects.
 
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     tensors = [t if (isinstance(t, ops.Operation)

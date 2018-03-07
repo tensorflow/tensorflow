@@ -105,7 +105,7 @@ class Pooling2DTest(test.TestCase):
 
     # This part of the test can only run on GPU but doesn't appear
     # to be properly assigned to a GPU when running in eager mode.
-    if not context.in_eager_mode():
+    if not context.executing_eagerly():
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
       if test.is_gpu_available(cuda_only=True):

@@ -91,7 +91,7 @@ class Dataset(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
           "execution is enabled.")
@@ -123,7 +123,7 @@ class Dataset(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_one_shot_iterator is not supported when eager "
           "execution is enabled.")

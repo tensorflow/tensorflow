@@ -1504,7 +1504,7 @@ def bias_add(value, bias, data_format=None, name=None):
     A `Tensor` with the same type as `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
     return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
@@ -1616,7 +1616,7 @@ def _flatten_outer_dims(logits):
   output = array_ops.reshape(logits, array_ops.concat([[-1], last_dim_size], 0))
 
   # Set output shape if known.
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     shape = logits.get_shape()
     if shape is not None and shape.dims is not None:
       shape = shape.as_list()
@@ -1881,7 +1881,8 @@ def softmax_cross_entropy_with_logits_v2(
 
     # Make shape inference work since reshape and transpose may erase its static
     # shape.
-    if context.in_graph_mode() and shape is not None and shape.dims is not None:
+    if not context.executing_eagerly(
+    ) and shape is not None and shape.dims is not None:
       shape = shape.as_list()
       del shape[dim]
       cost.set_shape(shape)
@@ -2318,7 +2319,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
     ret = math_ops.div(x, keep_prob) * binary_tensor
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret
 

@@ -343,7 +343,7 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if 'eager' not in _GRAPH_LEARNING_PHASES:
       # Fallback to inference mode as default.
       return 0
@@ -370,7 +370,7 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     _GRAPH_LEARNING_PHASES['eager'] = value
   else:
     _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
@@ -399,7 +399,7 @@ def learning_phase_scope(value):
     yield value
   finally:
     # Restore learning phase to initial value.
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       _GRAPH_LEARNING_PHASES['eager'] = previous_value
     else:
       _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
@@ -2625,7 +2625,7 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return x.numpy()
   return x.eval(session=get_session())
 
@@ -2640,7 +2640,7 @@ def batch_get_value(tensors):
   Returns:
       A list of Numpy arrays.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return [x.numpy() for x in tensors]
   if tensors:
     return get_session().run(tensors)
@@ -2658,7 +2658,7 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     x.assign(value)
   else:
     tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -2681,7 +2681,7 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype(x)))
   else:
@@ -3123,7 +3123,7 @@ def rnn(step_function,
   outputs_shape[1] = inputs_shape[1]
   outputs.set_shape(outputs_shape)
 
-  if not context.in_eager_mode():
+  if not context.executing_eagerly():
     last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 

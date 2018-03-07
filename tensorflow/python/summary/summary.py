@@ -278,7 +278,7 @@ def merge(inputs, collections=None, name=None):
   @end_compatbility
   """
   # pylint: enable=line-too-long
-  if _context.in_eager_mode():
+  if _context.executing_eagerly():
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
@@ -311,7 +311,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   summaries under eager execution, use `tf.contrib.summary` instead.
   @end_compatbility
   """
-  if _context.in_eager_mode():
+  if _context.executing_eagerly():
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')

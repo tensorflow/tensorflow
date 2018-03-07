@@ -338,7 +338,7 @@ class _GraphTensorArray(object):
     with ops.name_scope(name, "TensorArrayScatter",
                         [self._handle, value, indices]):
       value = ops.convert_to_tensor(value, name="value")
-      if self._infer_shape and context.in_graph_mode():
+      if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
       with self._maybe_colocate_with(value):
         flow_out = gen_data_flow_ops.tensor_array_scatter_v3(
@@ -363,7 +363,7 @@ class _GraphTensorArray(object):
       value = ops.convert_to_tensor(value, name="value")
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.to_int64(lengths)
-        if self._infer_shape and context.in_graph_mode():
+        if self._infer_shape and not context.executing_eagerly():
           clengths = tensor_util.constant_value(lengths_64)
           if value.shape.dims is not None:
             if clengths is not None and clengths.max() == clengths.min():
@@ -774,10 +774,10 @@ class TensorArray(object):
       ValueError: if both handle and tensor_array_name are provided.
       TypeError: if handle is provided but is not a Tensor.
     """
-    if context.in_graph_mode():
-      implementation = _GraphTensorArray
-    else:
+    if context.executing_eagerly():
       implementation = _EagerTensorArray
+    else:
+      implementation = _GraphTensorArray
 
     self._implementation = implementation(
         dtype,

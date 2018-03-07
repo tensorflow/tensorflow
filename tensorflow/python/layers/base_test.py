@@ -44,7 +44,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [])
     self.assertEqual(layer.trainable_variables, [])
     self.assertEqual(layer.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # updates, losses only supported in GRAPH mode
       self.assertEqual(layer.updates, [])
       self.assertEqual(layer.losses, [])
@@ -63,7 +63,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           layer.variables,
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
@@ -77,7 +77,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.variables, [variable, variable_2])
     self.assertEqual(layer.trainable_variables, [variable])
     self.assertEqual(layer.non_trainable_variables, [variable_2])
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
 
@@ -161,7 +161,7 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # op is only supported in GRAPH mode
       self.assertEqual(outputs.op.name, 'my_layer/Square')
 
@@ -210,7 +210,7 @@ class BaseLayerTest(test.TestCase):
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # op only supported in GRAPH mode.
       self.assertEqual(outputs.op.name, 'my_layer/Square')
 
@@ -280,7 +280,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -307,7 +307,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -335,7 +335,7 @@ class BaseLayerTest(test.TestCase):
       def call(self, inputs):
         return inputs
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer = CustomerLayer()
       with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
@@ -430,7 +430,7 @@ class BaseLayerTest(test.TestCase):
     layer.apply(constant_op.constant(1))
 
     # Works
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       layer.apply(array_ops.placeholder('int32'))
       layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
 
@@ -453,13 +453,7 @@ class BaseLayerTest(test.TestCase):
         return {'l' + key: inputs[key] for key in inputs}
 
     layer = DictLayer()
-    if context.in_graph_mode():
-      i1 = array_ops.placeholder('int32')
-      i2 = array_ops.placeholder('float32')
-      result = layer.apply({'abel': i1, 'ogits': i2})
-      self.assertTrue(isinstance(result, dict))
-      self.assertEqual(set(['label', 'logits']), set(result.keys()))
-    else:
+    if context.executing_eagerly():
       i1 = constant_op.constant(3)
       i2 = constant_op.constant(4.0)
       result = layer.apply({'abel': i1, 'ogits': i2})
@@ -467,6 +461,12 @@ class BaseLayerTest(test.TestCase):
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
       self.assertEqual(3, result['label'].numpy())
       self.assertEqual(4.0, result['logits'].numpy())
+    else:
+      i1 = array_ops.placeholder('int32')
+      i2 = array_ops.placeholder('float32')
+      result = layer.apply({'abel': i1, 'ogits': i2})
+      self.assertTrue(isinstance(result, dict))
+      self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum

@@ -42,7 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return v
   if v.op.type == "VarHandleOp":
     for var in variables.trainable_variables():
@@ -73,7 +73,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return var._shared_name  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
@@ -199,7 +199,7 @@ class _TensorProcessor(_OptimizableVariable):
 
 def _get_processor(v):
   """The processor of v."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if isinstance(v, ops.Tensor):
       return _TensorProcessor(v)
     else:
@@ -460,7 +460,7 @@ class Optimizer(
         var_list = tape.watched_variables()
       grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
@@ -559,7 +559,7 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        scope_name = var.op.name if context.in_graph_mode() else ""
+        scope_name = "" if context.executing_eagerly() else var.op.name
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
@@ -577,7 +577,7 @@ class Optimizer(
             else:
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -627,7 +627,7 @@ class Optimizer(
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.in_eager_mode()
+    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
@@ -649,18 +649,15 @@ class Optimizer(
 
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
-    in_graph_mode = context.in_graph_mode()
-    if in_graph_mode:
-      graph = colocate_with.graph
-    else:
-      graph = None
+    eager = context.executing_eagerly()
+    graph = None if eager else colocate_with.graph
 
     key = (name, graph)
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_checkpointable()
       with ops.colocate_with(colocate_with):
-        if not in_graph_mode:
+        if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name, shape=None)
           if restored_initial_value is not None:
@@ -697,10 +694,7 @@ class Optimizer(
     unconditional = super(Optimizer, self)._lookup_dependency(name)
     if unconditional is not None:
       return unconditional
-    if context.in_graph_mode():
-      graph = ops.get_default_graph()
-    else:
-      graph = None
+    graph = None if context.executing_eagerly() else ops.get_default_graph()
     return self._get_non_slot_variable(name, graph=graph)
 
   def _get_non_slot_variable(self, name, graph=None):
@@ -1034,9 +1028,8 @@ class Optimizer(
     named_slots = self._slot_dict(slot_name)
     variable_key = _var_key(variable)
     slot_variable = named_slots.get(variable_key, None)
-    if (slot_variable is None
-        and context.in_eager_mode()
-        and slot_variable_position.is_simple_variable()):
+    if (slot_variable is None and context.executing_eagerly() and
+        slot_variable_position.is_simple_variable()):
       initializer = checkpointable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self._get_or_make_slot(
