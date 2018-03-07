@@ -1547,6 +1547,9 @@ REGISTER_OP("Tile")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &multiples));
       if (c->RankKnown(input)) {
         TF_RETURN_IF_ERROR(c->WithRank(multiples, c->Rank(input), &multiples));
+        ShapeHandle dummy;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(1), c->Vector(c->Rank(input)), &dummy));
       }
 
       if (!c->RankKnown(multiples)) {
