@@ -49,7 +49,7 @@ cc_library(
     srcs = ["ram_file_block_cache.cc"],
     hdrs = ["ram_file_block_cache.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":file_block_cache",
         "//tensorflow/core:lib",

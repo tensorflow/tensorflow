@@ -346,6 +346,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:
       case tflite::BuiltinOperator_LOG_SOFTMAX:
+      case tflite::BuiltinOperator_DEQUANTIZE:
       case tflite::BuiltinOperator_DELEGATE:
       case tflite::BuiltinOperator_CAST:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);

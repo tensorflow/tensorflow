@@ -146,26 +146,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "halton_sequence_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/halton_sequence_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-    ],
-    tags = ["no_mac"],  # b/73192243
-)
-
-cuda_py_test(
     name = "hmc_test",
     size = "large",
     srcs = ["python/kernel_tests/hmc_test.py"],

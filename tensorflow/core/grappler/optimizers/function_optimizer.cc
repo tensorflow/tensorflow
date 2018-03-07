@@ -78,9 +78,15 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
       func_body_node.add_input(
           strings::StrCat(func_inputs->name(), ":", input_id));
     } else {
-      // Update the input names.
+      // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
         input = AddPrefixToNodeName(input, node.name());
+      }
+      // If the node has no input, make hook it up to the func_inputs node to
+      // ensure it runs in the same frame as the other nodes of the function
+      // body.
+      if (func_body_node.input_size() == 0) {
+        *func_body_node.add_input() = AsControlDependency(func_inputs->name());
       }
     }
 

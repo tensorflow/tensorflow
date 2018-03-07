@@ -2394,7 +2394,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
-  if (ShapeUtil::SameDimensions(pred, on_true) || ShapeUtil::Rank(pred) == 0) {
+  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+      ShapeUtil::Rank(pred) == 0) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.

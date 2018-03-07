@@ -1342,10 +1342,10 @@ BufferAssigner::MergeColocatedBufferSets(
     for (auto& buffer_a : colocated_buffer_sets[i]) {
       for (auto& buffer_b : colocated_buffer_sets[j]) {
         // Do not merge if the set includes live outs or entry parameters.
-        if ((buffer_liveness.MaybeLiveOut(*buffer_a) &&
-             is_entry_parameter(*buffer_b)) ||
-            (buffer_liveness.MaybeLiveOut(*buffer_b) &&
-             is_entry_parameter(*buffer_a))) {
+        if (buffer_liveness.MaybeLiveOut(*buffer_a) ||
+            is_entry_parameter(*buffer_a) ||
+            buffer_liveness.MaybeLiveOut(*buffer_b) ||
+            is_entry_parameter(*buffer_b)) {
           return true;
         }
         // Do not merge if the buffers interfere with each other.

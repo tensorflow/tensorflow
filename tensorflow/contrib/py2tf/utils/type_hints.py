@@ -12,22 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Support for low discrepancy Halton sequences.
+"""No-op utilities that provide static type hints.
 
+These are used when the data type is not known at creation, for instance in the
+case of empty lists.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.bayesflow.python.ops.halton_sequence_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = [
-    'sample',
-]
+def set_element_type(entity, dtype, shape=None):
+  """Indicates that the entity is expected hold items of specified type.
 
-remove_undocumented(__name__, _allowed_symbols)
+  This function is a no-op. Its presence merely marks the data type of its
+  argument. The staged TensorFlow ops will reflect and assert this data type.
+
+  Args:
+    entity: A Tensor or TensorArray.
+    dtype: TensorFlow dtype value to assert for entity.
+    shape: Optional shape to assert for entity.
+  Returns:
+    The value of entity, unchanged.
+  """
+  del dtype
+  del shape
+  return entity

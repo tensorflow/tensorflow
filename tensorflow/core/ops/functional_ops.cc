@@ -47,6 +47,7 @@ REGISTER_OP("RemoteCall")
     .Attr("Tin: list(type)")
     .Attr("Tout: list(type)")
     .Attr("f: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("_If")

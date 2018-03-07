@@ -63,6 +63,8 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
       count++;
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(device, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^y/inlined_inputs", node.input(0));
     } else if (node.name() == "y/scale") {
       count++;
       EXPECT_EQ("Cast", node.op());
@@ -153,6 +155,8 @@ TEST_F(FunctionOptimizerTest, FixedTypeFunction) {
     } else if (node.name() == "y/two") {
       count++;
       EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^y/inlined_inputs", node.input(0));
       EXPECT_EQ(device, node.device());
     } else if (node.name() == "y/y") {
       count++;

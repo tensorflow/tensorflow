@@ -2694,15 +2694,20 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    # Protects the core state that may be accessed by multiple readers.
-    # Only state that can be returned via public accessors (`as_graph_def()`,
-    # `get_operations()`, `as_graph_element()`, `get_collection()`, and
-    # `get_collection_ref()`) is by the lock. Thread-safety is provided on a
-    # best-effort basis to support buggy programs, and is not guaranteed by the
-    # public `tf.Graph` API.
+    # Protects core state that can be returned via public accessors, as well as
+    # synchronizes Session.run calls with methods that create and mutate ops
+    # (e.g. Graph.create_op()). This synchronization is necessary because it's
+    # illegal to modify an operation after it's been run. Thread-safety is
+    # provided on a best-effort basis to support buggy programs, and is not
+    # guaranteed by the public `tf.Graph` API.
+    #
+    # The lock must be reentrant because create_op can be called recursively due
+    # to control flow. Without a reentrant lock, many methods would also need a
+    # "locked" version or parameter (including generated code).
+    #
     # NOTE(mrry): This does not protect the various stacks. A warning will
     # be reported if these are used from multiple threads
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
@@ -3271,17 +3276,20 @@ class Graph(object):
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
-    ret = Operation(
-        node_def,
-        self,
-        inputs=inputs,
-        output_types=dtypes,
-        control_inputs=control_inputs,
-        input_types=input_types,
-        original_op=self._default_original_op,
-        op_def=op_def)
-    self._create_op_helper(ret, compute_shapes=compute_shapes,
-                           compute_device=compute_device)
+    # _create_op_helper mutates the new Operation. _lock ensures a Session.run
+    # call cannot occur between creating and mutating the op.
+    with self._lock:
+      ret = Operation(
+          node_def,
+          self,
+          inputs=inputs,
+          output_types=dtypes,
+          control_inputs=control_inputs,
+          input_types=input_types,
+          original_op=self._default_original_op,
+          op_def=op_def)
+      self._create_op_helper(ret, compute_shapes=compute_shapes,
+                             compute_device=compute_device)
     return ret
 
   def _create_op_from_tf_operation(self, c_op, compute_device=True):

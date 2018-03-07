@@ -36,7 +36,7 @@ class TestHttpRequest : public HttpRequest {
   }
 
   void AddAuthBearerHeader(const string& auth_token) override {}
-
+  void SetRequestStats(HttpRequest::RequestStats* stats) override {}
   void SetDeleteRequest() override {}
 
   Status SetPutFromFile(const string& body_filepath, size_t offset) override {

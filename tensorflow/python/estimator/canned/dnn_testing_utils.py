@@ -1041,7 +1041,7 @@ class BaseDNNClassifierEvaluateTest(object):
         # There is no good way to calculate AUC for only two data points. But
         # that is what the algorithm returns.
         metric_keys.MetricKeys.AUC: 0.5,
-        metric_keys.MetricKeys.AUC_PR: 0.25,
+        metric_keys.MetricKeys.AUC_PR: 0.75,
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 

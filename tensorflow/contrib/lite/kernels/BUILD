@@ -97,6 +97,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "test_util_test",
+    size = "small",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "builtin_ops",
     srcs = [
@@ -110,6 +121,7 @@ cc_library(
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
+        "dequantize.cc",
         "div.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
@@ -280,6 +292,19 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "dequantize_test",
+    size = "small",
+    srcs = ["dequantize_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

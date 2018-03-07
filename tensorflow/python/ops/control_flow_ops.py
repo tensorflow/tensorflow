@@ -1499,9 +1499,11 @@ class ControlFlowContext(object):
     if values_def:
       self._init_values_from_proto(values_def, import_scope=import_scope)
     else:
-      # Values that have been already seen in this context.
+      # The names of tensors that have been already seen in this context.
       self._values = set()
-      # Values referenced by but external to this context.
+      # The keys are the names of tensors referenced by but external to this
+      # context. Each value is the Tensor that should be used by this context to
+      # access the key value (e.g. a switch output guarding a cond input value).
       self._external_values = {}
 
   def _init_values_from_proto(self, values_def, import_scope=None):
@@ -1688,9 +1690,12 @@ class CondContext(ControlFlowContext):
       self._pivot = pivot  # The predicate tensor in this branch
       self._branch = branch  # 0 or 1 representing this branch
 
-      # Values considered to have been already seen in this context.
+      # Values considered to have been already seen in this context. They are
+      # not included in this context.
       self._values.add(pred.name)
+      self._external_values[pred.name] = pred
       self._values.add(pivot.name)
+      self._external_values[pivot.name] = pivot
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `CondContext` from protocol buffer.
@@ -1710,13 +1715,6 @@ class CondContext(ControlFlowContext):
     self._branch = context_def.branch
     super(CondContext, self).__init__(values_def=context_def.values_def,
                                       import_scope=import_scope)
-    # The predicate and pivot ops appear in self._values, but don't have self
-    # set as their control context. The __init__ call above will set self for
-    # all values, so manually override the predicate and pivot contexts here.
-    # pylint: disable=protected-access
-    self._pred.op._set_control_flow_context(self.outer_context)
-    self._pivot.op._set_control_flow_context(self.outer_context)
-    # pylint: enable=protected-access
 
   @property
   def pred(self):
@@ -1800,6 +1798,7 @@ class CondContext(ControlFlowContext):
       if self._outer_context:
         result = self._outer_context.AddValue(val)
         self._values.add(result.name)
+        self._external_values[result.name] = result
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
         if self._outer_context:
@@ -1864,6 +1863,7 @@ class CondContext(ControlFlowContext):
       if self._outer_context:
         real_val = self._outer_context.AddValue(val)
         self._values.add(real_val.name)
+        self._external_values[real_val.name] = real_val
       real_val = _SwitchRefOrTensor(real_val, self._pred)[self._branch]
       self._external_values[val.name] = real_val
     else:
@@ -2933,8 +2933,11 @@ class WhileContext(ControlFlowContext):
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
-      original_body_result, exit_vars = self._BuildLoop(
-          pred, body, original_loop_vars, loop_vars, shape_invariants)
+      # _BuildLoop calls _update_input in several places. _lock ensures a
+      # Session.run call cannot occur between creating and mutating new ops.
+      with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+        original_body_result, exit_vars = self._BuildLoop(
+            pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
       self.Exit()
 
