@@ -29,6 +29,6 @@ except:
       ' installation path is not in LD_LIBRARY_PATH, or because you do not have it'
       ' installed. If not installed, please go to'
       ' https://developer.nvidia.com/tensorrt to download and install'
-      ' TensorRT ****''')
-  print(no_trt_message)
+      ' TensorRT ****')
+  raise RuntimeError(no_trt_message)
 # pylint: enable=unused-import,line-too-long
