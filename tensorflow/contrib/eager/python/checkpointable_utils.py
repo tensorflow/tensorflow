@@ -395,7 +395,7 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def run_restore_ops(self, session=None):
     """Run operations to restore objects in the dependency graph."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return  # Run eagerly
     if session is None:
       session = ops.get_default_session()
@@ -459,7 +459,7 @@ class InitializationOnlyStatus(_LoadStatus):
       session: The session to run initialization ops in. If `None`, uses the
         default session.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return  # run eagerly
     if session is None:
       session = ops.get_default_session()
@@ -491,7 +491,7 @@ class NameBasedSaverStatus(_LoadStatus):
       date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
   def run_restore_ops(self, session=None):
     """Load the name-based training checkpoint using a new `tf.train.Saver`."""
-    if session is None and context.in_graph_mode():
+    if session is None and not context.executing_eagerly():
       session = ops.get_default_session()
     saver_lib.Saver(self._object_saver._global_variable_names()).restore(  # pylint: disable=protected-access
         sess=session, save_path=self._save_path)
@@ -548,7 +548,7 @@ class CheckpointableSaver(object):
     # Allow passing in a weak reference to avoid reference cycles when
     # `Checkpointable` objects save themselves.
     self._root_checkpointable_ref = root_checkpointable
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       with ops.device("/cpu:0"):
         self._file_prefix_placeholder = constant_op.constant("model")
     else:
@@ -597,7 +597,7 @@ class CheckpointableSaver(object):
     """
     named_variables, graph_proto = _serialize_object_graph(
         self._root_checkpointable)
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
       if session is None:
         session = ops.get_default_session()
@@ -714,7 +714,7 @@ class CheckpointableSaver(object):
     """
     if save_path is None:
       return InitializationOnlyStatus(self._root_checkpointable)
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
       if session is None:
         session = ops.get_default_session()
@@ -850,7 +850,7 @@ class Checkpoint(core_checkpointable.Checkpointable):
 
   def save(self, file_prefix, session=None):
     """Save a checkpoint. Wraps `tfe.CheckpointableSaver.save`."""
-    in_graph_mode = context.in_graph_mode()
+    in_graph_mode = not context.executing_eagerly()
     if in_graph_mode:
       if session is None:
         session = ops.get_default_session()

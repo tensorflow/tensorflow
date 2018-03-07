@@ -846,19 +846,29 @@ struct SqueezeOperator : Operator {
 };
 
 // Inputs:
-//   inputs[0]: required: the input activations array
-//   inputs[1]: required: the Conv weights
-//   channel.
+//   inputs[0]: required: the output shape
+//   inputs[1]: required: the weights
+//   inputs[2]: required: the input activations array
+//   NOTE: The input activations is NOT the first input.
+//
 //
 // Outputs:
 //   outputs[0]: required: the output activations array
 //
 // TensorFlow equivalent: Conv2DBackpropInput
 struct TransposeConvOperator : Operator {
+  enum Inputs {
+    OUTPUT_SHAPE = 0,
+    WEIGHTS = 1,
+    DATA_INPUT = 2,
+  };
+
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+  // Dilation is possible with transpose convolution, but Tensorflow does not
+  // currently support it, so we omit it.
 };
 
 // Given a tensor input, this operation calculates element-wise exponential

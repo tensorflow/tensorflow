@@ -169,7 +169,7 @@ class Tests(test.TestCase):
   def testFastpathExecute_InvalidInputs(self):
     a_2_by_2 = random_ops.random_uniform((2, 2))
     ctx = context.context()
-    assert not ctx.in_graph_mode(
+    assert ctx.executing_eagerly(
     ), "The prototype doesn't contain C code for graph construction"
     ctx_handle = ctx._handle  # pylint: disable=protected-access
 

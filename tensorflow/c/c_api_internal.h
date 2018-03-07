@@ -129,11 +129,6 @@ struct TF_Session {
   tensorflow::mutex mu;
   int last_num_graph_nodes;
 
-  // NOTE(ashankar): Experimental fields to help keep the
-  // buffers of a TF_Tensor pinned in device memory.
-  const tensorflow::DeviceMgr* device_mgr;   // Owned by session.
-  std::vector<tensorflow::Device*> devices;  // Owned by device_mgr.
-
   // If true, TF_SessionRun and similar methods will call
   // ExtendSessionGraphHelper before running the graph (this is the default
   // public behavior). Can be set to false if the caller needs to call

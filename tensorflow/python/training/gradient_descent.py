@@ -71,6 +71,6 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     return var.scatter_sub(delta, use_locking=self._use_locking)
 
   def _prepare(self):
-    if context.in_graph_mode() or self._learning_rate_tensor is None:
+    if not context.executing_eagerly() or self._learning_rate_tensor is None:
       self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
                                                          name="learning_rate")

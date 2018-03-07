@@ -260,12 +260,8 @@ class Context(object):
       if mode == EAGER_MODE:
         context_stack.pop()
 
-  def in_graph_mode(self):
-    """Returns True if current thread is in GRAPH mode."""
-    return self._eager_context.mode == GRAPH_MODE
-
-  def in_eager_mode(self):
-    """Returns True if current thread is in EAGER mode."""
+  def executing_eagerly(self):
+    """Returns True if current thread has eager executing enabled."""
     return self._eager_context.mode == EAGER_MODE
 
   def scalar_cache(self):
@@ -522,23 +518,23 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
-def in_graph_mode():
-  """Returns True if current thread is in GRAPH mode for default context."""
-  return context().in_graph_mode()
+def executing_eagerly():
+  """Returns True if the current thread has eager execution enabled."""
+  return context().executing_eagerly()
 
 
 def in_eager_mode():
-  """Returns True if current thread is in EAGER mode for default context."""
-  return context().in_eager_mode()
+  """Use executing_eagerly() instead. This function will be removed."""
+  return executing_eagerly()
 
 
 def graph_mode():
-  """Context-manager to enable GRAPH mode for current thread."""
+  """Context-manager to disable eager execution for the current thread."""
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
 def eager_mode():
-  """Context-manager to enable EAGER mode for current thread."""
+  """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
 
 
@@ -631,4 +627,8 @@ def export_run_metadata():
 # (for example, enable_eager_execution in python/framework/ops.py),
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
-is_in_graph_mode.IS_IN_GRAPH_MODE = in_graph_mode
+def _tmp_in_graph_mode():
+  return not executing_eagerly()
+
+
+is_in_graph_mode.IS_IN_GRAPH_MODE = _tmp_in_graph_mode

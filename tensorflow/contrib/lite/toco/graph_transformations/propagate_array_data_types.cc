@@ -71,6 +71,11 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     CHECK_GE(op->inputs.size(), 2);
     const ArrayDataType data_type = model->GetArray(op->inputs[1]).data_type;
     SetDataTypeForAllOutputs(model, op, data_type);
+  } else if (op->type == OperatorType::kTransposeConv) {
+    // These operators produce an output with the same type as their 3rd input
+    CHECK_GE(op->inputs.size(), 3);
+    const ArrayDataType data_type = model->GetArray(op->inputs[2]).data_type;
+    SetDataTypeForAllOutputs(model, op, data_type);
   } else if (op->type == OperatorType::kCast) {
     // Data type of the Cast op is specified.
     CHECK_EQ(op->outputs.size(), 1);

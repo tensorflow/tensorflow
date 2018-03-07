@@ -92,7 +92,7 @@ def custom_gradient(f):
 
   def decorated(*args, **kwargs):
     """Decorated function with custom gradient."""
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if kwargs:
         raise ValueError(
             "The custom_gradient decorator currently suports keywords "

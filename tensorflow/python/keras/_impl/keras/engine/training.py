@@ -162,7 +162,7 @@ class Model(Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     loss = loss or {}
-    if context.in_eager_mode() and  not isinstance(
+    if context.executing_eagerly() and not isinstance(
         optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
       raise ValueError('Only TF native optimizers are supported in Eager mode.')
 
@@ -170,13 +170,13 @@ class Model(Network):
     self.loss = loss
     self.metrics = metrics or []
     self.loss_weights = loss_weights
-    if context.in_eager_mode() and sample_weight_mode is not None:
+    if context.executing_eagerly() and sample_weight_mode is not None:
       raise ValueError('sample_weight_mode is not supported in Eager mode.')
     self.sample_weight_mode = sample_weight_mode
-    if context.in_eager_mode() and weighted_metrics is not None:
+    if context.executing_eagerly() and weighted_metrics is not None:
       raise ValueError('weighted_metrics is not supported in Eager mode.')
     self.weighted_metrics = weighted_metrics
-    if context.in_eager_mode() and target_tensors is not None:
+    if context.executing_eagerly() and target_tensors is not None:
       raise ValueError('target_tensors is not supported in Eager mode.')
     self.target_tensors = target_tensors
 
@@ -230,7 +230,7 @@ class Model(Network):
         skip_target_weighing_indices.append(i)
 
     # Prepare output masks.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       masks = self.compute_mask(self.inputs, mask=None)
       if masks is None:
         masks = [None for _ in self.outputs]
@@ -264,7 +264,7 @@ class Model(Network):
     self.loss_weights_list = loss_weights_list
 
     # initialization for Eager mode execution
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if target_tensors is not None:
         raise ValueError('target_tensors are not currently supported in Eager'
                          'mode.')
@@ -738,13 +738,13 @@ class Model(Network):
                              'TensorFlow tensors. '
                              'You passed: x=' + str(x) + '; y=' + str(y))
 
-        if context.in_graph_mode():
+        if context.executing_eagerly():
+          target_tensors = None
+        else:
           # Handle target tensors if any passed.
           if not isinstance(y, (list, tuple)):
             y = [y]
           target_tensors = [v for v in y if tensor_util.is_tensor(v)]
-        else:
-          target_tensors = None
         self.compile(optimizer=self.optimizer,
                      loss=self.loss,
                      metrics=self.metrics,
@@ -761,7 +761,7 @@ class Model(Network):
     # What follows is input validation and standardization to list format,
     # in the case where all inputs are value arrays.
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # In eager mode, do not do shape validation.
       feed_input_names = self.input_names
       feed_input_shapes = None
@@ -784,7 +784,7 @@ class Model(Network):
         exception_prefix='input')
 
     if y is not None:
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         feed_output_names = self.output_names
         feed_output_shapes = None
         # Sample weighting not supported in this case.
@@ -835,7 +835,7 @@ class Model(Network):
       ]
       # Check that all arrays have the same length.
       training_utils.check_array_lengths(x, y, sample_weights)
-      if self._is_graph_network and not context.in_eager_mode():
+      if self._is_graph_network and not context.executing_eagerly():
         # Additional checks to avoid users mistakenly using improper loss fns.
         training_utils.check_loss_and_target_compatibility(
             y, self._feed_loss_fns, feed_output_shapes)
@@ -874,7 +874,7 @@ class Model(Network):
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
       self._symbolic_set_inputs(inputs, training=training)
@@ -903,7 +903,7 @@ class Model(Network):
     Raises:
       ValueError: If the model's inputs are already set.
     """
-    assert context.in_eager_mode()
+    assert context.executing_eagerly()
     if self.inputs:
       raise ValueError('Model inputs are already set.')
     # On-the-fly setting of model inputs/outputs as DeferredTensors,
@@ -950,7 +950,7 @@ class Model(Network):
     Raises:
       ValueError: If the model's inputs are already set.
     """
-    assert context.in_graph_mode()
+    assert not context.executing_eagerly()
     if self.inputs:
       raise ValueError('Model inputs are already set.')
 
@@ -1186,7 +1186,7 @@ class Model(Network):
       val_y = None
       val_sample_weights = None
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return training_eager.fit_loop(
           self,
           inputs=x,
@@ -1289,7 +1289,7 @@ class Model(Network):
         sample_weight=sample_weight,
         batch_size=batch_size)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return training_eager.test_loop(
           self, inputs=x, targets=y, sample_weights=sample_weights,
           batch_size=batch_size, verbose=verbose, steps=steps)
@@ -1330,7 +1330,7 @@ class Model(Network):
                        'argument.')
     x, _, _ = self._standardize_user_data(x)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
     else:
@@ -1381,7 +1381,7 @@ class Model(Network):
         sample_weight=sample_weight,
         class_weight=class_weight)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       outputs = training_eager.train_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
@@ -1431,7 +1431,7 @@ class Model(Network):
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       outputs = training_eager.test_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
@@ -1458,11 +1458,11 @@ class Model(Network):
     """
     x, _, _ = self._standardize_user_data(x)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       inputs = [ops.convert_to_tensor(val, dtype=K.floatx()) for val in x]
       return self(inputs)  # pylint: disable=not-callable
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
         ins = x + [0]
       else:

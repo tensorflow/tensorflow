@@ -351,6 +351,18 @@ void CheckInputsCount(const NodeDef& node,
       << " input(s) other than control dependencies: " << node.DebugString();
 }
 
+template <ArrayDataType T>
+string CreateConstArray(Model* model, string const& name,
+                        std::vector<typename toco::DataType<T> > const& data) {
+  // Utility function to create a const 1D array, useful for input parameters.
+  string array_name = toco::AvailableArrayName(*model, name);
+  auto& array = model->GetOrCreateArray(array_name);
+  array.data_type = T;
+  array.mutable_shape()->mutable_dims()->emplace_back(data.size());
+  array.GetMutableBuffer<T>().data = data;
+  return array_name;
+}
+
 void ConvertConstOperator(const NodeDef& node,
                           const TensorFlowImportFlags& tf_import_flags,
                           Model* model) {
@@ -1436,12 +1448,8 @@ void ConvertFusedBatchNormOperator(const NodeDef& node,
   const string& moving_variance_input = node.input(4);
 
   // Create an array holding the epsilon value (typically, 0.001).
-  const string epsilon_array_name = node.name() + "_epsilon_array";
-  auto& epsilon_array = model->GetOrCreateArray(epsilon_array_name);
-  epsilon_array.data_type = ArrayDataType::kFloat;
-  *epsilon_array.mutable_shape()->mutable_dims() = {1};
-  epsilon_array.GetMutableBuffer<ArrayDataType::kFloat>().data.push_back(
-      GetFloatAttr(node, "epsilon"));
+  const string epsilon_array_name = CreateConstArray<ArrayDataType::kFloat>(
+      model, node.name() + "_epsilon_array", {GetFloatAttr(node, "epsilon")});
 
   // Add epsilon to the moving variance.
   const string epsilon_add_op_name = node.name() + "_epsilon";
@@ -1569,16 +1577,56 @@ void ConvertTransposeConvOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "Conv2DBackpropInput");
   CheckInputsCount(node, tf_import_flags, 3);
   auto* op = new TransposeConvOperator;
-  op->inputs.push_back(node.input(2));
-  op->inputs.push_back(node.input(1));
   op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
   op->stride_height = strides.i(1);
   op->stride_width = strides.i(2);
-  CHECK_EQ(strides.i(3), 1);
+  CHECK_EQ(strides.i_size(), 4)
+      << "Can only import TransposeConv ops with 4D strides. TensorFlow op \""
+      << node.name() << "\" has " << strides.i_size() << "D strides.";
+  CHECK((strides.i(0) == 1) && (strides.i(3) == 1))
+      << "Can only import TransposeConv ops with striding along the height "
+         "(1st) or width (2nd) axis. TensorFlow op \""
+      << node.name() << "\" had strides:[ " << strides.i(0) << ", "
+      << strides.i(1) << ", " << strides.i(2) << ", " << strides.i(3) << "].";
+  op->stride_height = strides.i(1);
+  op->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    CHECK_EQ(dilations.i_size(), 4)
+        << "Dilation unsupported in TransposeConv. TensorFlow op \""
+        << node.name() << "\" had dilations";
+    CHECK((dilations.i(0) == 1) && (dilations.i(1) == 1) &&
+          (dilations.i(1) == 1) && (dilations.i(3) == 1))
+        << "Dilation unsupported in TransposeConv. TensorFlow op \""
+        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
+        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
+        << "].";
+  }
+
+  const string& weights_name = node.input(TransposeConvOperator::WEIGHTS);
+  const string& transposed_weights_name = weights_name + "_transposed";
+  // Check if a TransposeOperator was already created for these weights
+  // (can happen when multiple layers share the same weights).
+  const Operator* existing_transpose =
+      GetOpWithOutput(*model, transposed_weights_name);
+  if (existing_transpose) {
+    CHECK(existing_transpose->type == OperatorType::kTranspose);
+  } else {
+    // Transpose weights from HWIO order to OHWI order, which is more efficient
+    // for computation
+    TransposeOperator* transpose = new TransposeOperator;
+    string perm_array = CreateConstArray<ArrayDataType::kInt32>(
+        model, node.name() + "_transpose_perm", {3, 0, 1, 2});
+    transpose->inputs = {weights_name, perm_array};
+    transpose->outputs = {transposed_weights_name};
+    model->operators.emplace_back(transpose);
+  }
+  op->inputs[1] = transposed_weights_name;
+
   auto const& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     op->padding.type = PaddingType::kSame;
@@ -1874,19 +1922,9 @@ void ConvertTopKV2Operator(const NodeDef& node,
   op->inputs.push_back(node.input(0));
   // K can be encoded as attr (TopK) convert it to a const.
   if (HasAttr(node, "k")) {
-    // Convert attribute into const tensor.
-    const string array_name = node.name() + "k";
-    auto& array = model->GetOrCreateArray(array_name);
-    array.data_type = ArrayDataType::kInt32;
-    // Size of array is always 1.
-    array.mutable_shape()->mutable_dims()->emplace_back(1);
-
-    auto& output_int_data =
-        array.GetMutableBuffer<ArrayDataType::kInt32>().data;
-    output_int_data.resize(1);
-    output_int_data[0] = GetIntAttr(node, "k");
-    op->inputs.push_back(array_name);
-
+    string k_array = CreateConstArray<ArrayDataType::kInt32>(
+        model, node.name() + "k", {GetIntAttr(node, "k")});
+    op->inputs.push_back(k_array);
   } else {
     CheckInputsCount(node, tf_import_flags, 2);
     op->inputs.push_back(node.input(1));

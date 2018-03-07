@@ -65,7 +65,7 @@ class RandomSeedTest(test.TestCase):
       self.assertEqual((g_seed, op_seed), toutput, msg=msg)
       random_seed.set_random_seed(None)
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       random_seed.set_random_seed(1)
       tinput = (1, None)
       toutput = (1, ops.get_default_graph()._last_id)  # pylint: disable=protected-access

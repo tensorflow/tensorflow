@@ -86,7 +86,7 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     dense_shape_value = tensor_util.constant_value(value.dense_shape)
     if dense_shape_value is not None:
       num_elements = np.prod(dense_shape_value)
@@ -491,9 +491,10 @@ def gradients(ys,
 def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                      gate_gradients, aggregation_method, stop_gradients):
   """Implementation of gradients()."""
-  if context.in_eager_mode():
-    raise RuntimeError("tf.gradients not supported in EAGER mode. Use "
-                       "functions in tf.contrib.eager.backprop instead.")
+  if context.executing_eagerly():
+    raise RuntimeError("tf.gradients not supported when eager execution "
+                       "is enabled. Use tf.contrib.eager.GradientTape "
+                       "instead.")
   ys = _AsList(ys)
   xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
