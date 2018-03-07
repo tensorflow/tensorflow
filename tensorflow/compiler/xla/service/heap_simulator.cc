@@ -225,6 +225,7 @@ Status HeapSimulator::RunComputation(
     // sub-computations will never be run concurrently.
     if (module_sequence_ != nullptr) {
       if (instruction->opcode() == HloOpcode::kCall ||
+          instruction->opcode() == HloOpcode::kConditional ||
           instruction->opcode() == HloOpcode::kWhile) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {

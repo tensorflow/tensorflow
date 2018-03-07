@@ -33,6 +33,8 @@ gen_zipped_test_files(
         "l2_pool.zip",
         "l2norm.zip",
         "local_response_norm.zip",
+        "log_softmax.zip",
+        "lstm.zip",
         "max_pool.zip",
         "mean.zip",
         "mul.zip",
@@ -237,6 +239,88 @@ cc_test(
     deps = [
         ":tf_driver",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "generate_testspec",
+    testonly = 1,
+    srcs = ["generate_testspec.cc"],
+    hdrs = ["generate_testspec.h"],
+    deps = [
+        ":join",
+        ":split",
+        ":tf_driver",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "generate_testspec_test",
+    size = "small",
+    srcs = ["generate_testspec_test.cc"],
+    deps = [
+        ":generate_testspec",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tflite_diff_util",
+    testonly = 1,
+    srcs = ["tflite_diff_util.cc"],
+    hdrs = ["tflite_diff_util.h"],
+    deps = [
+        ":generate_testspec",
+        ":parse_testdata_lib",
+        ":split",
+        ":tflite_driver",
+        ":util",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+    ],
+)
+
+cc_library(
+    name = "tflite_diff_flags",
+    testonly = 1,
+    hdrs = ["tflite_diff_flags.h"],
+    deps = [
+        ":split",
+        ":tflite_diff_util",
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "tflite_diff_example_test",
+    size = "medium",
+    srcs = ["tflite_diff_example_test.cc"],
+    args = [
+        "--tensorflow_model=third_party/tensorflow/contrib/lite/testdata/multi_add.pb",
+        "--tflite_model=third_party/tensorflow/contrib/lite/testdata/multi_add.bin",
+        "--input_layer=a,b,c,d",
+        "--input_layer_type=float,float,float,float",
+        "--input_layer_shape=1,3,4,3:1,3,4,3:1,3,4,3:1,3,4,3",
+        "--output_layer=x,y",
+    ],
+    data = [
+        "//tensorflow/contrib/lite:testdata/multi_add.bin",
+        "//tensorflow/contrib/lite:testdata/multi_add.pb",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":tflite_diff_flags",
+        ":tflite_diff_util",
     ],
 )
 

@@ -2214,6 +2214,7 @@ def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
     mm = math_ops.matmul(x, weights)
     return bias_add_v1(mm, biases, name=name)
 
+
 def _get_noise_shape(x, noise_shape):
   # If noise_shape is none return immediately.
   if noise_shape is None:
@@ -2227,8 +2228,7 @@ def _get_noise_shape(x, noise_shape):
   except (TypeError, ValueError):
     return noise_shape
 
-  if (x.shape.dims is not None and
-      len(x.shape.dims) == len(noise_shape_.dims)):
+  if x.shape.dims is not None and len(x.shape.dims) == len(noise_shape_.dims):
     new_dims = []
     for i, dim in enumerate(x.shape.dims):
       if noise_shape_.dims[i].value is None and dim.value is not None:
@@ -2238,6 +2238,7 @@ def _get_noise_shape(x, noise_shape):
     return tensor_shape.TensorShape(new_dims)
 
   return noise_shape
+
 
 @tf_export("nn.dropout")
 def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name

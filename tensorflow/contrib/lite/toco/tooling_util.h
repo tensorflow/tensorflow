@@ -54,6 +54,8 @@ absl::string_view FindLongestCommonPrefix(absl::string_view a,
                                           absl::string_view b);
 string LogName(const Operator& op);
 
+string ArrayDataTypeName(ArrayDataType data_type);
+
 bool IsInputArray(const Model& model, const string& name);
 bool IsArrayConsumed(const Model& model, const string& name);
 int CountTrueOutputs(const Model& model, const Operator& op);

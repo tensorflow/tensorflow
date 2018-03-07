@@ -239,6 +239,7 @@ void ConvertIntTensorConst(const Model& model, const string& name,
 }
 
 void CreateIntTensorConst(const string& name, const std::vector<int32>& data,
+                          const std::vector<int32>& shape,
                           GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -252,8 +253,13 @@ void CreateIntTensorConst(const string& name, const std::vector<int32>& data,
   for (auto index : data) {
     tensor->add_int_val(index);
   }
-  auto* shape = tensor->mutable_tensor_shape();
-  shape->add_dim()->set_size(data.size());
+  auto* tensor_shape = tensor->mutable_tensor_shape();
+  int num_elements = 1;
+  for (int size : shape) {
+    tensor_shape->add_dim()->set_size(size);
+    num_elements *= size;
+  }
+  CHECK_EQ(num_elements, data.size());
 }
 
 void CreateMatrixShapeTensorConst(const string& name, int rows, int cols,
@@ -383,6 +389,84 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
                             tensorflow_graph,
                             LegacyScalarPolicy::kDoCreateLegacyScalars);
   }
+}
+
+void ConvertDilatedConvOperator(const Model& model, const ConvOperator& src_op,
+                                GraphDef* tensorflow_graph) {
+  CHECK((src_op.dilation_width_factor > 1) ||
+        (src_op.dilation_height_factor > 1))
+      << "Conv operator must have height or width dilation factor > 1. "
+         "Otherwise, use regular conv op.";
+  CHECK_EQ(src_op.stride_width, 1)
+      << "Dilated AND strided convolution is unsupported";
+  CHECK_EQ(src_op.stride_height, 1)
+      << "Dilated AND strided convolution is unsupported";
+
+  // Emulate dilated convolution with a chain of SpaceToBatchND -> Conv ->
+  // BatchToSpaceND ops.
+
+  // Compute padding
+  const auto& input_array = model.GetArray(src_op.inputs[0]);
+  const auto& input_shape = input_array.shape();
+  CHECK_EQ(input_shape.dimensions_count(), 4);
+  int height_mod_dilation = input_shape.dims(1) % src_op.dilation_height_factor;
+  int pad_height;
+  if (height_mod_dilation) {
+    pad_height = src_op.dilation_height_factor - height_mod_dilation;
+  } else {
+    pad_height = 0;
+  }
+  int pad_width;
+  int width_mod_dilation = input_shape.dims(2) % src_op.dilation_width_factor;
+  if (width_mod_dilation) {
+    pad_width = src_op.dilation_width_factor - width_mod_dilation;
+  } else {
+    pad_width = 0;
+  }
+
+  // SpaceToBatchND op "collapses" the spatially separated elements together
+  string stb_output = src_op.outputs[0] + "/dilated_conv_SpaceToBatch";
+  auto* stb_op = tensorflow_graph->add_node();
+  stb_op->set_op("SpaceToBatchND");
+  stb_op->set_name(stb_output);
+  *stb_op->add_input() = src_op.inputs[0];
+  (*stb_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  string block_shape = src_op.outputs[0] + "/dilated_conv_block_shape";
+  CreateIntTensorConst(
+      block_shape,
+      {src_op.dilation_height_factor, src_op.dilation_width_factor}, {2},
+      tensorflow_graph);
+  *stb_op->add_input() = block_shape;
+  (*stb_op->mutable_attr())["Tblock_shape"].set_type(DT_INT32);
+  string stb_paddings = src_op.outputs[0] + "/dilated_conv_paddings";
+  CreateIntTensorConst(stb_paddings, {0, pad_height, pad_width, 0}, {2, 2},
+                       tensorflow_graph);
+  *stb_op->add_input() = stb_paddings;
+  (*stb_op->mutable_attr())["Tpaddings"].set_type(DT_INT32);
+
+  // Perform a regular conv on the "collapsed" elements
+  ConvOperator conv_op;
+  string conv_output = src_op.outputs[0] + "/dilated_conv_Conv2D";
+  conv_op.inputs = src_op.inputs;
+  conv_op.inputs[0] = stb_output;
+  conv_op.outputs = {conv_output};
+  conv_op.padding.type = src_op.padding.type;
+  conv_op.stride_width = src_op.stride_width;
+  conv_op.stride_height = src_op.stride_height;
+  conv_op.dilation_width_factor = 1;
+  conv_op.dilation_height_factor = 1;
+  ConvertConvOperator(model, conv_op, tensorflow_graph);
+
+  // BatchToSpaceND op restores elements to their original layout
+  auto* bts_op = tensorflow_graph->add_node();
+  bts_op->set_op("BatchToSpaceND");
+  bts_op->set_name(src_op.outputs[0]);
+  *bts_op->add_input() = conv_output;
+  (*bts_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  *bts_op->add_input() = block_shape;
+  (*bts_op->mutable_attr())["Tblock_shape"].set_type(DT_INT32);
+  *bts_op->add_input() = stb_paddings;
+  (*bts_op->mutable_attr())["Tcrops"].set_type(DT_INT32);
 }
 
 void ConvertDepthwiseConvOperator(const Model& model,
@@ -520,7 +604,7 @@ void ConvertFullyConnectedOperator(const Model& model,
       AvailableArrayName(model, matmul_output + "/transpose_weights");
   const string transpose_perm =
       AvailableArrayName(model, transpose_output + "/perm");
-  CreateIntTensorConst(transpose_perm, {1, 0}, tensorflow_graph);
+  CreateIntTensorConst(transpose_perm, {1, 0}, {2}, tensorflow_graph);
   auto transpose_op = tensorflow_graph->add_node();
   transpose_op->set_op("Transpose");
   transpose_op->set_name(transpose_output);
@@ -720,7 +804,8 @@ void ConvertLogSoftmaxOperator(const Model& model,
                                GraphDef* tensorflow_graph) {
   string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
-  if (providing_op->type == OperatorType::kTensorFlowReshape) {
+  if (providing_op != nullptr &&
+      providing_op->type == OperatorType::kTensorFlowReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
@@ -1600,8 +1685,13 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   }
 
   if (src_op.type == OperatorType::kConv) {
-    ConvertConvOperator(model, static_cast<const ConvOperator&>(src_op),
-                        tensorflow_graph);
+    const ConvOperator& conv_op = static_cast<const ConvOperator&>(src_op);
+    if ((conv_op.dilation_width_factor != 1) ||
+        (conv_op.dilation_height_factor != 1)) {
+      return ConvertDilatedConvOperator(model, conv_op, tensorflow_graph);
+    } else {
+      ConvertConvOperator(model, conv_op, tensorflow_graph);
+    }
   } else if (src_op.type == OperatorType::kDepthwiseConv) {
     ConvertDepthwiseConvOperator(
         model, static_cast<const DepthwiseConvOperator&>(src_op),

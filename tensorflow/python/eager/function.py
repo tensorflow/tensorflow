@@ -196,33 +196,66 @@ ops.register_tensor_conversion_function(
     ops.EagerTensor, _convert_to_graph_tensor, priority=-1)
 
 
-class _CapturingContext(object):
-  """Tracks references to Tensors outside this context while it is active."""
+# pylint: disable=invalid-name
+class HelperContext(object):
+  """ControlFlowContext with a customizable AddOp method."""
 
-  def __init__(self):
-    # known_ops are ops which are created while this context is active
-    self.known_ops = set()
+  def __init__(self, add_op_internal):
+    self._add_op_internal = add_op_internal
+    self._values = set()  # control flow code sometimes updates this.
 
-    # captured_tensors are all tensors referenced to by ops in this context but
-    # not produced in it
-    self.captured_tensors = set()
+  def _AddOpInternal(self, op):
+    self._add_op_internal(op)
+
+  @property
+  def outer_context(self):
+    return self._outer_context
+
+  def GetWhileContext(self):
+    if self._outer_context:
+      return self._outer_context.GetWhileContext()
+
+  def IsWhileContext(self):
+    return False
+
+  def IsCondContext(self):
+    return False
+
+  def IsXLAContext(self):
+    return False
 
   def AddOp(self, op):  # pylint: disable=invalid-name
-    if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-      raise ValueError("tfe.defun cannot capture variables created without "
-                       "using tf.get_variable. Op: %s" % op)
-    self.known_ops.add(op)
-    for i in op.inputs:
-      if i.op not in self.known_ops:
-        self.captured_tensors.add(i)
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddOp(op)
+
+  def AddName(self, _):
+    pass
+
+  def AddInnerOp(self, op):
+    self._AddOpInternal(op)
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+
+  def AddValue(self, val):
+    if self._outer_context:
+      return self._outer_context.AddValue(val)
+    else:
+      return val
 
   def __enter__(self):
+    # pylint: disable=protected-access
     self._g = ops.get_default_graph()
-    self._old = self._g._get_control_flow_context()  # pylint: disable=protected-access
-    self._g._set_control_flow_context(self)  # pylint: disable=protected-access
+    self._outer_context = self._g._get_control_flow_context()
+    self._g._set_control_flow_context(self)
+    self._nested_contexts = (
+        self._outer_context._nested_contexts
+        if self._outer_context is not None else None)
+    # pylint: enable=protected-access
 
-  def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
-    self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
+  def __exit__(self, *_):
+    self._g._set_control_flow_context(self._outer_context)  # pylint: disable=protected-access
+# pylint: enable=invalid-name
 
 
 def _forward_name(n):
@@ -368,7 +401,20 @@ class GraphModeFunction(object):
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     with self._graph.as_default(), context.graph_mode():
-      c = _CapturingContext()
+      c_known_ops = set()
+      c_captured_tensors = set()
+
+      def add_op_internal(op):
+        if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
+          raise ValueError("tfe.defun cannot capture variables created without "
+                           "using tf.get_variable. Op: %s" % op)
+        c_known_ops.add(op)
+        for i in op.inputs:
+          if i.op not in c_known_ops:
+            c_captured_tensors.add(i)
+
+      c = HelperContext(add_op_internal)
+
       with c:
         filtered_outputs = [x for x in self._returns if x is not None]
         self._out_grad_placeholders = [
@@ -382,7 +428,7 @@ class GraphModeFunction(object):
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
-    captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
+    captures = list(sorted(c_captured_tensors, key=lambda x: x.name))
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
         forward_name, self._graph, self._ops, self._input_placeholders,
@@ -395,7 +441,7 @@ class GraphModeFunction(object):
     # means rerunning the function-defining code will always define the same
     # function, which is useful if we serialize this etc.
     function_def_ops = tuple(x
-                             for x in sorted(c.known_ops, key=lambda x: x.name)
+                             for x in sorted(c_known_ops, key=lambda x: x.name)
                              if x not in all_ignored_ops)
     bname = _backward_name(self._func_name)
     self._backward_function = GraphModeFunction(

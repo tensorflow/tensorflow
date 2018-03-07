@@ -43,7 +43,7 @@ message RewriterConfig {
   bool disable_model_pruning = 2;
 
   enum MemOptType {
-    // The default setting (SCHEDULING_HEURISTICS only)
+    // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
     DEFAULT_MEM_OPT = 0;
     // Disabled in the meta-optimizer.
     NO_MEM_OPT = 1;

@@ -362,6 +362,10 @@ class LabeledTensor(object):
     return self._tensor.dtype
 
   @property
+  def shape(self):
+    return self._tensor.shape
+
+  @property
   def name(self):
     return self._tensor.name
 

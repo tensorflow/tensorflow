@@ -994,6 +994,20 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands, *custom_call_target));
       break;
     }
+    case HloOpcode::kHostCompute: {
+      optional<string> channel_name;
+      optional<int64> cost_estimate_ns;
+      attrs["channel_name"] = {/*required=*/true, AttrTy::kString,
+                               &channel_name};
+      attrs["cost_estimate_ns"] = {/*required=*/true, AttrTy::kInt64,
+                                   &cost_estimate_ns};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateHostCompute(
+          shape, operands, *channel_name, *cost_estimate_ns));
+      break;
+    }
     case HloOpcode::kDot: {
       optional<std::vector<int64>> lhs_contracting_dims;
       attrs["lhs_contracting_dims"] = {
@@ -1035,6 +1049,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
       break;
     }
+    case HloOpcode::kGather:
+      // TODO(b/72710576): HLO parsing is not implemented for Gather.
+      return TokenError("HLO parsing is not implemented for Gather");
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));

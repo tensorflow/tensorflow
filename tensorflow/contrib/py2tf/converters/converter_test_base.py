@@ -83,6 +83,7 @@ class TestCase(test.TestCase):
                         namer=None,
                         arg_types=None,
                         include_type_analysis=True,
+                        owner_type=None,
                         recursive=True):
     node, source = parser.parse_entity(test_fn)
     ctx = context.EntityContext(
@@ -92,6 +93,7 @@ class TestCase(test.TestCase):
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
+        owner_type=owner_type,
         recursive=recursive)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)

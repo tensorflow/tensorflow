@@ -65,7 +65,8 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
 
-    self.assertEqual('', ctx.device_name)
+    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                     ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
     with ctx.device('GPU:0'):
       self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',

@@ -629,33 +629,92 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  HloComputation* fused_computation = *std::find_if(
-      module->computations().begin(), module->computations().end(),
-      [](const HloComputation* c) { return c->name() == "fused_computation"; });
-
-  auto fused_instr = [&](const string& name) {
-    auto it = std::find_if(
-        fused_computation->instructions().begin(),
-        fused_computation->instructions().end(),
-        [&](const HloInstruction* i) { return i->name() == name; });
-    CHECK(it != fused_computation->instructions().end());
-    return *it;
+  auto layout_of = [&](tensorflow::StringPiece name) {
+    return FindInstruction(module.get(), name)
+        ->shape()
+        .layout()
+        .minor_to_major();
   };
 
-  EXPECT_THAT(fused_instr("gte0")->shape().layout().minor_to_major(),
-              ElementsAre(0, 1, 2));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(0).layout().minor_to_major(),
-      ElementsAre(1, 2, 0));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(1).layout().minor_to_major(),
-      ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("gte1a")->shape().layout().minor_to_major(),
+  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(1, 2, 0));
-  EXPECT_THAT(fused_instr("gte1b")->shape().layout().minor_to_major(),
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("fresult")->shape().layout().minor_to_major(),
-              ElementsAre(2, 1, 0));
+}
+
+TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
+  auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {128, 8});
+  Shape tshape = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape result_tshape = ShapeUtil::MakeTupleShape({shape});
+
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(PRED, {}), "param2"));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({param0, param1}));
+
+  auto true_builder = HloComputation::Builder(TestName() + "_TrueBranch");
+  {
+    auto param = true_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    auto gte0 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 0));
+    auto gte1 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 1));
+    auto add = true_builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, gte0, gte1));
+    true_builder.AddInstruction(HloInstruction::CreateTuple({add}));
+  }
+  HloComputation* true_computation =
+      module->AddEmbeddedComputation(true_builder.Build());
+
+  auto false_builder = HloComputation::Builder(TestName() + "_FalseBranch");
+  {
+    Shape xshape = ShapeUtil::MakeShapeWithLayout(F32, {128, 8}, {0, 1});
+    false_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    // Using infeed as layout assignment does not mess up with it.
+    auto infeed =
+        false_builder.AddInstruction(HloInstruction::CreateInfeed(xshape, ""));
+    false_builder.AddInstruction(HloInstruction::CreateTuple({infeed}));
+  }
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(false_builder.Build());
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      result_tshape, pred, tuple, true_computation, tuple, false_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+
+  AssignLayouts(module.get(), &computation_layout);
+
+  const HloInstruction* true_root = true_computation->root_instruction();
+  const HloInstruction* false_root = false_computation->root_instruction();
+  EXPECT_THAT(true_root->opcode(), HloOpcode::kTuple);
+  EXPECT_THAT(false_root->opcode(), HloOpcode::kTuple);
+
+  const HloInstruction* true_result = true_root->operand(0);
+  const HloInstruction* false_result = false_root->operand(0);
+  EXPECT_TRUE(LayoutUtil::Equal(true_result->shape().layout(),
+                                false_result->shape().layout()));
+  EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
 }
 
 }  // namespace

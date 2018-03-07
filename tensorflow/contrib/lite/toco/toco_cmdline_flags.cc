@@ -112,6 +112,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
           "If true, ignore control dependency requirements in input TensorFlow "
           "GraphDef. Otherwise an error will be raised upon control dependency "
           "inputs."),
+      Flag("debug_disable_recurrent_cell_fusion",
+           parsed_flags.debug_disable_recurrent_cell_fusion.bind(),
+           parsed_flags.debug_disable_recurrent_cell_fusion.default_value(),
+           "If true, disable fusion of known identifiable cell subgraphs into "
+           "cells. This includes, for example, specific forms of LSTM cell."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));

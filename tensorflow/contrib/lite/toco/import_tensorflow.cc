@@ -365,7 +365,7 @@ void ConvertConvOperator(const NodeDef& node,
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
+  if (HasAttr(node, "data_format")) {
     CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
   }
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
@@ -399,6 +399,17 @@ void ConvertConvOperator(const NodeDef& node,
   CHECK_EQ(strides.i(3), 1);
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    CHECK_EQ(dilations.i_size(), 4);
+    CHECK_EQ(dilations.i(0), 1);
+    CHECK_EQ(dilations.i(3), 1);
+    conv->dilation_height_factor = dilations.i(1);
+    conv->dilation_width_factor = dilations.i(2);
+  } else {
+    conv->dilation_height_factor = 1;
+    conv->dilation_width_factor = 1;
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     conv->padding.type = PaddingType::kSame;
@@ -418,7 +429,7 @@ void ConvertDepthwiseConvOperator(const NodeDef& node,
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
+  if (HasAttr(node, "data_format")) {
     CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
   }
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);

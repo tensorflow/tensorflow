@@ -61,7 +61,8 @@ class OptimizersTest(test.TestCase):
     optimizers = [
         "SGD", gradient_descent.GradientDescentOptimizer,
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1),
-        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr)
+        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr),
+        "Momentum"
     ]
     for optimizer in optimizers:
       with ops.Graph().as_default() as g:

@@ -29,6 +29,11 @@ class GrapplerTest : public ::testing::Test {
  protected:
   std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
                                     const std::vector<string>& node_names);
+
+  void AddNode(const string& name, const string& op,
+               const std::vector<string>& inputs, GraphDef* graph);
+
+  void CompareGraphs(GraphDef want, GraphDef got);
 };
 
 }  // end namespace grappler

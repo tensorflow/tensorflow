@@ -351,8 +351,8 @@ def maybe_download_and_extract(data_url):
     filepath, _ = urllib.request.urlretrieve(data_url, filepath, _progress)
     print()
     statinfo = os.stat(filepath)
-    tf.logging.info('Successfully downloaded %s %d bytes.',
-                    filename, statinfo.st_size)
+    tf.logging.info('Successfully downloaded %s %d bytes.', filename,
+                    statinfo.st_size)
     print('Extracting file from ', filepath)
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)
   else:
@@ -1029,8 +1029,7 @@ def export_model(sess, architecture, saved_model_dir):
   inputs = {'image': tf.saved_model.utils.build_tensor_info(in_image)}
 
   out_classes = sess.graph.get_tensor_by_name('final_result:0')
-  outputs = {'prediction': 
-             tf.saved_model.utils.build_tensor_info(out_classes)}
+  outputs = {'prediction': tf.saved_model.utils.build_tensor_info(out_classes)}
 
   signature = tf.saved_model.signature_def_utils.build_signature_def(
       inputs=inputs,
@@ -1044,8 +1043,8 @@ def export_model(sess, architecture, saved_model_dir):
   builder.add_meta_graph_and_variables(
       sess, [tf.saved_model.tag_constants.SERVING],
       signature_def_map={
-          tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: 
-          signature
+          tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+              signature
       },
       legacy_init_op=legacy_init_op)
   builder.save()
@@ -1415,7 +1414,6 @@ if __name__ == '__main__':
       '--saved_model_dir',
       type=str,
       default='/tmp/saved_models/1/',
-      help='Where to save the exported graph.'
-  )
+      help='Where to save the exported graph.')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

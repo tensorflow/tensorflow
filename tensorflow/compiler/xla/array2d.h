@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array.h"
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -94,9 +95,21 @@ class Array2D : public Array<T> {
 
 // Returns a linspace-populated Array2D in the range [from, to] (inclusive)
 // with dimensions n1 x n2.
-std::unique_ptr<Array2D<float>> MakeLinspaceArray2D(float from, float to,
-                                                    int64 n1, int64 n2);
-
+template <typename NativeT = float>
+std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
+                                                      int64 n1, int64 n2) {
+  auto array = MakeUnique<Array2D<NativeT>>(n1, n2);
+  int64 count = n1 * n2;
+  NativeT step = (count > 1) ? (to - from) / (count - 1) : 0.0f;
+  auto set = [&array, n1, n2](int64 index, NativeT value) {
+    (*array)(index / n2, index % n2) = value;
+  };
+  for (int64 i = 0; i < count - 1; ++i) {
+    set(i, static_cast<NativeT>(from + i * step));
+  }
+  set(count - 1, to);
+  return array;
+}
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_ARRAY2D_H_

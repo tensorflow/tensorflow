@@ -515,7 +515,65 @@ def _standardize_weights(y,
 
 @tf_export('keras.models.Model', 'keras.Model')
 class Model(Network):
-  """The `Model` class adds training & evaluation routines to a `Network`.
+  """`Model` groups layers into an object with training and inference features.
+
+  There are two ways to instantiate a `Model`:
+
+  1 - With the "functional API", where you start from `Input`,
+  you chain layer calls to specify the model's forward pass,
+  and finally you create your model from inputs and outputs:
+
+  ```python
+  import tensorflow as tf
+
+  inputs = tf.keras.Input(shape=(3,))
+  x = tf.keras.layers.Dense(4, activation=tf.nn.relu)(inputs)
+  outputs = tf.keras.layers.Dense(5, activation=tf.nn.softmax)(x)
+  model = tf.keras.Model(inputs=inputs, outputs=outputs)
+  ```
+
+  2 - By subclassing the `Model` class: in that case, you should define your
+  layers in `__init__` and you should implement the model's forward pass
+  in `call`.
+
+  ```python
+  import tensorflow as tf
+
+  class MyModel(tf.keras.Model):
+
+    def __init__(self):
+      self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
+      self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
+
+    def call(self, inputs):
+      x = self.dense1(inputs)
+      return self.dense2(x)
+
+  model = MyModel()
+  ```
+
+  If you subclass `Model`, you can optionally have
+  a `training` argument (boolean) in `call`, which you can use to specify
+  a different behavior in training and inference:
+
+  ```python
+  import tensorflow as tf
+
+  class MyModel(tf.keras.Model):
+
+    def __init__(self):
+      self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
+      self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
+      self.dropout = tf.keras.layers.Dropout(0.5)
+
+    def call(self, inputs, training=False):
+      x = self.dense1(inputs)
+      if training:
+        x = self.dropout(x, training=training)
+      return self.dense2(x)
+
+  model = MyModel()
+  ```
   """
 
   def compile(self,
@@ -1709,7 +1767,7 @@ class Model(Network):
                          str(x[0].shape[0]) + ' samples')
     return x, y, sample_weights
 
-  def _set_inputs(self, inputs):
+  def _set_inputs(self, inputs, training=None):
     """Set model's input and output specs based on the input data received.
 
     This is to be used for Model subclasses, which do not know at instantiation
@@ -1725,11 +1783,14 @@ class Model(Network):
           when calling `fit`/etc.
         - if data tensors: the model is built on top of these tensors.
           We do not expect any Numpy data to be provided when calling `fit`/etc.
+      training: Boolean or None. Only relevant in symbolic mode. Specifies
+        whether to build the model's graph in inference mode (False), training
+        mode (True), or using the Keras learning phase (None).
     """
     if context.in_eager_mode():
       self._eager_set_inputs(inputs)
     else:
-      self._symbolic_set_inputs(inputs)
+      self._symbolic_set_inputs(inputs, training=training)
 
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
@@ -1775,7 +1836,7 @@ class Model(Network):
         'output_%d' % (i + 1) for i in range(len(dummy_output_values))]
     self.built = True
 
-  def _symbolic_set_inputs(self, inputs):
+  def _symbolic_set_inputs(self, inputs, training=None):
     """Set model's inputs based on the input data received from the user.
 
     This is to be used for Model subclasses, which do not know at instantiation
@@ -1783,6 +1844,9 @@ class Model(Network):
 
     Args:
       inputs: Argument `x` (input data) passed by the user upon first model use.
+      training: Boolean or None. Only relevant in symbolic mode. Specifies
+        whether to build the model's graph in inference mode (False), training
+        mode (True), or using the Keras learning phase (None).
 
     Raises:
       ValueError: If the model's inputs are already set.
@@ -1831,9 +1895,15 @@ class Model(Network):
 
     # Obtain symbolic outputs by calling the model.
     if len(self.inputs) == 1:
-      outputs = self.call(self.inputs[0])
+      if self._expects_training_arg:
+        outputs = self.call(self.inputs[0], training=training)
+      else:
+        outputs = self.call(self.inputs[0])
     else:
-      outputs = self.call(self.inputs)
+      if self._expects_training_arg:
+        outputs = self.call(self.inputs, training=training)
+      else:
+        outputs = self.call(self.inputs)
     if isinstance(outputs, (list, tuple)):
       outputs = list(outputs)
     else:
