@@ -29,18 +29,13 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
-                      llvm::IRBuilder<>* ir_builder)
-    : multidim_(ShapeUtil::Rank(shape)),
-      linear_(linear),
-      layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  CHECK(LayoutUtil::HasLayout(shape))
-      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
-      << " should have a layout.";
+static void Delinearize(std::vector<llvm::Value*>* multidim,
+                        llvm::Value* linear, const Shape& shape,
+                        llvm::IRBuilder<>* ir_builder) {
   int64 divisor = 1;
-  for (int64 i = 0; i < layout_.minor_to_major_size(); ++i) {
-    int64 dimension = layout_.minor_to_major(i);
+  const Layout& layout = shape.layout();
+  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64 dimension = layout.minor_to_major(i);
     int64 size_of_current_dimension = shape.dimensions(dimension);
 
     // If i is not the last dimension, compute
@@ -54,14 +49,26 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
     // memory lives in one big allocation, so cuda-memcheck can't detect
     // out-of-bounds accesses.
     auto* quot = ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor));
-    if (i < layout_.minor_to_major_size() - 1) {
-      multidim_[dimension] = ir_builder->CreateURem(
+    if (i < layout.minor_to_major_size() - 1) {
+      (*multidim)[dimension] = ir_builder->CreateURem(
           quot, ir_builder->getInt64(size_of_current_dimension));
     } else {
-      multidim_[dimension] = quot;
+      (*multidim)[dimension] = quot;
     }
     divisor *= size_of_current_dimension;
   }
+}
+
+IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
+                      llvm::IRBuilder<>* ir_builder)
+    : multidim_(ShapeUtil::Rank(shape)),
+      linear_(linear),
+      layout_(shape.layout()),
+      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+  CHECK(LayoutUtil::HasLayout(shape))
+      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
+      << " should have a layout.";
+  Delinearize(&multidim_, linear, shape, ir_builder);
 }
 
 IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -201,6 +208,32 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   }
 
   return Index(operand_multidim_index);
+}
+
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& shape, const Shape& operand_shape,
+    llvm::IRBuilder<>* builder) const {
+  CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
+
+  // First linearize the index coming from the output of the bitcast. We want
+  // the physical index of the element in the buffer. This is like Linearize,
+  // but takes the layout into account.
+  int64 scale = 1;
+  llvm::Value* linear_index = builder->getInt64(0);
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
+    linear_index = builder->CreateAdd(
+        linear_index,
+        builder->CreateMul(multidim_[dimension], builder->getInt64(scale), "",
+                           /*HasNUW=*/true, /*HasNSW=*/true),
+        "", /*HasNUW=*/true, /*HasNSW=*/true);
+    scale *= shape.dimensions(dimension);
+  }
+
+  // Now delinearize it for the input of the bitcast.
+  std::vector<llvm::Value*> multi_index(operand_shape.dimensions_size());
+  Delinearize(&multi_index, linear_index, operand_shape, builder);
+
+  return Index(multi_index, linear_index, operand_shape);
 }
 
 llvm::Value* IrArray::Index::Linearize(

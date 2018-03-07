@@ -41,6 +41,7 @@ from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
+from tensorflow.contrib.py2tf.utils import type_hints
 from tensorflow.python.util import tf_inspect
 
 
@@ -48,7 +49,9 @@ from tensorflow.python.util import tf_inspect
 
 
 class ConversionMap(object):
-  """ConversionMaps keep track of converting function hierarchies.
+  """ConversionMap keeps track of converting function hierarchies.
+
+  This object is mutable, and is updated as functions are converted.
 
   Attributes:
     recursive: Whether to recusrively convert any functions that the decorator
@@ -154,14 +157,20 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
 
   conversion_map.add_to_cache(o, node)
   if conversion_map.recursive:
-    for obj in conversion_map.name_map.keys():
-      if obj not in conversion_map.dependency_cache:
-        if (hasattr(obj, 'im_class') and
-            getattr(obj, 'im_class') not in conversion_map.partial_types):
-          # Class members are converted with their objects, unless they're
-          # only converted partially.
-          continue
-        entity_to_graph(obj, conversion_map, {}, {})
+    while True:
+      candidate = None
+      for obj in conversion_map.name_map.keys():
+        if obj not in conversion_map.dependency_cache:
+          candidate = obj
+          break
+      if candidate is None:
+        break
+      if (hasattr(candidate, 'im_class') and
+          getattr(candidate, 'im_class') not in conversion_map.partial_types):
+        # Class members are converted with their objects, unless they're
+        # only converted partially.
+        continue
+      entity_to_graph(candidate, conversion_map, {}, {})
 
   return node, new_name
 
@@ -169,9 +178,10 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
 def class_to_graph(c, conversion_map):
   """Specialization of `entity_to_graph` for classes."""
   converted_members = {}
-  members = tf_inspect.getmembers(c, predicate=tf_inspect.ismethod)
+  method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
+  members = tf_inspect.getmembers(c, predicate=method_filter)
   if not members:
-    raise ValueError('Cannot convert %s: it has no member methods.')
+    raise ValueError('Cannot convert %s: it has no member methods.' % c)
 
   class_namespace = None
   for _, m in members:
@@ -191,7 +201,7 @@ def class_to_graph(c, conversion_map):
       class_name,
       bases=[],
       keywords=[],
-      body=converted_members.values(),
+      body=list(converted_members.values()),
       decorator_list=[])
 
   return node, class_name
@@ -233,7 +243,8 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       arg_values=arg_values,
       arg_types=arg_types,
       owner_type=owner_type,
-      recursive=conversion_map.recursive)
+      recursive=conversion_map.recursive,
+      type_annotation_func=type_hints.set_element_type)
   node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py

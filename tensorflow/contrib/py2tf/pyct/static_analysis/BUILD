@@ -60,6 +60,7 @@ py_test(
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/utils",
         "//tensorflow/python:client_testlib",
     ],
 )

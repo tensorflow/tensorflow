@@ -1299,6 +1299,11 @@ class Saver(object):
     self._write_version = write_version
     self._pad_step_number = pad_step_number
     self._filename = filename
+    self._last_checkpoints = []
+    self._checkpoints_to_be_deleted = []
+    if context.in_eager_mode():
+      self._next_checkpoint_time = (
+          time.time() + self._keep_checkpoint_every_n_hours * 3600)
     if not defer_build and context.in_graph_mode():
       self.build()
     if self.saver_def:
@@ -1359,11 +1364,10 @@ class Saver(object):
           self.saver_def.restore_op_name, self._name)
 
     self._check_saver_def()
-    # Updates next checkpoint time.
-    self._next_checkpoint_time = (
-        time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
-    self._last_checkpoints = []
-    self._checkpoints_to_be_deleted = []
+    if context.in_graph_mode():  # Set in __init__ when executing eagerly.
+      # Updates next checkpoint time.
+      self._next_checkpoint_time = (
+          time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
 
   def _check_saver_def(self):
     if not isinstance(self.saver_def, saver_pb2.SaverDef):

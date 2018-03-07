@@ -29,69 +29,6 @@ namespace {
 
 class HloProtoUtilTest : public ::testing::Test {};
 
-TEST_F(HloProtoUtilTest, ParamsAndOutputShape) {
-  HloProto hlo_proto;
-  HloModuleProto* module = hlo_proto.mutable_hlo_module();
-  module->set_entry_computation_name("entry");
-  HloComputationProto* computation = module->add_computations();
-  computation->set_name("entry");
-  computation->set_root_name("root");
-
-  HloInstructionProto* param0 = computation->add_instructions();
-  param0->set_opcode(HloOpcodeString(HloOpcode::kParameter));
-  param0->set_parameter_number(0);
-  *param0->mutable_shape() = ShapeUtil::MakeShape(F32, {42});
-
-  HloInstructionProto* param2 = computation->add_instructions();
-  param2->set_opcode(HloOpcodeString(HloOpcode::kParameter));
-  param2->set_parameter_number(2);
-  *param2->mutable_shape() = ShapeUtil::MakeShape(S32, {1, 2, 3});
-
-  HloInstructionProto* param1 = computation->add_instructions();
-  param1->set_opcode(HloOpcodeString(HloOpcode::kParameter));
-  param1->set_parameter_number(1);
-  *param1->mutable_shape() = ShapeUtil::MakeShape(F64, {});
-
-  HloInstructionProto* root = computation->add_instructions();
-  root->set_opcode(HloOpcodeString(HloOpcode::kAdd));
-  root->set_name("root");
-  *root->mutable_shape() = ShapeUtil::MakeShape(U8, {2});
-
-  VLOG(1) << hlo_proto.DebugString();
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<const Shape*> parameter_shapes,
-                          EntryComputationParameterShapes(hlo_proto));
-  ASSERT_EQ(parameter_shapes.size(), 3);
-  EXPECT_TRUE(
-      ShapeUtil::Equal(*parameter_shapes[0], ShapeUtil::MakeShape(F32, {42})));
-  EXPECT_TRUE(
-      ShapeUtil::Equal(*parameter_shapes[1], ShapeUtil::MakeShape(F64, {})));
-  EXPECT_TRUE(ShapeUtil::Equal(*parameter_shapes[2],
-                               ShapeUtil::MakeShape(S32, {1, 2, 3})));
-
-  TF_ASSERT_OK_AND_ASSIGN(const Shape* output_shape,
-                          EntryComputationOutputShape(hlo_proto));
-  EXPECT_TRUE(ShapeUtil::Equal(*output_shape, ShapeUtil::MakeShape(U8, {2})));
-}
-
-TEST_F(HloProtoUtilTest, ParamsAndOutputShapeNoParameters) {
-  HloProto hlo_proto;
-  HloModuleProto* module = hlo_proto.mutable_hlo_module();
-  module->set_entry_computation_name("entry");
-  HloComputationProto* computation = module->add_computations();
-  computation->set_name("entry");
-  computation->set_root_name("root");
-
-  HloInstructionProto* root = computation->add_instructions();
-  root->set_opcode(HloOpcodeString(HloOpcode::kAdd));
-  root->set_name("root");
-  *root->mutable_shape() = ShapeUtil::MakeShape(U8, {2});
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<const Shape*> parameter_shapes,
-                          EntryComputationParameterShapes(hlo_proto));
-  ASSERT_EQ(parameter_shapes.size(), 0);
-}
-
 TEST_F(HloProtoUtilTest, ParamsAndOutputShapeMissingModule) {
   HloProto hlo_proto;
 
@@ -101,60 +38,15 @@ TEST_F(HloProtoUtilTest, ParamsAndOutputShapeMissingModule) {
               ::testing::HasSubstr("missing HloModuleProto"));
 }
 
-TEST_F(HloProtoUtilTest, ParamsAndOutputShapeMissingEntryComputation) {
+TEST_F(HloProtoUtilTest, MissingProgramShape) {
   HloProto hlo_proto;
   HloModuleProto* module = hlo_proto.mutable_hlo_module();
-  module->set_entry_computation_name("entry");
-  HloComputationProto* computation = module->add_computations();
-  computation->set_name("not_entry");
+  module->set_name("entry");
 
   auto status = EntryComputationParameterShapes(hlo_proto).status();
   ASSERT_FALSE(status.ok());
   ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("has no entry computation named"));
-}
-
-TEST_F(HloProtoUtilTest, OutputShapeMissingEntryRoot) {
-  HloProto hlo_proto;
-  HloModuleProto* module = hlo_proto.mutable_hlo_module();
-  module->set_entry_computation_name("entry");
-  HloComputationProto* computation = module->add_computations();
-  computation->set_name("entry");
-  computation->set_root_name("root");
-
-  auto status = EntryComputationOutputShape(hlo_proto).status();
-  ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("has no instruction named"));
-}
-
-TEST_F(HloProtoUtilTest, ParamsShapesMissingParameterNumbers) {
-  HloProto hlo_proto;
-  HloModuleProto* module = hlo_proto.mutable_hlo_module();
-  module->set_entry_computation_name("entry");
-  HloComputationProto* computation = module->add_computations();
-  computation->set_name("entry");
-  computation->set_root_name("root");
-
-  HloInstructionProto* param0 = computation->add_instructions();
-  param0->set_opcode(HloOpcodeString(HloOpcode::kParameter));
-  param0->set_parameter_number(0);
-  *param0->mutable_shape() = ShapeUtil::MakeShape(F32, {42});
-
-  HloInstructionProto* param2 = computation->add_instructions();
-  param2->set_opcode(HloOpcodeString(HloOpcode::kParameter));
-  param2->set_parameter_number(2);
-  *param2->mutable_shape() = ShapeUtil::MakeShape(S32, {1, 2, 3});
-
-  HloInstructionProto* root = computation->add_instructions();
-  root->set_opcode(HloOpcodeString(HloOpcode::kAdd));
-  root->set_name("root");
-  *root->mutable_shape() = ShapeUtil::MakeShape(U8, {2});
-
-  auto status = EntryComputationParameterShapes(hlo_proto).status();
-  ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("invalid parameter number"));
+              ::testing::HasSubstr("missing program shape"));
 }
 
 }  // namespace

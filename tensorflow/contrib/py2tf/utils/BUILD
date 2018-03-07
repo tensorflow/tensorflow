@@ -28,6 +28,7 @@ py_library(
         "tensor_list.py",
         "testing.py",
         "type_check.py",
+        "type_hints.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],

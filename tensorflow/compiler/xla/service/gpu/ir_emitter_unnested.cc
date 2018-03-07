@@ -517,46 +517,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         TF_RETURN_IF_ERROR(root->Accept(&fused_emitter));
 
         Shape input_shape = root->operand(0)->shape();
-        // EmitReductionToVector requires the input shape to have a layout, but
-        // fused instructions don't have one. So we determine its layout from
-        // the fusion's operands. The choice of the layout only affects
-        // performance but not correctness.
-        auto choose_input_layout = [](
-            tensorflow::gtl::ArraySlice<const HloInstruction*> operands,
-            Shape* input_shape) -> Status {
-          // Prefer the layout of an operand whose shape is compatible with
-          // input_shape.
-          for (const HloInstruction* operand : operands) {
-            if (ShapeUtil::Compatible(*input_shape, operand->shape())) {
-              return LayoutUtil::CopyLayoutBetweenShapes(operand->shape(),
-                                                         input_shape);
-            }
-          }
-          // If no operand has a compatible shape, prefer an operand that has
-          // the same rank at least.
-          for (const HloInstruction* operand : operands) {
-            // Skip tuple-shaped operands; calling ShapeUtil::Rank on a
-            // tuple-shaped Shape is illegal.  Perhaps more correct would be to
-            // recurse into them, but TODO(kramerb): Remove this code after
-            // assigning layouts to fusion nodes.
-            if (ShapeUtil::IsTuple(operand->shape())) {
-              continue;
-            }
-            if (ShapeUtil::Rank(*input_shape) ==
-                ShapeUtil::Rank(operand->shape())) {
-              // Do not use CopyLayoutBetweenShapes because input_shape and
-              // operand->shape() may be incompatible.
-              *input_shape->mutable_layout() = operand->shape().layout();
-              return Status::OK();
-            }
-          }
-          // When all the above fails, which is rare, set the default layout.
-          LayoutUtil::SetToDefaultLayout(input_shape);
-          return Status::OK();
-        };
-        TF_RETURN_IF_ERROR(
-            choose_input_layout(fusion->operands(), &input_shape));
-
         return EmitReductionToVector(
             root, input_shape, fused_emitter.GetGenerator(root->operand(0)),
             fused_emitter.GetGenerator(root->operand(1)), root->dimensions(),

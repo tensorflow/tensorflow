@@ -23,6 +23,7 @@ removing existing functionality.
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Counter
+@@SqlDataset
 
 @@batch_and_drop_remainder
 @@bucket_by_sequence_length

@@ -19541,6 +19541,7 @@ op {
     name: "f"
     type: "func"
   }
+  is_stateful: true
 }
 op {
   name: "RemoteFusedGraphExecute"

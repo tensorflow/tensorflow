@@ -2225,6 +2225,13 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
 
   O. Kuchaiev and B. Ginsburg
   "Factorization Tricks for LSTM Networks", ICLR 2017 workshop.
+
+  In brief, a G-LSTM cell consists of one LSTM sub-cell per group, where each
+  sub-cell operates on an evenly-sized sub-vector of the input and produces an
+  evenly-sized sub-vector of the output.  For example, a G-LSTM cell with 128
+  units and 4 groups consists of 4 LSTMs sub-cells with 32 units each.  If that
+  G-LSTM cell is fed a 200-dim input, then each sub-cell receives a 50-dim part
+  of the input and produces a 32-dim part of the output.
   """
 
   def __init__(self,
@@ -2320,9 +2327,12 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     """Run one step of G-LSTM.
 
     Args:
-      inputs: input Tensor, 2D, [batch x num_units].
-      state: this must be a tuple of state Tensors, both `2-D`,
-      with column sizes `c_state` and `m_state`.
+      inputs: input Tensor, 2D, [batch x num_inputs].  num_inputs must be
+        statically-known and evenly divisible into groups.  The innermost
+        vectors of the inputs are split into evenly-sized sub-vectors and fed
+        into the per-group LSTM sub-cells.
+      state: this must be a tuple of state Tensors, both `2-D`, with column
+        sizes `c_state` and `m_state`.
 
     Returns:
       A tuple containing:
@@ -2337,11 +2347,24 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
 
     Raises:
       ValueError: If input size cannot be inferred from inputs via
-        static shape inference.
+        static shape inference, or if the input shape is incompatible
+        with the number of groups.
     """
     (c_prev, m_prev) = state
 
     self._batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+
+    # If the input size is statically-known, calculate and validate its group
+    # size.  Otherwise, use the output group size.
+    input_size = inputs.shape[1].value
+    if input_size is None:
+      raise ValueError("input size must be statically known")
+    if input_size % self._number_of_groups != 0:
+      raise ValueError(
+          "input size (%d) must be divisible by number_of_groups (%d)" %
+          (input_size, self._number_of_groups))
+    input_group_size = int(input_size / self._number_of_groups)
+
     dtype = inputs.dtype
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope, initializer=self._initializer):
@@ -2354,8 +2377,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         with vs.variable_scope("group%d" % group_id):
           x_g_id = array_ops.concat(
               [
-                  self._get_input_for_group(inputs, group_id,
-                                            self._group_shape[0]),
+                  self._get_input_for_group(inputs, group_id, input_group_size),
                   self._get_input_for_group(m_prev, group_id,
                                             self._group_shape[0])
               ],

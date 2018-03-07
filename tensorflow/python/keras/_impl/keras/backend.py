@@ -55,9 +55,9 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
 
 py_all = all
 py_sum = sum
@@ -369,11 +369,40 @@ def set_learning_phase(value):
   """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
-    raise ValueError('Expected learning phase to be ' '0 or 1.')
+    raise ValueError('Expected learning phase to be 0 or 1.')
   if context.in_eager_mode():
     _GRAPH_LEARNING_PHASES['eager'] = value
   else:
     _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+
+
+@tf_contextlib.contextmanager
+def learning_phase_scope(value):
+  """Provides a scope within which the learning phase is equal to `value`.
+
+  The learning phase gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Learning phase value, either 0 or 1 (integers).
+
+  Yields:
+    The provided value.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  if value not in {0, 1}:
+    raise ValueError('Expected learning phase to be 0 or 1.')
+  previous_value = learning_phase()
+  try:
+    set_learning_phase(value)
+    yield value
+  finally:
+    # Restore learning phase to initial value.
+    if context.in_eager_mode():
+      _GRAPH_LEARNING_PHASES['eager'] = previous_value
+    else:
+      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
 @tf_export('keras.backend.get_session')
