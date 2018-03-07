@@ -105,6 +105,10 @@ tf_module {
     argspec: "args=[\'x\', \'kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'None\', \'(1, 1, 1)\'], "
   }
   member_method {
+    name: "conv3d_transpose"
+    argspec: "args=[\'x\', \'kernel\', \'output_shape\', \'strides\', \'padding\', \'data_format\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'None\'], "
+  }
+  member_method {
     name: "cos"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
@@ -123,6 +127,18 @@ tf_module {
   member_method {
     name: "ctc_label_dense_to_sparse"
     argspec: "args=[\'labels\', \'label_lengths\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cumprod"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "cumsum"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d"
+    argspec: "args=[\'x\', \'depthwise_kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
   }
   member_method {
     name: "dot"
@@ -217,6 +233,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "identity"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "image_data_format"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -257,8 +277,20 @@ tf_module {
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "local_conv1d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "local_conv2d"
+    argspec: "args=[\'inputs\', \'kernel\', \'kernel_size\', \'strides\', \'output_shape\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "log"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "logsumexp"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "manual_variable_initialization"
@@ -511,6 +543,10 @@ tf_module {
   member_method {
     name: "temporal_padding"
     argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
+  }
+  member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_dense"
