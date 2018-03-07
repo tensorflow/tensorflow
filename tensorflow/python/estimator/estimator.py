@@ -137,8 +137,8 @@ class Estimator(object):
                  to configure Estimators from hyper parameter tuning.
           * `config`: Optional configuration object. Will receive what is passed
                  to Estimator in `config` parameter, or the default `config`.
-                 Allows updating things in your model_fn based on configuration
-                 such as `num_ps_replicas`, or `model_dir`.
+                 Allows updating things in your `model_fn` based on
+                 configuration such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
           `EstimatorSpec`
@@ -299,11 +299,11 @@ class Estimator(object):
 
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
+          * A tuple (features, labels): Where `features` is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and `labels` is a
             `Tensor` or a dictionary of string label name to `Tensor`. Both
-            features and labels are consumed by `model_fn`. They should satisfy
-            the expectation of `model_fn` from inputs.
+            `features` and `labels` are consumed by `model_fn`. They should
+            satisfy the expectation of `model_fn` from inputs.
 
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
@@ -379,11 +379,11 @@ class Estimator(object):
 
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
+          * A tuple (features, labels): Where `features` is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and `labels` is a
             `Tensor` or a dictionary of string label name to `Tensor`. Both
-            features and labels are consumed by `model_fn`. They should satisfy
-            the expectation of `model_fn` from inputs.
+            `features` and `labels` are consumed by `model_fn`. They should
+            satisfy the expectation of `model_fn` from inputs.
 
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
