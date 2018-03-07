@@ -130,10 +130,11 @@ class TPUClusterResolver(ClusterResolver):
     should_resolve = self._shouldResolve()
 
     if not project and should_resolve:
-      project = self._requestComputeMetadata('project/project-id')
+      project = compat.as_str(
+          self._requestComputeMetadata('project/project-id'))
 
     if not zone and should_resolve:
-      zone_path = self._requestComputeMetadata('instance/zone')
+      zone_path = compat.as_str(self._requestComputeMetadata('instance/zone'))
       zone = zone_path.split('/')[-1]
 
     self._project = project

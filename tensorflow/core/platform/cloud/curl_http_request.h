@@ -75,6 +75,8 @@ class CurlHttpRequest : public HttpRequest {
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   void AddAuthBearerHeader(const string& auth_token) override;
 
+  void SetRequestStats(RequestStats* stats) override;
+
   /// Makes the request a DELETE request.
   void SetDeleteRequest() override;
 
@@ -186,6 +188,8 @@ class CurlHttpRequest : public HttpRequest {
   curl_slist* curl_headers_ = nullptr;
   curl_slist* resolve_list_ = nullptr;
 
+  RequestStats* stats_ = nullptr;
+
   std::vector<char> default_response_buffer_;
 
   std::unordered_map<string, string> response_headers_;
@@ -213,6 +217,7 @@ class CurlHttpRequest : public HttpRequest {
 
   // Store the URI to help disambiguate requests when errors occur.
   string uri_;
+  RequestMethod method_ = RequestMethod::kGet;
 
   // Limit the size of a http response that is copied into an error message.
   const size_t response_to_error_limit_ = 500;

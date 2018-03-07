@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 
+#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -216,6 +217,10 @@ class XlaCompiler {
     // containing both constant and non-constant results.
     std::vector<OutputDescription> outputs;
 
+    // TensorFlow shapes and types of sends/recvs from HostCompute Ops to their
+    // matching RecvAtHost/SendFromHost Ops in the outer graph.
+    tf2xla::HostComputeMetadata host_compute_metadata;
+
     // Resources whose values were updated by the computation, ordered
     // by return value position. Resource updates follow the non-constant
     // results in the outputs of XLA computation.
@@ -296,6 +301,22 @@ class XlaCompiler {
   // same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
 
+  // Sets the shapes and types for the device to host transfer associated with
+  // 'key'.
+  Status SetDeviceToHostMetadata(const string& key,
+                                 const std::vector<DataType>& types,
+                                 const std::vector<TensorShape>& shapes);
+
+  // Gets the shapes the device to host transfer associated with 'key'.
+  Status GetDeviceToHostShapes(const string& key,
+                               std::vector<TensorShape>* shapes) const;
+
+  // Sets the shapes and types for the host to device transfer associated with
+  // 'key'.
+  Status SetHostToDeviceMetadata(const string& key,
+                                 const std::vector<DataType>& types,
+                                 const std::vector<TensorShape>& shapes);
+
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
@@ -358,6 +379,9 @@ class XlaCompiler {
       cache_;
 
   std::unordered_map<string, xla::ChannelHandle> channels_;
+
+  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_sends_;
+  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_recvs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

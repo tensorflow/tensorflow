@@ -166,16 +166,8 @@ class BoundedTensorSpec(TensorSpec):
   @classmethod
   def from_spec(cls, spec):
     dtype = dtypes.as_dtype(spec.dtype)
-    if dtype in [dtypes.float64, dtypes.float32]:
-      # Avoid under/over-flow for `dtype.maximum - dtype.minimum`.
-      low = dtype.min / 2
-      high = dtype.max / 2
-    else:
-      low = dtype.min
-      high = dtype.max
-
-    minimum = getattr(spec, "minimum", low)
-    maximum = getattr(spec, "maximum", high)
+    minimum = getattr(spec, "minimum", dtype.min)
+    maximum = getattr(spec, "maximum", dtype.max)
     return BoundedTensorSpec(spec.shape, dtype, minimum, maximum, spec.name)
 
   @property

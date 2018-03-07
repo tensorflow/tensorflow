@@ -23,10 +23,27 @@ import textwrap
 import gast
 
 from tensorflow.contrib.py2tf.pyct import compiler
+from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 class CompilerTest(test.TestCase):
+
+  def test_parser_compile_idempotent(self):
+
+    def test_fn(x):
+      a = True
+      b = ''
+      if a:
+        b = x + 1
+      return b
+
+    self.assertEqual(
+        textwrap.dedent(tf_inspect.getsource(test_fn)),
+        tf_inspect.getsource(
+            compiler.ast_to_object(
+                parser.parse_entity(test_fn)[0].body[0])[0].test_fn))
 
   def test_ast_to_source(self):
     node = gast.If(

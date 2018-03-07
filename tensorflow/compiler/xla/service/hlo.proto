@@ -145,6 +145,9 @@ message HloComputationProto {
 
   // The name of the root of the computation.
   string root_name = 3;
+
+  // The program shape (with layout) of this computation.
+  xla.ProgramShape program_shape = 4;
 }
 
 // Serialization of HloModule.
@@ -155,6 +158,9 @@ message HloModuleProto {
   // The array of computations is always in a valid dependency order, where
   // callees appear before their callers.
   repeated HloComputationProto computations = 3;
+
+  // The program shape (with layout) of the entry computation.
+  xla.ProgramShape program_shape = 4;
 }
 
 // Serialization of HloOrdering.

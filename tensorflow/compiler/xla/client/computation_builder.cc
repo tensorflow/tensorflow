@@ -868,6 +868,14 @@ ComputationDataHandle ComputationBuilder::Or(
   return BinaryOp(BINOP_OR, lhs, rhs, broadcast_dimensions);
 }
 
+// TODO(b/65209188): Create a dedicated lowering for Xor
+ComputationDataHandle ComputationBuilder::Xor(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return Or(And(Not(lhs), rhs, broadcast_dimensions),
+            And(lhs, Not(rhs), broadcast_dimensions));
+}
+
 ComputationDataHandle ComputationBuilder::Not(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_NOT, operand);

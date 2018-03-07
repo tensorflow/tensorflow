@@ -480,6 +480,17 @@ def gradients(ys,
     RuntimeError: if called in Eager mode.
 
   """
+  # Creating the gradient graph for control flow mutates Operations. _lock
+  # ensures a Session.run call cannot occur between creating and mutating new
+  # ops.
+  with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+    return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
+                            gate_gradients, aggregation_method, stop_gradients)
+
+
+def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
+                     gate_gradients, aggregation_method, stop_gradients):
+  """Implementation of gradients()."""
   if context.in_eager_mode():
     raise RuntimeError("tf.gradients not supported in EAGER mode. Use "
                        "functions in tf.contrib.eager.backprop instead.")
