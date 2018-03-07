@@ -228,10 +228,17 @@ void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
   }
 }
 
+void CurlHttpRequest::SetRequestStats(RequestStats* stats) {
+  CheckNotSent();
+  CHECK(stats_ == nullptr) << "SetRequestStats already called";
+  stats_ = stats;
+}
+
 void CurlHttpRequest::SetDeleteRequest() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kDelete;
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"),
       "Setting delete request");
@@ -242,6 +249,7 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPut;
   if (put_body_) {
     fclose(put_body_);
   }
@@ -271,6 +279,7 @@ void CurlHttpRequest::SetPutEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPut;
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1), "Setting put request");
   curl_headers_ =
@@ -289,6 +298,7 @@ void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPost;
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
@@ -309,6 +319,7 @@ void CurlHttpRequest::SetPostEmptyBody() {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
+  method_ = RequestMethod::kPost;
   TF_CURL_LOG_WITH_CONTEXT_IF_ERROR(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1),
       "Setting POST request");
@@ -507,6 +518,10 @@ Status CurlHttpRequest::Send() {
       libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer),
       "Setting error buffer");
 
+  if (stats_ != nullptr) {
+    stats_->RecordRequest(this, uri_, method_);
+  }
+
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
   TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
       curl_result, "Performing request. Detailed error: ", error_buffer);
@@ -599,6 +614,11 @@ Status CurlHttpRequest::Send() {
   if (!result.ok()) {
     response_buffer_->clear();
   }
+
+  if (stats_ != nullptr) {
+    stats_->RecordResponse(this, uri_, method_, result);
+  }
+
   return result;
 }
 
