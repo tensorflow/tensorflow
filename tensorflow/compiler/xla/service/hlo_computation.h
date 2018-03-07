@@ -248,7 +248,7 @@ class HloComputation {
       ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // Computes and returns the ProgramShape of this computation (shape of
-  // parameters and result without layout).
+  // parameters and result with layout).
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
