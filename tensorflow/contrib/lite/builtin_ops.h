@@ -32,6 +32,7 @@ typedef enum {
   kTfLiteBuiltinConcatenation = 2,
   kTfLiteBuiltinConv2d = 3,
   kTfLiteBuiltinDepthwiseConv2d = 4,
+  kTfLiteBuiltinDequantize = 6,
   kTfLiteBuiltinEmbeddingLookup = 7,
   kTfLiteBuiltinFullyConnected = 9,
   kTfLiteBuiltinHashtableLookup = 10,
