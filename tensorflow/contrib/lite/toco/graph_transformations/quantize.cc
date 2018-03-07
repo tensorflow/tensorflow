@@ -225,41 +225,40 @@ ArrayDataType GetQuantizedDataType(const Array& array,
   }
 }
 
-void GetQuantizationParams(ArrayDataType data_type,
-                           const ModelFlags& model_flags, const MinMax& minmax,
+void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
                            QuantizationParams* quantization_params) {
   switch (data_type) {
     case ArrayDataType::kInt8:
       GetQuantizationParamsFromMinMax<ArrayDataType::kInt8>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kUint8:
       GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kInt16:
       GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kUint16:
       GetQuantizationParamsFromMinMax<ArrayDataType::kUint16>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kInt32:
       GetQuantizationParamsFromMinMax<ArrayDataType::kInt32>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kUint32:
       GetQuantizationParamsFromMinMax<ArrayDataType::kUint32>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kInt64:
       GetQuantizationParamsFromMinMax<ArrayDataType::kInt64>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kUint64:
       GetQuantizationParamsFromMinMax<ArrayDataType::kUint64>(
-          model_flags, minmax, quantization_params);
+          minmax, quantization_params);
       break;
     case ArrayDataType::kFloat:
     case ArrayDataType::kNone:
@@ -328,15 +327,13 @@ bool ChooseQuantizationForOperatorInput(
   if (op.type == OperatorType::kLstmCell) {
     if (input_index == LstmCellOperator::PREV_STATE_INPUT) {
       *quantized_data_type = ArrayDataType::kInt16;
-      GetQuantizationParams(*quantized_data_type, model->flags, minmax,
-                            quantization_params);
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
 
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
-  GetQuantizationParams(*quantized_data_type, model->flags, minmax,
-                        quantization_params);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
       "For input array %s with min=%g"
       ", max=%g"
@@ -460,14 +457,12 @@ bool ChooseQuantizationForOperatorOutput(
     if (output_index == LstmCellOperator::STATE_OUTPUT ||
         output_index == LstmCellOperator::ACTIV_TEMP) {
       *quantized_data_type = ArrayDataType::kInt16;
-      GetQuantizationParams(*quantized_data_type, model->flags, minmax,
-                            quantization_params);
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
-  GetQuantizationParams(*quantized_data_type, model->flags, minmax,
-                        quantization_params);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
       "For output array %s with min=%g, max=%g"
       ", chose to quantize as %s with zero_point=%d"
