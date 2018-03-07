@@ -33,25 +33,40 @@ from tensorflow.contrib.py2tf.pyct import anno
 class QN(object):
   """Represents a qualified name."""
 
-  def __init__(self, base, attr=None):
-    if attr:
+  def __init__(self, base, attr=None, subscript=None):
+    if attr is not None and subscript is not None:
+      raise ValueError('A QN can only be either an attr or a subscript, not '
+                       'both: attr={}, subscript={}.'.format(attr, subscript))
+    self._has_attr = False
+    self._has_subscript = False
+    if attr is not None:
       if not isinstance(base, QN):
         raise ValueError('For attribute QNs, base must be a QN.')
       self._parent = base
-      self.qn = base.qn + (attr,)
+      # TODO(mdan): Get rid of the tuple - it can only have 1 or 2 elements now.
+      self.qn = (base, attr)
+      self._has_attr = True
+    elif subscript is not None:
+      if not isinstance(base, QN):
+        raise ValueError('For subscript QNs, base must be a QN.')
+      self._parent = base
+      self.qn = (base, subscript)
+      self._has_subscript = True
     else:
-      if isinstance(base, QN):
-        if base.is_composite():
-          self._parent = base.parent
-        else:
-          self._parent = None
-        self.qn = base.qn
-      else:
-        self._parent = None
-        self.qn = tuple(base.split('.'))
+      if not isinstance(base, str):
+        raise ValueError('For simple QNs, base must be a string.')
+      assert '.' not in base and '[' not in base and ']' not in base
+      self._parent = None
+      self.qn = (base,)
 
   def is_composite(self):
     return len(self.qn) > 1
+
+  def has_subscript(self):
+    return self._has_subscript
+
+  def has_attr(self):
+    return self._has_attr
 
   @property
   def parent(self):
@@ -60,24 +75,41 @@ class QN(object):
     return self._parent
 
   def __hash__(self):
-    return hash(self.qn)
+    return hash(self.qn + (self._has_attr, self._has_subscript))
 
   def __eq__(self, other):
-    return self.qn == other.qn
+    return (isinstance(other, QN) and self.qn == other.qn and
+            self.has_subscript() == other.has_subscript() and
+            self.has_attr() == other.has_attr())
 
   def __str__(self):
-    return '.'.join(self.qn)
+    if self.has_subscript():
+      return str(self.qn[0]) + '[' + str(self.qn[1]) + ']'
+    if self.has_attr():
+      return '.'.join(map(str, self.qn))
+    else:
+      return str(self.qn[0])
 
   def __repr__(self):
     return str(self)
 
   def ssf(self):
     """Simple symbol form."""
-    return '_'.join(self.qn)
+    ssfs = [n.ssf() if isinstance(n, QN) else n for n in self.qn]
+    ssf_string = ''
+    for i in range(0, len(self.qn) - 1):
+      if self.has_subscript():
+        delimiter = '_sub_'
+      else:
+        delimiter = '_'
+      ssf_string += ssfs[i] + delimiter
+    return ssf_string + ssfs[-1]
 
   def ast(self):
     # The caller must adjust the context appropriately.
-    if self.is_composite():
+    if self.has_subscript():
+      return gast.Subscript(self.parent.ast(), str(self.qn[-1]), None)
+    if self.has_attr():
       return gast.Attribute(self.parent.ast(), self.qn[-1], None)
     return gast.Name(self.qn[0], None, None)
 
@@ -96,7 +128,22 @@ class QnResolver(gast.NodeTransformer):
   def visit_Attribute(self, node):
     self.generic_visit(node)
     anno.setanno(node, anno.Basic.QN,
-                 QN(anno.getanno(node.value, anno.Basic.QN), node.attr))
+                 QN(anno.getanno(node.value, anno.Basic.QN), attr=node.attr))
+    return node
+
+  def visit_Subscript(self, node):
+    if not isinstance(node.slice, gast.Index):
+      raise NotImplementedError('range and multi-dimensional indexing are not'
+                                ' yet supported')
+    self.generic_visit(node)
+    if isinstance(node.slice.value, gast.Num) or isinstance(
+        node.slice.value, gast.Str):
+      raise NotImplementedError('constant subscripts are not yet supported')
+    else:
+      subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+    anno.setanno(node, anno.Basic.QN,
+                 QN(anno.getanno(node.value, anno.Basic.QN),
+                    subscript=subscript))
     return node
 
 
