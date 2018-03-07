@@ -332,8 +332,10 @@ public class SpeechActivity extends Activity {
                 }
                 final View labelView = labelsListView.getChildAt(labelIndex - 2);
 
-                AnimatorSet colorAnimation = (AnimatorSet) AnimatorInflater.loadAnimator(
-                    SpeechActivity.this, R.animator.color_animation);
+                AnimatorSet colorAnimation =
+                    (AnimatorSet)
+                        AnimatorInflater.loadAnimator(
+                            SpeechActivity.this, R.animator.color_animation);
                 colorAnimation.setTarget(labelView);
                 colorAnimation.start();
               }

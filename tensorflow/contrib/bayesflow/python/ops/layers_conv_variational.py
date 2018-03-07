@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.bayesflow.python.ops import docstring_util
 from tensorflow.contrib.bayesflow.python.ops import layers_util
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.python.framework import dtypes
@@ -33,6 +34,45 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops.distributions import kullback_leibler as kl_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.ops.distributions import util as distribution_util
+
+doc_args = """activation: Activation function. Set it to None to maintain a
+      linear activation.
+  activity_regularizer: Optional regularizer function for the output.
+  trainable: Boolean, if `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+  kernel_posterior_fn: Python `callable` which creates
+    `tf.distributions.Distribution` instance representing the surrogate
+    posterior of the `kernel` parameter. Default value:
+    `default_mean_field_normal_fn()`.
+  kernel_posterior_tensor_fn: Python `callable` which takes a
+    `tf.distributions.Distribution` instance and returns a representative
+    value. Default value: `lambda d: d.sample()`.
+  kernel_prior_fn: Python `callable` which creates `tf.distributions`
+    instance. See `default_mean_field_normal_fn` docstring for required
+    parameter signature.
+    Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+  kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+    distribution, prior distribution and random variate sample(s) from the
+    surrogate posterior and computes or approximates the KL divergence. The
+    distributions are `tf.distributions.Distribution`-like instances and the
+    sample is a `Tensor`.
+  bias_posterior_fn: Python `callable` which creates
+    `tf.distributions.Distribution` instance representing the surrogate
+    posterior of the `bias` parameter. Default value:
+    `default_mean_field_normal_fn(is_singular=True)` (which creates an
+    instance of `tf.distributions.Deterministic`).
+  bias_posterior_tensor_fn: Python `callable` which takes a
+    `tf.distributions.Distribution` instance and returns a representative
+    value. Default value: `lambda d: d.sample()`.
+  bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+    See `default_mean_field_normal_fn` docstring for required parameter
+    signature. Default value: `None` (no prior, no variational inference)
+  bias_divergence_fn: Python `callable` which takes the surrogate posterior
+    distribution, prior distribution and random variate sample(s) from the
+    surrogate posterior and computes or approximates the KL divergence. The
+    distributions are `tf.distributions.Distribution`-like instances and the
+    sample is a `Tensor`.
+  name: A string, the name of the layer."""
 
 
 class _ConvVariational(layers_lib.Layer):
@@ -55,65 +95,6 @@ class _ConvVariational(layers_lib.Layer):
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
-    rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of n integers, specifying the
-      length of the convolution window.
-    strides: An integer or tuple/list of n integers,
-      specifying the stride length of the convolution.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, ..., channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, ...)`.
-    dilation_rate: An integer or tuple/list of n integers, specifying
-      the dilation rate to use for dilated convolution.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    name: A string, the name of the layer.
-
   Properties:
     rank: Python integer, dimensionality of convolution.
     filters: Python integer, dimensionality of the output space.
@@ -134,6 +115,7 @@ class _ConvVariational(layers_lib.Layer):
     bias_divergence_fn: `callable` returning divergence.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       rank,
@@ -157,6 +139,33 @@ class _ConvVariational(layers_lib.Layer):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      rank: An integer, the rank of the convolution, e.g. "2" for 2D
+        convolution.
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of n integers, specifying the
+        length of the convolution window.
+      strides: An integer or tuple/list of n integers,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, ...,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, ...)`.
+      dilation_rate: An integer or tuple/list of n integers, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(_ConvVariational, self).__init__(
         trainable=trainable,
         name=name,
@@ -371,65 +380,6 @@ class _ConvReparameterization(_ConvVariational):
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
-    rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of n integers, specifying the
-      length of the convolution window.
-    strides: An integer or tuple/list of n integers,
-      specifying the stride length of the convolution.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, ..., channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, ...)`.
-    dilation_rate: An integer or tuple/list of n integers, specifying
-      the dilation rate to use for dilated convolution.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    name: A string, the name of the layer.
-
   Properties:
     rank: Python integer, dimensionality of convolution.
     filters: Python integer, dimensionality of the output space.
@@ -454,6 +404,7 @@ class _ConvReparameterization(_ConvVariational):
         International Conference on Learning Representations, 2014.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       rank,
@@ -477,6 +428,33 @@ class _ConvReparameterization(_ConvVariational):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      rank: An integer, the rank of the convolution, e.g. "2" for 2D
+        convolution.
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of n integers, specifying the
+        length of the convolution window.
+      strides: An integer or tuple/list of n integers,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, ...,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, ...)`.
+      dilation_rate: An integer or tuple/list of n integers, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(_ConvReparameterization, self).__init__(
         rank=rank,
         filters=filters,
@@ -528,63 +506,6 @@ class Conv1DReparameterization(_ConvReparameterization):
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
-
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of a single integer, specifying the
-      length of the 1D convolution window.
-    strides: An integer or tuple/list of a single integer,
-      specifying the stride length of the convolution.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, length, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, length)`.
-    dilation_rate: An integer or tuple/list of a single integer, specifying
-      the dilation rate to use for dilated convolution.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
 
   Properties:
     filters: Python integer, dimensionality of the output space.
@@ -639,6 +560,7 @@ class Conv1DReparameterization(_ConvReparameterization):
         International Conference on Learning Representations, 2014.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -661,6 +583,31 @@ class Conv1DReparameterization(_ConvReparameterization):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of a single integer, specifying the
+        length of the 1D convolution window.
+      strides: An integer or tuple/list of a single integer,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, length,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, length)`.
+      dilation_rate: An integer or tuple/list of a single integer, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv1DReparameterization, self).__init__(
         rank=1,
         filters=filters,
@@ -683,6 +630,7 @@ class Conv1DReparameterization(_ConvReparameterization):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv1d_reparameterization(
     inputs,
     filters,
@@ -705,6 +653,7 @@ def conv1d_reparameterization(
     bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for 1D convolution layer (e.g. temporal convolution).
 
   This layer creates a convolution kernel that is convolved
@@ -726,7 +675,7 @@ def conv1d_reparameterization(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -746,43 +695,7 @@ def conv1d_reparameterization(
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -827,6 +740,7 @@ def conv1d_reparameterization(
         Diederik P. Kingma, Max Welling.
         International Conference on Learning Representations, 2014.
   """
+  # pylint: enable=g-doc-args
   layer = Conv1DReparameterization(
       filters=filters,
       kernel_size=kernel_size,
@@ -873,70 +787,6 @@ class Conv2DReparameterization(_ConvReparameterization):
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
-
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of 2 integers, specifying the
-      height and width of the 2D convolution window.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-    strides: An integer or tuple/list of 2 integers,
-      specifying the strides of the convolution along the height and width.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, height, width)`.
-
-    dilation_rate: An integer or tuple/list of 2 integers, specifying
-      the dilation rate to use for dilated convolution.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
 
   Properties:
     filters: Python integer, dimensionality of the output space.
@@ -994,6 +844,7 @@ class Conv2DReparameterization(_ConvReparameterization):
         International Conference on Learning Representations, 2014.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -1016,6 +867,37 @@ class Conv2DReparameterization(_ConvReparameterization):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of 2 integers, specifying the
+        height and width of the 2D convolution window.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+      strides: An integer or tuple/list of 2 integers,
+        specifying the strides of the convolution along the height and width.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, height,
+        width, channels)` while `channels_first` corresponds to inputs with
+        shape `(batch, channels, height, width)`.
+      dilation_rate: An integer or tuple/list of 2 integers, specifying
+        the dilation rate to use for dilated convolution.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any stride value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv2DReparameterization, self).__init__(
         rank=2,
         filters=filters,
@@ -1038,6 +920,7 @@ class Conv2DReparameterization(_ConvReparameterization):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv2d_reparameterization(
     inputs,
     filters,
@@ -1060,6 +943,7 @@ def conv2d_reparameterization(
     bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for the 2D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -1081,7 +965,7 @@ def conv2d_reparameterization(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1101,50 +985,13 @@ def conv2d_reparameterization(
       `channels_last` corresponds to inputs with shape
       `(batch, height, width, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, height, width)`.
-
     dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -1193,6 +1040,7 @@ def conv2d_reparameterization(
         Diederik P. Kingma, Max Welling.
         International Conference on Learning Representations, 2014.
   """
+  # pylint: enable=g-doc-args
   layer = Conv2DReparameterization(
       filters=filters,
       kernel_size=kernel_size,
@@ -1239,71 +1087,6 @@ class Conv3DReparameterization(_ConvReparameterization):
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
-
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of 3 integers, specifying the
-      depth, height and width of the 3D convolution window.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-    strides: An integer or tuple/list of 3 integers,
-      specifying the strides of the convolution along the depth,
-      height and width.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, depth, height, width, channels)` while `channels_first`
-      corresponds to inputs with shape
-      `(batch, channels, depth, height, width)`.
-    dilation_rate: An integer or tuple/list of 3 integers, specifying
-      the dilation rate to use for dilated convolution.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
 
   Properties:
     filters: Python integer, dimensionality of the output space.
@@ -1361,6 +1144,7 @@ class Conv3DReparameterization(_ConvReparameterization):
         International Conference on Learning Representations, 2014.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -1383,6 +1167,38 @@ class Conv3DReparameterization(_ConvReparameterization):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of 3 integers, specifying the
+        depth, height and width of the 3D convolution window.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+      strides: An integer or tuple/list of 3 integers,
+        specifying the strides of the convolution along the depth,
+        height and width.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, depth,
+        height, width, channels)` while `channels_first` corresponds to inputs
+        with shape `(batch, channels, depth, height, width)`.
+      dilation_rate: An integer or tuple/list of 3 integers, specifying
+        the dilation rate to use for dilated convolution.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any stride value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv3DReparameterization, self).__init__(
         rank=3,
         filters=filters,
@@ -1405,6 +1221,7 @@ class Conv3DReparameterization(_ConvReparameterization):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv3d_reparameterization(
     inputs,
     filters,
@@ -1427,6 +1244,7 @@ def conv3d_reparameterization(
     bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for the 3D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -1448,7 +1266,7 @@ def conv3d_reparameterization(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1476,43 +1294,7 @@ def conv3d_reparameterization(
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -1561,6 +1343,7 @@ def conv3d_reparameterization(
         Diederik P. Kingma, Max Welling.
         International Conference on Learning Representations, 2014.
   """
+  # pylint: enable=g-doc-args
   layer = Conv3DReparameterization(
       filters=filters,
       kernel_size=kernel_size,
@@ -1611,67 +1394,6 @@ class _ConvFlipout(_ConvVariational):
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
-    rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of n integers, specifying the
-      length of the convolution window.
-    strides: An integer or tuple/list of n integers,
-      specifying the stride length of the convolution.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, ..., channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, ...)`.
-    dilation_rate: An integer or tuple/list of n integers, specifying
-      the dilation rate to use for dilated convolution.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
-
   Properties:
     rank: Python integer, dimensionality of convolution.
     filters: Python integer, dimensionality of the output space.
@@ -1694,10 +1416,11 @@ class _ConvFlipout(_ConvVariational):
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       rank,
@@ -1722,6 +1445,33 @@ class _ConvFlipout(_ConvVariational):
       seed=None,
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      rank: An integer, the rank of the convolution, e.g. "2" for 2D
+        convolution.
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of n integers, specifying the
+        length of the convolution window.
+      strides: An integer or tuple/list of n integers,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, ...,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, ...)`.
+      dilation_rate: An integer or tuple/list of n integers, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(_ConvFlipout, self).__init__(
         rank=rank,
         filters=filters,
@@ -1822,65 +1572,6 @@ class Conv1DFlipout(_ConvFlipout):
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of a single integer, specifying the
-      length of the 1D convolution window.
-    strides: An integer or tuple/list of a single integer,
-      specifying the stride length of the convolution.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, length, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, length)`.
-    dilation_rate: An integer or tuple/list of a single integer, specifying
-      the dilation rate to use for dilated convolution.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
-
   Properties:
     filters: Python integer, dimensionality of the output space.
     kernel_size: Size of the convolution window.
@@ -1932,10 +1623,11 @@ class Conv1DFlipout(_ConvFlipout):
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -1959,6 +1651,31 @@ class Conv1DFlipout(_ConvFlipout):
       seed=None,
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of a single integer, specifying the
+        length of the 1D convolution window.
+      strides: An integer or tuple/list of a single integer,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, length,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, length)`.
+      dilation_rate: An integer or tuple/list of a single integer, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv1DFlipout, self).__init__(
         rank=1,
         filters=filters,
@@ -1982,6 +1699,7 @@ class Conv1DFlipout(_ConvFlipout):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv1d_flipout(
     inputs,
     filters,
@@ -2005,6 +1723,7 @@ def conv1d_flipout(
     seed=None,
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for 1D convolution layer (e.g. temporal convolution).
 
   This layer creates a convolution kernel that is convolved
@@ -2029,7 +1748,7 @@ def conv1d_flipout(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -2049,45 +1768,7 @@ def conv1d_flipout(
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -2130,9 +1811,10 @@ def conv1d_flipout(
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
+  # pylint: enable=g-doc-args
   layer = Conv1DFlipout(
       filters=filters,
       kernel_size=kernel_size,
@@ -2183,72 +1865,6 @@ class Conv2DFlipout(_ConvFlipout):
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
-
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of 2 integers, specifying the
-      height and width of the 2D convolution window.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-    strides: An integer or tuple/list of 2 integers,
-      specifying the strides of the convolution along the height and width.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, height, width)`.
-
-    dilation_rate: An integer or tuple/list of 2 integers, specifying
-      the dilation rate to use for dilated convolution.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
 
   Properties:
     filters: Python integer, dimensionality of the output space.
@@ -2304,10 +1920,11 @@ class Conv2DFlipout(_ConvFlipout):
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -2331,6 +1948,37 @@ class Conv2DFlipout(_ConvFlipout):
       seed=None,
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of 2 integers, specifying the
+        height and width of the 2D convolution window.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+      strides: An integer or tuple/list of 2 integers,
+        specifying the strides of the convolution along the height and width.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, height,
+        width, channels)` while `channels_first` corresponds to inputs with
+        shape `(batch, channels, height, width)`.
+      dilation_rate: An integer or tuple/list of 2 integers, specifying
+        the dilation rate to use for dilated convolution.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any stride value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv2DFlipout, self).__init__(
         rank=2,
         filters=filters,
@@ -2354,6 +2002,7 @@ class Conv2DFlipout(_ConvFlipout):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv2d_flipout(
     inputs,
     filters,
@@ -2377,6 +2026,7 @@ def conv2d_flipout(
     seed=None,
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for the 2D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -2401,7 +2051,7 @@ def conv2d_flipout(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -2421,52 +2071,13 @@ def conv2d_flipout(
       `channels_last` corresponds to inputs with shape
       `(batch, height, width, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, height, width)`.
-
     dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -2513,9 +2124,10 @@ def conv2d_flipout(
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
+  # pylint: enable=g-doc-args
   layer = Conv2DFlipout(
       filters=filters,
       kernel_size=kernel_size,
@@ -2566,73 +2178,6 @@ class Conv3DFlipout(_ConvFlipout):
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
-
-  Arguments:
-    filters: Integer, the dimensionality of the output space (i.e. the number
-      of filters in the convolution).
-    kernel_size: An integer or tuple/list of 3 integers, specifying the
-      depth, height and width of the 3D convolution window.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-    strides: An integer or tuple/list of 3 integers,
-      specifying the strides of the convolution along the depth,
-      height and width.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Specifying any stride value != 1 is incompatible with specifying
-      any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
-    data_format: A string, one of `channels_last` (default) or `channels_first`.
-      The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shape
-      `(batch, depth, height, width, channels)` while `channels_first`
-      corresponds to inputs with shape
-      `(batch, channels, depth, height, width)`.
-    dilation_rate: An integer or tuple/list of 3 integers, specifying
-      the dilation rate to use for dilated convolution.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-      Currently, specifying any `dilation_rate` value != 1 is
-      incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
 
   Properties:
     filters: Python integer, dimensionality of the output space.
@@ -2688,10 +2233,11 @@ class Conv3DFlipout(_ConvFlipout):
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
 
+  @docstring_util.expand_docstring(args=doc_args)
   def __init__(
       self,
       filters,
@@ -2715,6 +2261,38 @@ class Conv3DFlipout(_ConvFlipout):
       seed=None,
       name=None,
       **kwargs):
+    # pylint: disable=g-doc-args
+    """Construct layer.
+
+    Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of 3 integers, specifying the
+        depth, height and width of the 3D convolution window.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+      strides: An integer or tuple/list of 3 integers,
+        specifying the strides of the convolution along the depth,
+        height and width.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: One of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, depth,
+        height, width, channels)` while `channels_first` corresponds to inputs
+        with shape `(batch, channels, depth, height, width)`.
+      dilation_rate: An integer or tuple/list of 3 integers, specifying
+        the dilation rate to use for dilated convolution.
+        Can be a single integer to specify the same value for
+        all spatial dimensions.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any stride value != 1.
+      @{args}
+    """
+    # pylint: enable=g-doc-args
     super(Conv3DFlipout, self).__init__(
         rank=3,
         filters=filters,
@@ -2738,6 +2316,7 @@ class Conv3DFlipout(_ConvFlipout):
         name=name, **kwargs)
 
 
+@docstring_util.expand_docstring(args=doc_args)
 def conv3d_flipout(
     inputs,
     filters,
@@ -2761,6 +2340,7 @@ def conv3d_flipout(
     seed=None,
     name=None,
     reuse=None):
+  # pylint: disable=g-doc-args
   """Functional interface for the 3D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -2785,7 +2365,7 @@ def conv3d_flipout(
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -2813,45 +2393,7 @@ def conv3d_flipout(
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    activation: Activation function. Set it to None to maintain a
-      linear activation.
-    activity_regularizer: Optional regularizer function for the output.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `kernel` parameter. Default value:
-      `default_mean_field_normal_fn()`.
-    kernel_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    kernel_prior_fn: Python `callable` which creates `tf.distributions`
-      instance. See `default_mean_field_normal_fn` docstring for required
-      parameter signature.
-      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
-    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-      sample is a `Tensor`.
-    bias_posterior_fn: Python `callable` which creates
-      `tf.distributions.Distribution` instance representing the surrogate
-      posterior of the `bias` parameter. Default value:
-      `default_mean_field_normal_fn(is_singular=True)` (which creates an
-      instance of `tf.distributions.Deterministic`).
-    bias_posterior_tensor_fn: Python `callable` which takes a
-      `tf.distributions.Distribution` instance and returns a representative
-      value. Default value: `lambda d: d.sample()`.
-    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
-      See `default_mean_field_normal_fn` docstring for required parameter
-      signature. Default value: `None` (no prior, no variational inference)
-    bias_divergence_fn: Python `callable` which takes the surrogate posterior
-      distribution, prior distribution and random variate sample(s) from the
-      surrogate posterior and computes or approximates the KL divergence. The
-      distributions are `tf.distributions.Distribution`-like instances and the
-    seed: Python scalar `int` which initializes the random number
-      generator. Default value: `None` (i.e., use global seed).
-    name: A string, the name of the layer.
+    @{args}
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -2898,9 +2440,10 @@ def conv3d_flipout(
 
   [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
         Mini-Batches."
-        Anonymous. OpenReview, 2017.
-        https://openreview.net/forum?id=rJnpifWAb
+        Yeming Wen, Paul Vicol, Jimmy Ba, Dustin Tran, Roger Grosse.
+        International Conference on Learning Representations, 2018.
   """
+  # pylint: enable=g-doc-args
   layer = Conv3DFlipout(
       filters=filters,
       kernel_size=kernel_size,

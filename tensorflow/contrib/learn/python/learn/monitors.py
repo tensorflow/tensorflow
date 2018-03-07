@@ -573,7 +573,8 @@ class ValidationMonitor(EveryN):
                early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True,
-               name=None):
+               name=None,
+               check_interval_secs=5):
     """Initializes a ValidationMonitor.
 
     Args:
@@ -600,6 +601,9 @@ class ValidationMonitor(EveryN):
           loss metrics like mean squared error, and False for performance
           metrics like accuracy.
       name: See `BaseEstimator.evaluate`.
+      check_interval_secs: Only check for new checkpoint if at least
+          `check_interval_secs` have passed. Ignore if None. Default is 5 secs.
+
 
     Raises:
       ValueError: If both x and input_fn are provided.
@@ -626,6 +630,8 @@ class ValidationMonitor(EveryN):
     self._early_stopped = False
     self._latest_path = None
     self._latest_path_step = None
+    self._last_checkpoint_check_time = None
+    self._check_interval_secs = check_interval_secs
 
   @property
   def early_stopped(self):
@@ -690,6 +696,16 @@ class ValidationMonitor(EveryN):
     # that's what is being evaluated.
     if self._estimator is None:
       raise ValueError("Missing call to set_estimator.")
+    current_time = time.time()
+    if (self._check_interval_secs is not None and
+        self._last_checkpoint_check_time is not None and
+        current_time - self._last_checkpoint_check_time <=
+        self._check_interval_secs):
+      logging.debug(
+          "Skipping evaluation since less than %d seconds have passed since "
+          "last check for a new checkpoint.", self._check_interval_secs)
+      return False
+    self._last_checkpoint_check_time = current_time
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path is None:

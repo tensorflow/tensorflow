@@ -199,7 +199,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         ++num_outputs_consumed_;
-        return result->status;
+        if (errors::IsOutOfRange(result->status)) {
+          // `f` may deliberately raise `errors::OutOfRange` to indicate
+          // that we should terminate the iteration early.
+          *end_of_sequence = true;
+          return Status::OK();
+        } else {
+          return result->status;
+        }
       }
 
      protected:

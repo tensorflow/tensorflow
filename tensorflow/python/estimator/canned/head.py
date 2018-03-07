@@ -1156,6 +1156,7 @@ def _regression_head_with_mean_squared_error_loss(
     label_dimension=1,
     loss_reduction=losses.Reduction.SUM,
     loss_fn=None,
+    inverse_link_fn=None,
     name=None):
   """Creates a `_Head` for regression using the `mean_squared_error` loss.
 
@@ -1174,9 +1175,15 @@ def _regression_head_with_mean_squared_error_loss(
   `[D0, D1, ... DN]`, `[D0, D1, ... DN, 1]` or
   `[D0, D1, ... DN, label_dimension]`.
 
-  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  Supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
   `(labels, logits, features)` as arguments and returns unreduced loss with
   shape `[D0, D1, ... DN, label_dimension]`.
+
+  Also supports custom `inverse_link_fn`, also known as 'mean function'.
+  `inverse_link_fn` takes `logits` as argument and returns predicted values.
+  This function is the inverse of the link function defined in
+  https://en.wikipedia.org/wiki/Generalized_linear_model#Link_function
+  Namely, for poisson regression, set `inverse_link_fn=tf.exp`.
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -1188,7 +1195,9 @@ def _regression_head_with_mean_squared_error_loss(
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
       reduce training loss over batch. Defaults to `SUM`.
-    loss_fn: Optional loss function.
+    loss_fn: Optional loss function. Defaults to `mean_squared_error`.
+    inverse_link_fn: Optional inverse link function, also known as 'mean
+      function'. Defaults to identity.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -1208,6 +1217,7 @@ def _regression_head_with_mean_squared_error_loss(
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
       loss_fn=loss_fn,
+      inverse_link_fn=inverse_link_fn,
       name=name)
 
 
@@ -1220,6 +1230,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       weight_column=None,
       loss_reduction=losses.Reduction.SUM,
       loss_fn=None,
+      inverse_link_fn=None,
       name=None):
     """`Head` for regression."""
     if label_dimension < 1:
@@ -1228,6 +1239,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
     self._weight_column = weight_column
     self._loss_reduction = loss_reduction
     self._loss_fn = loss_fn
+    self._inverse_link_fn = inverse_link_fn
     self._name = name
 
   @property
@@ -1294,9 +1306,19 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
     # Predict.
     with ops.name_scope(self._name, 'head'):
       logits = _check_logits_final_dim(logits, self._logits_dimension)
-      predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
+      if self._inverse_link_fn:
+        predicted_value = self._inverse_link_fn(logits)
+        predictions = {
+            prediction_keys.PredictionKeys.PREDICTIONS: predicted_value,
+            prediction_keys.PredictionKeys.LOGITS: logits,
+        }
+      else:
+        predicted_value = logits
+        predictions = {
+            prediction_keys.PredictionKeys.PREDICTIONS: predicted_value}
       if mode == model_fn.ModeKeys.PREDICT:
-        regression_output = export_output.RegressionOutput(value=logits)
+        regression_output = export_output.RegressionOutput(
+            value=predicted_value)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,

@@ -90,4 +90,23 @@ class PrintOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("Print").Device(DEVICE_CPU), PrintOp);
 
+class TimestampOp : public OpKernel {
+ public:
+  explicit TimestampOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    TensorShape output_shape;  // Default shape is 0 dim, 1 element
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape, &output_tensor));
+
+    auto output_scalar = output_tensor->scalar<double>();
+    double now_us = static_cast<double>(Env::Default()->NowMicros());
+    double now_s = now_us / 1000000;
+    output_scalar() = now_s;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("Timestamp").Device(DEVICE_CPU), TimestampOp);
+
 }  // end namespace tensorflow

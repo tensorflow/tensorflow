@@ -293,6 +293,8 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
     variable._initializer_op = state_ops.assign(variable, restore_op)  # pylint:disable=protected-access
+    restore_op.set_shape(variable.shape)
+    variable._initial_value = restore_op  # pylint:disable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

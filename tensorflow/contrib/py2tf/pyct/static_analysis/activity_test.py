@@ -108,6 +108,7 @@ class ActivityAnalizerTest(test.TestCase):
         namespace={},
         arg_values=None,
         arg_types=None,
+        owner_type=None,
         recursive=True)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
@@ -238,6 +239,33 @@ class ActivityAnalizerTest(test.TestCase):
     self.assertScopeIs(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent, ('x', 'z', 'u'),
         ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
+
+  def test_functiondef(self):
+
+    def test_fn(a):
+
+      def f(x):
+        y = x * x
+        return y
+
+      b = a
+      for i in a:
+        c = b
+        b -= f(i)
+      return b, c
+
+    node = self._parse_and_analyze(test_fn)
+    fndef_node = node.body[0].body[0]
+
+    self.assertScopeIs(
+        anno.getanno(fndef_node,
+                     NodeAnno.BODY_SCOPE).parent, ('b', 'i', 'f', 'c', 'a'),
+        ('f', 'b', 'c', 'i'), ('f', 'a', 'b', 'c', 'i'))
+    self.assertScopeIs(
+        anno.getanno(fndef_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',), (
+            'x',
+            'y',
+        ))
 
   def test_call_with_composite_names(self):
 

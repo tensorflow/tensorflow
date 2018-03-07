@@ -207,6 +207,18 @@ def _FindLayersToQuantize(graph):
     yield _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op,
                       bias_add_op)
 
+  # Match the final layer, where there will not be an activation and instead
+  # the output of the final BiasAdd must be quantized, so we treat it as the
+  # 'activation_op' in the _LayerMatch.
+  # TODO(suharshs): Figure out how to quantize this final layer across many
+  # models.
+  final_layer_matcher = graph_matcher.GraphMatcher(bias_add_pattern)
+  for match_result in final_layer_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_pattern)
+    activation_op = match_result.get_op(bias_add_pattern)
+    yield _LayerMatch(layer_op, weight_tensor, activation_op, None, None)
+
 
 class _LayerMatch(object):
   """Contains all information related to a matched Layer."""

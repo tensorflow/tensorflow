@@ -33,7 +33,8 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
-  static NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
+  static Status CreateNodeDef(const string& name, const TensorValue& tensor,
+                              NodeDef* node);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 

@@ -47,6 +47,8 @@ template <typename Device, typename T>
 class CheckNumericsOp;
 
 // Partial specialization for CPU
+// TODO(jeff,rmlarsen): We should make this variant be an AsyncOpKernel, as
+// was done for the GPU case below.
 template <typename T>
 class CheckNumericsOp<CPUDevice, T> : public OpKernel {
  public:
@@ -67,27 +69,31 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
           int result = x;
-          if (Eigen::numext::isinf(y)) {
+          if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+            // Do nothing: common case
+          } else if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
           } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
         });
-    string status;
-    if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
-      status = "Inf and NaN";
-    } else {
-      if (fp_props & kInfBit) {
-        status = "Inf";
+    if (fp_props != 0) {
+      string status;
+      if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
+        status = "Inf and NaN";
+      } else {
+        if (fp_props & kInfBit) {
+          status = "Inf";
+        }
+        if (fp_props & kNaNBit) {
+          status = "NaN";
+        }
       }
-      if (fp_props & kNaNBit) {
-        status = "NaN";
+      if (!status.empty()) {
+        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
+                                                   status, " values"));
       }
-    }
-    if (!status.empty()) {
-      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                 status, " values"));
     }
   }
 

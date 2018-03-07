@@ -125,6 +125,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   return CheckShape(outfeed, ShapeUtil::MakeNil());
 }
 
+Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
+  return tensorflow::Status::OK();
+}
+
 Status ShapeVerifier::HandleRng(HloInstruction*) {
   return tensorflow::Status::OK();
 }
@@ -419,6 +423,14 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
 }
 
 }  // namespace
+
+Status ShapeVerifier::HandleGather(HloInstruction* gather) {
+  return CheckShape(
+      gather,
+      ShapeInference::InferGatherShape(
+          gather->operand(0)->shape(), gather->operand(1)->shape(),
+          gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {

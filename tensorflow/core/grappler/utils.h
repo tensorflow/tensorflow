@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -166,6 +167,8 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 // Permute the nodes of graph in place according to the permutation.
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 class SimpleGraphView {
  public:

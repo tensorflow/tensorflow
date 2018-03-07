@@ -529,7 +529,8 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     out[j] = node_map_->GetNode(const_name);
     if (out[j] == nullptr) {
       out[j] = graph_->add_node();
-      *out[j] = CreateNodeDef(const_name, TensorValue(&value));
+      TF_RETURN_IF_ERROR(
+          CreateNodeDef(const_name, TensorValue(&value), out[j]));
       out[j]->set_device(node.device());
       node_map_->AddNode(const_name, out[j]);
       string ctrl_dep =
@@ -637,7 +638,8 @@ Status ConstantFolding::MaterializeReductionIndices(
       value.vec<int64>()(i) = i;
     }
   }
-  *reduction_indices = CreateNodeDef(const_name, TensorValue(&value));
+  TF_RETURN_IF_ERROR(
+      CreateNodeDef(const_name, TensorValue(&value), reduction_indices));
   reduction_indices->set_device(node->device());
   string ctrl_dep =
       AddControlDependency(node->input(1), graph_, node_map_.get());
@@ -792,59 +794,68 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
 }  // namespace
 
 // static
-NodeDef ConstantFolding::CreateNodeDef(const string& name,
-                                       const TensorValue& tensor) {
-  NodeDef node;
-  node.set_name(name);
-  node.set_op("Const");
+Status ConstantFolding::CreateNodeDef(const string& name,
+                                      const TensorValue& tensor,
+                                      NodeDef* node) {
+  node->set_name(name);
+  node->set_op("Const");
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
-  node.mutable_attr()->insert({"dtype", attr_type});
+  node->mutable_attr()->insert({"dtype", attr_type});
 
   AttrValue attr_tensor;
   TensorProto* t = attr_tensor.mutable_tensor();
   bool optimized = false;
+  size_t encoded_size;
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                \
-  const TYPE* val_ptr = tensor->flat<TYPE>().data();                \
-  TYPE last = *val_ptr;                                             \
-  int64 last_index = 0;                                             \
-  for (int64 i = 0; i < tensor->NumElements(); ++i) {               \
-    TYPE cur = *val_ptr++;                                          \
-    if (cur != last) {                                              \
-      last = cur;                                                   \
-      last_index = i;                                               \
-    }                                                               \
-  }                                                                 \
-  if (last_index < kint32max) {                                     \
-    optimized = true;                                               \
-    t->mutable_##NAME##_val()->Reserve(last_index + 1);             \
-    t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
-    val_ptr = tensor->flat<TYPE>().data();                          \
-    for (int64 i = 0; i <= last_index; ++i) {                       \
-      t->set_##NAME##_val(i, *val_ptr++);                           \
-    }                                                               \
-  }
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                  \
+  {                                                                   \
+    const TYPE* val_ptr = tensor->flat<TYPE>().data();                \
+    TYPE last = *val_ptr;                                             \
+    int64 last_index = 0;                                             \
+    for (int64 i = 0; i < tensor->NumElements(); ++i) {               \
+      TYPE cur = *val_ptr++;                                          \
+      if (cur != last) {                                              \
+        last = cur;                                                   \
+        last_index = i;                                               \
+      }                                                               \
+    }                                                                 \
+    if (last_index < kint32max) {                                     \
+      optimized = true;                                               \
+      encoded_size = (last_index + 1) * sizeof(NAME);                 \
+      t->mutable_##NAME##_val()->Reserve(last_index + 1);             \
+      t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
+      val_ptr = tensor->flat<TYPE>().data();                          \
+      for (int64 i = 0; i <= last_index; ++i) {                       \
+        t->set_##NAME##_val(i, *val_ptr++);                           \
+      }                                                               \
+    }                                                                 \
+  }                                                                   \
+  break
 
-    if (tensor->dtype() == DT_FLOAT) {
-      POPULATE_TENSOR_PROTO(tensor, t, float, float)
-    } else if (tensor->dtype() == DT_DOUBLE) {
-      POPULATE_TENSOR_PROTO(tensor, t, double, double)
-    } else if (tensor->dtype() == DT_INT64) {
-      POPULATE_TENSOR_PROTO(tensor, t, int64, int64)
-    } else if (tensor->dtype() == DT_INT32) {
-      POPULATE_TENSOR_PROTO(tensor, t, int32, int)
-    } else if (tensor->dtype() == DT_INT16) {
-      POPULATE_TENSOR_PROTO(tensor, t, int16, int)
-    } else if (tensor->dtype() == DT_INT8) {
-      POPULATE_TENSOR_PROTO(tensor, t, int8, int)
-    } else if (tensor->dtype() == DT_UINT8) {
-      POPULATE_TENSOR_PROTO(tensor, t, uint8, int)
-    } else if (tensor->dtype() == DT_BOOL) {
-      POPULATE_TENSOR_PROTO(tensor, t, bool, bool)
+    switch (tensor->dtype()) {
+      case DT_FLOAT:
+        POPULATE_TENSOR_PROTO(tensor, t, float, float);
+      case DT_DOUBLE:
+        POPULATE_TENSOR_PROTO(tensor, t, double, double);
+      case DT_INT64:
+        POPULATE_TENSOR_PROTO(tensor, t, int64, int64);
+      case DT_INT32:
+        POPULATE_TENSOR_PROTO(tensor, t, int32, int);
+      case DT_INT16:
+        POPULATE_TENSOR_PROTO(tensor, t, int16, int);
+      case DT_INT8:
+        POPULATE_TENSOR_PROTO(tensor, t, int8, int);
+      case DT_UINT8:
+        POPULATE_TENSOR_PROTO(tensor, t, uint8, int);
+      case DT_BOOL:
+        POPULATE_TENSOR_PROTO(tensor, t, bool, bool);
+      default:
+        /* Do nothing. */
+        break;
     }
   }
   if (optimized) {
@@ -853,9 +864,15 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
     tensor->shape().AsProto(t->mutable_tensor_shape());
   } else {
     tensor->AsProtoTensorContent(t);
+    encoded_size = t->tensor_content().size();
   }
-  node.mutable_attr()->insert({"value", attr_tensor});
-  return node;
+  node->mutable_attr()->insert({"value", attr_tensor});
+
+  if (encoded_size < 10 * 1024 * 1024) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      strings::StrCat("Can't fold ", name, ", its size would be too large"));
 }
 
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
@@ -929,17 +946,19 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
 
+  outputs->resize(output_tensors.size());
   for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = OptimizedNodeName(node, "-folded");
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
+      TF_RETURN_IF_ERROR(
+          CreateNodeDef(node_name, output_tensors[i], &outputs->at(i)));
     } else {
       // Create an empty NodeDef to identify dead outputs (e.g. the output of a
       // switch that's not selected by the switch predicate).
-      outputs->push_back(NodeDef());
+      outputs->at(i) = NodeDef();
     }
   }
   return Status::OK();
@@ -1159,14 +1178,20 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
       continue;
     }
     // We need to record a copy of output nodes before FoldNode() modifies it.
-    std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
+    // We also need to ensure that the fanout is sorted deterministically.
+    const std::set<NodeDef*>& outputs = node_map_->GetOutputs(node->name());
+    std::vector<NodeDef*> fanout(outputs.begin(), outputs.end());
+    std::sort(fanout.begin(), fanout.end(),
+              [](const NodeDef* n1, const NodeDef* n2) {
+                return n1->name() < n2->name();
+              });
 
     Status s = FoldNode(node, output);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
     } else {
-      for (auto& output : outputs) {
+      for (auto& output : fanout) {
         if (IsFoldable(*output)) {
           queue.push_back(output);
         }
@@ -1440,6 +1465,122 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (int i = 0; i < output->node_size(); ++i) {
     NodeDef* node = output->mutable_node(i);
+    // Remove Shuffle or Reverse op over scalar values.
+    if (use_shape_info &&
+        (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
+      const auto& shape =
+          properties.GetInputProperties(node->name())[0].shape();
+      // The node is replaceable iff
+      // unknown_rank == false && (dim_size == 0 || all dims have size 1)
+      bool replaceable = !shape.unknown_rank();
+      for (int j = 0; j < shape.dim_size(); ++j) {
+        replaceable &= shape.dim(j).size() == 1;
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, node, output);
+      }
+    }
+
+    // Switch(x, x) will always feed false to its false branch and true to
+    // its true branch. By rewriting the graph a bit, we can propagate these
+    // constants down the two output branches, and just use control dependencies
+    // to trigger the selected one at runtime. For example,
+    //
+    //     +------+
+    // x-->|Switch|-->a  (in practice there may be multiple consumers of each
+    // x-->|      |-->b   output branch.)
+    //     +------+
+    //
+    // Is rewritten as
+    //
+    //     +------+
+    // x-->|Switch|-->Identity--^>Const(false)-->a
+    // x-->|      |-->Identity--^>Const(true)-->b
+    //     +------+
+    if (node->op() == "Switch" && node->input(0) == node->input(1) &&
+        !OptimizedNodeExists(*node, "_const_false") &&
+        !OptimizedNodeExists(*node, "_const_true")) {
+      bool already_optimized = true;
+      // If the optimization was already applied, the switch would have exactly
+      // one Identity node consuming each of its outputs, each without any
+      // non-control outputs.
+      auto fanouts = node_map_->GetOutputs(node->name());
+      if (fanouts.size() == 2) {
+        for (NodeDef* fanout : fanouts) {
+          if (!IsIdentity(*fanout) ||
+              NumNonControlOutputs(*fanout, *node_map_) > 0) {
+            already_optimized = false;
+            break;
+          }
+        }
+      }
+      Tensor false_t(DT_BOOL, TensorShape({}));
+      Tensor true_t(DT_BOOL, TensorShape({}));
+      // Make sure we don't proceed if this switch node was already optimized.
+      if (!already_optimized && SetTensorValue(DT_BOOL, true, &true_t).ok() &&
+          SetTensorValue(DT_BOOL, false, &false_t).ok()) {
+        // Copy the set of consumers of the switch as they will be manipulated
+        // below.
+        const std::set<NodeDef*>& consumer_set =
+            node_map_->GetOutputs(node->name());
+        std::vector<NodeDef*> consumers(consumer_set.begin(),
+                                        consumer_set.end());
+        std::sort(consumers.begin(), consumers.end(),
+                  [](const NodeDef* n1, const NodeDef* n2) {
+                    return n1->name() < n2->name();
+                  });
+        // Create constant false & true nodes.
+        NodeDef* false_node = output->add_node();
+        false_node->set_name(OptimizedNodeName(*node, "_const_false"));
+        if (!CreateNodeDef(false_node->name(), TensorValue(&false_t),
+                           false_node)
+                 .ok()) {
+          continue;
+        }
+        false_node->set_device(node->device());
+
+        NodeDef* true_node = output->add_node();
+        true_node->set_name(OptimizedNodeName(*node, "_const_true"));
+        if (!CreateNodeDef(true_node->name(), TensorValue(&true_t), true_node)
+                 .ok()) {
+          continue;
+        }
+        true_node->set_device(node->device());
+
+        // Add controls from the switch ports to the constants, and connect the
+        // constants to the original switch outputs.
+        const string false_port = node->name();
+        const string true_port = strings::StrCat(node->name(), ":1");
+        const string false_ctrl_dep =
+            AddControlDependency(false_port, output, node_map_.get());
+        false_node->add_input(false_ctrl_dep);
+        const string true_ctrl_dep =
+            AddControlDependency(true_port, output, node_map_.get());
+        true_node->add_input(true_ctrl_dep);
+
+        node_map_->AddNode(false_node->name(), false_node);
+        node_map_->AddNode(true_node->name(), true_node);
+        node_map_->AddOutput(NodeName(false_ctrl_dep), false_node->name());
+        node_map_->AddOutput(NodeName(true_ctrl_dep), true_node->name());
+
+        for (NodeDef* consumer : consumers) {
+          for (int i = 0; i < consumer->input_size(); ++i) {
+            const string& input = consumer->input(i);
+            if (input == false_port) {
+              consumer->set_input(i, false_node->name());
+              node_map_->UpdateInput(consumer->name(), false_port,
+                                     false_node->name());
+            } else if (input == true_port) {
+              consumer->set_input(i, true_node->name());
+              node_map_->UpdateInput(consumer->name(), true_port,
+                                     true_node->name());
+            }
+          }
+        }
+        graph_modified_ = true;
+        continue;
+      }
+    }
     if (IsSimplifiableReduction(*node)) {
       // Replace the reduction node with an identity node, that can be further
       // optimized by the model pruner.
@@ -1515,9 +1656,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const bool y_is_zero = IsZeros(*y);
       const bool y_is_one = IsOnes(*y);
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      if (x_matches_output_shape &&
-          (((is_mul || is_any_div) && y_is_one) ||
-           ((is_add || is_sub) && y_is_zero))) {
+      if (x_matches_output_shape && (((is_mul || is_any_div) && y_is_one) ||
+                                     ((is_add || is_sub) && y_is_zero))) {
         // x * 1 = x or x / 1 = x or x +/- 0 = x
         ReplaceOperationWithSnapshot(0, node, output);
         continue;
@@ -1569,8 +1709,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       // Insert new reciprocal op and change node from Div to Mul.
       NodeDef* reciprocal_node = output->add_node();
-      reciprocal_node->set_name(AddPrefixToNodeName(
-          strings::StrCat(node->name(), "_recip"), kConstantFoldingConst));
+      reciprocal_node->set_name(OptimizedNodeName(*node, "_recip"));
       reciprocal_node->set_op("Reciprocal");
       reciprocal_node->set_device(node->device());
       node->set_op("Mul");
@@ -1669,6 +1808,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
     }
   }
+
   return Status::OK();
 }
 
@@ -1707,6 +1847,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));
+
   return Status::OK();
 }
 
@@ -1746,5 +1887,5 @@ void ConstantFolding::Feedback(Cluster* cluster, const GrapplerItem& item,
   // Nothing to do for ConstantFolding.
 }
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
