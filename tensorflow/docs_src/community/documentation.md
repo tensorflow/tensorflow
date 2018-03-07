@@ -148,7 +148,19 @@ viewing. Do not include url parameters in the source code URL.
 Before building the documentation, you must first set up your environment by
 doing the following:
 
-1. If bazel is not installed on your machine, install it now. If you are on
+1. If pip isn't installed on your machine, install it now by issuing the
+following command:
+
+        $ sudo easy_install pip
+
+2. Use pip to install mock and pandas by issuing the following
+   command (Note: If you are using
+   a [virtualenv](https://virtualenv.pypa.io/en/stable/) to manage your
+   dependencies, you may not want to use sudo for these installations):
+
+        $ sudo pip install mock pandas
+
+3. If bazel is not installed on your machine, install it now. If you are on
    Linux, install bazel by issuing the following command:
 
         $ sudo apt-get install bazel  # Linux
@@ -156,10 +168,10 @@ doing the following:
     If you are on Mac OS, find bazel installation instructions on
     [this page](https://bazel.build/versions/master/docs/install.html#mac-os-x).
 
-2. Change directory to the top-level `tensorflow` directory of the TensorFlow
+4. Change directory to the top-level `tensorflow` directory of the TensorFlow
    source code.
 
-3. Run the `configure` script and answer its prompts appropriately for your
+5. Run the `configure` script and answer its prompts appropriately for your
    system.
 
         $ ./configure
