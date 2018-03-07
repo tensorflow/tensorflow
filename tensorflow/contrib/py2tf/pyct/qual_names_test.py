@@ -22,14 +22,15 @@ import textwrap
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.qual_names import QN
+from tensorflow.contrib.py2tf.pyct.qual_names import resolve
 from tensorflow.python.platform import test
 
 
 class QNTest(test.TestCase):
 
   def test_basic(self):
-    a = qual_names.QN('a')
+    a = QN('a')
     self.assertEqual(a.qn, ('a',))
     self.assertEqual(str(a), 'a')
     self.assertEqual(a.ssf(), 'a')
@@ -38,8 +39,8 @@ class QNTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = a.parent
 
-    a_b = qual_names.QN(a, 'b')
-    self.assertEqual(a_b.qn, ('a', 'b'))
+    a_b = QN(a, attr='b')
+    self.assertEqual(a_b.qn, (a, 'b'))
     self.assertEqual(str(a_b), 'a.b')
     self.assertEqual(a_b.ssf(), 'a_b')
     self.assertEqual(a_b.ast().value.id, 'a')
@@ -47,13 +48,47 @@ class QNTest(test.TestCase):
     self.assertTrue(a_b.is_composite())
     self.assertEqual(a_b.parent.qn, ('a',))
 
-    a2 = qual_names.QN(a)
+  def test_subscripts(self):
+    a = QN('a')
+    b = QN('b')
+    a_sub_b = QN(a, subscript=b)
+    self.assertEqual(a_sub_b.qn, (a, b))
+    self.assertEqual(str(a_sub_b), 'a[b]')
+    self.assertEqual(a_sub_b.ssf(), 'a_sub_b')
+    self.assertEqual(a_sub_b.ast().value.id, 'a')
+    self.assertEqual(a_sub_b.ast().slice, 'b')
+    self.assertTrue(a_sub_b.is_composite())
+    self.assertTrue(a_sub_b.has_subscript())
+    self.assertEqual(a_sub_b.parent.qn, ('a',))
+
+    c = QN('c')
+    b_sub_c = QN(b, subscript=c)
+    a_sub_b_sub_c = QN(a, subscript=b_sub_c)
+    self.assertEqual(a_sub_b_sub_c.qn, (a, b_sub_c))
+    self.assertTrue(a_sub_b.is_composite())
+    self.assertTrue(a_sub_b_sub_c.is_composite())
+    self.assertTrue(a_sub_b.has_subscript())
+    self.assertTrue(a_sub_b_sub_c.has_subscript())
+    self.assertEqual(b_sub_c.qn, (b, c))
+    self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
+    self.assertEqual(a_sub_b_sub_c.ssf(), 'a_sub_b_sub_c')
+    self.assertEqual(a_sub_b_sub_c.ast().value.id, 'a')
+    self.assertEqual(a_sub_b_sub_c.ast().slice, 'b[c]')
+    self.assertEqual(b_sub_c.ast().slice, 'c')
+    self.assertEqual(a_sub_b_sub_c.parent.qn, ('a',))
+    with self.assertRaises(ValueError):
+      QN('a', 'b')
+
+  def test_equality(self):
+    a = QN('a')
+    a2 = QN('a')
+    a_b = QN(a, attr='b')
     self.assertEqual(a2.qn, ('a',))
     with self.assertRaises(ValueError):
       _ = a.parent
 
-    a_b2 = qual_names.QN(a_b)
-    self.assertEqual(a_b2.qn, ('a', 'b'))
+    a_b2 = QN(a, attr='b')
+    self.assertEqual(a_b2.qn, (a, 'b'))
     self.assertEqual(a_b2.parent.qn, ('a',))
 
     self.assertTrue(a2 == a)
@@ -65,16 +100,46 @@ class QNTest(test.TestCase):
     self.assertTrue(a_b2 == a_b)
     self.assertFalse(a_b2 is a_b)
     self.assertFalse(a_b2 == a)
+    a_sub_b = QN(a, subscript='b')
+    a_sub_b2 = QN(a, subscript='b')
+    self.assertTrue(a_sub_b == a_sub_b2)
+    self.assertFalse(a_sub_b == a_b)
 
-    with self.assertRaises(ValueError):
-      qual_names.QN('a', 'b')
+  def test_nested_attrs_subscripts(self):
+    a = QN('a')
+    b = QN('b')
+    c = QN('c')
+    b_sub_c = QN(b, subscript=c)
+    a_sub_b_sub_c = QN(a, subscript=b_sub_c)
+
+    b_dot_c = QN(b, attr=c)
+    a_sub__b_dot_c = QN(a, subscript=b_dot_c)
+
+    a_sub_b = QN(a, subscript=b)
+    a_sub_b__dot_c = QN(a_sub_b, attr=c)
+
+    a_dot_b = QN(a, attr=b)
+    a_dot_b_sub_c = QN(a_dot_b, subscript=c)
+
+    self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
+    self.assertEqual(str(a_sub__b_dot_c), 'a[b.c]')
+    self.assertEqual(str(a_sub_b__dot_c), 'a[b].c')
+    self.assertEqual(str(a_dot_b_sub_c), 'a.b[c]')
+
+    self.assertFalse(a_sub_b_sub_c == a_sub__b_dot_c)
+    self.assertFalse(a_sub_b_sub_c == a_sub_b__dot_c)
+    self.assertFalse(a_sub_b_sub_c == a_dot_b_sub_c)
+
+    self.assertFalse(a_sub__b_dot_c == a_sub_b__dot_c)
+    self.assertFalse(a_sub__b_dot_c == a_dot_b_sub_c)
+
+    self.assertFalse(a_sub_b__dot_c == a_dot_b_sub_c)
 
   def test_hashable(self):
-    d = {qual_names.QN('a'): 'a', qual_names.QN('b'): 'b'}
-
-    self.assertEqual(d[qual_names.QN('a')], 'a')
-    self.assertEqual(d[qual_names.QN('b')], 'b')
-    self.assertTrue(qual_names.QN('c') not in d)
+    d = {QN('a'): 'a', QN('b'): 'b'}
+    self.assertEqual(d[QN('a')], 'a')
+    self.assertEqual(d[QN('b')], 'b')
+    self.assertTrue(QN('c') not in d)
 
 
 class QNResolverTest(test.TestCase):
@@ -90,7 +155,7 @@ class QNResolverTest(test.TestCase):
       [f, (g.h.i)]
       j(k, l)
     """
-    nodes = qual_names.resolve(parser.parse_str(textwrap.dedent(samples)))
+    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
     nodes = tuple(n.value for n in nodes.body)
 
     self.assertQNStringIs(nodes[0], 'a')
@@ -102,6 +167,33 @@ class QNResolverTest(test.TestCase):
     self.assertQNStringIs(nodes[4].func, 'j')
     self.assertQNStringIs(nodes[4].args[0], 'k')
     self.assertQNStringIs(nodes[4].args[1], 'l')
+
+  def test_subscript_resolve(self):
+    samples = """
+      x[i]
+      x[i.b]
+      a.b[c]
+      a.b[x.y]
+      a[z[c]]
+      a[b[c[d]]]
+      a[b].c
+      a.b.c[d].e.f
+      a.b[c[d]].e.f
+      a.b[c[d.e.f].g].h
+    """
+    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
+    nodes = tuple(n.value for n in nodes.body)
+
+    self.assertQNStringIs(nodes[0], 'x[i]')
+    self.assertQNStringIs(nodes[1], 'x[i.b]')
+    self.assertQNStringIs(nodes[2], 'a.b[c]')
+    self.assertQNStringIs(nodes[3], 'a.b[x.y]')
+    self.assertQNStringIs(nodes[4], 'a[z[c]]')
+    self.assertQNStringIs(nodes[5], 'a[b[c[d]]]')
+    self.assertQNStringIs(nodes[6], 'a[b].c')
+    self.assertQNStringIs(nodes[7], 'a.b.c[d].e.f')
+    self.assertQNStringIs(nodes[8], 'a.b[c[d]].e.f')
+    self.assertQNStringIs(nodes[9], 'a.b[c[d.e.f].g].h')
 
 
 if __name__ == '__main__':

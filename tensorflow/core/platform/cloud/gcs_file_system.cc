@@ -813,6 +813,10 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   request->SetResultBufferDirect(buffer, n);
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read);
 
+  if (stats_ != nullptr) {
+    stats_->RecordBlockLoadRequest(filename, offset);
+  }
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
 
@@ -820,6 +824,10 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   *bytes_transferred = bytes_read;
   VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
           << offset << " of size: " << bytes_read;
+
+  if (stats_ != nullptr) {
+    stats_->RecordBlockRetrieved(filename, offset, bytes_read);
+  }
 
   throttle_.RecordResponse(bytes_read);
 
@@ -1455,6 +1463,13 @@ void GcsFileSystem::FlushCaches() {
   matching_paths_cache_->Clear();
 }
 
+void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
+  CHECK(stats_ == nullptr) << "SetStats() has already been called.";
+  CHECK(stats != nullptr);
+  stats_ = stats;
+  stats_->Init(this, &throttle_, file_block_cache_.get());
+}
+
 // Creates an HttpRequest and sets several parameters that are common to all
 // requests.  All code (in GcsFileSystem) that creates an HttpRequest should
 // go through this method, rather than directly using http_request_factory_.
@@ -1472,6 +1487,10 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   if (additional_header_) {
     new_request->AddHeader(additional_header_->first,
                            additional_header_->second);
+  }
+
+  if (stats_ != nullptr) {
+    new_request->SetRequestStats(stats_->HttpStats());
   }
 
   if (!throttle_.AdmitRequest()) {

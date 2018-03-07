@@ -71,17 +71,6 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // We may need to know original operand layout to emit input fusion, and so
-  // far, we merely use the layout of an operand of the fusion node, which means
-  // we must fuse only elementwise operations. This restriction should be lifted
-  // later if we need to fuse other operations, e.g. transpose, for performance.
-  if ((IsReductionToVector(*consumer) ||
-       (HloOpcode::kFusion == consumer->opcode() &&
-        HloInstruction::FusionKind::kInput == consumer->fusion_kind())) &&
-      !producer->IsElementwise()) {
-    return false;
-  }
-
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion &&

@@ -96,6 +96,28 @@ class TemplatesTest(test.TestCase):
     with self.assertRaises(ValueError):
       templates.replace(template, foo=1)
 
+  def replace_as_expression(self):
+    template = """
+      foo(a)
+    """
+
+    node = templates.replace(template, foo='bar', a='baz')
+    self.assertTrue(node is gast.Call)
+    self.assertEqual(node.func.id, 'bar')
+    self.assertEqual(node.func.args[0].id, 'baz')
+
+  def replace_as_expression_restrictions(self):
+    template = """
+      foo(a)
+      bar(b)
+    """
+    with self.assertRaises(ValueError):
+      templates.replace_as_expression(template)
+    with self.assertRaises(ValueError):
+      templates.replace('')
+    with self.assertRaises(ValueError):
+      templates.replace('a = b')
+
 
 if __name__ == '__main__':
   test.main()

@@ -238,6 +238,18 @@ TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentDimensions) {
   EXPECT_FALSE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {});
+  Shape shape2 = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(U32, {})});
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+}
+
 TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
   shape1.mutable_layout()->add_padded_dimensions(10);

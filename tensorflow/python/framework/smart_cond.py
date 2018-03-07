@@ -72,7 +72,9 @@ def smart_constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Tensor or bool.
   """
-  if isinstance(pred, bool):
+  if pred in {0, 1}:  # Accept 1/0 as valid boolean values
+    pred_value = bool(pred)
+  elif isinstance(pred, bool):
     pred_value = pred
   elif isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
@@ -87,5 +89,6 @@ def smart_constant_value(pred):
     # pylint: enable=protected-access
 
   else:
-    raise TypeError("`pred` must be a Tensor or a Python bool.")
+    raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
+                    "Found instead: %s" % pred)
   return pred_value

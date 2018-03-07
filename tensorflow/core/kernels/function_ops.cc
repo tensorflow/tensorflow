@@ -307,11 +307,25 @@ class RemoteCallOp : public AsyncOpKernel {
     AttrValueMap attr_values = func_.attr();
     FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
     instantiate_opts.target = target_device;
+
+    FunctionTarget function_target = {target_device, lib};
+
     FunctionLibraryRuntime::Handle handle;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                                          instantiate_opts, &handle),
-                         done);
+    {
+      mutex_lock l(mu_);
+      auto cached_entry = handle_cache_.find(function_target);
+      if (cached_entry != handle_cache_.end()) {
+        handle = cached_entry->second;
+      } else {
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                             instantiate_opts, &handle),
+            done);
+        auto insert_result = handle_cache_.insert({function_target, handle});
+        CHECK(insert_result.second) << "Insert unsuccessful.";
+      }
+    }
 
     OpInputList arguments;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
@@ -346,6 +360,12 @@ class RemoteCallOp : public AsyncOpKernel {
  private:
   string target_;
   NameAttrList func_;
+
+  mutex mu_;
+  typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
+  std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
+      GUARDED_BY(mu_);
+
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 
