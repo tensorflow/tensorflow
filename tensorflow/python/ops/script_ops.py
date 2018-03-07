@@ -25,6 +25,9 @@ from __future__ import print_function
 
 import threading
 
+# Used by py_util.cc to get tracebacks.
+import traceback  # pylint: disable=unused-import
+
 import numpy as np
 import six
 
