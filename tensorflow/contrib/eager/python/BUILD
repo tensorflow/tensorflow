@@ -268,16 +268,3 @@ cuda_py_test(
     ],
     tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

@@ -14,20 +14,6 @@ load(
     "if_windows",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "expiring_lru_cache",
     hdrs = ["expiring_lru_cache.h"],

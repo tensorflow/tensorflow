@@ -12,18 +12,6 @@ load(
     "tf_kernel_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "stats_aggregator",
     hdrs = ["stats_aggregator.h"],

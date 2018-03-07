@@ -47,28 +47,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 ```
 
-* At the end of every BUILD file, should contain:
-
-```
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-```
-
-* When adding new BUILD file, add this line to `tensorflow/BUILD` file into `all_opensource_files` target.
-
-```
-"//tensorflow/<directory>:all_files",
-```
-
 * For all Python BUILD targets (libraries and tests) add next line:
 
 ```
