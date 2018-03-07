@@ -156,7 +156,7 @@ class Dense(base.Layer):
       outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
                                                              [0]])
       # Reshape the output back to the original ndim of the input.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
@@ -374,7 +374,7 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 

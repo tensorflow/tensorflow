@@ -128,7 +128,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
     """Combine s with batch_size to get a proper tensor shape."""
     c = _concat(batch_size, s)
     size = array_ops.zeros(c, dtype=dtype)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       c_static = _concat(batch_size, s, static=True)
       size.set_shape(c_static)
     return size
@@ -192,12 +192,13 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    if context.in_graph_mode():
-      trainable = (variable in tf_variables.trainable_variables() or
-                   (isinstance(variable, tf_variables.PartitionedVariable) and
-                    list(variable)[0] in tf_variables.trainable_variables()))
-    else:
+    if context.executing_eagerly():
       trainable = variable._trainable  # pylint: disable=protected-access
+    else:
+      trainable = (
+          variable in tf_variables.trainable_variables() or
+          (isinstance(variable, tf_variables.PartitionedVariable) and
+           list(variable)[0] in tf_variables.trainable_variables()))
     if trainable and variable not in self._trainable_weights:
       self._trainable_weights.append(variable)
     elif not trainable and variable not in self._non_trainable_weights:
@@ -241,7 +242,7 @@ class RNNCell(base_layer.Layer):
     # Try to use the last cached zero_state. This is done to avoid recreating
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
-    is_eager = context.in_eager_mode()
+    is_eager = context.executing_eagerly()
     if is_eager and hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")

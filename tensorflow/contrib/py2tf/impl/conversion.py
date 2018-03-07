@@ -32,6 +32,7 @@ from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import name_scopes
 from tensorflow.contrib.py2tf.converters import side_effect_guards
+from tensorflow.contrib.py2tf.converters import single_return
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
@@ -297,6 +298,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # to re-run the analysis.
 
   node = _static_analysis_pass(node, ctx)
+
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
@@ -310,6 +312,9 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # canonicalization creates.
   node = continue_statements.transform(node, ctx)
   ctx.namespace['len'] = len
+
+  node = _static_analysis_pass(node, ctx)
+  node = single_return.transform(node, ctx)
 
   node = _static_analysis_pass(node, ctx)
   node = for_loops.transform(node, ctx)

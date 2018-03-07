@@ -367,7 +367,7 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
                      "  _ctx = _context.context()\n"
-                     "  if _ctx.in_graph_mode():\n",
+                     "  if not _ctx.executing_eagerly():\n",
                      function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");

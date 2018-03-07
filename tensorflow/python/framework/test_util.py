@@ -816,7 +816,7 @@ class TensorFlowTestCase(googletest.TestCase):
     Returns:
       tensors numpy values.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()

@@ -268,6 +268,15 @@ class ActivityAnalizer(transformer.Base):
     self.scope = current_scope
     return node
 
+  def visit_With(self, node):
+    current_scope = self.scope
+    with_scope = Scope(current_scope, isolated=False)
+    self.scope = with_scope
+    self.generic_visit(node)
+    anno.setanno(node, NodeAnno.BODY_SCOPE, with_scope)
+    self.scope = current_scope
+    return node
+
   def visit_If(self, node):
     self.visit(node.test)
     node = self._process_parallel_blocks(node,

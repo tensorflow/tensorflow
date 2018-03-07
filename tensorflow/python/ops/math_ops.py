@@ -2044,14 +2044,14 @@ def matmul(a,
     if transpose_b and adjoint_b:
       raise ValueError("Only one of transpose_b and adjoint_b can be True.")
 
-    if context.in_graph_mode():
-      a = ops.convert_to_tensor(a, name="a")
-      b = ops.convert_to_tensor(b, name="b")
-    else:
+    if context.executing_eagerly():
       if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
         a = ops.convert_to_tensor(a, name="a")
       if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
         b = ops.convert_to_tensor(b, name="b")
+    else:
+      a = ops.convert_to_tensor(a, name="a")
+      b = ops.convert_to_tensor(b, name="b")
 
     # TODO(apassos) remove _shape_tuple here when it is not needed.
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
@@ -2286,7 +2286,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.in_eager_mode():
+  elif context.executing_eagerly():
     # TemporaryVariable not currently supported in eager mode; fall back
     # onto AddN for now.
     # TODO(frreiss) remove this once the lifetime of eager variables gets

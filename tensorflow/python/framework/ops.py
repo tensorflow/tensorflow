@@ -395,10 +395,10 @@ class Tensor(_TensorLike):
         "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
   def __iter__(self):
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       raise TypeError(
-          "`Tensor` objects are not iterable when eager execution is not "
-          "enabled. To iterate over this tensor use `tf.map_fn`.")
+          "Tensor objects are not iterable when eager execution is not "
+          "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
       raise TypeError("Cannot iterate over a tensor with unknown shape.")
@@ -772,7 +772,7 @@ class _EagerTensorBase(Tensor):
       six.raise_from(core._status_to_exception(e.code, e.message), None)
 
     # Record the copy on tape and define backprop copy as well.
-    if not context.in_graph_mode():
+    if context.executing_eagerly():
       self_device = self.device
       def grad_fun(dresult):
         return [dresult._copy(device_name=self_device)]
@@ -993,7 +993,7 @@ def internal_convert_to_tensor(value,
 
   """
   if ctx is None: ctx = context.context()
-  if ctx.in_eager_mode():
+  if ctx.executing_eagerly():
     # Fast path for EagerTensors that don't need any conversion.
     if isinstance(value, EagerTensor):
       # Note that we don't check that value's dtype matches the dtype
@@ -4797,15 +4797,15 @@ def device(device_name_or_function):
   Raises:
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
-  if context.in_graph_mode():
-    return get_default_graph().device(device_name_or_function)
-  else:
+  if context.executing_eagerly():
     # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  else:
+    return get_default_graph().device(device_name_or_function)
 
 
 @tf_export("container")
@@ -4824,7 +4824,12 @@ def container(container_name):
 
 @tf_export("colocate_with")
 def colocate_with(op, ignore_existing=False):
-  if context.in_graph_mode():
+  if context.executing_eagerly():
+    if op is not None:
+      return device(op.device)
+    else:
+      return _NullContextmanager()
+  else:
     default_graph = get_default_graph()
     if isinstance(op, EagerTensor):
       if default_graph.building_function:
@@ -4833,11 +4838,6 @@ def colocate_with(op, ignore_existing=False):
         raise ValueError("Encountered an Eager-defined Tensor during graph "
                          "construction, but a function was not being built.")
     return default_graph.colocate_with(op, ignore_existing)
-  else:
-    if op is not None:
-      return device(op.device)
-    else:
-      return _NullContextmanager()
 
 
 @tf_export("control_dependencies")
@@ -4857,10 +4857,10 @@ def control_dependencies(control_inputs):
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
-  if context.in_graph_mode():
-    return get_default_graph().control_dependencies(control_inputs)
-  else:
+  if context.executing_eagerly():
     return _NullContextmanager()
+  else:
+    return get_default_graph().control_dependencies(control_inputs)
 
 
 class _DefaultStack(threading.local):
@@ -5123,7 +5123,7 @@ def init_scope():
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     # Fastpath.
     with tape.stop_recording():
       yield
@@ -5705,7 +5705,7 @@ class name_scope(object):  # pylint: disable=invalid-name
     self._default_name = default_name
     self._values = values
     self._ctx = context.context()
-    self._in_eager_mode = self._ctx.in_eager_mode()
+    self._in_eager_mode = self._ctx.executing_eagerly()
 
   def __enter__(self):
     """Start the scope block.
@@ -5884,7 +5884,7 @@ def get_from_proto_function(collection_name):
 
 
 def _assert_collection_is_ok(collection_name):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
       raise ValueError("When Eager Execution is enabled, variable "
                        "collections are not supported.")

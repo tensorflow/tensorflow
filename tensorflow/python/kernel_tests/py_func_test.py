@@ -360,7 +360,7 @@ class PyFuncTest(test.TestCase):
       raise py_exp("blah")  # pylint: disable=not-callable
 
     if eager:
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         with self.assertRaisesRegexp(tf_exp, "blah"):
           f = script_ops.eager_py_func(raise_exception, [], [])
         return
@@ -432,7 +432,7 @@ class PyFuncTest(test.TestCase):
 
       output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
       ret = self.evaluate(output)
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         self.assertEquals(len(ret), 0)
       else:
         self.assertIsNone(ret)

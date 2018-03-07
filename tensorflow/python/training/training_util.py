@@ -64,7 +64,7 @@ def global_step(sess, global_step_tensor):
   Returns:
     The global step value.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return int(global_step_tensor.numpy())
   return int(sess.run(global_step_tensor))
 
@@ -123,7 +123,7 @@ def create_global_step(graph=None):
     raise ValueError('"global_step" already exists.')
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       with ops.device('cpu:0'):
         return variable_scope.get_variable(
             ops.GraphKeys.GLOBAL_STEP,

@@ -146,8 +146,7 @@ void FixNoOrphanedArray(Model* model);
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
 template <ArrayDataType A>
-void GetQuantizationParamsFromMinMax(const ModelFlags& model_flags,
-                                     const MinMax& minmax,
+void GetQuantizationParamsFromMinMax(const MinMax& minmax,
                                      QuantizationParams* quantization_params) {
   using Integer = DataType<A>;
   const Integer qmin = std::numeric_limits<Integer>::min();

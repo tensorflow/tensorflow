@@ -47,14 +47,17 @@ TFE_ContextDevicePlacementPolicy PlacementPolicy(
     bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy);
 
 struct TFE_Context {
-  explicit TFE_Context(const TFE_ContextOptions& opts, TF_Session* s)
+  explicit TFE_Context(const TFE_ContextOptions& opts,
+                       std::unique_ptr<tensorflow::DeviceMgr> device_mgr)
       : soft_placement(
             opts.session_options.options.config.allow_soft_placement()),
         policy(PlacementPolicy(soft_placement, opts.policy)),
-        session(s),
-        rendezvous(new tensorflow::IntraProcessRendezvous(s->device_mgr)),
+        device_manager(std::move(device_mgr)),
+        devices(device_manager->ListDevices()),
+        rendezvous(
+            new tensorflow::IntraProcessRendezvous(device_manager.get())),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
-            session->device_mgr, opts.session_options.options.env,
+            device_manager.get(), opts.session_options.options.env,
             TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
         log_device_placement(
             opts.session_options.options.config.log_device_placement()) {}
@@ -68,8 +71,9 @@ struct TFE_Context {
   std::unordered_map<std::thread::id, TFE_ContextDevicePlacementPolicy>
       thread_local_policies GUARDED_BY(policy_map_mu);
 
-  // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
-  TF_Session* const session;
+  std::unique_ptr<tensorflow::DeviceMgr> device_manager;
+  // Devices owned by device_manager
+  const std::vector<tensorflow::Device*> devices;
   tensorflow::Rendezvous* const rendezvous;
 
   tensorflow::mutex functions_mu;
@@ -89,8 +93,6 @@ struct TFE_Context {
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) const {
     return pflr->GetFLR(d->name());
   }
-
-  const std::vector<tensorflow::Device*>& devices() { return session->devices; }
 
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_metadata{false};

@@ -1763,7 +1763,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       return constant_op.constant(2.0)
     future.calls = 0
 
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      a = constant_op.constant(1.0)
+      b = future()
+      with ops.control_dependencies([a, b]):
+        c = constant_op.constant(3.0)
+      self.assertEqual(future.calls, 1)
+    else:
       g = ops.Graph()
       with g.as_default():
         a = constant_op.constant(1.0)
@@ -1771,12 +1777,6 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
         with g.control_dependencies([a, b]):
           c = constant_op.constant(3.0)
       self.assertEqual(c.op.control_inputs, [a.op, b.op])
-      self.assertEqual(future.calls, 1)
-    else:
-      a = constant_op.constant(1.0)
-      b = future()
-      with ops.control_dependencies([a, b]):
-        c = constant_op.constant(3.0)
       self.assertEqual(future.calls, 1)
 
   def testBasicWithConversion(self):
@@ -2150,11 +2150,11 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           with ops.init_scope():
             # Because g is building a function, init_scope should
             # escape out to the eager context.
-            self.assertTrue(context.in_eager_mode())
+            self.assertTrue(context.executing_eagerly())
           # g should be reinstated as the default graph, and the
           # graph context should be re-entered.
           self.assertIs(g, ops.get_default_graph())
-          self.assertTrue(context.in_graph_mode())
+          self.assertFalse(context.executing_eagerly())
 
   def testStaysInEagerWhenOnlyEagerContextActive(self):
     with context.eager_mode():
@@ -2277,12 +2277,13 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       def foo():
         with ops.name_scope("inner"), ops.init_scope():
-          if context.in_graph_mode():
-            self.assertEqual(ops.get_name_scope(), "inner")
-          else:
+          if context.executing_eagerly():
             # A trailing slash is always appended when eager execution is
             # enabled.
             self.assertEqual(context.context().scope_name, "inner/")
+          else:
+            self.assertEqual(ops.get_name_scope(), "inner")
+
       foo()
       self.assertEqual(ops.get_name_scope(), "")
       foo_compiled = eager_function.defun(foo)

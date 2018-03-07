@@ -695,7 +695,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
   Raises:
     ValueError: If the graph_def contains unbound inputs.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError("Exporting/importing meta graphs is not supported when "
                      "eager execution is enabled.")
   if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
@@ -856,7 +856,7 @@ def export_scoped_meta_graph(filename=None,
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise ValueError("Exporting/importing meta graphs is not supported when "
                      "Eager Execution is enabled.")
   graph = graph or ops.get_default_graph()

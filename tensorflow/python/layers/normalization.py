@@ -338,8 +338,9 @@ class BatchNormalization(base.Layer):
           return var
 
         with ops.device(None):
-          device = ((lambda _: self.moving_mean.device)
-                    if context.in_graph_mode() else self.moving_mean.device)
+          device = (
+              self.moving_mean.device if context.executing_eagerly() else
+              (lambda _: self.moving_mean.device))
           with ops.device(device):
             self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
             self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
@@ -347,8 +348,9 @@ class BatchNormalization(base.Layer):
           # renorm_stddev_weight. This allows us to (1) mix the average
           # stddev with the minibatch stddev early in training, and (2) compute
           # the unbiased average stddev by dividing renorm_stddev by the weight.
-          device = ((lambda _: self.moving_variance.device)
-                    if context.in_graph_mode() else self.moving_variance.device)
+          device = (
+              self.moving_variance.device if context.executing_eagerly() else
+              (lambda _: self.moving_variance.device))
           with ops.device(device):
             self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
             self.renorm_stddev_weight = _renorm_variable(
@@ -420,7 +422,7 @@ class BatchNormalization(base.Layer):
                                                 one_minus_decay)
       variance_update = self._assign_moving_average(self.moving_variance,
                                                     variance, one_minus_decay)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         # Note that in Eager mode, the updates are already executed when running
         # assign_moving_averages. So we do not need to put them into
         # collections.
@@ -493,7 +495,7 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
-    in_eager_mode = context.in_eager_mode()
+    in_eager_mode = context.executing_eagerly()
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -610,7 +612,7 @@ class BatchNormalization(base.Layer):
           training,
           lambda: _do_update(self.moving_variance, new_variance),
           lambda: self.moving_variance)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.add_update(mean_update, inputs=inputs)
         self.add_update(variance_update, inputs=inputs)
 

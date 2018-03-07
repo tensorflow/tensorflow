@@ -32,7 +32,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 _NUM_FILES = 10
-_NUM_ENTRIES = 200
+_NUM_ENTRIES = 20
 
 
 class DatasetsTest(test.TestCase):
@@ -73,7 +73,7 @@ class DatasetsTest(test.TestCase):
     get_next = iterator.get_next()
 
     retrieved_values = []
-    for _ in range(2 * len(all_contents)):
+    for _ in range(4 * len(all_contents)):
       retrieved_values.append(compat.as_bytes(self._sess.run(get_next)))
 
     self.assertEqual(set(all_contents), set(retrieved_values))
@@ -97,7 +97,7 @@ class DatasetsTest(test.TestCase):
     get_next = iterator.get_next()
 
     retrieved_values = []
-    for _ in range(2 * len(all_contents)):
+    for _ in range(4 * len(all_contents)):
       retrieved_values.append(compat.as_bytes(self._sess.run(get_next)))
 
     self.assertEqual(set(all_contents), set(retrieved_values))
@@ -124,7 +124,7 @@ class DatasetsTest(test.TestCase):
     get_next = iterator.get_next()
 
     retrieved_values = []
-    for _ in range(2 * len(all_contents)):
+    for _ in range(4 * len(all_contents)):
       retrieved_values.append(compat.as_bytes(self._sess.run(get_next)))
 
     self.assertEqual(set(all_contents), set(retrieved_values))
@@ -157,7 +157,7 @@ class DatasetsTest(test.TestCase):
     get_next = iterator.get_next()
 
     retrieved_values = []
-    for _ in range(2 * len(all_contents)):
+    for _ in range(4 * len(all_contents)):
       retrieved_values.append(compat.as_bytes(self._sess.run(get_next)))
 
     self.assertEqual(set(all_contents), set(retrieved_values))

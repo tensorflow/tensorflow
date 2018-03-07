@@ -1263,7 +1263,7 @@ def _compute_placement_auc(labels, predictions, weights, alpha,
   weights_for_true = ordered_weights * float_labels_for_true
   weights_for_false = ordered_weights * float_labels_for_false
 
- # For each set of weights with the same segmented indices, we add up the
+  # For each set of weights with the same segmented indices, we add up the
   # weight values. Note that for each label, we deliberately rely on weights
   # for the opposite label.
   weight_totals_for_true = math_ops.segment_sum(weights_for_false,
@@ -3646,7 +3646,7 @@ def cohen_kappa(labels,
       `updates_collections` are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
                        'when eager execution is enabled.')
   if num_classes < 2:

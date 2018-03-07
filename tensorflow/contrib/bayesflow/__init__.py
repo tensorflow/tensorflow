@@ -23,7 +23,6 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.bayesflow.python.ops import custom_grad
 from tensorflow.contrib.bayesflow.python.ops import hmc
-from tensorflow.contrib.bayesflow.python.ops import layers
 from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
 from tensorflow.contrib.bayesflow.python.ops import optimizers
@@ -36,7 +35,6 @@ _allowed_symbols = [
     'custom_grad',
     'entropy',
     'hmc',
-    'layers',
     'metropolis_hastings',
     'monte_carlo',
     'optimizers',

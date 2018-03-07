@@ -55,8 +55,8 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
   const int size = input_buffer.data.size();
   output_buffer.data.resize(size);
   QuantizationParams qparams;
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-      model->flags, *fakequant_op->minmax, &qparams);
+  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(*fakequant_op->minmax,
+                                                         &qparams);
   for (int i = 0; i < size; i++) {
     const double src_val = input_buffer.data[i];
     const double unclamped_quantized_val =

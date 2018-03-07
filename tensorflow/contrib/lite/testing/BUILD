@@ -8,6 +8,7 @@ load(
     "//tensorflow/contrib/lite:build_def.bzl",
     "gen_zipped_test_files",
 )
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -236,6 +237,9 @@ cc_test(
     size = "small",
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
+    tags = [
+        "tflite_not_portable",
+    ],
     deps = [
         ":tf_driver",
         "@com_google_googletest//:gtest_main",
@@ -259,6 +263,9 @@ cc_test(
     name = "generate_testspec_test",
     size = "small",
     srcs = ["generate_testspec_test.cc"],
+    tags = [
+        "tflite_not_portable",
+    ],
     deps = [
         ":generate_testspec",
         "@com_google_googletest//:gtest_main",
@@ -320,6 +327,7 @@ tf_cc_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",
+        "tflite_not_portable",
     ],
     deps = [
         ":tflite_diff_flags",
@@ -339,7 +347,10 @@ tf_cc_test(
     ],
     data = [":optest"],
     shard_count = 20,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
@@ -373,3 +384,5 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+tflite_portable_test_suite()

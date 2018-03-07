@@ -149,6 +149,7 @@ cc_library(
         "common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
+        "optimized/depthwiseconv_uint8_3x3_filter.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
