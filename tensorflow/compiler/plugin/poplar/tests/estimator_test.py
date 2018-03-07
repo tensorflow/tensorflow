@@ -15,7 +15,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.core.protobuf import config_pb2
 
-import test_utils
+import test_utils as tu
 
 def model_fn(features, labels, mode):
   # Set variables to resource variables
@@ -40,7 +40,7 @@ def model_fn(features, labels, mode):
     else:
       train = None
 
-  test_utils.ipu_compile_summary("compile_summary", [train, loss])
+  tu.ipu_compile_summary("compile_summary", [train, loss])
 
   return tf.estimator.EstimatorSpec(
     mode=mode,
@@ -76,8 +76,8 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
     dev = opts.device_config.add()
     dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
     dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = True
-    dev.profiling.enable_execution_trace = True
+    dev.profiling.enable_io_trace = False
+    dev.profiling.enable_execution_trace = False
 
     sess_cfg = tf.ConfigProto(ipu_options=opts)
     run_cfg = tf.estimator.RunConfig(session_config=sess_cfg)

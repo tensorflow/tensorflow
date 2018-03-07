@@ -109,6 +109,7 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 PoplarExecutor::PoplarExecutor() :
     poplar_device_(poplar::Device::createCPUDevice()),
     device_open_(true),
+    profile_compilation_(false),
     profile_execution_(false),
     profile_io_(false) {}
 
@@ -259,6 +260,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
         model.tilesPerIPU = cfg.ipu_model_config().tiles_per_ipu();
       }
       poplar_device_ = model.createDevice();
+      profile_compilation_ = cfg.profiling().enable_compilation_trace();
       profile_execution_ = cfg.profiling().enable_execution_trace();
       profile_io_ = cfg.profiling().enable_io_trace();
       break;
@@ -282,11 +284,16 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
   if (device_open_) {
     //poplar_device_.release();
     device_open_ = false;
+    profile_compilation_ = false;
     profile_execution_ = false;
     profile_io_ = false;
     reports_.clear();
   }
   return port::Status::OK();
+}
+
+void PoplarExecutor::AddCompilerReport(const std::string& report) {
+  reports_.push_back(std::move(report));
 }
 
 port::Status PoplarExecutor::GetCompilerReports(std::list<std::string>& out) {
@@ -529,7 +536,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           // TODO enable this using flags? opts.showVariableStorage = true;
 
           std::stringstream stream;
-          engine->report(stream, opts);
+          engine->reportDynamic(stream, opts);
           reports_.push_back(stream.str());
         }
       } catch (std::logic_error e) {

@@ -17,13 +17,13 @@ import contextlib
 import re
 
 @contextlib.contextmanager
-def ipu_session():
+def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True):
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
   dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-  dev.profiling.enable_compilation_trace = True
-  dev.profiling.enable_io_trace = True
-  dev.profiling.enable_execution_trace = True
+  dev.profiling.enable_compilation_trace = compilation_trace
+  dev.profiling.enable_io_trace = io_trace
+  dev.profiling.enable_execution_trace = execution_trace
   with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
     yield sess
 

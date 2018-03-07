@@ -208,6 +208,10 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
+  bool CompilerReportingEnabled() const { return profile_compilation_; }
+
+  void AddCompilerReport(const std::string& report);
+
   port::Status GetCompilerReports(std::list<std::string>& out);
 
   port::StatusOr<DeviceMemoryBase>
@@ -275,6 +279,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   std::list<TensorControl*> allocations_;
 
+  bool profile_compilation_;
   bool profile_execution_;
   bool profile_io_;
 

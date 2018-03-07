@@ -320,6 +320,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                           port::StrCat("[Poplar Engine] ",
                                        e.what()));
     }
+
+    if (poplarExecutor->CompilerReportingEnabled()) {
+      poplar::Engine::ReportOptions opts;
+      opts.doLayerWiseProfile = true;
+
+      std::stringstream stream;
+      engine->reportStatic(stream, opts);
+      poplarExecutor->AddCompilerReport(stream.str());
+    }
   }
 
   const char *vertex_graph = getenv("TF_POPLAR_VERTEX_GRAPH_FILENAME");

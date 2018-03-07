@@ -67,7 +67,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
         dev.profiling.enable_compilation_trace = True
-        dev.profiling.enable_io_trace = True
+        dev.profiling.enable_io_trace = False
         dev.profiling.enable_execution_trace = True
 
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
@@ -75,7 +75,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
             result, rep = sess.run([output, report], fd)
             self.assertAllClose(result, [[1.,2.],[6.,8.]])
-            self.assertTrue(len(rep) == 1)
+            self.assertTrue(len(rep) == 2)
 
     def testIpuModelDeviceWithMultipleReport(self):
         with tf.device("/device:IPU:0"):
@@ -92,7 +92,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
         dev.profiling.enable_compilation_trace = True
-        dev.profiling.enable_io_trace = True
+        dev.profiling.enable_io_trace = False
         dev.profiling.enable_execution_trace = True
 
         with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as sess:
@@ -104,7 +104,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             result, rep = sess.run([out2, report], fd)
             self.assertAllClose(result, [[1.,0.],[-2.,-2.]])
 
-            self.assertTrue(len(rep) == 2)
+            self.assertTrue(len(rep) == 4)
 
     def testIpuModelDeviceMultipleIPUs(self):
         with tf.device("/device:IPU:0"):
@@ -130,9 +130,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             fd = {pa: np.zeros([480]), pb: np.zeros([480])}
             result, rep = sess.run([output, report], fd)
             self.assertAllClose(result, np.zeros([480]))
-            self.assertTrue(len(rep) == 1)
+            self.assertTrue(len(rep) == 2)
 
-            l = rep[0].split("\n")
+            l = rep[1].split("\n")
             l = [x for x in l if re.search("Num tiles computing:  8", x)]
             self.assertTrue(len(l) == 1)
 

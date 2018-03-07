@@ -381,7 +381,7 @@ py_test(
 
 py_test(
     name = "fuse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["tests/fuse_ops_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -67,8 +67,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1,14,14,128]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 1)
-      cs_list = tu.get_compute_sets_from_report(result[0])
+      self.assertTrue(len(result) == 2)
+      cs_list = tu.get_compute_sets_from_report(result[1])
 
       ok = ['convolution.clone/Conv_3x3',
             'Copy_{<const>,arg0_input}',
@@ -96,8 +96,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np.zeros([1, 20, 20, 16]))
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 1)
-      cs_list = tu.get_compute_sets_from_report(result[0])
+      self.assertTrue(len(result) == 2)
+      cs_list = tu.get_compute_sets_from_report(result[1])
 
       ok = ['convolution.clone/Conv_8x8_stride4x4',
             'call/addToChannel']
@@ -136,8 +136,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                      [61, 51, 45, 34, 25, 13]]]])
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 1)
-      cs_list = tu.get_compute_sets_from_report(result[0])
+      self.assertTrue(len(result) == 2)
+      cs_list = tu.get_compute_sets_from_report(result[1])
 
       ok = ['call.1.clone/Conv_1x1',
             'Copy_partials_to_call',
@@ -176,8 +176,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                      [61, 45, 25]]]])
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 1)
-      cs_list = tu.get_compute_sets_from_report(result[0])
+      self.assertTrue(len(result) == 2)
+      cs_list = tu.get_compute_sets_from_report(result[1])
 
       ok = ['call.1.clone/Conv_1x1',
             'Copy_partials_to_call',
