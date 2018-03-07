@@ -20,7 +20,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 try:
-  from tensorflow.contrib.tensorrt.python import *
+  from tensorflow.contrib.tensorrt.python import *  # pylint: disable=import-not-at-top
 except Exception as e:
   no_trt_message = (
       '**** Failed to initialize TensorRT. This is either because the TensorRT'
