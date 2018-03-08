@@ -29,6 +29,10 @@ namespace tflite {
 // Converts a `std::vector` to a `TfLiteIntArray`.
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
+// Checks whether a `TfLiteIntArray` and `std::vector` have matching elements.
+bool EqualVectorAndTfLiteIntArray(const TfLiteIntArray* a,
+                                  const std::vector<int>& b);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_UTIL_H_

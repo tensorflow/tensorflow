@@ -223,6 +223,9 @@ typedef struct {
   bool data_is_stale;
 } TfLiteTensor;
 
+// Free data memory of tensor `t`;
+void TfLiteTensorDataFree(TfLiteTensor* t);
+
 // Free memory of tensor `t`;
 void TfLiteTensorFree(TfLiteTensor* t);
 

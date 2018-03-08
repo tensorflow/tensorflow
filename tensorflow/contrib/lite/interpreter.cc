@@ -569,10 +569,22 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
                                                &required_bytes));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
-  invokable_ = false;
-  TfLiteTensorReset(type, name, ConvertVectorToTfLiteIntArray(dims),
-                    quantization, const_cast<char*>(buffer), bytes,
-                    kTfLiteMmapRo, allocation, &context_.tensors[tensor_index]);
+
+  TfLiteTensor& tensor = context_.tensors[tensor_index];
+  if (type == tensor.type && EqualVectorAndTfLiteIntArray(tensor.dims, dims)) {
+    // Fast path which does not invalidate the invokable property.
+    TfLiteTensorDataFree(&tensor);
+    tensor.data.raw = const_cast<char*>(buffer);
+    if (!tensor.dims) tensor.dims = ConvertVectorToTfLiteIntArray(dims);
+    tensor.params = quantization;
+    tensor.allocation_type = kTfLiteMmapRo;
+    tensor.allocation = allocation;
+  } else {
+    invokable_ = false;
+    TfLiteTensorReset(type, name, ConvertVectorToTfLiteIntArray(dims),
+                      quantization, const_cast<char*>(buffer), bytes,
+                      kTfLiteMmapRo, allocation, &tensor);
+  }
   return kTfLiteOk;
 }
 

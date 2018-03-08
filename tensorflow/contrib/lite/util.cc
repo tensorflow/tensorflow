@@ -24,4 +24,14 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return output;
 }
 
+bool EqualVectorAndTfLiteIntArray(const TfLiteIntArray* a,
+                                  const std::vector<int>& b) {
+  if (!a) return false;
+  if (a->size != b.size()) return false;
+  for (int i = 0; i < a->size; ++i) {
+    if (a->data[i] != b[i]) return false;
+  }
+  return true;
+}
+
 }  // namespace tflite
