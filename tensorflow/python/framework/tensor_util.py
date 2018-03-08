@@ -436,9 +436,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       # We need to pass in quantized values as tuples, so don't apply the shape
       if (list(nparray.shape) != _GetDenseDimensions(values) and
           not is_quantized):
-        raise ValueError("""Argument must be a dense tensor: %s"""
+        raise ValueError("""Argument must be a dense tensor"""
                          """ - got shape %s, but wanted %s.""" %
-                         (values, list(nparray.shape),
+                         (list(nparray.shape),
                           _GetDenseDimensions(values)))
 
     # python/numpy default float type is float64. We prefer float32 instead.
