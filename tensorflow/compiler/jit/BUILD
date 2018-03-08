@@ -135,6 +135,7 @@ cc_library(
     deps = [
         ":common",
         ":jit_compilation_passes",
+        ":xla_launch_util",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -172,6 +173,28 @@ cc_library(
         "defs.h",
     ],
     visibility = [":friends"],
+)
+
+cc_library(
+    name = "xla_launch_util",
+    srcs = ["xla_launch_util.cc"],
+    hdrs = ["xla_launch_util.h"],
+    deps = [
+        ":common",
+        ":xla_compilation_cache",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
 )
 
 cc_library(
