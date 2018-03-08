@@ -15,20 +15,26 @@ limitations under the License.
 
 package org.tensorflow.contrib.android;
 
+import android.content.Context;
 import android.content.res.AssetManager;
 import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import org.tensorflow.Graph;
@@ -49,6 +55,112 @@ import org.tensorflow.types.UInt8;
 public class TensorFlowInferenceInterface {
   private static final String TAG = "TensorFlowInferenceInterface";
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
+
+  /**
+   * Copies resource to internal storage .
+   * @param  context context The context that contains the files
+   * @param  String filename
+   * @param  boolean res Is it from res/raw
+   *
+   * @return File reference to cache file.
+   */
+  private File copyFile(Context context, String filename, boolean res)
+      throws IOException {
+    InputStream inputStream = null;
+    if (res) {
+      int resourceId = context.getResources().getIdentifier(filename, "raw", context.getPackageName());
+      if (resourceId == 0) {
+        return null;
+      }
+      inputStream = context.getResources().openRawResource(resourceId);
+    } else {
+      inputStream = context.getAssets().open(filename);
+    }
+    File copy = new File(context.getFilesDir(), filename);
+    if (copy.createNewFile() == false) {
+      copy.delete();
+      copy.createNewFile();
+    }
+
+    FileOutputStream fileOutputStream = new FileOutputStream(copy);
+
+    byte[] buffer = new byte[1024];
+    int count;
+    while ((count = inputStream.read(buffer)) != -1) {
+      fileOutputStream.write(buffer, 0, count);
+    }
+    fileOutputStream.close();
+    inputStream.close();
+    return copy;
+  }
+
+  /*
+  * Load a TensorFlow model via FileChannel mmap
+  * This requires that assets files are copied to internal storage already
+  * getFileStreamPath() points to that directory; context used must be passed in here
+  *
+  * @param ctx The context to use to load the model file; same as one used to copy files
+  * @param model The filepath to the GraphDef proto representing the model.
+  */
+  public TensorFlowInferenceInterface(Context ctx, String modelName) {
+    prepareNativeRuntime();
+    File modelFile = null;
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+    this.modelName = modelName;
+    MappedByteBuffer buffer = null;
+    FileChannel fileChannel = null;
+    RandomAccessFile raf = null;
+    File copy = null;
+    try {
+      copy = copyFile(ctx, modelName, true);
+      if (copy != null) {
+        raf = new RandomAccessFile(copy, "r");
+        fileChannel = raf.getChannel();
+      } else {
+        //try assets
+        copy = copyFile(ctx, modelName, false);
+        raf = new RandomAccessFile(copy, "r");
+        fileChannel = raf.getChannel();
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to open graph file: " + modelFile, e);
+    }
+    try {
+      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+      if (!buffer.isLoaded()) {
+        buffer.load();
+      }
+      byte[] graphDef = new byte[buffer.limit()];
+      buffer.get(graphDef);
+      loadGraph(graphDef, g);
+      Log.i(TAG, "Successfully loaded model from map" + modelName);
+    } catch (IOException ioe) {
+      throw new RuntimeException("Failed to map  model from" + modelName, ioe);
+    } finally {
+      try {
+        if (raf != null) {
+          raf.close();
+        }
+        if (copy != null) {
+          copy.delete();
+        }
+      } catch (IOException ioe) {
+        throw new RuntimeException("Failed to close RandomAccessFile " + raf, ioe);
+      }
+      try {
+        fileChannel.close();
+      } catch (IOException ioe) {
+        throw new RuntimeException("Failed to close FileChannel " + fileChannel, ioe);
+      }
+      if (buffer != null) {
+        buffer.clear();
+        buffer = null;
+      }
+    }
+  }
+
 
   /*
    * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
