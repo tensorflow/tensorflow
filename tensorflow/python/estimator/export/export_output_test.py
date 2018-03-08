@@ -199,20 +199,18 @@ class ExportOutputTest(test.TestCase):
         signature_constants.CLASSIFY_METHOD_NAME)
     self.assertEqual(actual_signature_def, expected_signature_def)
 
-  def test_predict_output_constructor(self):
-    """Tests that no errors are raised when input is expected."""
+  def test_predict_outputs_valid(self):
+    """Tests that no errors are raised when provided outputs are valid."""
     outputs = {
         "output0": constant_op.constant([0]),
-        u"output1": constant_op.constant([1]),
+        u"output1": constant_op.constant(["foo"]),
     }
     export_output_lib.PredictOutput(outputs)
 
-  def test_predict_output_outputs_invalid(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Prediction outputs must be given as a dict of string to Tensor"):
-      export_output_lib.PredictOutput(constant_op.constant([0]))
+    # Single Tensor is OK too
+    export_output_lib.PredictOutput(constant_op.constant([0]))
 
+  def test_predict_outputs_invalid(self):
     with self.assertRaisesRegexp(
         ValueError,
         "Prediction output key must be a string"):

@@ -28,6 +28,7 @@ See the @{$python/train} guide.
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
 @@RMSPropOptimizer
+@@custom_gradient
 @@gradients
 @@AggregationMethod
 @@stop_gradient
@@ -37,6 +38,10 @@ See the @{$python/train} guide.
 @@clip_by_average_norm
 @@clip_by_global_norm
 @@global_norm
+@@cosine_decay
+@@cosine_decay_restarts
+@@linear_cosine_decay
+@@noisy_linear_cosine_decay
 @@exponential_decay
 @@inverse_time_decay
 @@natural_exp_decay
@@ -77,6 +82,7 @@ See the @{$python/train} guide.
 @@GlobalStepWaiterHook
 @@FinalOpsHook
 @@FeedFnHook
+@@ProfilerHook
 @@SecondOrStepTimer
 @@global_step
 @@basic_train_loop
@@ -130,7 +136,7 @@ from tensorflow.python.training.queue_runner import *
 
 # For the module level doc.
 from tensorflow.python.training import input as _input
-from tensorflow.python.training.input import *
+from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
@@ -145,6 +151,7 @@ from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
 from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
 from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
+from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
 from tensorflow.python.training.checkpoint_utils import list_variables
@@ -183,6 +190,7 @@ from tensorflow.python.training.training_util import create_global_step
 from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=wildcard-import
 # Training data protos.
@@ -233,6 +241,23 @@ _allowed_symbols = [
     "SequenceExample",  # from example_pb2.
     "ServerDef",
 ]
+
+# pylint: disable=undefined-variable
+tf_export("train.BytesList")(BytesList)
+tf_export("train.ClusterDef")(ClusterDef)
+tf_export("train.Example")(Example)
+tf_export("train.Feature")(Feature)
+tf_export("train.Features")(Features)
+tf_export("train.FeatureList")(FeatureList)
+tf_export("train.FeatureLists")(FeatureLists)
+tf_export("train.FloatList")(FloatList)
+tf_export("train.Int64List")(Int64List)
+tf_export("train.JobDef")(JobDef)
+tf_export("train.SaverDef")(SaverDef)
+tf_export("train.SequenceExample")(SequenceExample)
+tf_export("train.ServerDef")(ServerDef)
+# pylint: enable=undefined-variable
+
 # Include extra modules for docstrings because:
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.

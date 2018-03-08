@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/test.h"
@@ -24,7 +26,7 @@ namespace grappler {
 
 namespace {
 // Wrangles the minimum number of proto fields to set up a matrix.
-void DescribeMatrix(int rows, int columns, OpInfo *op_features) {
+void DescribeMatrix(int rows, int columns, OpInfo* op_features) {
   auto input = op_features->add_inputs();
   auto shape = input->mutable_shape();
   auto shape_rows = shape->add_dim();
@@ -43,31 +45,31 @@ void SetCpuDevice(OpInfo* op_features) {
 }
 
 // Returns an OpInfo for MatMul with the minimum set of fields set up.
-OpInfo DescribeMatMul(int m, int n, int l, int k) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("MatMul");
+OpContext DescribeMatMul(int m, int n, int l, int k) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("MatMul");
 
-  DescribeMatrix(m, l, &op_features);
-  DescribeMatrix(k, n, &op_features);
-  return op_features;
+  DescribeMatrix(m, l, &op_context.op_info);
+  DescribeMatrix(k, n, &op_context.op_info);
+  return op_context;
 }
 
 // Returns an OpInfo for MatMul with unknown input shapes.
-OpInfo DescribeMatMulUnknownShape() {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("MatMul");
+OpContext DescribeMatMulUnknownShape() {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("MatMul");
 
-  auto input = op_features.add_inputs();
+  auto input = op_context.op_info.add_inputs();
   auto shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  input = op_features.add_inputs();
+  input = op_context.op_info.add_inputs();
   shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  return op_features;
+  return op_context;
 }
 
 // Wrangles the minimum number of proto fields to set up an input of
@@ -83,67 +85,101 @@ void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
 }
 
 // Returns an OpInfo for a BatchMatMul
-OpInfo DescribeBatchMatMul(const std::vector<int>& dims_a,
-                           const std::vector<int>& dims_b) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("BatchMatMul");
+OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
+                              const std::vector<int>& dims_b) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("BatchMatMul");
 
-  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_features);
-  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_features);
-  return op_features;
+  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+  return op_context;
 }
 
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
-                      OpInfo *op_features) {
-  auto input = op_features->add_inputs();
-  auto shape = input->mutable_shape();
+                      OpInfo::TensorProperties* tensor) {
+  auto shape = tensor->mutable_shape();
   shape->add_dim()->set_size(dim0);
   shape->add_dim()->set_size(dim1);
   shape->add_dim()->set_size(dim2);
   shape->add_dim()->set_size(dim3);
-  input->set_dtype(DT_FLOAT);
+  tensor->set_dtype(DT_FLOAT);
 }
 
-// Returns an OpInfo for Conv2D with the minimum set of fields set up.
-OpInfo DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2, int kx,
-                           int ky, int oz) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("Conv2D");
+// DescribeConvolution constructs an OpContext for a Conv2D applied to an input
+// tensor with shape (batch, ix, iy, iz1) and a kernel tensor with shape
+// (kx, ky, iz2, oz).
+OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
+                              int kx, int ky, int oz) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Conv2D");
 
-  DescribeTensor4D(batch, ix, iy, iz1, &op_features);
-  DescribeTensor4D(kx, ky, iz2, oz, &op_features);
-  return op_features;
+  DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
+  DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
+
+  return op_context;
 }
 
-OpInfo DescribeOp(const string& op, int size1, int size2) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op(op);
+// DescribeUnaryOp constructs an OpContext for the given operation applied to
+// a 4-tensor with shape (size1, 1, 1, 1).
+OpContext DescribeUnaryOp(const string& op, int size1) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op(op);
 
-  DescribeTensor4D(size1, 1, 1, 1, &op_features);
-  DescribeTensor4D(2 * size1, size2, 1, 1, &op_features);
+  DescribeTensor4D(size1, 1, 1, 1, op_context.op_info.add_inputs());
+  DescribeTensor4D(size1, 1, 1, 1, op_context.op_info.add_outputs());
 
-  auto output = op_features.add_outputs();
-  auto shape = output->mutable_shape();
-  shape->add_dim()->set_size(2 * size1);
-  shape->add_dim()->set_size(size2);
-  shape->add_dim()->set_size(1);
-  shape->add_dim()->set_size(1);
-  output->set_dtype(DT_FLOAT);
-
-  SetCpuDevice(&op_features);
-  return op_features;
+  return op_context;
 }
+
+// DescribeBinaryOp constructs an OpContext for the given operation applied to
+// a 4-tensor with dimensions (size1, 1, 1, 1) and a 4-tensor with dimensions
+// (2 * size1, size2, 1, 1).
+//
+// The choice of dimension here is arbitrary, and is used strictly to test the
+// cost model for applying elementwise operations to tensors with unequal
+// dimension values.
+OpContext DescribeBinaryOp(const string& op, int size1, int size2) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op(op);
+
+  DescribeTensor4D(size1, 1, 1, 1, op_context.op_info.add_inputs());
+  DescribeTensor4D(2 * size1, size2, 1, 1, op_context.op_info.add_inputs());
+  DescribeTensor4D(2 * size1, size2, 1, 1, op_context.op_info.add_outputs());
+
+  return op_context;
+}
+
+// DescribeBiasAdd constructs an OpContext for a BiasAdd applied to a 4-tensor
+// with dimensions (1, 1, size2, size1) and a bias with dimension (size1),
+// according to the constraint that the bias must be 1D with size equal to that
+// of the last dimension of the input value.
+OpContext DescribeBiasAdd(int size1, int size2) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("BiasAdd");
+
+  DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 1, size2, size1, op_context.op_info.add_outputs());
+
+  auto bias = op_context.op_info.add_inputs();
+  bias->mutable_shape()->add_dim()->set_size(size1);
+  bias->set_dtype(DT_FLOAT);
+
+  return op_context;
+}
+
 }  // namespace
 
 class OpLevelCostEstimatorTest : public ::testing::Test {
  protected:
-  Costs PredictCosts(const OpInfo& op_features) const {
-    return estimator_.PredictCosts(op_features);
+  Costs PredictCosts(const OpContext& op_context) const {
+    return estimator_.PredictCosts(op_context);
   }
 
   int64 CountMatMulOperations(const OpInfo& op_features,
@@ -164,26 +200,42 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   OpLevelCostEstimator estimator_;
 };
 
+TEST_F(OpLevelCostEstimatorTest, BiasAddExecutionTime) {
+  auto cost = PredictCosts(DescribeBiasAdd(1000, 10));
+  EXPECT_EQ(Costs::Duration(8400), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(1000), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(9400), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
+  auto cost = PredictCosts(DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(233780), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(354877440), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(355111220), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
 TEST_F(OpLevelCostEstimatorTest, DummyExecutionTime) {
-  auto cost = PredictCosts(DescribeOp("Dummy", 1000, 1));
+  auto cost = PredictCosts(DescribeBinaryOp("Dummy", 1000, 1));
   EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(2200), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(2000), cost.execution_time);
   EXPECT_TRUE(cost.inaccurate);
 }
 
 TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
   SetComputeMemoryOverlap(true);
-  auto cost = PredictCosts(DescribeOp("Dummy", 1000, 1));
+  auto cost = PredictCosts(DescribeBinaryOp("Dummy", 1000, 1));
   EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
   EXPECT_EQ(Costs::Duration(2000), cost.execution_time);  // max(2000, 200)
   EXPECT_TRUE(cost.inaccurate);
   SetComputeMemoryOverlap(false);  // Set it back to default.
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {
-  auto cost = PredictCosts(DescribeOp("Mul", 1000, 1));
+  auto cost = PredictCosts(DescribeBinaryOp("Mul", 1000, 1));
   EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
   EXPECT_EQ(Costs::Duration(200), cost.compute_time);
   EXPECT_EQ(Costs::Duration(2200), cost.execution_time);
@@ -191,7 +243,7 @@ TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulBroadcastExecutionTime) {
-  auto cost = PredictCosts(DescribeOp("Mul", 1000, 2));
+  auto cost = PredictCosts(DescribeBinaryOp("Mul", 1000, 2));
   EXPECT_EQ(Costs::Duration(3600), cost.memory_time);
   EXPECT_EQ(Costs::Duration(400), cost.compute_time);
   EXPECT_EQ(Costs::Duration(4000), cost.execution_time);
@@ -199,10 +251,18 @@ TEST_F(OpLevelCostEstimatorTest, MulBroadcastExecutionTime) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, ModExecutionTime) {
-  auto cost = PredictCosts(DescribeOp("Mod", 1000, 1));
+  auto cost = PredictCosts(DescribeBinaryOp("Mod", 1000, 1));
   EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
   EXPECT_EQ(Costs::Duration(1600), cost.compute_time);
   EXPECT_EQ(Costs::Duration(3600), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
+  auto cost = PredictCosts(DescribeUnaryOp("Relu", 1000));
+  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
   EXPECT_FALSE(cost.inaccurate);
 }
 
@@ -228,22 +288,126 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
   bool matmul_inaccurate = false;
   bool batch_matmul_inaccurate = false;
   EXPECT_EQ(
-      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4), &matmul_inaccurate),
-      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}),
+      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
+                            &matmul_inaccurate),
+      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}).op_info,
                                  &batch_matmul_inaccurate));
   EXPECT_EQ(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}),
+                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}),
+                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+}
+
+// Helper functions for testing GetTensorShapeProtoFromTensorProto().
+void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
+                    const std::vector<int64> values, const bool tensor_content,
+                    TensorProto* tensor_proto) {
+  tensor_proto->Clear();
+  TensorProto temp_tensor_proto;
+  temp_tensor_proto.set_dtype(dtype);
+  for (const auto& x : shape) {
+    temp_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(x);
+  }
+  for (const auto& x : values) {
+    if (dtype == DT_INT64) {
+      temp_tensor_proto.add_int64_val(x);
+    } else if (dtype == DT_INT32 || dtype == DT_INT16 || dtype == DT_INT8 ||
+               dtype == DT_UINT8) {
+      temp_tensor_proto.add_int_val(x);
+    } else if (dtype == DT_UINT32) {
+      temp_tensor_proto.add_uint32_val(x);
+    } else if (dtype == DT_UINT64) {
+      temp_tensor_proto.add_uint64_val(x);
+    } else {
+      CHECK(false) << "Unsupported dtype: " << dtype;
+    }
+  }
+  Tensor tensor(dtype);
+  CHECK(tensor.FromProto(temp_tensor_proto));
+  if (tensor_content) {
+    tensor.AsProtoTensorContent(tensor_proto);
+  } else {
+    tensor.AsProtoField(tensor_proto);
+  }
+}
+
+void ExpectTensorShape(const std::vector<int64>& expected,
+                       const TensorShapeProto& tensor_shape_proto) {
+  TensorShape tensor_shape_expected(expected);
+  TensorShape tensor_shape(tensor_shape_proto);
+
+  LOG(INFO) << "Expected: " << tensor_shape_expected.DebugString();
+  LOG(INFO) << "TensorShape: " << tensor_shape.DebugString();
+  EXPECT_TRUE(tensor_shape_expected == tensor_shape);
+}
+
+TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
+  TensorProto tensor_proto;
+  TensorShapeProto tensor_shape_proto;
+
+  // Dimention larger than max value; should fail while converting to Tensor
+  // class.
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(255);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  tensor_proto.Clear();
+  // Expect only 1D shape.
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  // Expect only handle integer data types.
+  GetTensorProto(DT_FLOAT, {}, {}, /*tensor_content=*/false, &tensor_proto);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  // Check GetTensorShapeProtoFromTensorProto() resturns correct values.
+  {
+    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/false,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/false,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/true,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/true,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
 }
 
 }  // end namespace grappler

@@ -294,7 +294,7 @@ bool HexagonControlWrapper::SetupGraph() {
     } else if (params.padding_id() == Padding::VALID) {
       padding_id = 2;
     } else {
-      CHECK(false);
+      LOG(FATAL);
     }
     soc_interface_AppendNode(params.name().c_str(), node_id + NODE_ID_OFFSET,
                              op_id, padding_id, input_ptr, input_count,

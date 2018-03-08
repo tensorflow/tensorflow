@@ -29,7 +29,6 @@ import java.nio.LongBuffer;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
@@ -47,8 +46,9 @@ public class ConstantTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
-      Constant op = Constant.create(scope, shape, IntBuffer.wrap(ints));
-      Tensor result = sess.runner().fetch(op.asOutput()).run().get(0);
+      Constant<Integer> op = Constant.create(scope, shape, IntBuffer.wrap(ints));
+      Tensor<Integer> result = sess.runner().fetch(op.asOutput())
+          .run().get(0).expect(Integer.class);
       int[] actual = new int[ints.length];
       assertArrayEquals(ints, result.copyTo(actual));
     }
@@ -62,8 +62,8 @@ public class ConstantTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
-      Constant op = Constant.create(scope, shape, FloatBuffer.wrap(floats));
-      Tensor result = sess.runner().fetch(op.asOutput()).run().get(0);
+      Constant<Float> op = Constant.create(scope, shape, FloatBuffer.wrap(floats));
+      Tensor<Float> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Float.class);
       float[] actual = new float[floats.length];
       assertArrayEquals(floats, result.copyTo(actual), EPSILON);
     }
@@ -77,8 +77,8 @@ public class ConstantTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
-      Constant op = Constant.create(scope, shape, DoubleBuffer.wrap(doubles));
-      Tensor result = sess.runner().fetch(op.asOutput()).run().get(0);
+      Constant<Double> op = Constant.create(scope, shape, DoubleBuffer.wrap(doubles));
+      Tensor<Double> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Double.class);
       double[] actual = new double[doubles.length];
       assertArrayEquals(doubles, result.copyTo(actual), EPSILON);
     }
@@ -92,8 +92,8 @@ public class ConstantTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
-      Constant op = Constant.create(scope, shape, LongBuffer.wrap(longs));
-      Tensor result = sess.runner().fetch(op.asOutput()).run().get(0);
+      Constant<Long> op = Constant.create(scope, shape, LongBuffer.wrap(longs));
+      Tensor<Long> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Long.class);
       long[] actual = new long[longs.length];
       assertArrayEquals(longs, result.copyTo(actual));
     }
@@ -123,8 +123,8 @@ public class ConstantTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
-      Constant op = Constant.create(scope, DataType.STRING, shape, ByteBuffer.wrap(content));
-      Tensor result = sess.runner().fetch(op.asOutput()).run().get(0);
+      Constant<String> op = Constant.create(scope, String.class, shape, ByteBuffer.wrap(content));
+      Tensor<String> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(String.class);
       assertArrayEquals(data, result.bytesValue());
     }
   }

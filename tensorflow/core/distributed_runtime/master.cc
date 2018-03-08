@@ -528,8 +528,8 @@ void Master::ListDevices(const ListDevicesRequest* req,
       auto session = FindMasterSession(req->session_handle());
       if (session == nullptr) {
         done(errors::InvalidArgument(
-             "Session ", req->session_handle(),
-             " is not found. Possibly, this master has restarted."));
+            "Session ", req->session_handle(),
+            " is not found. Possibly, this master has restarted."));
         return;
       }
       core::ScopedUnref ref(session);

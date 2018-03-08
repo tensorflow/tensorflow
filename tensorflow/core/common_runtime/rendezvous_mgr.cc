@@ -76,8 +76,9 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   }
 
   // This copy must involve a non-CPU device. Hence, "in" must support DMA
-  // (e.g., string tensors do not work on GPU).
-  if (!DataTypeCanUseMemcpy(in.dtype())) {
+  // (e.g., string tensors do not work on GPU).  Variant copy DMA
+  // checks happen inside CopyTensor::ViaDMA.
+  if (!DataTypeCanUseMemcpy(in.dtype()) && in.dtype() != DT_VARIANT) {
     done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
                                  " tensor may not be copied from/to a GPU."));
     return;
@@ -100,8 +101,11 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
-  Tensor copy(out_allocator, in.dtype(), in.shape());
-  *out = copy;
+  if (in.dtype() != DT_VARIANT) {
+    // Variants are handled by CopyTensor::ViaDMA.
+    Tensor copy(out_allocator, in.dtype(), in.shape());
+    *out = copy;
+  }
 
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
@@ -115,29 +119,29 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
   VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
 
   // Recv the tensor from local_.
-  local_->RecvAsync(parsed, recv_args, [this, parsed, done](
-                                           const Status& status,
-                                           const Rendezvous::Args& send_args,
-                                           const Rendezvous::Args& recv_args,
-                                           const Tensor& in, bool is_dead) {
-    // If "in" is an uninitialized tensor, do copy-construction to preserve
-    // the uninitialized state, along with data type and shape info, which
-    // is useful for debugger purposes.
-    Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+  local_->RecvAsync(
+      parsed, recv_args,
+      [this, parsed, done](
+          const Status& status, const Rendezvous::Args& send_args,
+          const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
+        // If "in" is an uninitialized tensor, do copy-construction to preserve
+        // the uninitialized state, along with data type and shape info, which
+        // is useful for debugger purposes.
+        Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
 
-    StatusCallback final_callback = [done, send_args, recv_args, out,
-                                     is_dead](const Status& s) {
-      done(s, send_args, recv_args, *out, is_dead);
-      delete out;
-    };
+        StatusCallback final_callback = [done, send_args, recv_args, out,
+                                         is_dead](const Status& s) {
+          done(s, send_args, recv_args, *out, is_dead);
+          delete out;
+        };
 
-    if (status.ok() && in.IsInitialized()) {
-      SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
-                         std::move(final_callback));
-    } else {
-      final_callback(status);
-    }
-  });
+        if (status.ok() && in.IsInitialized()) {
+          SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                             std::move(final_callback));
+        } else {
+          final_callback(status);
+        }
+      });
 }
 
 void IntraProcessRendezvous::StartAbort(const Status& s) {

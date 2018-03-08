@@ -62,9 +62,16 @@ inline const ::tensorflow::Status& GetStatus(const StatusOr<T>& status) {
 #define EXPECT_IS_OK(expression)      \
   EXPECT_EQ(tensorflow::Status::OK(), \
             xla::testing::internal_status::GetStatus(expression))
+#define EXPECT_IS_NOT_OK(expression)  \
+  EXPECT_NE(tensorflow::Status::OK(), \
+            xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_OK
 #define ASSERT_IS_OK(expression)      \
   ASSERT_EQ(tensorflow::Status::OK(), \
+            xla::testing::internal_status::GetStatus(expression))
+#undef ASSERT_IS_NOT_OK
+#define ASSERT_IS_NOT_OK(expression)  \
+  ASSERT_NE(tensorflow::Status::OK(), \
             xla::testing::internal_status::GetStatus(expression))
 
 #endif  // TENSORFLOW_COMPILER_XLA_TEST_HELPERS_H_

@@ -28,13 +28,15 @@ VariantTensorData::VariantTensorData(const VariantTensorDataProto& proto) {
 
 VariantTensorData::~VariantTensorData() {}
 
-int VariantTensorData::tensors_size() { return tensors_.size(); }
+int VariantTensorData::tensors_size() const { return tensors_.size(); }
 
 const Tensor& VariantTensorData::tensors(int index) const {
   return tensors_[index];
 }
 
-std::vector<Tensor> VariantTensorData::tensors() { return tensors_; }
+const std::vector<Tensor>& VariantTensorData::tensors() const {
+  return tensors_;
+}
 
 Tensor* VariantTensorData::add_tensors() {
   tensors_.emplace_back();

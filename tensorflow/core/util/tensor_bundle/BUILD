@@ -66,6 +66,7 @@ tf_cc_test(
     srcs = ["tensor_bundle_test.cc"],
     deps = [
         ":tensor_bundle",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

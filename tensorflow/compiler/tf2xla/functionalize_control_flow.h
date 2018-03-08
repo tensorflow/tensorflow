@@ -23,7 +23,6 @@ namespace tensorflow {
 
 // Transformation that converts tf.while_loop() loops into functional While
 // operators, suitable for XLA compilation.
-// TODO(b/36470387): add support for conditionals.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library);
 

@@ -144,7 +144,7 @@ REGISTER_GPU_KERNEL(bool);
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 REGISTER_SYCL_KERNEL(bool);
 #undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class DeleteSessionTensorOp : public OpKernel {
  public:

@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 
 namespace tensorflow {
+namespace ops {
+namespace {
 
 void ReferenceImpl(const quint8* inp, float inp_min, float inp_max,
                    const TensorShape& shape, float var_eps, float* out) {
@@ -78,10 +80,6 @@ void ReferenceImpl(const quint8* inp, float inp_min, float inp_max,
   }
 }
 
-using namespace ops;  // NOLINT(build/namespaces)
-
-namespace {
-
 void Expect(const Tensor& input, float x_min, float x_max,
             bool output_range_given, float give_y_min, float given_y_max) {
   Scope root = Scope::NewRootScope();
@@ -122,8 +120,6 @@ void Expect(const Tensor& input, float x_min, float x_max,
   EXPECT_LE(max_diff(), 0.1);
   LOG(INFO) << "max diff " << max_diff();
 }
-
-}  // end namespace
 
 void TestBasic() {
   Tensor input_tensor(DT_QUINT8, {1, 4, 4, 32});
@@ -173,10 +169,12 @@ void TestClamp() {
   Expect(input_tensor, -10.0f, 10.0f, true, 0.0f, 1.0f);
 }
 
-#if !defined(__ANDROID__)
+}  // namespace
+}  // namespace ops
+}  // namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizedInstanceNormTest, t) { t(); }
+  TEST(QuantizedInstanceNormTest, t) { tensorflow::ops::t(); }
 
 RUN_TEST(TestBasic);
 RUN_TEST(TestZeroInput);
@@ -184,19 +182,8 @@ RUN_TEST(TestMaxInput);
 RUN_TEST(TestOutputRangeGiven);
 RUN_TEST(TestClamp);
 
-#undef RUN_TEST
-
-#endif  // __ANDROID__
-
-}  // end namespace tensorflow
-
-#if defined(__ANDROID__)
 int main(int argc, char** argv) {
-  tensorflow::TestBasic();
-  tensorflow::TestZeroInput();
-  tensorflow::TestMaxInput();
-  tensorflow::TestOutputRangeGiven();
-  tensorflow::TestClamp();
-  return 0;
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
-#endif  // __ANDROID__

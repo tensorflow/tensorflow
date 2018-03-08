@@ -35,7 +35,7 @@ message NodeDef {
   // CONSTRAINT ::= ("job:" JOB_NAME)
   //              | ("replica:" [1-9][0-9]*)
   //              | ("task:" [1-9][0-9]*)
-  //              | ( ("gpu" | "cpu") ":" ([1-9][0-9]* | "*") )
+  //              | ("device:" [A-Za-z]* ":" ([1-9][0-9]* | "*") )
   //
   // Valid values for this string include:
   // * "/job:worker/replica:0/task:1/device:GPU:3"  (full specification)

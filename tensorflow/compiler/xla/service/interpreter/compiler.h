@@ -43,13 +43,21 @@ class InterpreterCompiler : public Compiler {
   InterpreterCompiler() {}
   ~InterpreterCompiler() override {}
 
-  StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_modules,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> hlo_module,
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> hlo_module,
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> hlo_modules,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> hlo_modules,

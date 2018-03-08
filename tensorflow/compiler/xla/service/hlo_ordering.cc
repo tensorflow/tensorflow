@@ -173,6 +173,35 @@ bool HloOrdering::UseIsBeforeValueDefinition(
       return true;
     }
   }
+
+  // The use at a call occurs before values that are defined in the called
+  // computation.
+  if (use.instruction->opcode() == HloOpcode::kCall) {
+    const HloInstruction* call = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           call->to_apply())) {
+      VLOG(4) << "  use is call " << use.instruction->name()
+              << " and def is in called computation";
+      return true;
+    }
+  }
+
+  if (use.instruction->opcode() == HloOpcode::kConditional) {
+    const HloInstruction* conditional = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->true_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in TRUE computation";
+      return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           conditional->false_computation())) {
+      VLOG(4) << "  use is conditional " << use.instruction->name()
+              << " and def is in FALSE computation";
+      return true;
+    }
+  }
+
   VLOG(4) << "  use is not before value";
   return false;
 }
@@ -184,23 +213,6 @@ bool HloOrdering::LiveRangeStrictlyBefore(
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
     VLOG(4) << "a not defined before b";
-    return false;
-  }
-
-  // Live-out values from the module can never have ranges strictly before any
-  // other value.
-  if (a.live_out_of_module()) {
-    VLOG(4) << "a is live out of module";
-    return false;
-  }
-
-  // Live-out values of computations can never have ranges strictly before any
-  // other value in the computation (including values nested in
-  // subcomputations).
-  if (a.live_out_of_computation() &&
-      call_graph_->InstructionIsNestedIn(b.defining_instruction(),
-                                         a.defining_instruction()->parent())) {
-    VLOG(4) << "a is live out of computation containing b";
     return false;
   }
 
@@ -253,7 +265,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();
@@ -261,7 +273,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       pieces.push_back(tensorflow::strings::Printf(
           "  %s predecessors:", instruction->name().c_str()));
       for (auto predecessor : all) {
-        if (predecessors_.at(computation.get())
+        if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
           pieces.push_back(
               tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
@@ -277,12 +289,8 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // Compute predecessor relationships between all instructions to determine
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    predecessors_.emplace(computation.get(),
-                          computation->ComputeReachability());
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    predecessors_.emplace(computation, computation->ComputeReachability());
   }
 }
 
@@ -323,7 +331,7 @@ SequentialHloOrdering::SequentialOrder(
 string SequentialHloOrdering::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("SequentialHloOrdering");
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s order:",
                                                  computation->name().c_str()));
     // Gather all instructions in the module sequence for this computation and
@@ -331,7 +339,7 @@ string SequentialHloOrdering::ToString() const {
     std::vector<const HloInstruction*> instructions;
     for (auto& instruction_position : order_position_) {
       const HloInstruction* instruction = instruction_position.first;
-      if (instruction->parent() == computation.get()) {
+      if (instruction->parent() == computation) {
         instructions.push_back(instruction);
       }
     }

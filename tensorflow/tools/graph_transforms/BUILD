@@ -27,7 +27,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -66,10 +65,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
@@ -102,22 +99,22 @@ cc_library(
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
-        "remove_ema.cc",
         "obfuscate_names.cc",
+        "quantize_nodes.cc",
+        "quantize_weights.cc",
         "remove_attribute.cc",
+        "remove_control_dependencies.cc",
         "remove_device.cc",
+        "remove_ema.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
         "rename_op.cc",
+        "round_weights.cc",
         "set_device.cc",
         "sort_by_execution_order.cc",
         "sparsify_gather.cc",
         "strip_unused_nodes.cc",
-    ] + if_not_windows([
-        "quantize_nodes.cc",
-        "quantize_weights.cc",
-        "round_weights.cc",
-    ]),
+    ],
     hdrs = [
         "fold_constants_lib.h",
     ],
@@ -131,11 +128,14 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/contrib/rnn:gru_ops_op_lib",
+        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
+        "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
     ]),
@@ -315,4 +315,15 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
 )

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
@@ -65,6 +66,49 @@ class ProfilerContextTest(test.TestCase):
       profiler.profile_operations(options=opts)
       with gfile.Open(outfile, "r") as f:
         self.assertEqual(profile_str, f.read())
+
+  def testAutoTracingInDeubMode(self):
+    ops.reset_default_graph()
+    x = lib.BuildFullModel()
+
+    with profile_context.ProfileContext(test.get_temp_dir(), debug=True):
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        for _ in range(10):
+          sess.run(x)
+          for f in gfile.ListDirectory(test.get_temp_dir()):
+            # Warm up, no tracing.
+            self.assertFalse("run_meta" in f)
+        sess.run(x)
+        self.assertTrue(
+            gfile.Exists(os.path.join(test.get_temp_dir(), "run_meta_11")))
+        gfile.Remove(os.path.join(test.get_temp_dir(), "run_meta_11"))
+        # fetched already.
+        sess.run(x)
+        for f in gfile.ListDirectory(test.get_temp_dir()):
+          self.assertFalse("run_meta" in f)
+
+  def testDisabled(self):
+    ops.reset_default_graph()
+    x = lib.BuildFullModel()
+    with profile_context.ProfileContext(test.get_temp_dir(),
+                                        enabled=False) as pctx:
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        for _ in range(10):
+          sess.run(x)
+      self.assertTrue(pctx.profiler is None)
+      self.assertTrue(
+          getattr(session.BaseSession, "profile_context", None) is None)
+
+    with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        for _ in range(10):
+          sess.run(x)
+      self.assertFalse(pctx.profiler is None)
+      self.assertFalse(
+          getattr(session.BaseSession, "profile_context", None) is None)
 
 
 if __name__ == "__main__":

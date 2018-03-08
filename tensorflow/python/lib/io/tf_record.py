@@ -22,8 +22,10 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("python_io.TFRecordCompressionType")
 class TFRecordCompressionType(object):
   """The type of compression for the record."""
   NONE = 0
@@ -33,6 +35,7 @@ class TFRecordCompressionType(object):
 
 # NOTE(vrv): This will eventually be converted into a proto.  to match
 # the interface used by the C++ RecordWriter.
+@tf_export("python_io.TFRecordOptions")
 class TFRecordOptions(object):
   """Options used for manipulating TFRecord files."""
   compression_type_map = {
@@ -51,6 +54,7 @@ class TFRecordOptions(object):
     return cls.compression_type_map[options.compression_type]
 
 
+@tf_export("python_io.tf_record_iterator")
 def tf_record_iterator(path, options=None):
   """An iterator that read the records from a TFRecords file.
 
@@ -81,6 +85,7 @@ def tf_record_iterator(path, options=None):
   reader.Close()
 
 
+@tf_export("python_io.TFRecordWriter")
 class TFRecordWriter(object):
   """A class to write records to a TFRecords file.
 

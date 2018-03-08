@@ -74,6 +74,7 @@ class XlaDevice : public LocalDevice {
   static Status Create(const string& platform_name, const string& device_name,
                        int device_ordinal, const string& jit_device_name,
                        const SessionOptions& options, const string& name_prefix,
+                       bool register_device_for_compilation,
                        std::unique_ptr<XlaDevice>* device);
 
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,

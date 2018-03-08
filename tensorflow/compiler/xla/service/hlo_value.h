@@ -121,6 +121,12 @@ class HloValue {
   HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
            bool is_phi = false);
 
+  // Sets the positions in the module at which the HloValue appears. Updates
+  // uses. Should be called once and only once. The defining position should not
+  // be included in 'positions' as this is set at construction time.
+  void SetPositionsAndComputeUses(
+      tensorflow::gtl::ArraySlice<HloPosition> positions);
+
   // Return a unique identifier for this HloValue. This value is used for stable
   // sorting and iteration
   Id id() const { return id_; }
@@ -143,27 +149,14 @@ class HloValue {
   // Return the shape of this HloValue.
   const Shape& shape() const { return defining_position().shape(); }
 
-  // Add or remove a position at which the HloValue appears. The definition
-  // position can not be removed. The uses of the HloValue are updated.
-  void AddPosition(HloInstruction* instruction, const ShapeIndex& index);
-  void RemovePosition(HloInstruction* instruction, const ShapeIndex& index);
-
-  // Remove all positions except the defining position. Updates uses.
-  void ClearPositions();
-
   // Return all positions of the HloValue in the module.
   const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
 
-  void RecomputeUses();
-
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
-
-  // Get whether this HloValue is live out of the computation it is defined in.
-  bool live_out_of_computation() const { return live_out_of_computation_; }
 
   bool operator==(const HloValue& other) const;
   bool operator!=(const HloValue& other) const;

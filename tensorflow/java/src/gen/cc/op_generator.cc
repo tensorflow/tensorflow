@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
+namespace java {
 namespace {
 
 string CamelCase(const string& str, char delimiter, bool upper) {
@@ -63,4 +64,5 @@ Status OpGenerator::Run(const OpList& ops, const string& lib_name,
   return Status::OK();
 }
 
+}  // namespace java
 }  // namespace tensorflow

@@ -37,7 +37,7 @@ for detecting the running MPI configuration.
 Example:
 
 ```python
-from tensorflow.contrib import mpi
+import tensorflow.contrib.mpi_collectives as mpi
 
 # Use `mpi.Session` instead of `tf.Session`
 with mpi.Session() as session:
@@ -48,8 +48,10 @@ with mpi.Session() as session:
         print("MPI Size:", session.run(mpi.size()))
 ```
 
-@@rank
+@@init
 @@size
+@@rank
+@@local_rank
 
 ### Ring Allreduce and Allgather
 
@@ -123,12 +125,12 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.mpi_collectives.mpi_ops import size
-from tensorflow.contrib.mpi_collectives.mpi_ops import rank
-from tensorflow.contrib.mpi_collectives.mpi_ops import local_rank
-from tensorflow.contrib.mpi_collectives.mpi_ops import allgather
-from tensorflow.contrib.mpi_collectives.mpi_ops import _allreduce
-from tensorflow.contrib.mpi_collectives.mpi_ops import init
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import init
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import size
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import rank
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import local_rank
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import allgather
+from tensorflow.contrib.mpi_collectives.python.ops.mpi_ops import _allreduce
 
 
 def allreduce(tensor, average=True):
@@ -194,7 +196,7 @@ class DistributedOptimizer(tf.train.Optimizer):
 
     See Optimizer.compute_gradients() for more info.
 
-    In DistributedOptimizer, compute_gradients() is overriden to also
+    In DistributedOptimizer, compute_gradients() is overridden to also
     allreduce the gradients before returning them.
     """
     gradients = (super(DistributedOptimizer, self)

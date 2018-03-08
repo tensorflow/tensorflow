@@ -15,8 +15,8 @@ limitations under the License.
 
 // Shim for systems that need to load both SessionBundle and
 // SavedModelBundle interchangeably during migration to SavedModel.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#ifndef TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#define TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
 
 #include <memory>
 
@@ -67,4 +67,4 @@ Status LoadSessionBundleOrSavedModelBundle(
 
 }  // namespace serving
 }  // namespace tensorflow
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#endif  // TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_

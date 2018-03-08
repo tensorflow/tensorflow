@@ -31,7 +31,7 @@ import org.tensorflow.op.annotation.Operator;
 
 /** An operator producing a constant value. */
 @Operator
-public final class Constant extends PrimitiveOp implements Operand {
+public final class Constant<T> extends PrimitiveOp implements Operand<T> {
   /**
    * Create a constant from a Java object.
    *
@@ -47,8 +47,8 @@ public final class Constant extends PrimitiveOp implements Operand {
    * @param object a Java object representing the constant.
    * @see org.tensorflow.Tensor#create(Object) Tensor.create
    */
-  public static Constant create(Scope scope, Object object) {
-    try (Tensor value = Tensor.create(object)) {
+  public static <T> Constant<T> create(Scope scope, Object object, Class<T> type) {
+    try (Tensor<T> value = Tensor.create(object, type)) {
       return createWithTensor(scope, value);
     }
   }
@@ -66,8 +66,8 @@ public final class Constant extends PrimitiveOp implements Operand {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant create(Scope scope, long[] shape, IntBuffer data) {
-    try (Tensor value = Tensor.create(shape, data)) {
+  public static Constant<Integer> create(Scope scope, long[] shape, IntBuffer data) {
+    try (Tensor<Integer> value = Tensor.create(shape, data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -85,8 +85,8 @@ public final class Constant extends PrimitiveOp implements Operand {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant create(Scope scope, long[] shape, FloatBuffer data) {
-    try (Tensor value = Tensor.create(shape, data)) {
+  public static Constant<Float> create(Scope scope, long[] shape, FloatBuffer data) {
+    try (Tensor<Float> value = Tensor.create(shape, data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -104,8 +104,8 @@ public final class Constant extends PrimitiveOp implements Operand {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant create(Scope scope, long[] shape, DoubleBuffer data) {
-    try (Tensor value = Tensor.create(shape, data)) {
+  public static Constant<Double> create(Scope scope, long[] shape, DoubleBuffer data) {
+    try (Tensor<Double> value = Tensor.create(shape, data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -123,8 +123,8 @@ public final class Constant extends PrimitiveOp implements Operand {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant create(Scope scope, long[] shape, LongBuffer data) {
-    try (Tensor value = Tensor.create(shape, data)) {
+  public static Constant<Long> create(Scope scope, long[] shape, LongBuffer data) {
+    try (Tensor<Long> value = Tensor.create(shape, data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -134,23 +134,24 @@ public final class Constant extends PrimitiveOp implements Operand {
    *
    * <p>Creates a Constant with the provided shape of any type where the constant data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param scope is a scope used to add the underlying operation.
-   * @param dataType the tensor datatype.
+   * @param type the tensor datatype.
    * @param shape the tensor shape.
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static Constant create(Scope scope, DataType dataType, long[] shape, ByteBuffer data) {
-    try (Tensor value = Tensor.create(dataType, shape, data)) {
+  public static <T> Constant<T> create(Scope scope, Class<T> type, long[] shape, ByteBuffer data) {
+    try (Tensor<T> value = Tensor.create(type, shape, data)) {
       return createWithTensor(scope, value);
     }
   }
 
-  private static Constant createWithTensor(Scope scope, Tensor value) {
-    return new Constant(
+  private static <T> Constant<T> createWithTensor(Scope scope, Tensor<T> value) {
+    return new Constant<T>(
         scope
             .graph()
             .opBuilder("Const", scope.makeOpName("Const"))
@@ -160,7 +161,7 @@ public final class Constant extends PrimitiveOp implements Operand {
   }
 
   @Override
-  public Output asOutput() {
+  public Output<T> asOutput() {
     return output;
   }
 
@@ -169,5 +170,5 @@ public final class Constant extends PrimitiveOp implements Operand {
     output = operation.output(0);
   }
 
-  private final Output output;
+  private final Output<T> output;
 }

@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
 
 
@@ -74,8 +75,10 @@ class CrossShardOptimizer(optimizer.Optimizer):
     """
     num_shards = tpu_function.get_tpu_context().number_of_shards
     if num_shards is None:
-      raise ValueError("CrossShardOptimizer must be used within a "
-                       "tpu_shard_context.")
+      logging.warning(
+          "CrossShardOptimizer should be used within a tpu_shard_context, but "
+          "got unset number_of_shards. Assuming 1.")
+      num_shards = 1
     if num_shards > 1 and self._reduction == losses.Reduction.MEAN:
       scale = 1.0 / num_shards
       loss *= scale

@@ -43,7 +43,6 @@ final class NativeLibrary {
   private static final boolean DEBUG =
       System.getProperty("org.tensorflow.NativeLibrary.DEBUG") != null;
   private static final String JNI_LIBNAME = "tensorflow_jni";
-  private static final String FRAMEWORK_LIBNAME = "tensorflow_framework";
 
   public static void load() {
     if (isLoaded() || tryLoadLibrary()) {
@@ -59,16 +58,21 @@ final class NativeLibrary {
     }
     // Native code is not present, perhaps it has been packaged into the .jar file containing this.
     // Extract the JNI library itself
-    final String jniResourceName = makeResourceName(JNI_LIBNAME);
+    final String jniLibName = System.mapLibraryName(JNI_LIBNAME);
+    final String jniResourceName = makeResourceName(jniLibName);
     log("jniResourceName: " + jniResourceName);
     final InputStream jniResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(jniResourceName);
     // Extract the JNI's dependency
-    final String frameworkResourceName = makeResourceName(FRAMEWORK_LIBNAME);
+    final String frameworkLibName =
+        maybeAdjustForMacOS(System.mapLibraryName("tensorflow_framework"));
+    final String frameworkResourceName = makeResourceName(frameworkLibName);
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
-    if (jniResource == null || frameworkResource == null) {
+    // Do not complain if the framework resource wasn't found. This may just mean that we're
+    // building with --config=monolithic (in which case it's not needed and not included).
+    if (jniResource == null) {
       throw new UnsatisfiedLinkError(
           String.format(
               "Cannot find TensorFlow native library for OS: %s, architecture: %s. See "
@@ -84,9 +88,17 @@ final class NativeLibrary {
       // Deletions are in the reverse order of requests, so we need to request that the directory be
       // deleted first, so that it is empty when the request is fulfilled.
       tempPath.deleteOnExit();
-      final String tempDirectory = tempPath.toString();
-      extractResource(frameworkResource, FRAMEWORK_LIBNAME, tempDirectory);
-      System.load(extractResource(jniResource, JNI_LIBNAME, tempDirectory));
+      final String tempDirectory = tempPath.getCanonicalPath();
+      if (frameworkResource != null) {
+        extractResource(frameworkResource, frameworkLibName, tempDirectory);
+      } else {
+        log(
+            frameworkResourceName
+                + " not found. This is fine assuming "
+                + jniResourceName
+                + " is not built to depend on it.");
+      }
+      System.load(extractResource(jniResource, jniLibName, tempDirectory));
     } catch (IOException e) {
       throw new UnsatisfiedLinkError(
           String.format(
@@ -114,10 +126,27 @@ final class NativeLibrary {
     }
   }
 
+  private static String maybeAdjustForMacOS(String libFilename) {
+    if (!System.getProperty("os.name").contains("OS X")) {
+      return libFilename;
+    }
+    // This is macOS, and the TensorFlow release process might have setup dependencies on
+    // libtensorflow_framework.so instead of libtensorflow_framework.dylib. Adjust for that.
+    final ClassLoader cl = NativeLibrary.class.getClassLoader();
+    if (cl.getResource(makeResourceName(libFilename)) != null) {
+      return libFilename;
+    }
+    // liftensorflow_framework.dylib not found, try libtensorflow_framework.so
+    final String suffix = ".dylib";
+    if (!libFilename.endsWith(suffix)) {
+      return libFilename;
+    }
+    return libFilename.substring(0, libFilename.length() - suffix.length()) + ".so";
+  }
+
   private static String extractResource(
-      InputStream resource, String resourceName, String extractToDirectory)
-      throws IOException {
-    final File dst = new File(extractToDirectory, System.mapLibraryName(resourceName));
+      InputStream resource, String resourceName, String extractToDirectory) throws IOException {
+    final File dst = new File(extractToDirectory, resourceName);
     dst.deleteOnExit();
     final String dstPath = dst.toString();
     log("extracting native library to: " + dstPath);
@@ -151,9 +180,7 @@ final class NativeLibrary {
   }
 
   private static String makeResourceName(String baseName) {
-    return "org/tensorflow/native/"
-        + String.format("%s-%s/", os(), architecture())
-        + System.mapLibraryName(baseName);
+    return "org/tensorflow/native/" + String.format("%s-%s/", os(), architecture()) + baseName;
   }
 
   private static long copy(InputStream src, File dstFile) throws IOException {
@@ -177,8 +204,7 @@ final class NativeLibrary {
   // compatibility.
   private static File createTemporaryDirectory() {
     File baseDirectory = new File(System.getProperty("java.io.tmpdir"));
-    String directoryName
-        = "tensorflow_native_libraries-" + System.currentTimeMillis() + "-";
+    String directoryName = "tensorflow_native_libraries-" + System.currentTimeMillis() + "-";
     for (int attempt = 0; attempt < 1000; attempt++) {
       File temporaryDirectory = new File(baseDirectory, directoryName + attempt);
       if (temporaryDirectory.mkdir()) {
@@ -187,7 +213,8 @@ final class NativeLibrary {
     }
     throw new IllegalStateException(
         "Could not create a temporary directory (tried to make "
-        + directoryName + "*) to extract TensorFlow native libraries.");
+            + directoryName
+            + "*) to extract TensorFlow native libraries.");
   }
 
   private NativeLibrary() {}

@@ -57,10 +57,10 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
     const int local_id = cm.Id(n);
     const int global_id = Id(n);
     if (local_id < 0 || global_id < 0) continue;
-    Ensure(global_id);
+    int num_slots = cm.slot_bytes_[local_id].size();
+    Ensure(global_id, num_slots);
     count_[global_id] += cm.count_[local_id];
     time_[global_id] += cm.time_[local_id];
-    int num_slots = cm.slot_bytes_[local_id].size();
     if (num_slots > 0) {
       if (slot_bytes_[global_id].empty()) {
         slot_bytes_[global_id].resize(num_slots);
@@ -78,11 +78,11 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
   CHECK(is_global_);
   CHECK_EQ(true, cm.is_global());
   const int num_nodes = cm.count_.size();
-  Ensure(num_nodes);
-  for (int i = 0; i < num_nodes; ++i) {
+  for (int i = num_nodes - 1; i >= 0; --i) {
     count_[i] += cm.count_[i];
     time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
+    Ensure(i, num_slots);
     if (num_slots > 0) {
       if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
@@ -106,7 +106,7 @@ void CostModel::MergeFromStats(const NodeNameToCostIdMap& map,
       // copy/send/recv nodes, feed/fetch, etc.
       if (iter == map.end()) continue;
       int32 global_id = iter->second;
-      Ensure(global_id);
+      Ensure(global_id, ns.output_size());
       int64 elapsed_micros = ns.op_end_rel_micros() - ns.op_start_rel_micros();
       count_[global_id]++;
       time_[global_id] += elapsed_micros;
@@ -122,7 +122,7 @@ void CostModel::MergeFromStats(const NodeNameToCostIdMap& map,
   }
 }
 
-void CostModel::Ensure(int id) {
+void CostModel::Ensure(int id, int num_outputs) {
   if (slot_bytes_.size() <= static_cast<size_t>(id)) {
     slot_bytes_.resize(id + 1);
     count_.resize(id + 1);
@@ -131,25 +131,37 @@ void CostModel::Ensure(int id) {
     max_exec_time_.resize(id + 1);
     output_port_alloc_ids_.resize(id + 1);
   }
-}
+  if (num_outputs > 0) {
+    auto perslot = &slot_bytes_[id];
+    auto output_port_alloc_ids = &output_port_alloc_ids_[id];
+    auto max_mem_usage = &max_mem_usage_[id];
 
-void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
-  const int id = Id(node);
-  if (id < 0) return;
-  Ensure(id);
-  auto perslot = &slot_bytes_[id];
-  auto max_mem_usage = &max_mem_usage_[id];
-  auto output_port_alloc_ids = &output_port_alloc_ids_[id];
-  if (!perslot->empty()) {
-    CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
-                                           << node->name();
-  } else {
+    CHECK_LE(perslot->size(), num_outputs);
+    DCHECK_EQ(output_port_alloc_ids->size(), perslot->size());
+    DCHECK_EQ(max_mem_usage->output_port_mem.size(), perslot->size());
+    DCHECK_EQ(max_mem_usage->output_port_shape.size(), perslot->size());
+    DCHECK_EQ(max_mem_usage->output_port_type.size(), perslot->size());
+
     perslot->resize(num_outputs, Bytes(-1));
     output_port_alloc_ids->resize(num_outputs, -1);
     max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
     max_mem_usage->output_port_shape.resize(num_outputs, unknown_shape_);
     max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
   }
+}
+
+void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
+  const int id = Id(node);
+  if (id < 0) return;
+  // Do not resize the number of slots before checking its existing number of
+  // slots.
+  Ensure(id, 0);
+  auto perslot = &slot_bytes_[id];
+  if (!perslot->empty()) {
+    CHECK_EQ(num_outputs, perslot->size())
+        << "Cannot resize slot_bytes, node=" << node->name();
+  }
+  Ensure(id, num_outputs);
 }
 
 void CostModel::RecordCount(const Node* node, int count) {
@@ -198,7 +210,7 @@ void CostModel::RecordTime(const Node* node, Microseconds time) {
   const int id = Id(node);
   if (id < 0) return;
   DCHECK(node->IsOp()) << node->DebugString();
-  Ensure(id);
+  Ensure(id, node->num_outputs());
   time_[id] += time;
 }
 
@@ -240,7 +252,13 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
                                     const DataType& dtype) {
   const int id = Id(node);
   if (id < 0) return;
-  Ensure(id);
+  if (output_slot >= node->num_outputs()) {
+    LOG(ERROR) << "Unexpected output slot for node " << node->DebugString()
+               << ". Got " << output_slot << " but its num_outputs is "
+               << node->num_outputs();
+    return;
+  }
+  Ensure(id, node->num_outputs());
   auto& current_max = max_mem_usage_[id].output_port_mem[output_slot];
   // If the memory allocator doesn't track memory usage, let's infer a lower
   // bound from the tensor shape and its data type.
@@ -291,59 +309,24 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
   return max_mem_usage_[id].temp_memory_size;
 }
 
-Bytes CostModel::HostTempMemorySize(const Node* node) const {
+Bytes CostModel::PersistentMemorySize(const Node* node) const {
   const int id = Id(node);
   if (id < 0) {
     return Bytes(0);
   }
-  return max_mem_usage_[id].host_temp_memory_size;
-}
-
-Bytes CostModel::DeviceTempMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].device_temp_memory_size;
-}
-
-Bytes CostModel::HostPersistentMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].host_persistent_memory_size;
-}
-
-Bytes CostModel::DevicePersistentMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].device_persistent_memory_size;
+  return max_mem_usage_[id].persistent_memory_size;
 }
 
 void CostModel::RecordMemoryStats(const Node* node,
                                   const MemoryStats& memory_stats) {
   const int id = Id(node);
   if (id < 0) return;
-  max_mem_usage_[id].host_temp_memory_size =
-      memory_stats.host_temp_memory_size();
-  max_mem_usage_[id].device_temp_memory_size =
-      memory_stats.device_temp_memory_size();
-  max_mem_usage_[id].host_persistent_memory_size =
-      memory_stats.host_persistent_memory_size();
-  max_mem_usage_[id].device_persistent_memory_size =
-      memory_stats.device_persistent_memory_size();
-  for (int64 alloc_id : memory_stats.host_persistent_tensor_alloc_ids()) {
+  max_mem_usage_[id].temp_memory_size = memory_stats.temp_memory_size();
+  max_mem_usage_[id].persistent_memory_size =
+      memory_stats.persistent_memory_size();
+  for (int64 alloc_id : memory_stats.persistent_tensor_alloc_ids()) {
     if (alloc_id > 0) {
-      host_persistent_alloc_ids_.insert(alloc_id);
-    }
-  }
-  for (int64 alloc_id : memory_stats.device_persistent_tensor_alloc_ids()) {
-    if (alloc_id > 0) {
-      persistent_alloc_ids_by_devices_[node->assigned_device_name()].insert(
-          alloc_id);
+      persistent_alloc_ids_.insert(alloc_id);
     }
   }
 }
@@ -351,7 +334,7 @@ void CostModel::RecordMemoryStats(const Node* node,
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
   const int id = Id(node);
   if (id < 0) return;
-  Ensure(id);
+  Ensure(id, node->num_outputs());
   max_exec_time_[id] = std::max(max_exec_time_[id], time);
 }
 
@@ -367,7 +350,7 @@ void CostModel::RecordAllocationId(const Node* node, int output_slot,
                                    int64 alloc_id) {
   const int id = Id(node);
   if (id < 0) return;
-  Ensure(id);
+  Ensure(id, node->num_outputs());
   output_port_alloc_ids_[id][output_slot] = alloc_id;
 }
 
@@ -381,7 +364,7 @@ int64 CostModel::AllocationId(const Node* node, int slot) const {
 }
 
 bool CostModel::IsPersistentTensor(const Node* node, int64 alloc_id) const {
-  if (host_persistent_alloc_ids_.count(alloc_id) > 0) {
+  if (persistent_alloc_ids_.count(alloc_id) > 0) {
     return true;
   }
   if (persistent_alloc_ids_by_devices_.find(node->assigned_device_name()) ==
@@ -444,7 +427,7 @@ static void AssignSizes(const Graph& g, CostModel* cost_model) {
     if (e->IsControlEdge()) {
       continue;
     }
-    Node* src = e->src();
+    const Node* src = e->src();
 
     // TODO(josh11b): Get an estimate from the Op
     Bytes size(1);
@@ -548,11 +531,8 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
       cnode->add_control_input(Id(e->src()));
     }
 
-    cnode->set_host_temp_memory_size(HostTempMemorySize(n).value());
-    cnode->set_device_temp_memory_size(DeviceTempMemorySize(n).value());
-    cnode->set_host_persistent_memory_size(HostPersistentMemorySize(n).value());
-    cnode->set_device_persistent_memory_size(
-        DevicePersistentMemorySize(n).value());
+    cnode->set_temporary_memory_size(TempMemorySize(n).value());
+    cnode->set_persistent_memory_size(PersistentMemorySize(n).value());
 
     cnode->set_compute_cost(MaxExecutionTime(n).value());
 

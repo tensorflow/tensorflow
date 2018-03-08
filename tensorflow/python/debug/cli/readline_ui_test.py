@@ -20,6 +20,7 @@ from __future__ import print_function
 import argparse
 import tempfile
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import readline_ui
 from tensorflow.python.debug.cli import ui_factory
@@ -32,7 +33,9 @@ class MockReadlineUI(readline_ui.ReadlineUI):
   """Test subclass of ReadlineUI that bypasses terminal manipulations."""
 
   def __init__(self, on_ui_exit=None, command_sequence=None):
-    readline_ui.ReadlineUI.__init__(self, on_ui_exit=on_ui_exit)
+    readline_ui.ReadlineUI.__init__(
+        self, on_ui_exit=on_ui_exit,
+        config=cli_config.CLIConfig(config_file_path=tempfile.mktemp()))
 
     self._command_sequence = command_sequence
     self._command_counter = 0
@@ -160,6 +163,18 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     with gfile.Open(output_path, "r") as f:
       self.assertEqual("bar\nbar\n", f.read())
+
+  def testConfigSetAndShow(self):
+    """Run UI with an initial command specified."""
+
+    ui = MockReadlineUI(command_sequence=[
+        "config set graph_recursion_depth 5", "config show", "exit"])
+    ui.run_ui()
+    outputs = ui.observers["screen_outputs"]
+    self.assertEqual(
+        ["Command-line configuration:",
+         "",
+         "  graph_recursion_depth: 5"], outputs[1].lines[:3])
 
 
 if __name__ == "__main__":

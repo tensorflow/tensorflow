@@ -57,6 +57,7 @@ void TestCorrectness(const string& serialized) {
   Example example;
   Example fast_example;
   EXPECT_TRUE(example.ParseFromString(serialized));
+  example.DiscardUnknownFields();
   EXPECT_TRUE(TestFastParse(serialized, &fast_example));
   EXPECT_EQ(example.DebugString(), fast_example.DebugString());
   if (example.DebugString() != fast_example.DebugString()) {
@@ -312,7 +313,7 @@ void Fuzz(random::SimplePhilox* rng) {
           break;
         }
         default: {
-          QCHECK(false);
+          LOG(QFATAL);
           break;
         }
       }

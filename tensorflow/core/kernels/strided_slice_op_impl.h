@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -284,10 +286,10 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N_GPU);
 TF_CALL_complex64(DECLARE_FOR_N_GPU);
 TF_CALL_complex128(DECLARE_FOR_N_GPU);
 DECLARE_FOR_N_GPU(int32);
+DECLARE_FOR_N_GPU(int64);
 #endif  // END GOOGLE_CUDA
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N_CPU);
-DECLARE_FOR_N_CPU(bfloat16);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define PREVENT_FOR_N_SYCL(T) \
@@ -299,9 +301,10 @@ DECLARE_FOR_N_CPU(bfloat16);
 TF_CALL_SYCL_PROXY_TYPES(PREVENT_FOR_N_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N_SYCL);
 DECLARE_FOR_N_SYCL(int32);
+DECLARE_FOR_N_SYCL(int64);
 
 #undef DECLARE_FOR_N_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef INSTANTIATE
 #undef DECLARE_FOR_N_CPU

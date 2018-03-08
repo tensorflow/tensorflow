@@ -44,8 +44,8 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
 
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());
 
-  auto x_array = LiteralToScopedShapedBuffer(
-      *Literal::CreateR1<float>({0.0f, 1.0f, 2.0f}));
+  auto x_array =
+      LiteralToShapedBuffer(*Literal::CreateR1<float>({0.0f, 1.0f, 2.0f}));
 
   int64 allocation_count_before = allocator_->allocation_count();
 

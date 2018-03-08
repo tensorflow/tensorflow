@@ -95,7 +95,7 @@ int64 TensorUtils::InferBatchSize(
   if (sparse_int_feature_shapes_list.size() > 0) {
     return sparse_int_feature_shapes_list[0].flat<int64>()(0);
   }
-  QCHECK(false) << "Could not infer batch size due to empty feature set.";
+  LOG(QFATAL) << "Could not infer batch size due to empty feature set.";
 }
 
 }  // namespace utils

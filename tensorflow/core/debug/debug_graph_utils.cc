@@ -221,20 +221,25 @@ Status DebugNodeInserter::InsertNodes(
 }
 
 void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
+  bool deparallelized_a_loop = false;
   for (Node* node : graph->nodes()) {
     if (node->IsEnter()) {
       const AttrValue* parallel_iterations =
           node->attrs().Find("parallel_iterations");
       if (parallel_iterations && parallel_iterations->i() > 1) {
-        LOG(INFO) << "For debugging, tfdbg is changing the "
-                  << "parallel_iterations attribute of the Enter/RefEnter "
-                  << "node \"" << node->name() << "\" on device \""
-                  << device->name() << "\" from " << parallel_iterations->i()
-                  << " to 1. (This does not affect subsequent non-debug "
-                  << "runs.)";
+        deparallelized_a_loop = true;
+        VLOG(1) << "Changing the parallel_iterations attribute of the "
+                << "Enter/RefEnter node \"" << node->name() << "\" on device \""
+                << device->name() << "\" from " << parallel_iterations->i()
+                << " to 1.";
         node->AddAttr<int64>("parallel_iterations", 1);
       }
     }
+  }
+  if (deparallelized_a_loop) {
+    LOG(INFO) << "For debugging, tfdbg has set the parallel_iterations "
+              << "attribute of all scheduled Enter/RefEnter nodes to 1. (This "
+              << "does not affect subsequent non-debug runs.)";
   }
 }
 

@@ -117,7 +117,9 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 // the caller takes the ownership of returned executors.
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, Item* item) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          Item* item) {
   item->session = session;
   item->lib_def.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
@@ -132,7 +134,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options()));
+      item->lib_def.get(), graph_options.optimizer_options(), cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -206,8 +208,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     }
 
     // Give the device an opportunity to rewrite its subgraph.
-    TF_RETURN_IF_ERROR(
-        unit->device->MaybeRewriteGraph(gdef.library(), &subgraph));
+    TF_RETURN_IF_ERROR(unit->device->MaybeRewriteGraph(&subgraph));
 
     // Top-level nodes in the graph uses the op segment to cache
     // kernels. Therefore, as long as the executor is alive, we need
@@ -227,8 +228,14 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     params.function_library = lib;
     params.create_kernel = [session, lib, opseg](const NodeDef& ndef,
                                                  OpKernel** kernel) {
-      // Caches the kernel only if the node is stateful.
-      if (!lib->IsStateful(ndef.op())) {
+      // We do not share the kernel via the OpSegment if the node is
+      // stateless, or a function.
+      // NOTE(mrry): We must not share function kernels (implemented
+      // using `CallOp`) between subgraphs, because `CallOp::handle_`
+      // is tied to a particular subgraph. Even if the function itself
+      // is stateful, the `CallOp` that invokes it is not.
+      if (!lib->IsStateful(ndef.op()) ||
+          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -264,16 +271,19 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       skip_cost_models_ = false;
     }
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, subgraph.release(), &unit->root));
+        NewLocalExecutor(params, std::move(subgraph), &unit->root));
   }
   return Status::OK();
 }
 
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, string* handle) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          string* handle) {
   Item* item = new Item;
-  Status s = InitItem(session, gdef, graph_options, debug_options, item);
+  Status s =
+      InitItem(session, gdef, graph_options, debug_options, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;
@@ -332,8 +342,8 @@ Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
     keys.push_back(p.first);
     tensors_to_send.push_back(p.second);
   }
-  Status s = SendTensorsToRendezvous(rendezvous, Rendezvous::Args(), keys,
-                                     tensors_to_send);
+  Status s =
+      SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   rendezvous->Unref();
   return s;
 }
@@ -357,7 +367,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
     received_keys->push_back(p.second);
   }
   RecvOutputsFromRendezvousAsync(
-      rendezvous, Rendezvous::Args(), keys, received_keys,
+      rendezvous, nullptr, {}, keys, received_keys,
       [done, rendezvous, received_keys, out, keys](const Status s) {
         rendezvous->Unref();
         for (int i = 0; i < keys.size(); ++i) {
@@ -415,8 +425,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       keys.push_back(p.first);
       tensors_to_send.push_back(p.second);
     }
-    s = SendTensorsToRendezvous(rendezvous, Rendezvous::Args(), keys,
-                                tensors_to_send);
+    s = SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   }
 
   if (!s.ok()) {
@@ -472,8 +481,18 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
   using std::placeholders::_1;
   // Line below is equivalent to this code, but does one less indirect call:
   //  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
-  args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
+  auto default_runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
   for (const auto& unit : item->units) {
+    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    //     less threads to the main compute pool by default.
+    thread::ThreadPool* device_thread_pool =
+        unit.device->tensorflow_device_thread_pool();
+    if (!device_thread_pool) {
+      args.runner = default_runner;
+    } else {
+      args.runner =
+          std::bind(&thread::ThreadPool::Schedule, device_thread_pool, _1);
+    }
     unit.root->RunAsync(args, barrier->Get());
   }
 }

@@ -29,6 +29,36 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+static void Delinearize(std::vector<llvm::Value*>* multidim,
+                        llvm::Value* linear, const Shape& shape,
+                        llvm::IRBuilder<>* ir_builder) {
+  int64 divisor = 1;
+  const Layout& layout = shape.layout();
+  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64 dimension = layout.minor_to_major(i);
+    int64 size_of_current_dimension = shape.dimensions(dimension);
+
+    // If i is not the last dimension, compute
+    //   (linear_index / divisor) % current_dimension.
+    // If i is the last dimension, we can skip the mod, because we assume that
+    // linear is in bounds.
+    //
+    // TODO(jlebar): We could add bounds checks here and elsewhere in this file,
+    // guarded under some sort of xla-memcheck flag.  This might be particularly
+    // useful because cuda-memcheck can't help us much in XLA: Most of our
+    // memory lives in one big allocation, so cuda-memcheck can't detect
+    // out-of-bounds accesses.
+    auto* quot = ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor));
+    if (i < layout.minor_to_major_size() - 1) {
+      (*multidim)[dimension] = ir_builder->CreateURem(
+          quot, ir_builder->getInt64(size_of_current_dimension));
+    } else {
+      (*multidim)[dimension] = quot;
+    }
+    divisor *= size_of_current_dimension;
+  }
+}
+
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilder<>* ir_builder)
     : multidim_(ShapeUtil::Rank(shape)),
@@ -38,16 +68,7 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
   CHECK(LayoutUtil::HasLayout(shape))
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
-  int64 divisor = 1;
-  for (int64 dimension : layout_.minor_to_major()) {
-    int64 size_of_current_dimension = shape.dimensions(dimension);
-    // Emit IR instructions that compute
-    //   (linear_index / divisor) % current_dimension
-    multidim_[dimension] = ir_builder->CreateURem(
-        ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor)),
-        ir_builder->getInt64(size_of_current_dimension));
-    divisor *= size_of_current_dimension;
-  }
+  Delinearize(&multidim_, linear, shape, ir_builder);
 }
 
 IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -69,7 +90,6 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
   CHECK_EQ(shape.dimensions_size(), multidim.size());
   CHECK(LayoutUtil::HasLayout(shape));
-  linear_ = Linearize(AsInt64Slice(shape.dimensions()), ir_builder);
 }
 
 IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
@@ -92,16 +112,13 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
   }
 }
 
-// Returns whether given linear index valid on given shape.
+// Returns whether the given linear index is valid on the given shape.
 bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
-  auto b = ShapeUtil::MakeShape(PRED /* irrelevant */, dims_);
+  auto b = ShapeUtil::MakeShape(a.element_type(), dims_);
   *b.mutable_layout() = layout_;
   return linear_ != nullptr &&
-         ContainersEqual(
-             ShapeUtil::StripDegenerateDimensions(a).dimensions(),
-             ShapeUtil::StripDegenerateDimensions(b).dimensions()) &&
-         LayoutUtil::Equal(ShapeUtil::StripDegenerateDimensions(a).layout(),
-                           ShapeUtil::StripDegenerateDimensions(b).layout());
+         ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
+         ShapeUtil::ReshapeIsBitcast(a, b);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
@@ -146,7 +163,8 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     }
   }
 
-  if (linear() != nullptr &&
+  if (linear() != nullptr && LayoutUtil::HasLayout(input_shape) &&
+      LayoutUtil::HasLayout(output_shape) &&
       ShapeUtil::ReshapeIsBitcast(input_shape, output_shape)) {
     return Index(source_multidim_index, linear(), input_shape);
   }
@@ -181,11 +199,40 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> operand_multidim_index =
       Permute(dimension_mapping, multidim());
-  if (linear() != nullptr &&
+
+  if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
+      LayoutUtil::HasLayout(shape) &&
       ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
     return Index(operand_multidim_index, linear(), operand_shape);
   }
+
   return Index(operand_multidim_index);
+}
+
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& shape, const Shape& operand_shape,
+    llvm::IRBuilder<>* builder) const {
+  CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
+
+  // First linearize the index coming from the output of the bitcast. We want
+  // the physical index of the element in the buffer. This is like Linearize,
+  // but takes the layout into account.
+  int64 scale = 1;
+  llvm::Value* linear_index = builder->getInt64(0);
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
+    linear_index = builder->CreateAdd(
+        linear_index,
+        builder->CreateMul(multidim_[dimension], builder->getInt64(scale), "",
+                           /*HasNUW=*/true, /*HasNSW=*/true),
+        "", /*HasNUW=*/true, /*HasNSW=*/true);
+    scale *= shape.dimensions(dimension);
+  }
+
+  // Now delinearize it for the input of the bitcast.
+  std::vector<llvm::Value*> multi_index(operand_shape.dimensions_size());
+  Delinearize(&multi_index, linear_index, operand_shape, builder);
+
+  return Index(multi_index, linear_index, operand_shape);
 }
 
 llvm::Value* IrArray::Index::Linearize(
@@ -229,9 +276,11 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   }
 
   if (!is_implicit_broadcast && index.LinearValidOnShape(*shape_)) {
+    llvm::Module* module =
+        ir_builder->GetInsertBlock()->getParent()->getParent();
     return ir_builder->CreateInBoundsGEP(
         ir_builder->CreateBitCast(
-            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), ir_builder)
+            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
                            ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
@@ -242,8 +291,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   //
   //   getelementptr base_ptr_, 0, most major index, ..., most minor index
   std::vector<llvm::Value*> gep_indices(1, ir_builder->getInt64(0));
-  for (int64 i = shape_->layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape_->layout().minor_to_major(i);
+  for (int64 i = 0; i < LayoutUtil::MinorToMajor(*shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_->layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
   return ir_builder->CreateInBoundsGEP(base_ptr_, gep_indices,
@@ -254,10 +303,10 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
     llvm::Instruction* instruction) const {
   CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
         llvm::isa<llvm::StoreInst>(instruction));
+  CHECK(!llvm::isa<llvm::StoreInst>(instruction) || !is_invariant_)
+      << "Trying to create a store to an invariant IRArray.";
 
   for (const auto& kind_md_pair : metadata_) {
-    CHECK(kind_md_pair.first != llvm::LLVMContext::MD_invariant_load ||
-          llvm::isa<llvm::LoadInst>(instruction));
     instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
   }
 }
@@ -268,8 +317,6 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, ir_builder, name);
   llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
-  llvm_ir::SetTbaaForInstruction(load, GetShape(),
-                                 /*is_pointer_to=*/false);
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -278,14 +325,13 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
                                     llvm::IRBuilder<>* ir_builder) const {
   llvm::Value* element_address = EmitArrayElementAddress(index, ir_builder);
   llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
-  llvm_ir::SetTbaaForInstruction(store, GetShape(),
-                                 /*is_pointer_to=*/false);
   AnnotateLoadStoreInstructionWithMetadata(store);
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* ir_builder) const {
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, ir_builder);
+  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   return IrArray(
       ir_builder->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()),
       new_shape);

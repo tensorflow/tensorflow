@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 
@@ -29,11 +32,13 @@ class BaseUI(object):
   ERROR_MESSAGE_PREFIX = "ERROR: "
   INFO_MESSAGE_PREFIX = "INFO: "
 
-  def __init__(self, on_ui_exit=None):
+  def __init__(self, on_ui_exit=None, config=None):
     """Constructor of the base class.
 
     Args:
       on_ui_exit: (`Callable`) the callback to be called when the UI exits.
+      config: An instance of `cli_config.CLIConfig()` carrying user-facing
+        configurations.
     """
 
     self._on_ui_exit = on_ui_exit
@@ -49,6 +54,20 @@ class BaseUI(object):
         [""], self.CLI_EXIT_COMMANDS +
         [debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND] +
         debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND_ALIASES)
+
+    self._config = config or cli_config.CLIConfig()
+    self._config_argparser = argparse.ArgumentParser(
+        description="config command", usage=argparse.SUPPRESS)
+    subparsers = self._config_argparser.add_subparsers()
+    set_parser = subparsers.add_parser("set")
+    set_parser.add_argument("property_name", type=str)
+    set_parser.add_argument("property_value", type=str)
+    set_parser = subparsers.add_parser("show")
+    self.register_command_handler(
+        "config",
+        self._config_command_handler,
+        self._config_argparser.format_help(),
+        prefix_aliases=["cfg"])
 
   def set_help_intro(self, help_intro):
     """Set an introductory message to the help output of the command registry.
@@ -176,3 +195,21 @@ class BaseUI(object):
         except_last_word = " ".join(items[:-1]) + " "
 
     return context, prefix, except_last_word
+
+  @property
+  def config(self):
+    """Obtain the CLIConfig of this `BaseUI` instance."""
+    return self._config
+
+  def _config_command_handler(self, args, screen_info=None):
+    """Command handler for the "config" command."""
+    del screen_info  # Currently unused.
+
+    parsed = self._config_argparser.parse_args(args)
+    if hasattr(parsed, "property_name") and hasattr(parsed, "property_value"):
+      # set.
+      self._config.set(parsed.property_name, parsed.property_value)
+      return self._config.summarize(highlight=parsed.property_name)
+    else:
+      # show.
+      return self._config.summarize()

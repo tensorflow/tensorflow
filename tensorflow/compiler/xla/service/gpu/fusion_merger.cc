@@ -45,6 +45,7 @@ void MaybeResolveTupleElements(HloInstruction* instruction,
 // Returns the bytes read by fusion parameter 'param', by returning the byte
 // size of 'param' shape (or the cumulative byte sizes of all leaf tuple
 // elements if 'param' is tuple-shaped).
+//
 // In the special case where all users of 'param' (or all users of a leaf
 // tuple element if 'param' is tuple-shaped) are Slice instructions, the size
 // of each slice instruction is accumulated instead, to give a more accurate
@@ -63,11 +64,10 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
   // Slice for a more accurate estimate of bytes read.
   double bytes = 0.0;
   for (auto& instruction : instructions) {
-    if (std::all_of(instruction->users().begin(), instruction->users().end(),
-                    [](const HloInstruction* instruction) {
-                      return instruction->opcode() == HloOpcode::kSlice ||
-                             instruction->opcode() == HloOpcode::kDynamicSlice;
-                    })) {
+    if (c_all_of(instruction->users(), [](const HloInstruction* instruction) {
+          return instruction->opcode() == HloOpcode::kSlice ||
+                 instruction->opcode() == HloOpcode::kDynamicSlice;
+        })) {
       // All users are slice: accumulate bytes of all user slice instructions.
       for (auto& user : instruction->users()) {
         bytes += ShapeUtil::ByteSizeOf(user->shape());
@@ -83,11 +83,11 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
 // Returns the bytes read by all fusion parameters of instruction 'fusion'.
 double CalculateBytesReadByFusionInstruction(HloInstruction* fusion) {
   double bytes = 0.0;
-  for (const auto& fused_instruction : fusion->fused_instructions()) {
+  for (auto* fused_instruction : fusion->fused_instructions()) {
     if (fused_instruction->opcode() != HloOpcode::kParameter) {
       continue;
     }
-    bytes += CalculateBytesReadByFusionParameter(fused_instruction.get());
+    bytes += CalculateBytesReadByFusionParameter(fused_instruction);
   }
   return bytes;
 }
@@ -199,6 +199,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   ++total_visited_;
   // Skip 'fusion' instruction if there are no users into which we can merge.
   if (fusion->users().empty()) {
+    VLOG(3) << "Not merging " << fusion->name() << ": Has no users.";
     ++num_fail_no_users_;
     return Status::OK();
   }
@@ -208,24 +209,27 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Input fusion instructions need to be rooted at a particular HLO (e.g.
   // kReduce), so they shouldn't be further fused either.
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    VLOG(3) << "Not merging " << fusion->name() << ": Is not loop fusion.";
     ++num_fail_not_loop_fusion_;
     return Status::OK();
   }
 
   // Skip multiple output fusion. It's not yet supported.
   if (fusion->IsMultiOutputFusion()) {
+    VLOG(3) << "Not merging " << fusion->name() << ": Is multi-output fusion.";
     ++num_fail_not_loop_fusion_;
     return Status::OK();
   }
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
-  if (!std::all_of(fusion->users().begin(), fusion->users().end(),
-                   [](const HloInstruction* instruction) {
-                     return instruction->opcode() == HloOpcode::kFusion &&
-                            instruction->fusion_kind() ==
-                                HloInstruction::FusionKind::kLoop;
-                   })) {
+  if (!c_all_of(fusion->users(), [](const HloInstruction* user) {
+        return user->opcode() == HloOpcode::kFusion &&
+               (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+                user->fusion_kind() == HloInstruction::FusionKind::kInput);
+      })) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": Some of its users are not loop/input fusion kernels.";
     ++num_fail_merge_all_users_;
     return Status::OK();
   }
@@ -233,18 +237,17 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if any of its fused instructions are expensive.
   // This is done to avoid the duplication of expensive instructions, which
   // would occur if 'fusion' were merged into multiple users.
+  //
   // If 'fusion' has just one user, then an earlier fusion pass chose not to
   // fuse this producer/comsumer pair (likely because of expensive instruction
   // re-use by the consumer), and so we honor that choice here as well.
-  if (!std::all_of(fusion->fused_instructions().begin(),
-                   fusion->fused_instructions().end(),
-                   [](const std::unique_ptr<HloInstruction>& instruction) {
-                     if (instruction->opcode() != HloOpcode::kParameter &&
-                         GpuInstructionFusion::IsExpensive(*instruction)) {
-                       return false;
-                     }
-                     return true;
-                   })) {
+  if (c_any_of(fusion->fused_instructions(),
+               [](const HloInstruction* instruction) {
+                 return instruction->opcode() != HloOpcode::kParameter &&
+                        GpuInstructionFusion::IsExpensive(*instruction);
+               })) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": Contains one or more expensive instructions.";
     ++num_fail_expensive_fused_instruction_;
     return Status::OK();
   }
@@ -253,6 +256,8 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // exceeds the threshold value.
   if (CalculateFlopsToBytesRatio(fusion) >
       FusionMerger::GetThresholdFlopsToBytesRatio()) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": flops-to-bytes ratio is not favorable.";
     ++num_fail_flops_to_byte_ratio_;
     return Status::OK();
   }
@@ -265,6 +270,9 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   const double merged_to_current_bytes_ratio =
       merged_bytes_transferred / std::max(1.0, current_bytes_transferred);
   if (merged_to_current_bytes_ratio > 1.10) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": merged-to-current-bytes-ratio of "
+            << merged_to_current_bytes_ratio << " is not favorable.";
     ++num_fail_net_bytes_transferred_ratio_;
     return Status::OK();
   }
@@ -293,14 +301,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 StatusOr<bool> FusionMerger::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "FusionMerger for module: " << module->name();
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     VLOG(1) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());

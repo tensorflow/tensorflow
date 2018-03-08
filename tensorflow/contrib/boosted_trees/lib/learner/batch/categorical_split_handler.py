@@ -110,8 +110,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
 
     def not_active_inputs():
       return (constant_op.constant([], dtype=dtypes.int32),
-              constant_op.constant([], dtype=dtypes.int64), empty_gradients,
-              empty_hessians)
+              constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+              empty_gradients, empty_hessians)
 
     def active_inputs():
       """The normal flow when the handler is active."""
@@ -154,7 +154,12 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
           [per_partition_hessians, filtered_hessians], 0)
       feature_ids = array_ops.concat(
           [bias_feature_ids, self._sparse_int_column.values], 0)
-      return partition_ids, feature_ids, filtered_gradients, filtered_hessians
+      # Dimension is always zero for sparse int features.
+      dimension_ids = array_ops.zeros_like(feature_ids, dtype=dtypes.int64)
+      feature_ids_and_dimensions = array_ops.stack(
+          [feature_ids, dimension_ids], axis=1)
+      return (partition_ids, feature_ids_and_dimensions, filtered_gradients,
+              filtered_hessians)
 
     partition_ids, feature_ids, gradients_out, hessians_out = (
         control_flow_ops.cond(is_active[0], active_inputs, not_active_inputs))

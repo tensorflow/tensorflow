@@ -17,7 +17,15 @@ cesnsu model:
 
     ./local_test.sh --model_name CENSUS_WIDENDEEP
 
-**2) Launch a remote k8s cluster on Google Container Engine (GKE) and run the
+You can test specify version of TensorFlow:
+
+```shell
+./local_test.sh ${whl_file_url}
+```
+
+For example, you can find these TensorFlow python package URLs from [here](https://www.tensorflow.org/install/install_linux#the_url_of_the_tensorflow_python_package) for Ubuntu.
+
+**2) Launch a remote k8s cluster on Google Kubernetes Engine (GKE) and run the
 test suite on it**
 
 For example:

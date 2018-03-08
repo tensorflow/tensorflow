@@ -72,9 +72,27 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type) const {
   // The libdevice math functions differentiate between "double" and "float" by
-  // appending an 'f' to the function's name.
+  // appending an 'f' to the function's name. libdevice doesn't have f16 math
+  // functions, so we convert the operands to f32 before calling the function
+  // and then convert the result back to f16.
   string munged_callee = callee_name;
+  bool cast_result_to_fp16 = false;
+  std::vector<llvm::Value*> converted_operands(operands.begin(),
+                                               operands.end());
+  std::vector<PrimitiveType> converted_input_types(input_types.begin(),
+                                                   input_types.end());
   switch (output_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      for (int64 i = 0; i < operands.size(); ++i) {
+        if (input_types[i] == F16) {
+          converted_operands[i] = ir_builder_->CreateFPCast(
+              converted_operands[i], ir_builder_->getFloatTy());
+          converted_input_types[i] = F32;
+        }
+      }
+      output_type = F32;
+      TF_FALLTHROUGH_INTENDED;
     case F32:
       StrAppend(&munged_callee, "f");
       break;
@@ -84,7 +102,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       return Unimplemented("Bad type for libdevice math call: %s",
                            PrimitiveType_Name(output_type).c_str());
   }
-  return EmitMathCall(munged_callee, operands, input_types, output_type);
+  llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
+                                     converted_input_types, output_type)
+                            .ValueOrDie();
+  if (cast_result_to_fp16) {
+    result = ir_builder_->CreateFPCast(result, ir_builder_->getHalfTy());
+  }
+  return result;
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
@@ -92,10 +116,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type) const {
-  // llvm intrinsics differentiate between float/double functions via the ".f32"
-  // and ".f64" suffixes.
+  // llvm intrinsics differentiate between half/float/double functions via
+  // the suffixes ".f16", ".f32" and ".f64".
   string munged_callee = callee_name;
   switch (output_type) {
+    case F16:
+      StrAppend(&munged_callee, ".f16");
+      break;
     case F32:
       StrAppend(&munged_callee, ".f32");
       break;
@@ -195,29 +222,44 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
   return EmitLibdeviceMathCall("__nv_erfcinv", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_cos", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
+                                                      llvm::Value* lhs,
+                                                      llvm::Value* rhs) const {
+  return EmitLibdeviceMathCall("__nv_pow", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
+  return EmitLibdeviceMathCall("__nv_atan2", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
   PrimitiveType input_type = op->operand(0)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
-    case HloOpcode::kExp:
-      return EmitLibdeviceMathCall("__nv_exp", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kFloor:
-      return EmitLibdeviceMathCall("__nv_floor", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kCeil:
-      return EmitLibdeviceMathCall("__nv_ceil", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kLog:
-      return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kCos:
-      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kSin:
-      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
-                                   output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
                                    output_type);
@@ -235,13 +277,12 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, ir_builder_));
+        llvm_ir::PrimitiveTypeToIrType(input_type, module_));
   }
   llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type,
-                                     ir_builder_),  // The return type.
-      ir_input_types,                               // The parameter types.
-      false);                                       // No variadic arguments.
+      llvm_ir::PrimitiveTypeToIrType(output_type, module_),  // Return type.
+      ir_input_types,                                        // Parameter types.
+      false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::cast<llvm::Function>(
@@ -315,7 +356,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(operand_element_type, ir_builder_),
+            llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
             "reduce_window_accum_ptr", ir_builder_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
@@ -377,7 +418,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         llvm::Value* accum_ptr =
             ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
-                hlo->shape().element_type(), ir_builder()));
+                hlo->shape().element_type(), module_));
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
                             operand_to_generator.at(hlo->operand(1))({}));
         ir_builder()->CreateStore(init_value, accum_ptr);

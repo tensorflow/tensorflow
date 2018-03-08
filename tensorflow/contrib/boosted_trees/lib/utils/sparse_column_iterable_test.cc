@@ -34,19 +34,19 @@ TEST_F(SparseColumnIterableTest, Empty) {
 }
 
 TEST_F(SparseColumnIterableTest, Iterate) {
-  // 8 examples having 7 sparse features with the third multi-valent.
+  // 8 examples having 7 sparse features with the 3rd and 7th multi-valent.
   // This can be visualized like the following:
   // Instance | Sparse |
-  // 0        |   x    |
+  // 0        |  x     |
   // 1        |        |
   // 2        |        |
   // 3        |  xxx   |
-  // 4        |   x    |
+  // 4        |  x     |
   // 5        |        |
   // 6        |        |
-  // 7        |   xx   |
+  // 7        |  x x   |
   const auto indices =
-      AsTensor<int64>({0, 0, 3, 0, 3, 1, 3, 2, 4, 0, 7, 0, 7, 1}, {7, 2});
+      AsTensor<int64>({0, 0, 3, 0, 3, 1, 3, 2, 4, 0, 7, 0, 7, 2}, {7, 2});
 
   auto validate_example_range = [](const ExampleRowRange& range) {
     switch (range.example_idx) {

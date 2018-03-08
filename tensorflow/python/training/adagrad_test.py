@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -267,6 +268,14 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval())
         self.assertAllCloseAccordingToType(
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
+
+  def testDynamicShapeVariable_Ok(self):
+    with self.test_session():
+      v = variable_scope.get_variable("v", initializer=constant_op.constant(1.),
+                                      validate_shape=False)
+      self.assertFalse(v.shape.is_fully_defined())
+      # Creating optimizer should cause no exception.
+      adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
 
 
 if __name__ == "__main__":

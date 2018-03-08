@@ -67,24 +67,36 @@ class ReduceOpsTest(XLATestCase):
       np.arange(-10, -4).reshape(2, 3),
       np.arange(-4, 2).reshape(2, 3),
   ]
-  NONEMPTY_FLOAT_DATA = [
-      np.arange(1, 7).reshape(2, 3),
-      np.arange(-10, -4).reshape(2, 3),
-      np.arange(-4, 2).reshape(2, 3),
+  COMPLEX_DATA = [
+      np.zeros(shape=(2, 0)).astype(np.complex64),
+      np.zeros(shape=(0, 30)).astype(np.complex64),
+      np.arange(1, 13, dtype=np.float32).view(np.complex64).reshape(2, 3),
+      np.arange(-14, -2, dtype=np.float32).view(np.complex64).reshape(2, 3),
+      np.arange(-4, 8, dtype=np.float32).view(np.complex64).reshape(2, 3),
   ]
+  NONEMPTY_FLOAT_DATA = [x for x in FLOAT_DATA if np.size(x) > 0]
+  NONEMPTY_COMPLEX_DATA = [x for x in COMPLEX_DATA if np.size(x) > 0]
   BOOL_DATA = [
       np.array([], dtype=np.bool).reshape(2, 0),
       np.array([], dtype=np.bool).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
 
-  def testReduceSum(self):
+  def testReduceSumF32(self):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32,
                         self.FLOAT_DATA)
 
-  def testReduceProd(self):
+  def testReduceSumC64(self):
+    self._testReduction(math_ops.reduce_sum, np.sum, np.complex64,
+                        self.COMPLEX_DATA)
+
+  def testReduceProdF32(self):
     self._testReduction(math_ops.reduce_prod, np.prod, np.float32,
                         self.FLOAT_DATA)
+
+  def testReduceProdC64(self):
+    self._testReduction(math_ops.reduce_prod, np.prod, np.complex64,
+                        self.COMPLEX_DATA)
 
   def testReduceMin(self):
 
@@ -108,11 +120,15 @@ class ReduceOpsTest(XLATestCase):
     self._testReduction(math_ops.reduce_max, reference_max, np.float32,
                         self.FLOAT_DATA)
 
-  def testReduceMean(self):
+  def testReduceMeanF32(self):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
     # reducing across zero inputs.
     self._testReduction(math_ops.reduce_mean, np.mean, np.float32,
                         self.NONEMPTY_FLOAT_DATA)
+
+  def testReduceMeanC64(self):
+    self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
+                        self.NONEMPTY_COMPLEX_DATA)
 
   def testReduceAll(self):
     self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA)

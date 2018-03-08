@@ -22,12 +22,11 @@ filegroup(
 
 cc_library(
     name = "periodic_function_dynamic",
-    srcs = ["periodic_function.cc"],
     hdrs = ["periodic_function.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//third_party/eigen3",
     ],
 )
 
@@ -36,17 +35,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":periodic_function_dynamic",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "periodic_function_test",
-    srcs = ["periodic_function_test.cc"],
-    deps = [
-        ":periodic_function_dynamic",
-        "//tensorflow/contrib/batching/test_util:fake_clock_env",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels/batching_util:periodic_function",
     ],
 )

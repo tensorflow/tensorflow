@@ -57,11 +57,11 @@ namespace tensorflow {
 
 namespace {
 
-using sdca::Regularizations;
 using sdca::Example;
 using sdca::Examples;
 using sdca::ExampleStatistics;
 using sdca::ModelWeights;
+using sdca::Regularizations;
 
 struct ComputeOptions {
   explicit ComputeOptions(OpKernelConstruction* const context) {
@@ -76,8 +76,9 @@ struct ComputeOptions {
     } else if (loss_type == "smooth_hinge_loss") {
       loss_updater.reset(new SmoothHingeLossUpdater);
     } else {
-      OP_REQUIRES(context, false, errors::InvalidArgument(
-                                      "Unsupported loss type: ", loss_type));
+      OP_REQUIRES(
+          context, false,
+          errors::InvalidArgument("Unsupported loss type: ", loss_type));
     }
     OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptative));
     OP_REQUIRES_OK(
@@ -90,9 +91,10 @@ struct ComputeOptions {
         context, num_sparse_features + num_dense_features > 0,
         errors::InvalidArgument("Requires at least one feature to train."));
 
-    OP_REQUIRES(context, static_cast<int64>(num_sparse_features) +
-                                 static_cast<int64>(num_dense_features) <=
-                             std::numeric_limits<int>::max(),
+    OP_REQUIRES(context,
+                static_cast<int64>(num_sparse_features) +
+                        static_cast<int64>(num_dense_features) <=
+                    std::numeric_limits<int>::max(),
                 errors::InvalidArgument(
                     strings::Printf("Too many feature groups: %lld > %d",
                                     static_cast<int64>(num_sparse_features) +

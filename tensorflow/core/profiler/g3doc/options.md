@@ -43,7 +43,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 ### Times
 
-Most machines have mutli-core CPUs. Some installs one or more accelerators.
+Most machines have multi-core CPUs. Some installs one or more accelerators.
 Each accelerator usually performs massive parallel processing. The profiler
 tracks the accumulated processing times. Hence, the accumulated processing
 time is likely larger than the time of each step.
@@ -60,11 +60,14 @@ Currently, profiler only tracks the allocation of memory. As a result, the
 accumulated memory request is uaually larger than the peak memory of the overall
 model.
 
-bytes: The memory allocations requested by the operation.
-peak_bytes: The peak requested memory (not de-allocated) by the operation.
-residual_bytes: The memory requested by the operation and not de-allocated
+It's recommended to generate timeline to see the allocator memory usage over
+time.
+
+`bytes`: The memory allocations requested by the operation.
+`peak_bytes`: The peak requested memory (not de-allocated) by the operation.
+`residual_bytes`: The memory requested by the operation and not de-allocated
                 when Compute finishes.
-output_bytes: The memory output by the operation. It's not necessarily requested
+`output_bytes`: The memory output by the operation. It's not necessarily requested
               by the current operation. For example, it can be a tensor
               forwarded from input to output, with in-place mutation.
 
@@ -109,8 +112,8 @@ accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-
-Notes: See <b>overview</b> sesion on how does above options play with each other to decide the output and counting.
+Notes: See <b>overview</b> session on how does above options play with each
+other to decide the output and counting.
 
 `-select`: Comma-separated list of attributes to show. Supported attributes:
 [bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].

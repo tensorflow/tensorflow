@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_ops
 
 
 __all__ = [
@@ -37,8 +38,9 @@ class DiscreteScalarDistributionTestHelpers(object):
   """DiscreteScalarDistributionTestHelpers."""
 
   def run_test_sample_consistent_log_prob(
-      self, sess, dist,
+      self, sess_run_fn, dist,
       num_samples=int(1e5), num_threshold=int(1e3), seed=42,
+      batch_size=None,
       rtol=1e-2, atol=0.):
     """Tests that sample/log_prob are consistent with each other.
 
@@ -50,7 +52,9 @@ class DiscreteScalarDistributionTestHelpers(object):
     are consistent.
 
     Args:
-      sess: Tensorflow session.
+      sess_run_fn: Python `callable` taking `list`-like of `Tensor`s and
+        returning a list of results after running one "step" of TensorFlow
+        computation, typically set to `sess.run`.
       dist: Distribution instance or object which implements `sample`,
         `log_prob`, `event_shape_tensor` and `batch_shape_tensor`.
       num_samples: Python `int` scalar indicating the number of Monte-Carlo
@@ -63,6 +67,8 @@ class DiscreteScalarDistributionTestHelpers(object):
       seed: Python `int` indicating the seed to use when sampling from `dist`.
         In general it is not recommended to use `None` during a test as this
         increases the likelihood of spurious test failure.
+      batch_size: Hint for unpacking result of samples. Default: `None` means
+        batch_size is inferred.
       rtol: Python `float`-type indicating the admissible relative error between
         analytical and sample statistics.
       atol: Python `float`-type indicating the admissible absolute error between
@@ -77,16 +83,17 @@ class DiscreteScalarDistributionTestHelpers(object):
     # Histogram only supports vectors so we call it once per batch coordinate.
     y = dist.sample(num_samples, seed=seed)
     y = array_ops.reshape(y, shape=[num_samples, -1])
-    batch_size = math_ops.reduce_prod(dist.batch_shape_tensor())
+    if batch_size is None:
+      batch_size = math_ops.reduce_prod(dist.batch_shape_tensor())
     batch_dims = array_ops.shape(dist.batch_shape_tensor())[0]
     edges_expanded_shape = 1 + array_ops.pad([-2], paddings=[[0, batch_dims]])
-    for b, x in enumerate(array_ops.unstack(y, axis=1)):
+    for b, x in enumerate(array_ops.unstack(y, num=batch_size, axis=1)):
       counts, edges = self.histogram(x)
       edges = array_ops.reshape(edges, edges_expanded_shape)
       probs = math_ops.exp(dist.log_prob(edges))
       probs = array_ops.reshape(probs, shape=[-1, batch_size])[:, b]
 
-      [counts_, probs_] = sess.run([counts, probs])
+      [counts_, probs_] = sess_run_fn([counts, probs])
       valid = counts_ > num_threshold
       probs_ = probs_[valid]
       counts_ = counts_[valid]
@@ -94,7 +101,7 @@ class DiscreteScalarDistributionTestHelpers(object):
                           rtol=rtol, atol=atol)
 
   def run_test_sample_consistent_mean_variance(
-      self, sess, dist,
+      self, sess_run_fn, dist,
       num_samples=int(1e5), seed=24,
       rtol=1e-2, atol=0.):
     """Tests that sample/mean/variance are consistent with each other.
@@ -103,7 +110,9 @@ class DiscreteScalarDistributionTestHelpers(object):
     to the same distribution.
 
     Args:
-      sess: Tensorflow session.
+      sess_run_fn: Python `callable` taking `list`-like of `Tensor`s and
+        returning a list of results after running one "step" of TensorFlow
+        computation, typically set to `sess.run`.
       dist: Distribution instance or object which implements `sample`,
         `log_prob`, `event_shape_tensor` and `batch_shape_tensor`.
       num_samples: Python `int` scalar indicating the number of Monte-Carlo
@@ -129,7 +138,7 @@ class DiscreteScalarDistributionTestHelpers(object):
         mean_,
         variance_,
         stddev_
-    ] = sess.run([
+    ] = sess_run_fn([
         sample_mean,
         sample_variance,
         sample_stddev,
@@ -186,7 +195,7 @@ class VectorDistributionTestHelpers(object):
 
   def run_test_sample_consistent_log_prob(
       self,
-      sess,
+      sess_run_fn,
       dist,
       num_samples=int(1e5),
       radius=1.,
@@ -239,7 +248,9 @@ class VectorDistributionTestHelpers(object):
       https://en.wikipedia.org/wiki/Importance_sampling.
 
     Args:
-      sess: Tensorflow session.
+      sess_run_fn: Python `callable` taking `list`-like of `Tensor`s and
+        returning a list of results after running one "step" of TensorFlow
+        computation, typically set to `sess.run`.
       dist: Distribution instance or object which implements `sample`,
         `log_prob`, `event_shape_tensor` and `batch_shape_tensor`. The
         distribution must have non-zero probability of sampling every point
@@ -279,38 +290,44 @@ class VectorDistributionTestHelpers(object):
     def monte_carlo_hypersphere_volume(dist, num_samples, radius, center):
       # https://en.wikipedia.org/wiki/Importance_sampling
       x = dist.sample(num_samples, seed=seed)
+      x = array_ops.identity(x)  # Invalidate bijector cacheing.
       return math_ops.reduce_mean(
           math_ops.exp(-dist.log_prob(x)) * is_in_ball(x, radius, center),
           axis=0)
 
-    [
-        batch_shape_,
-        actual_volume_,
-        sample_volume_,
-    ] = sess.run([
-        dist.batch_shape_tensor(),
-        actual_hypersphere_volume(
-            dims=dist.event_shape_tensor()[0],
-            radius=radius),
-        monte_carlo_hypersphere_volume(
-            dist,
-            num_samples=num_samples,
-            radius=radius,
-            center=center),
-    ])
+    # Build graph.
+    with ops.name_scope(
+        "run_test_sample_consistent_log_prob",
+        values=[num_samples, radius, center] + dist._graph_parents):  # pylint: disable=protected-access
+      batch_shape = dist.batch_shape_tensor()
+      actual_volume = actual_hypersphere_volume(
+          dims=dist.event_shape_tensor()[0],
+          radius=radius)
+      sample_volume = monte_carlo_hypersphere_volume(
+          dist,
+          num_samples=num_samples,
+          radius=radius,
+          center=center)
+      init_op = variables_ops.global_variables_initializer()
 
+    # Execute graph.
+    sess_run_fn(init_op)
+    [batch_shape_, actual_volume_, sample_volume_] = sess_run_fn([
+        batch_shape, actual_volume, sample_volume])
+
+    # Check results.
     self.assertAllClose(np.tile(actual_volume_, reps=batch_shape_),
                         sample_volume_,
                         rtol=rtol, atol=atol)
 
   def run_test_sample_consistent_mean_covariance(
       self,
-      sess,
+      sess_run_fn,
       dist,
       num_samples=int(1e5),
       seed=24,
       rtol=1e-2,
-      atol=0.,
+      atol=0.1,
       cov_rtol=None,
       cov_atol=None):
     """Tests that sample/mean/covariance are consistent with each other.
@@ -319,7 +336,9 @@ class VectorDistributionTestHelpers(object):
     to the same distribution.
 
     Args:
-      sess: Tensorflow session.
+      sess_run_fn: Python `callable` taking `list`-like of `Tensor`s and
+        returning a list of results after running one "step" of TensorFlow
+        computation, typically set to `sess.run`.
       dist: Distribution instance or object which implements `sample`,
         `log_prob`, `event_shape_tensor` and `batch_shape_tensor`.
       num_samples: Python `int` scalar indicating the number of Monte-Carlo
@@ -353,7 +372,7 @@ class VectorDistributionTestHelpers(object):
         covariance_,
         variance_,
         stddev_
-    ] = sess.run([
+    ] = sess_run_fn([
         sample_mean,
         sample_covariance,
         sample_variance,

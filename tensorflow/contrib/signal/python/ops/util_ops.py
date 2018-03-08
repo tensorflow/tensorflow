@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import fractions
+
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -50,6 +53,13 @@ def gcd(a, b, name=None):
       raise ValueError('a must be an integer type. Got: %s' % a.dtype)
     if not b.dtype.is_integer:
       raise ValueError('b must be an integer type. Got: %s' % b.dtype)
+
+    # TPU requires static shape inference. GCD is used for subframe size
+    # computation, so we should prefer static computation where possible.
+    const_a = tensor_util.constant_value(a)
+    const_b = tensor_util.constant_value(b)
+    if const_a is not None and const_b is not None:
+      return ops.convert_to_tensor(fractions.gcd(const_a, const_b))
 
     cond = lambda _, b: math_ops.greater(b, array_ops.zeros_like(b))
     body = lambda a, b: [b, math_ops.mod(a, b)]

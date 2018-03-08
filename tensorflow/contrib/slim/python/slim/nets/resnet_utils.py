@@ -41,7 +41,6 @@ from __future__ import print_function
 import collections
 
 from tensorflow.contrib import layers as layers_lib
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.layers.python.layers import initializers
@@ -223,12 +222,7 @@ def stack_blocks_dense(net,
   return net
 
 
-@deprecated_args(
-    '2017-08-01',
-    'Pass is_training directly to the network instead of the arg_scope.',
-    'is_training')
-def resnet_arg_scope(is_training=True,
-                     weight_decay=0.0001,
+def resnet_arg_scope(weight_decay=0.0001,
                      batch_norm_decay=0.997,
                      batch_norm_epsilon=1e-5,
                      batch_norm_scale=True):
@@ -240,8 +234,6 @@ def resnet_arg_scope(is_training=True,
     training ResNets from scratch, they might need to be tuned.
 
   Args:
-    is_training: Whether or not we are training the parameters in the batch
-      normalization layers of the model. (deprecated)
     weight_decay: The weight decay to use for regularizing the model.
     batch_norm_decay: The moving average decay when estimating layer activation
       statistics in batch normalization.
@@ -254,7 +246,6 @@ def resnet_arg_scope(is_training=True,
     An `arg_scope` to use for the resnet models.
   """
   batch_norm_params = {
-      'is_training': is_training,
       'decay': batch_norm_decay,
       'epsilon': batch_norm_epsilon,
       'scale': batch_norm_scale,
@@ -266,7 +257,8 @@ def resnet_arg_scope(is_training=True,
       weights_regularizer=regularizers.l2_regularizer(weight_decay),
       weights_initializer=initializers.variance_scaling_initializer(),
       activation_fn=nn_ops.relu,
-      normalizer_fn=layers.batch_norm):
+      normalizer_fn=layers.batch_norm,
+      normalizer_params=batch_norm_params):
     with arg_scope([layers.batch_norm], **batch_norm_params):
       # The following implies padding='SAME' for pool1, which makes feature
       # alignment easier for dense prediction tasks. This is also used in

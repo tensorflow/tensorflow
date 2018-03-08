@@ -183,8 +183,9 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid indices: [2,0] = [99] is not in [0, 5)"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Invalid indices: [2,0] = [99] does not index into [5,3]"))
       << s;
 }
 

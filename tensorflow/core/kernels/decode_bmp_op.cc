@@ -34,8 +34,17 @@ class DecodeBmpOp : public OpKernel {
   explicit DecodeBmpOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
     OP_REQUIRES(
-        context, channels_ == 0 || channels_ == 3 || channels_ == 4,
-        errors::InvalidArgument("channels must be 0, 3 or 4, got ", channels_));
+        context,
+        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
+        errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
+                                channels_));
+  }
+  inline int32 ByteSwapInt32ForBigEndian(int32 x) {
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    return le32toh(x);
+#else
+    return x;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -47,15 +56,25 @@ class DecodeBmpOp : public OpKernel {
     // Start decoding image to get shape details
     const StringPiece input = contents.scalar<string>()();
 
+    OP_REQUIRES(context, (32 <= input.size()),
+                errors::InvalidArgument("Incomplete bmp content, requires at "
+                                        "least 32 bytes to find the header "
+                                        "size, width, height, and bpp, got ",
+                                        input.size(), " bytes"));
+
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-    const int32 header_size = internal::SubtleMustCopy(
+    int32 header_size_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 width = internal::SubtleMustCopy(
+    const int32 header_size = ByteSwapInt32ForBigEndian(header_size_);
+    int32 width_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 height = internal::SubtleMustCopy(
+    const int32 width = ByteSwapInt32ForBigEndian(width_);
+    int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 bpp = internal::SubtleMustCopy(
+    const int32 height = ByteSwapInt32ForBigEndian(height_);
+    int32 bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 28)));
+    const int32 bpp = ByteSwapInt32ForBigEndian(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
@@ -66,11 +85,44 @@ class DecodeBmpOp : public OpKernel {
       channels_ = bpp / 8;
     }
 
-    // Current implementation only supports 3 or 4 channel
+    // Current implementation only supports 1, 3 or 4 channel
     // bitmaps.
-    OP_REQUIRES(context, (channels_ == 3 || channels_ == 4),
+    OP_REQUIRES(context, (channels_ == 1 || channels_ == 3 || channels_ == 4),
                 errors::InvalidArgument(
-                    "Number of channels must be 3 or 4, was ", channels_));
+                    "Number of channels must be 1, 3 or 4, was ", channels_));
+
+    OP_REQUIRES(context, width > 0 && header_size >= 0,
+                errors::InvalidArgument("Width must be positive"));
+    OP_REQUIRES(context, header_size >= 0,
+                errors::InvalidArgument("header size must be nonnegative"));
+
+    // The real requirement is < 2^31 minus some headers and channel data,
+    // so rounding down to something that's still ridiculously big.
+    OP_REQUIRES(
+        context,
+        (static_cast<int64>(width) * std::abs(static_cast<int64>(height))) <
+            static_cast<int64>(std::numeric_limits<int32_t>::max() / 8),
+        errors::InvalidArgument(
+            "Total possible pixel bytes must be less than 2^30"));
+
+    const int32 abs_height = abs(height);
+
+    // there may be padding bytes when the width is not a multiple of 4 bytes
+    // 8 * channels == bits per pixel
+    const int row_size = (8 * channels_ * width + 31) / 32 * 4;
+
+    const int64 last_pixel_offset = static_cast<int64>(header_size) +
+                                    (abs_height - 1) * row_size +
+                                    (width - 1) * channels_;
+
+    // [expected file size] = [last pixel offset] + [last pixel size=channels]
+    const int64 expected_file_size = last_pixel_offset + channels_;
+
+    OP_REQUIRES(
+        context, (expected_file_size <= input.size()),
+        errors::InvalidArgument("Incomplete bmp content, requires at least ",
+                                expected_file_size, " bytes, got ",
+                                input.size(), " bytes"));
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
@@ -80,29 +132,27 @@ class DecodeBmpOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(
-                     0, TensorShape({abs(height), width, channels_}), &output));
+                     0, TensorShape({abs_height, width, channels_}), &output));
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
-    Decode(bmp_pixels, output->flat<uint8>().data(), width, abs(height),
-           channels_, top_down);
+    Decode(bmp_pixels, row_size, output->flat<uint8>().data(), width,
+           abs_height, channels_, top_down);
   }
 
-  uint8* Decode(const uint8* input, uint8* const output, const int width,
-                const int height, const int channles, bool top_down);
+  uint8* Decode(const uint8* input, const int row_size, uint8* const output,
+                const int width, const int height, const int channles,
+                bool top_down);
 
  private:
   int channels_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeBmpOp);
 
-uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
-                           const int width, const int height,
-                           const int channels, bool top_down) {
-  // there may be padding bytes when the width is not a multiple of 4 bytes
-  // 8 * channels == bits per pixel
-  int row_size = (8 * channels * width + 31) / 32 * 4;
-
+uint8* DecodeBmpOp::Decode(const uint8* input, const int row_size,
+                           uint8* const output, const int width,
+                           const int height, const int channels,
+                           bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
@@ -117,6 +167,9 @@ uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
       dst_pos = (i * width + j) * channels;
 
       switch (channels) {
+        case 1:
+          output[dst_pos] = input[src_pos];
+          break;
         case 3:
           // BGR -> RGB
           output[dst_pos] = input[src_pos + 2];

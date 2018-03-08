@@ -47,6 +47,10 @@ tf_class {
     mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
   }
   member {
+    name: "MAX_FOLDED_CONSTANT_IN_BYTES_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "OFF"
     mtype: "<type \'int\'>"
   }

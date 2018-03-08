@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A simple smoke test that runs these examples for 1 training iteraton."""
+"""A simple smoke test that runs these examples for 1 training iteration."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,6 +34,7 @@ import tensorflow.contrib.data as data
 import tensorflow.examples.get_started.regression.dnn_regression as dnn_regression
 import tensorflow.examples.get_started.regression.linear_regression as linear_regression
 import tensorflow.examples.get_started.regression.linear_regression_categorical as linear_regression_categorical
+import tensorflow.examples.get_started.regression.custom_regression as custom_regression
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -85,6 +86,12 @@ class RegressionTest(googletest.TestCase):
   @test.mock.patch.dict(dnn_regression.__dict__, {"STEPS": 1})
   def test_dnn_regression(self):
     dnn_regression.main([""])
+
+  @test.mock.patch.dict(data.__dict__, {"TextLineDataset": four_lines_dataset})
+  @test.mock.patch.dict(imports85.__dict__, {"_get_imports85": (lambda: None)})
+  @test.mock.patch.dict(custom_regression.__dict__, {"STEPS": 1})
+  def test_custom_regression(self):
+    custom_regression.main([""])
 
 
 if __name__ == "__main__":

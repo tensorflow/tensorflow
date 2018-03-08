@@ -178,9 +178,9 @@ void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
           " must set *at_end=true, *produced=true, or return an error.");
     }
     if (!status.ok() && produced) {
-      status = errors::Internal("ReadLocked() for ", name(),
-                                " set *produced=true *and* returned an error: ",
-                                status.ToString());
+      status = errors::Internal(
+          "ReadLocked() for ", name(),
+          " set *produced=true *and* returned an error: ", status.ToString());
     }
     if (status.ok() && at_end) {
       status = OnWorkFinishedLocked();

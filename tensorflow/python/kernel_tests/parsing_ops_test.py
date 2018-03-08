@@ -426,7 +426,7 @@ class ParseExampleTest(test.TestCase):
             bname: bytes_feature([b"b0_str"]),
         })), example(features=features({
             aname: float_feature([-1, -1]),
-            bname: bytes_feature([b"b1"]),
+            bname: bytes_feature([b""]),
         }))
     ]
 
@@ -438,7 +438,7 @@ class ParseExampleTest(test.TestCase):
                 [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
             np.array(
-                ["b0_str", "b1"], dtype=bytes).reshape(2, 1, 1, 1, 1),
+                ["b0_str", ""], dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
 
     # No defaults, values required

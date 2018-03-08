@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -71,7 +71,7 @@ TEST_F(TFProfTimelineTest, GraphView) {
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
-  EXPECT_EQ(1754536562981488144ull, Hash64(dump_str));
+  EXPECT_EQ(16556121177519539380ull, Hash64(dump_str));
 }
 
 TEST_F(TFProfTimelineTest, ScopeView) {

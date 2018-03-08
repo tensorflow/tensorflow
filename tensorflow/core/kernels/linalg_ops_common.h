@@ -172,13 +172,14 @@ extern template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow
 
-#define INHERIT_LINALG_TYPEDEFS(Scalar)                   \
-  typedef LinearAlgebraOp<Scalar> Base;                   \
-  using Matrix = typename Base::Matrix;                   \
-  using MatrixMap = typename Base::MatrixMap;             \
-  using MatrixMaps = typename Base::MatrixMaps;           \
-  using ConstMatrixMap = typename Base::ConstMatrixMap;   \
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps; \
+#define INHERIT_LINALG_TYPEDEFS(Scalar)                       \
+  typedef LinearAlgebraOp<Scalar> Base;                       \
+  using RealScalar = typename Eigen::NumTraits<Scalar>::Real; \
+  using Matrix = typename Base::Matrix;                       \
+  using MatrixMap = typename Base::MatrixMap;                 \
+  using MatrixMaps = typename Base::MatrixMaps;               \
+  using ConstMatrixMap = typename Base::ConstMatrixMap;       \
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;     \
   using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \

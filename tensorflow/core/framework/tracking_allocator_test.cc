@@ -39,7 +39,7 @@ class TestableSizeTrackingAllocator : public Allocator {
     port::Free(ptr);
   }
   bool TracksAllocationSizes() override { return true; }
-  size_t RequestedSize(void* ptr) override {
+  size_t RequestedSize(const void* ptr) override {
     const auto& iter = size_map_.find(ptr);
     EXPECT_NE(size_map_.end(), iter);
     return iter->second;
@@ -47,7 +47,7 @@ class TestableSizeTrackingAllocator : public Allocator {
   void GetStats(AllocatorStats* stats) override { stats->Clear(); }
 
  private:
-  std::unordered_map<void*, size_t> size_map_;
+  std::unordered_map<const void*, size_t> size_map_;
 };
 
 class NoMemoryAllocator : public Allocator {
@@ -75,13 +75,16 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 12);
 
-  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizes();
 
   EXPECT_EQ(16, std::get<0>(sizes));
   EXPECT_EQ(0, std::get<1>(sizes));
   EXPECT_EQ(0, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
+  auto records = ta->GetRecordsAndUnRef();
+  EXPECT_EQ(4, records[0].alloc_bytes);
+  EXPECT_EQ(12, records[1].alloc_bytes);
 
   // This time enable the tracking inside the tracking allocator
   ta = new TrackingAllocator(a, true);
@@ -96,13 +99,18 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   EXPECT_LE(12, ta->AllocatedSize(p2));
   EXPECT_EQ(2, ta->AllocationId(p2));
 
-  sizes = ta->GetSizesAndUnRef();
+  sizes = ta->GetSizes();
 
   EXPECT_LE(16, std::get<0>(sizes));
   EXPECT_LE(12, std::get<1>(sizes));
   EXPECT_LE(12, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
+  records = ta->GetRecordsAndUnRef();
+  EXPECT_LE(4, records[0].alloc_bytes);
+  EXPECT_GE(-4, records[1].alloc_bytes);
+  EXPECT_LE(12, records[2].alloc_bytes);
+  EXPECT_GE(-12, records[3].alloc_bytes);
 }
 
 TEST(TrackingAllocatorTest, SimpleTracking) {
@@ -116,13 +124,19 @@ TEST(TrackingAllocatorTest, SimpleTracking) {
   ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 4);
 
-  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizes();
 
   EXPECT_EQ(16, std::get<0>(sizes));
   EXPECT_EQ(12, std::get<1>(sizes));
   EXPECT_EQ(4, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
+
+  auto records = ta->GetRecordsAndUnRef();
+  EXPECT_EQ(12, records[0].alloc_bytes);
+  EXPECT_EQ(-12, records[1].alloc_bytes);
+  EXPECT_EQ(4, records[2].alloc_bytes);
+  EXPECT_EQ(-4, records[3].alloc_bytes);
 }
 
 TEST(TrackingAllocatorTest, OutOfMemory) {
@@ -135,11 +149,13 @@ TEST(TrackingAllocatorTest, OutOfMemory) {
   void* p1 = ta->AllocateRaw(4, 12);
   EXPECT_EQ(nullptr, p1);
 
-  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizes();
 
   EXPECT_EQ(0, std::get<0>(sizes));
   EXPECT_EQ(0, std::get<1>(sizes));
   EXPECT_EQ(0, std::get<2>(sizes));
+
+  EXPECT_EQ(0, ta->GetRecordsAndUnRef().size());
 }
 
 TEST(TrackingAllocatorTest, FreeNullPtr) {
@@ -151,11 +167,13 @@ TEST(TrackingAllocatorTest, FreeNullPtr) {
 
   ta->DeallocateRaw(nullptr);
 
-  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizes();
 
   EXPECT_EQ(0, std::get<0>(sizes));
   EXPECT_EQ(0, std::get<1>(sizes));
   EXPECT_EQ(0, std::get<2>(sizes));
+
+  EXPECT_EQ(0, ta->GetRecordsAndUnRef().size());
 }
 
 }  // namespace tensorflow

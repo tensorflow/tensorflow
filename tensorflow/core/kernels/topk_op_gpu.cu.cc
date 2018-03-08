@@ -379,7 +379,7 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // Use as many shards as possible.
   if (num_shards <= 0) {
     constexpr auto shared_memory_size = 48 << 10;  // 48 KB
-    const auto heap_size = k * (sizeof(int) + sizeof(T));
+    const auto heap_size = k * sizeof(Entry<T>);
     // shared_memory_size = (num_shards + 1) * heap_size <=>
     num_shards = shared_memory_size / heap_size - 1;
     if (num_shards <= 0) {

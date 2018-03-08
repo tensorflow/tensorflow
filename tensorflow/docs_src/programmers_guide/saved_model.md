@@ -1,39 +1,37 @@
-# Saving and Restoring
+# Save and Restore
 
-This document explains how to save and restore
-@{$variables$variables} and models.
+The @{tf.train.Saver} class provides methods to save and restore models. The
+@{tf.saved_model.simple_save} function is an easy way to build a
+@{tf.saved_model$saved model} suitable for serving.
+[Estimators](/programmers_guide/estimators) automatically save and restore
+variables in the `model_dir`.
 
+## Save and restore variables
 
-## Saving and restoring variables
+TensorFlow @{$variables} are the best way to represent shared, persistent state
+manipulated by your program. The `tf.train.Saver` constructor adds `save` and
+`restore` ops to the graph for all, or a specified list, of the variables in the
+graph.  The `Saver` object provides methods to run these ops, specifying paths
+for the checkpoint files to write to or read from.
 
-A TensorFlow variable provides the best way to represent shared, persistent
-state manipulated by your program. (See @{$variables$Variables} for details.)
-This section explains how to save and restore variables.
-Note that Estimators automatically saves and restores variables
-(in the `model_dir`).
-
-The `tf.train.Saver` class provides methods for saving and restoring models.
-The `tf.train.Saver` constructor adds `save` and `restore` ops to the graph
-for all, or a specified list, of the variables in the graph.  The `Saver`
-object provides methods to run these ops, specifying paths for the checkpoint
-files to write to or read from.
-
-The saver will restore all variables already defined in your model. If you're
+`Saver` restores all variables already defined in your model. If you're
 loading a model without knowing how to build its graph (for example, if you're
 writing a generic program to load models), then read the
 [Overview of saving and restoring models](#models) section
 later in this document.
 
-TensorFlow saves variables in binary **checkpoint files** that,
-roughly speaking, map variable names to tensor values.
+TensorFlow saves variables in binary *checkpoint files* that map variable
+names to tensor values.
 
+Caution: TensorFlow model files are code. Be careful with untrusted code.
+See [Using TensorFlow Securely](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md)
+for details.
 
-
-### Saving variables
+### Save variables
 
 Create a `Saver` with `tf.train.Saver()` to manage all variables in the
 model. For example, the following snippet demonstrates how to call the
-`tf.train.Saver.save` method to save variables to a checkpoint file:
+`tf.train.Saver.save` method to save variables to checkpoint files:
 
 ```python
 # Create some variables.
@@ -58,18 +56,16 @@ with tf.Session() as sess:
   dec_v2.op.run()
   # Save the variables to disk.
   save_path = saver.save(sess, "/tmp/model.ckpt")
-  print("Model saved in file: %s" % save_path)
+  print("Model saved in path: %s" % save_path)
 ```
 
-
-
-### Restoring variables
+### Restore variables
 
 The `tf.train.Saver` object not only saves variables to checkpoint files, it
-also restores variables.  Note that when you restore variables from a file you
-do not have to initialize them beforehand. For example, the following snippet
-demonstrates how to call the `tf.train.Saver.restore` method to restore
-variables from a checkpoint file:
+also restores variables. Note that when you restore variables you do not have
+to initialize them beforehand. For example, the following snippet demonstrates
+how to call the `tf.train.Saver.restore` method to restore variables from the
+checkpoint files:
 
 ```python
 tf.reset_default_graph()
@@ -92,8 +88,11 @@ with tf.Session() as sess:
   print("v2 : %s" % v2.eval())
 ```
 
+Note: There is not a physical file called `/tmp/model.ckpt`. It is the *prefix* of
+filenames created for the checkpoint. Users only interact with the prefix
+instead of physical checkpoint files.
 
-### Choosing which variables to save and restore
+### Choose variables to save and restore
 
 If you do not pass any arguments to `tf.train.Saver()`, the saver handles all
 variables in the graph.  Each variable is saved under the name that was passed
@@ -158,30 +157,76 @@ Notes:
    optionally choose names for the variables in the checkpoint files.
 
 
+### Inspect variables in a checkpoint
+
+We can quickly inspect variables in a checkpoint with the
+[`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library.
+
+Continuing from the save/restore examples shown earlier:
+
+```python
+# import the inspect_checkpoint library
+from tensorflow.python.tools import inspect_checkpoint as chkp
+
+# print all tensors in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='', all_tensors=True)
+
+# tensor_name:  v1
+# [ 1.  1.  1.]
+# tensor_name:  v2
+# [-1. -1. -1. -1. -1.]
+
+# print only tensor v1 in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v1', all_tensors=False)
+
+# tensor_name:  v1
+# [ 1.  1.  1.]
+
+# print only tensor v2 in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v2', all_tensors=False)
+
+# tensor_name:  v2
+# [-1. -1. -1. -1. -1.]
+```
+
+
 <a name="models"></a>
-## Overview of saving and restoring models
+## Save and restore models
 
-When you want to save and load variables, the graph, and the
-graph's metadata--basically, when you want to save or restore
-your model--we recommend using SavedModel.
-**SavedModel** is a language-neutral, recoverable, hermetic
-serialization format.  SavedModel enables higher-level systems
-and tools to produce, consume, and transform TensorFlow models.
-TensorFlow provides several mechanisms for interacting with
-SavedModel, including tf.saved_model APIs, Estimator APIs and a CLI.
+Use `SavedModel` to save and load your model—variables, the graph, and the
+graph's metadata. This is a language-neutral, recoverable, hermetic
+serialization format that enables higher-level systems and tools to produce,
+consume, and transform TensorFlow models. TensorFlow provides several ways to
+interact with `SavedModel`, including the @{tf.saved_model} APIs,
+@{tf.estimator.Estimator}, and a command-line interface.
 
 
-## APIs to build and load a SavedModel
+## Build and load a SavedModel
 
-This section focuses on the APIs for building and loading a SavedModel,
-particularly when using lower-level TensorFlow APIs.
+### Simple save
 
+The easiest way to create a `SavedModel` is to use the @{tf.saved_model.simple_save}
+function:
 
-### Building a SavedModel
+```python
+simple_save(session,
+            export_dir,
+            inputs={"x": x, "y": y},
+            outputs={"z": z})
+```
 
-We provide a Python implementation of the SavedModel
-@{tf.saved_model.builder$builder}.
-The `SavedModelBuilder` class provides functionality to
+This configures the `SavedModel` so it can be loaded by
+[TensorFlow serving](/serving/serving_basic) and supports the
+[Predict API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
+To access the classify, regress, or multi-inference APIs, use the manual
+`SavedModel` builder APIs or an @{tf.estimator.Estimator}.
+
+### Manually build a SavedModel
+
+If your use case isn't covered by @{tf.saved_model.simple_save}, use the manual
+@{tf.saved_model.builder$builder APIs} to create a `SavedModel`.
+
+The @{tf.saved_model.builder.SavedModelBuilder} class provides functionality to
 save multiple `MetaGraphDef`s.  A **MetaGraph** is a dataflow graph, plus
 its associated variables, assets, and signatures.  A **`MetaGraphDef`**
 is the protocol buffer representation of a MetaGraph.  A **signature** is
@@ -205,7 +250,7 @@ For example, the following code suggests a typical way to use
 ```python
 export_dir = ...
 ...
-builder = tf.saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
@@ -222,7 +267,7 @@ builder.save()
 ```
 
 
-### Loading a SavedModel in Python
+### Load a SavedModel in Python
 
 The Python version of the SavedModel
 @{tf.saved_model.loader$loader}
@@ -246,7 +291,7 @@ with tf.Session(graph=tf.Graph()) as sess:
 ```
 
 
-### Loading a Savedmodel in C++
+### Load a SavedModel in C++
 
 The C++ version of the SavedModel
 [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/loader.h)
@@ -264,6 +309,30 @@ LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
 ```
 
+### Load and serve a SavedModel in TensorFlow serving
+
+You can easily load and serve a SavedModel with the TensorFlow Serving Model
+Server binary. See [instructions](https://www.tensorflow.org/serving/setup#installing_using_apt-get)
+on how to install the server, or build it if you wish.
+
+Once you have the Model Server, run it with:
+```
+tensorflow_model_server --port=port-numbers --model_name=your-model-name --model_base_path=your_model_base_path
+```
+Set the port and model_name flags to values of your choosing. The
+model_base_path flag expects to be to a base directory, with each version of
+your model residing in a numerically named subdirectory. If you only have a
+single version of your model, simply place it in a subdirectory like so:
+* Place the model in /tmp/model/0001
+* Set model_base_path to /tmp/model
+
+Store different versions of your model in numerically named subdirectories of a
+common base directory. For example, suppose the base directory is `/tmp/model`.
+If you have only one version of your model, store it in `/tmp/model/0001`. If
+you have two versions of your model, store the second version in
+`/tmp/model/0002`, and so on.  Set the `--model-base_path` flag to the base
+directory (`/tmp/model`, in this example).  TensorFlow Model Server will serve
+the model in the highest numbered subdirectory of that base directory.
 
 ### Standard constants
 
@@ -308,12 +377,12 @@ SavedModel format. This section explains how to:
 * Serve the model from a local server and request predictions.
 
 
-### Preparing serving inputs
+### Prepare serving inputs
 
-During training, an @{$input_fn$`input_fn()`} ingests data and prepares it for
-use by the model.  At serving time, similarly, a `serving_input_receiver_fn()`
-accepts inference requests and prepares them for the model.  This function
-has the following purposes:
+During training, an @{$premade_estimators#input_fn$`input_fn()`} ingests data
+and prepares it for use by the model.  At serving time, similarly, a
+`serving_input_receiver_fn()` accepts inference requests and prepares them for
+the model.  This function has the following purposes:
 
 *  To add placeholders to the graph that the serving system will feed
    with inference requests.
@@ -382,7 +451,7 @@ to expect and how to map them to your model's expected inputs.
 By contrast, the *output* portion of the signature is determined by the model.
 
 
-### Performing the export
+### Perform the export
 
 To export your trained Estimator, call
 @{tf.estimator.Estimator.export_savedmodel} with the export base path and
@@ -405,7 +474,7 @@ Session.
 > Note: It is your responsibility to garbage-collect old exports.
 > Otherwise, successive exports will accumulate under `export_dir_base`.
 
-### Specifying the outputs of a custom model
+### Specify the outputs of a custom model
 
 When writing a custom `model_fn`, you must populate the `export_outputs` element
 of the @{tf.estimator.EstimatorSpec} return value. This is a dict of
@@ -437,13 +506,13 @@ indicating which `SignatureDef` will be served when an inference request
 does not specify one.
 
 
-### Serving the exported model locally
+### Serve the exported model locally
 
 For local deployment, you can serve your model using
-[TensorFlow Serving](http://github.com/tensorflow/serving), an open-source project that loads a
-SavedModel and exposes it as a [gRPC](http://www.grpc.io/) service.
+[TensorFlow Serving](https://github.com/tensorflow/serving), an open-source project that loads a
+SavedModel and exposes it as a [gRPC](https://www.grpc.io/) service.
 
-First, [install TensorFlow Serving](http://github.com/tensorflow/serving).
+First, [install TensorFlow Serving](https://github.com/tensorflow/serving).
 
 Then build and run the local model server, substituting `$export_dir_base` with
 the path to the SavedModel you exported above:
@@ -456,7 +525,7 @@ bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server --port=9000 -
 Now you have a server listening for inference requests via gRPC on port 9000!
 
 
-### Requesting predictions from a local server
+### Request predictions from a local server
 
 The server responds to gRPC requests according to the
 [PredictionService](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/prediction_service.proto#L15)
@@ -549,7 +618,7 @@ passing in sample inputs in various formats (for example, Python
 expressions) and then fetching the output.
 
 
-### Installing the SavedModel CLI
+### Install the SavedModel CLI
 
 Broadly speaking, you can install TensorFlow in either of the following
 two ways:
@@ -631,15 +700,15 @@ executing the computation graph later. For example:
 $ saved_model_cli show --dir \
 /tmp/saved_model_dir --tag_set serve --signature_def serving_default
 The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
+  inputs['x'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: x:0
 The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
+  outputs['y'] tensor_info:
+      dtype: DT_FLOAT
+      shape: (-1, 1)
+      name: y:0
 Method name is: tensorflow/serving/predict
 ```
 
@@ -651,32 +720,32 @@ $ saved_model_cli show --dir /tmp/saved_model_dir --all
 MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
 signature_def['classify_x2_to_y3']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['inputs'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x2:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['scores'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y3:0
-Method name is: tensorflow/serving/classify
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['inputs'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x2:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['scores'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y3:0
+  Method name is: tensorflow/serving/classify
 
 ...
 
 signature_def['serving_default']:
-The given SavedModel SignatureDef contains the following input(s):
-inputs['x'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: x:0
-The given SavedModel SignatureDef contains the following output(s):
-outputs['y'] tensor_info:
-    dtype: DT_FLOAT
-    shape: (-1, 1)
-    name: y:0
-Method name is: tensorflow/serving/predict
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['y'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (-1, 1)
+        name: y:0
+  Method name is: tensorflow/serving/predict
 ```
 
 
@@ -697,6 +766,7 @@ The `run` command provides the following two ways to pass inputs to the model:
 
 * `--inputs` option enables you to pass numpy ndarray in files.
 * `--input_exprs` option enables you to pass Python expressions.
+* `--input_examples` option enables you to pass `tf.train.Example`.
 
 
 #### `--inputs`
@@ -750,20 +820,32 @@ inputs that match the dtype and shape of the model's `SignatureDef`s.
 For example:
 
 ```bsh
-`input_key=[[1], [2], [3]]`
+`<input_key>=[[1],[2],[3]]`
 ```
 
 In addition to Python expressions, you may also pass numpy functions. For
 example:
 
 ```bsh
-input_key=np.ones((32, 32, 3))
+`<input_key>=np.ones((32,32,3))`
 ```
 
 (Note that the `numpy` module is already available to you as `np`.)
 
 
-#### Save Output
+#### `--inputs_examples`
+
+To pass `tf.train.Example` as inputs, specify the `--input_examples` option.
+For each input key, it takes a list of dictionary, where each dictionary is an
+instance of `tf.train.Example`. The dictionary keys are the features and the
+values are the value lists for each feature.
+For example:
+
+```bsh
+`<input_key>=[{"age":[22,24],"education":["BS","MS"]}]`
+```
+
+#### Save output
 
 By default, the SavedModel CLI writes output to stdout. If a directory is
 passed to `--outdir` option, the outputs will be saved as npy files named after
@@ -772,7 +854,7 @@ output tensor keys under the given directory.
 Use `--overwrite` to overwrite existing output files.
 
 
-#### TensorFlow Debugger (tfdbg) Integration
+#### TensorFlow debugger (tfdbg) integration
 
 If `--tf_debug` option is set, the SavedModel CLI will use the
 TensorFlow Debugger (tfdbg) to watch the intermediate Tensors and runtime
@@ -879,6 +961,3 @@ of checkpoints and assets:
 
 Each graph is associated with a specific set of tags, which enables
 identification during a load or restore operation.
-
-
-

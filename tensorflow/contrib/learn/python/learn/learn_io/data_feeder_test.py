@@ -42,16 +42,6 @@ class DataFeederTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, 'annot convert'):
       data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
 
-  def test_input_uint32(self):
-    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint32)
-    self._assert_raises(data)
-    self._assert_raises(self._wrap_dict(data))
-
-  def test_input_uint64(self):
-    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint64)
-    self._assert_raises(data)
-    self._assert_raises(self._wrap_dict(data))
-
   def _assert_dtype(self, expected_np_dtype, expected_tf_dtype, input_data):
     feeder = data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
     if isinstance(input_data, dict):
@@ -86,6 +76,16 @@ class DataFeederTest(test.TestCase):
     data = np.matrix([[1, 2], [3, 4]], dtype=np.int64)
     self._assert_dtype(np.int64, dtypes.int64, data)
     self._assert_dtype(np.int64, dtypes.int64, self._wrap_dict(data))
+
+  def test_input_uint32(self):
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint32)
+    self._assert_dtype(np.uint32, dtypes.uint32, data)
+    self._assert_dtype(np.uint32, dtypes.uint32, self._wrap_dict(data))
+
+  def test_input_uint64(self):
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint64)
+    self._assert_dtype(np.uint64, dtypes.uint64, data)
+    self._assert_dtype(np.uint64, dtypes.uint64, self._wrap_dict(data))
 
   def test_input_uint8(self):
     data = np.matrix([[1, 2], [3, 4]], dtype=np.uint8)

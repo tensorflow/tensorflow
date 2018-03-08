@@ -5,8 +5,10 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
 DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -20,6 +22,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -27,6 +30,10 @@ Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
+Unique
+UniqueV2
+UniqueWithCounts
+UniqueWithCountsV2
 Unpack
 
 # candidate_sampling_ops
@@ -41,6 +48,7 @@ UniformCandidateSampler
 # checkpoint_ops
 GenerateVocabRemapping
 LoadAndRemapMatrix
+
 
 # control_flow_ops
 Switch
@@ -207,6 +215,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -219,6 +228,9 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
+MatrixExponential
+MatrixLogarithm
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -238,7 +250,9 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul
@@ -254,6 +268,7 @@ ComplexAbs
 Conj
 FloorDiv
 FloorMod
+HistogramFixedWidth
 Max
 Mean
 Min
@@ -285,6 +300,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
@@ -332,6 +348,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -346,6 +363,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

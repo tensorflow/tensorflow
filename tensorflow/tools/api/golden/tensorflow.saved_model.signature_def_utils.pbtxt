@@ -9,6 +9,10 @@ tf_module {
     argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_valid_signature"
+    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "predict_signature_def"
     argspec: "args=[\'inputs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
   }

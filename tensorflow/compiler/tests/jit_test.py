@@ -21,15 +21,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.compiler import jit
-from tensorflow.core.framework import function_pb2
-from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -118,31 +115,13 @@ class JitLaunchTest(test.TestCase):
 
   def testNoOutputs(self):
     with session_lib.Session() as sess:
-      # Build a function with a single Const node, whose output is ignored.
-      fdef = function_pb2.FunctionDef()
-      fdef.signature.name = "KernelWithNoOutputs"
-      node = node_def_pb2.NodeDef()
-      node.op = "Const"
-      node.name = "ignored"
-      node.attr["dtype"].type = dtypes.int32.as_datatype_enum
-      tensor = tensor_util.make_tensor_proto([0], dtype=dtypes.int32, shape=[])
-      node.attr["value"].tensor.CopyFrom(tensor)
-      fdef.node_def.extend([node])
 
       # Check that calling the result as a compiled kernel doesn't crash.
       @function.Defun(compiled=True)
       def KernelWithNoOutputs():
-        return constant_op.constant(100)
+        a = constant_op.constant(100)  # pylint: disable=unused-variable
 
-      # Hack to override the definition.  By accessing .definition, we
-      # force the _DefinedFunction initialized internally. Then, we
-      # replace it's internal FunctionDef proto. We do this hack here
-      # because one typically can't construct KernelWithNoOutputs
-      # function via Defun decorator directly.
-      _ = KernelWithNoOutputs.definition
-      foo = KernelWithNoOutputs
-      foo._definition = fdef
-      call = KernelWithNoOutputs()
+      call = KernelWithNoOutputs()  # pylint: disable=assignment-from-no-return
       sess.run(call, {})
 
   def testAliasing(self):

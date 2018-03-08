@@ -3,6 +3,7 @@
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -28,6 +29,74 @@ def tf_deps(deps, suffix):
 
   return tf_deps
 
+# Modified from @cython//:Tools/rules.bzl
+def pyx_library(
+    name,
+    deps=[],
+    py_deps=[],
+    srcs=[],
+    **kwargs):
+  """Compiles a group of .pyx / .pxd / .py files.
+
+  First runs Cython to create .cpp files for each input .pyx or .py + .pxd
+  pair. Then builds a shared object for each, passing "deps" to each cc_binary
+  rule (includes Python headers by default). Finally, creates a py_library rule
+  with the shared objects and any pure Python "srcs", with py_deps as its
+  dependencies; the shared objects can be imported like normal Python files.
+
+  Args:
+    name: Name for the rule.
+    deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
+    py_deps: Pure Python dependencies of the final library.
+    srcs: .py, .pyx, or .pxd files to either compile or pass through.
+    **kwargs: Extra keyword arguments passed to the py_library.
+  """
+  # First filter out files that should be run compiled vs. passed through.
+  py_srcs = []
+  pyx_srcs = []
+  pxd_srcs = []
+  for src in srcs:
+    if src.endswith(".pyx") or (src.endswith(".py")
+                                and src[:-3] + ".pxd" in srcs):
+      pyx_srcs.append(src)
+    elif src.endswith(".py"):
+      py_srcs.append(src)
+    else:
+      pxd_srcs.append(src)
+    if src.endswith("__init__.py"):
+      pxd_srcs.append(src)
+
+  # Invoke cython to produce the shared object libraries.
+  for filename in pyx_srcs:
+    native.genrule(
+        name = filename + "_cython_translation",
+        srcs = [filename],
+        outs = [filename.split(".")[0] + ".cpp"],
+        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        tools = ["@cython//:cython_binary"] + pxd_srcs,
+    )
+
+  shared_objects = []
+  for src in pyx_srcs:
+    stem = src.split(".")[0]
+    shared_object_name = stem + ".so"
+    native.cc_binary(
+        name=shared_object_name,
+        srcs=[stem + ".cpp"],
+        deps=deps + ["//util/python:python_headers"],
+        linkshared = 1,
+    )
+    shared_objects.append(shared_object_name)
+
+  # Now create a py_library with these shared objects as data.
+  native.py_library(
+      name=name,
+      srcs=py_srcs,
+      deps=py_deps,
+      srcs_version = "PY2AND3",
+      data=shared_objects,
+      **kwargs
+  )
 
 def _proto_cc_hdrs(srcs, use_grpc_plugin=False):
   ret = [s[:-len(".proto")] + ".pb.h" for s in srcs]
@@ -288,7 +357,9 @@ def tf_additional_proto_hdrs():
       "platform/default/integral_types.h",
       "platform/default/logging.h",
       "platform/default/protobuf.h"
-  ]
+  ] + if_windows([
+      "platform/windows/integral_types.h",
+  ])
 
 def tf_additional_proto_srcs():
   return [
@@ -299,7 +370,6 @@ def tf_additional_proto_srcs():
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
 
-
 def tf_protos_all_impl():
   return ["//tensorflow/core:protos_all_cc_impl"]
 
@@ -307,6 +377,14 @@ def tf_protos_all():
   return if_static(
       extra_deps=tf_protos_all_impl(),
       otherwise=["//tensorflow/core:protos_all_cc"])
+
+def tf_protos_grappler_impl():
+  return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
+
+def tf_protos_grappler():
+  return if_static(
+      extra_deps=tf_protos_grappler_impl(),
+      otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
 
 def tf_env_time_hdrs():
   return [
@@ -330,13 +408,13 @@ def tf_env_time_srcs():
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
-def tf_additional_gpu_tracer_srcs():
-  return ["platform/default/gpu_tracer.cc"]
+def tf_additional_device_tracer_srcs():
+  return ["platform/default/device_tracer.cc"]
 
-def tf_additional_gpu_tracer_cuda_deps():
+def tf_additional_device_tracer_cuda_deps():
   return []
 
-def tf_additional_gpu_tracer_deps():
+def tf_additional_device_tracer_deps():
   return []
 
 def tf_additional_libdevice_data():
@@ -367,14 +445,16 @@ def tf_kernel_tests_linkstatic():
   return 0
 
 def tf_additional_lib_defines():
+  """Additional defines needed to build TF libraries."""
   return select({
       "//tensorflow:with_jemalloc_linux_x86_64": ["TENSORFLOW_USE_JEMALLOC"],
       "//tensorflow:with_jemalloc_linux_ppc64le":["TENSORFLOW_USE_JEMALLOC"],
       "//conditions:default": [],
-  })
+  }) + if_not_mobile(["TENSORFLOW_USE_ABSL"])
 
 def tf_additional_lib_deps():
-  return if_static(
+  """Additional dependencies needed to build TF libraries."""
+  return if_not_mobile(["@com_google_absl//absl/base:base"]) + if_static(
       ["@nsync//:nsync_cpp"],
       ["@nsync//:nsync_headers"]
   ) + select({
@@ -387,13 +467,26 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
   return select({
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
           "//tensorflow/core/platform/cloud:gcs_file_system",
       ],
       "//conditions:default": [],
   }) + select({
+      "//tensorflow:with_hdfs_support_windows_override": [],
+      "//tensorflow:with_hdfs_support_android_override": [],
+      "//tensorflow:with_hdfs_support_ios_override": [],
       "//tensorflow:with_hdfs_support": [
           "//tensorflow/core/platform/hadoop:hadoop_file_system",
+      ],
+      "//conditions:default": [],
+  }) + select({
+      "//tensorflow:with_s3_support_windows_override": [],
+      "//tensorflow:with_s3_support_android_override": [],
+      "//tensorflow:with_s3_support_ios_override": [],
+      "//tensorflow:with_s3_support": [
+          "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
   })
@@ -401,9 +494,9 @@ def tf_additional_core_deps():
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_op_deps():
   return select({
-      "//tensorflow:windows": [],
-      "//tensorflow:android": [],
-      "//tensorflow:ios": [],
+      "//tensorflow:with_gcp_support_windows_override": [],
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
       ],
@@ -413,9 +506,9 @@ def tf_additional_cloud_op_deps():
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
   return select({
-      "//tensorflow:windows": [],
-      "//tensorflow:android": [],
-      "//tensorflow:ios": [],
+      "//tensorflow:with_gcp_support_windows_override": [],
+      "//tensorflow:with_gcp_support_android_override": [],
+      "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
       ],
@@ -425,6 +518,7 @@ def tf_additional_cloud_kernel_deps():
 def tf_lib_proto_parsing_deps():
   return [
       ":protos_all_cc",
+      "//third_party/eigen3",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
 
@@ -445,6 +539,9 @@ def tf_additional_gdr_lib_defines():
       "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
       "//conditions:default": [],
   })
+
+def tf_py_clif_cc(name, visibility=None, **kwargs):
+  pass
 
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):

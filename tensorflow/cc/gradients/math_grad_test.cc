@@ -23,9 +23,30 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Abs;
+using ops::Add;
+using ops::AddN;
+using ops::BatchMatMul;
+using ops::Const;
+using ops::Div;
+using ops::Greater;
+using ops::MatMul;
+using ops::Max;
+using ops::Maximum;
+using ops::Mean;
+using ops::Min;
+using ops::Minimum;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Pow;
+using ops::Prod;
+using ops::RealDiv;
+using ops::SquaredDifference;
+using ops::Sub;
+using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -64,7 +85,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
     IMAG,
     CONJ,
     COMPLEX,
-    ANGLE
+    ANGLE,
+    LGAMMA,
+    ERF
   };
 
   template <typename X_T, typename Y_T>
@@ -81,6 +104,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
 
     Output y;
     switch (op_type) {
+      using namespace ops;  // NOLINT(build/namespaces)
       case ABS:
         y = Abs(scope_, x);
         break;
@@ -167,6 +191,12 @@ class CWiseUnaryGradTest : public ::testing::Test {
         break;
       case ANGLE:
         y = Angle(scope_, x);
+        break;
+      case LGAMMA:
+        y = Lgamma(scope_, x);
+        break;
+      case ERF:
+        y = Erf(scope_, x);
         break;
     }
 
@@ -503,6 +533,42 @@ TEST_F(CWiseUnaryGradTest, Angle) {
   TestCWiseGrad<complex64, float>(ANGLE, x_fn);
 }
 
+TEST_F(CWiseUnaryGradTest, Lgamma) {
+  auto x_fn = [this](const int i) {
+    return RV({-3.5, -2.5, -1.5, 1.0, 2.0, 3.5});
+  };
+  TestCWiseGrad<float, float>(LGAMMA, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{-3.5, 0.5}, {-1.5, -0.5}, {1.5, -1.0}, {3.5, 1.0}});
+  };
+  // TODO(kbsriram)
+  // Add test when the lgamma kernel supports complex numbers
+  if (false) {
+    TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
+  }
+}
+
+TEST_F(CWiseUnaryGradTest, Erf) {
+  auto x_fn = [this](const int i) {
+    return RV({-1.2, -1.0, -0.5, 0.3, 0.5, 1.3});
+  };
+  TestCWiseGrad<float, float>(ERF, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Erf_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{-1.2, 0.5}, {-0.5, -0.5}, {0.5, 0.5}, {1.2, -0.5}});
+  };
+  // TODO(kbsriram)
+  // Add test when the erf kernel supports complex numbers
+  if (false) {
+    TestCWiseGrad<complex64, complex64>(ERF, x_fn);
+  }
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
@@ -799,6 +865,14 @@ TEST_F(NaryGradTest, SquaredDifference) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, Pow) {
+  TensorShape shape({3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // fix exponent to avoid overflow
+  auto y = Pow(scope_, x, Const(scope_, {1.f, 2.f, 3.f}));
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
 TEST_F(NaryGradTest, Maximum) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
@@ -821,16 +895,13 @@ TEST_F(NaryGradTest, Minimum) {
   RunTest(x, x_init_value, y, shape);
 }
 
-TEST_F(NaryGradTest, Lgamma) {
-  TensorShape shape({3, 2});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Lgamma(scope_, x);
-  // Select values to avoid instability when computing finite differences.
-  // Ref: https://en.wikipedia.org/wiki/File:Gamma_plot.svg
-  Tensor x_init_value =
-      test::AsTensor<float>({-3.5f, -2.5f, -1.5f, 1.0f, 2.0f, 3.5f}, {3, 2});
-  RunTest(x, x_init_value, y, shape);
-  // TODO(suharshs): add test case for complex values
+TEST_F(NaryGradTest, Prod) {
+  TensorShape x_shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Prod(scope_, x, {1});
+  // y's shape is the result of reducing x along axes 1
+  TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 
 }  // namespace

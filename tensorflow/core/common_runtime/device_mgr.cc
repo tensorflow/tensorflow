@@ -29,13 +29,16 @@ DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
   for (Device* d : devices) {
     devices_.push_back(d);
 
-    // Register under the (1) full name, (2) canonical name, and (3) local name.
+    // Register under the (1) full name and (2) canonical name.
     for (const string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
       device_map_[CopyToBackingStore(name)] = d;
     }
-    string lname = DeviceNameUtils::LocalName(d->name());
-    device_map_[CopyToBackingStore(lname)] = d;
+    // Register under the (3) local name and (4) legacy local name.
+    for (const string& name :
+         DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d;
+    }
     device_type_counts_[d->device_type()]++;
   }
 }
@@ -91,8 +94,8 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }
-    LOG(WARNING) << "Unknown device: " << name
-                 << " all devices: " << str_util::Join(device_names, ", ");
+    VLOG(1) << "Unknown device: " << name
+            << " all devices: " << str_util::Join(device_names, ", ");
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;

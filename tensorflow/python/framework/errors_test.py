@@ -33,7 +33,17 @@ from tensorflow.python.util import compat
 class ErrorsTest(test.TestCase):
 
   def _CountReferences(self, typeof):
-    return len([o for o in gc.get_objects() if isinstance(o, typeof)])
+    """Count number of references to objects of type |typeof|."""
+    objs = gc.get_objects()
+    ref_count = 0
+    for o in objs:
+      try:
+        if isinstance(o, typeof):
+          ref_count += 1
+      # Certain versions of python keeps a weakref to deleted objects.
+      except ReferenceError:
+        pass
+    return ref_count
 
   def testUniqueClassForEachErrorCode(self):
     for error_code, exc_type in [

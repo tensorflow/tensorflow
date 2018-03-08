@@ -16,17 +16,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER6(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64,
-          uint8, uint16);
+REGISTER8(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64,
+          uint8, uint16, uint32, uint64);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER6(UnaryOp, SYCL, "Invert", functor::invert, int8, int16, int32, int64,
-         uint8, uint16);
+          uint8, uint16, uint32, uint64);
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
-REGISTER6(UnaryOp, GPU, "Invert", functor::invert, int8, int16, int32, int64,
-          uint8, uint16);
+REGISTER8(UnaryOp, GPU, "Invert", functor::invert, int8, int16, int32, int64,
+          uint8, uint16, uint32, uint64);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

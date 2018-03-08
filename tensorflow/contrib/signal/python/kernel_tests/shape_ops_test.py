@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.signal.python.kernel_tests import test_util
 from tensorflow.contrib.signal.python.ops import shape_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -333,6 +335,20 @@ class FrameTest(test.TestCase):
       error = test.compute_gradient_error(
           signal, signal_shape, frames, frames.shape.as_list())
       self.assertLess(error, 2e-5)
+
+  def test_constant_folding(self):
+    """frame should be constant foldable for constant inputs."""
+    for pad_end in [False, True]:
+      g = ops.Graph()
+      with g.as_default():
+        frame_length, frame_step = 32, 16
+        signal_shape = (2, 128)
+        signal = array_ops.ones(signal_shape)
+        frames = shape_ops.frame(signal, frame_length, frame_step,
+                                 pad_end=pad_end)
+        rewritten_graph = test_util.grappler_optimize(g, [frames])
+        self.assertEqual(1, len(rewritten_graph.node))
+
 
 if __name__ == "__main__":
   test.main()

@@ -25,6 +25,7 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/core/kernels:bounds_check_lib",
+        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -36,8 +37,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -57,6 +60,8 @@ tf_custom_op_py_library(
     name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
+        "python/layers/__init__.py",
+        "python/layers/cudnn_rnn.py",
         "python/ops/cudnn_rnn_ops.py",
     ],
     dso = [
@@ -75,9 +80,13 @@ tf_custom_op_py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -110,8 +119,36 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "cudnn_rnn_test",
+    size = "enormous",
+    srcs = ["python/kernel_tests/cudnn_rnn_test.py"],
+    additional_deps = [
+        ":cudnn_rnn_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python/ops/losses:losses",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+    shard_count = 6,
+    tags = [
+        "manual",
+        "requires_cudnn5",
+    ],
+)
+
+cuda_py_test(
     name = "cudnn_rnn_ops_benchmark",
-    size = "large",
+    size = "small",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_benchmark.py"],
     additional_deps = [
         ":cudnn_rnn_py",
@@ -129,7 +166,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "manual",
         "noasan",  # http://b/62067814
         "nomsan",
         "notsan",

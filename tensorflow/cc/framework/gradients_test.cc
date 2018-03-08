@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -25,9 +26,19 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Assign;
+using ops::Const;
+using ops::Identity;
+using ops::MatMul;
+using ops::OnesLike;
+using ops::Placeholder;
+using ops::Square;
+using ops::Stack;
+using ops::StopGradient;
+using ops::Unstack;
+using ops::Variable;
 
 // TODO(andydavis) Add more unit tests once more gradient functions are ported.
 class GradientsTest : public ::testing::Test {
@@ -437,7 +448,7 @@ TEST_F(GradientsTest, UnreachableInput) {
   auto m1 = MatMul(scope_test_, x, y);
   auto m2 = MatMul(scope_test_, y, z);
   auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
-  
+
   // From m1, z is unreachable, so an error status should be returned.
   //   m2  m1
   //   |   |
@@ -445,11 +456,51 @@ TEST_F(GradientsTest, UnreachableInput) {
   //  / \ / \
   // z   y   x
   std::vector<Output> grad_outputs;
-  Status status = AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1},
-      &grad_outputs);
+  Status status =
+      AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_EQ(status.error_message(), "Cannot compute the partial derivative"
-      " for node 'z' as it's unreachable from the output node(s).");
+  EXPECT_EQ(status.error_message(),
+            "Cannot compute the partial derivative"
+            " for node 'z' as it's unreachable from the output node(s).");
+}
+
+TEST_F(GradientsTest, DependentOutputs) {
+  auto x = Placeholder(scope_test_, DT_FLOAT);
+  auto y0 = Square(scope_test_, x);
+  auto y1 = Square(scope_test_, y0);
+  auto y2 = Square(scope_test_, y1);
+  // Requesting the gradients for y0 and y2 should return the sum of their
+  // individual gradients.
+  std::vector<Output> grad_outputs;
+  TF_EXPECT_OK(AddSymbolicGradients(scope_test_, {y0, y2}, {x}, &grad_outputs));
+  ClientSession session(scope_test_);
+  std::vector<Tensor> grad_result;
+  TF_EXPECT_OK(session.Run({{x, {3.0f}}}, grad_outputs, &grad_result));
+  EXPECT_EQ(grad_result.size(), 1);
+  EXPECT_EQ(grad_result[0].NumElements(), 1);
+  EXPECT_EQ(grad_result[0].flat<float>()(0), 17502.0f);
+}
+
+TEST_F(GradientsTest, MultiOutputNodeDependentOutputs) {
+  auto x = Placeholder(scope_test_, DT_FLOAT);
+  auto y0 = Square(scope_test_, x);
+  // y1, y2, and y3 all use y0. This means the backwards pass will need to wait
+  // for the gradient for all three.
+  auto y1 = Square(scope_test_, y0);
+  auto y2 = Square(scope_test_, y0);
+  auto y3 = Square(scope_test_, y2);
+  std::vector<Output> grad_outputs;
+  // By requesting y0, y1, and y3 we test that the computation correctly waits
+  // for all the points in backprop where gradients need to be summed from
+  // multiple branches.
+  TF_EXPECT_OK(
+      AddSymbolicGradients(scope_test_, {y0, y1, y3}, {x}, &grad_outputs));
+  ClientSession session(scope_test_);
+  std::vector<Tensor> grad_result;
+  TF_EXPECT_OK(session.Run({{x, {3.0f}}}, grad_outputs, &grad_result));
+  EXPECT_EQ(grad_result.size(), 1);
+  EXPECT_EQ(grad_result[0].NumElements(), 1);
+  EXPECT_EQ(grad_result[0].flat<float>()(0), 17610.0f);
 }
 
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and

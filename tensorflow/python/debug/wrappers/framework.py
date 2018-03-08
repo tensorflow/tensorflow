@@ -121,7 +121,9 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import monitored_session
+from tensorflow.python.util import nest
 
 
 # Helper function.
@@ -337,7 +339,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # TODO(cais): Add on_cont_start and on_cont_end callbacks once the stepper is
   # is available.
 
-  def __init__(self, sess, thread_name_filter=None):
+  def __init__(self, sess, thread_name_filter=None,
+               pass_through_operrors=False):
     """Constructor of `BaseDebugWrapperSession`.
 
     Args:
@@ -349,6 +352,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
         by applying the `match` method of the compiled pattern. The default
         `None` means that the wrapper session will be active on all threads.
         E.g., r"MainThread$", r"QueueRunnerThread.*".
+      pass_through_operrors: If True, all captured OpErrors will be
+        propagated.  By default this captures all OpErrors.
 
     Raises:
       ValueError: On invalid `OnSessionInitAction` value.
@@ -361,6 +366,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
     self._sess = sess
     self._thread_name_filter_pattern = (re.compile(thread_name_filter)
                                         if thread_name_filter else None)
+    # TODO(cais/kstevens): Unittest this pass through feature.
+    self._pass_through_operrors = pass_through_operrors
 
     # Keeps track of number of run calls that have been performed on this
     # debug-wrapper session. The count can be used for purposes such as
@@ -434,7 +441,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
             "callable_runner and fetches/feed_dict are mutually exclusive, but "
             "are used simultaneously.")
 
-    if self._is_disabled_thread():
+    empty_fetches = not nest.flatten(fetches)
+    if empty_fetches:
+      tf_logging.info(
+          "Due to empty fetches, tfdbg Session wrapper is letting a "
+          "Session.run pass through without any debugging actions.")
+    if self._is_disabled_thread() or empty_fetches:
       if callable_runner:
         return callable_runner(*callable_runner_args)
       else:
@@ -480,6 +492,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
                                    options=decorated_run_options,
                                    run_metadata=run_metadata)
       except errors.OpError as op_error:
+        if self._pass_through_operrors:
+          raise op_error
         tf_error = op_error
         retvals = op_error
 
@@ -543,6 +557,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
     thread_name = threading.current_thread().name or ""
     return (self._thread_name_filter_pattern and
             not self._thread_name_filter_pattern.match(thread_name))
+
+  def run_step_fn(self, step_fn):
+    return step_fn(
+        monitored_session.MonitoredSession.StepContext(self._sess, self.run))
 
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up the feeds and fetches for partial runs in the session."""
@@ -695,7 +713,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
         exec_type, exec_value, exec_tb)
 
   def __del__(self):
-    self._sess.__del__()
+    if hasattr(self._sess, "__del__"):
+      self._sess.__del__()
 
   def close(self):
     self._sess.close()
@@ -783,8 +802,9 @@ class WatchOptions(object):
 class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
   """Base class for non-interactive (i.e., non-CLI) debug wrapper sessions."""
 
-  def __init__(self, sess, watch_fn=None, thread_name_filter=None):
-    """Constructor of DumpingDebugWrapperSession.
+  def __init__(self, sess, watch_fn=None, thread_name_filter=None,
+               pass_through_operrors=False):
+    """Constructor of NonInteractiveDebugWrapperSession.
 
     Args:
       sess: The TensorFlow `Session` object being wrapped.
@@ -802,12 +822,15 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
+      pass_through_operrors: If true, all captured OpErrors will be
+        propagated.  By default this captures all OpErrors.
     Raises:
        TypeError: If a non-None `watch_fn` is specified and it is not callable.
     """
 
     BaseDebugWrapperSession.__init__(
-        self, sess, thread_name_filter=thread_name_filter)
+        self, sess, thread_name_filter=thread_name_filter,
+        pass_through_operrors=pass_through_operrors)
 
     self._watch_fn = None
     if watch_fn is not None:

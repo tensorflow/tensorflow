@@ -18,18 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import util as estimator_util
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.training import optimizer as optimizer_lib
-from tensorflow.python.util import tf_inspect
+
 
 _VALID_METRIC_FN_ARGS = set(['features', 'labels', 'predictions', 'config'])
 
 
 def add_metrics(estimator, metric_fn):
-  """Creates a new ${tf.estimator.Estimator} which has given metrics.
+  """Creates a new @{tf.estimator.Estimator} which has given metrics.
 
   Example:
 
@@ -56,7 +60,7 @@ def add_metrics(estimator, metric_fn):
   ```
 
   Args:
-    estimator: A ${tf.estimator.Estimator} object.
+    estimator: A @{tf.estimator.Estimator} object.
     metric_fn: A function which should obey the following signature:
       - Args: can only have following four arguments in any order:
         * predictions: Predictions `Tensor` or dict of `Tensor` created by given
@@ -74,7 +78,7 @@ def add_metrics(estimator, metric_fn):
          function, namely a `(metric_tensor, update_op)` tuple.
 
   Returns:
-      A new ${tf.estimator.Estimator} which has a union of original metrics with
+      A new @{tf.estimator.Estimator} which has a union of original metrics with
         given ones.
   """
   _verify_metric_fn_args(metric_fn)
@@ -96,7 +100,7 @@ def add_metrics(estimator, metric_fn):
 
 
 def clip_gradients_by_norm(optimizer, clip_norm):
-  """Returns an optimizer which clips gradients before appliying them.
+  """Returns an optimizer which clips gradients before applying them.
 
   Example:
 
@@ -130,6 +134,111 @@ def clip_gradients_by_norm(optimizer, clip_norm):
       optimizer=optimizer,
       transform_grads_fn=clip_grads,
       name='ClipByNorm' + optimizer.get_name())
+
+
+def forward_features(estimator, keys=None):
+  """Forward features to predictions dictionary.
+
+  In some cases, user wants to see some of the features in estimators prediction
+  output. As an example, consider a batch prediction service: The service simply
+  runs inference on the users graph and returns the results. Keys are essential
+  because there is no order guarantee on the outputs so they need to be rejoined
+  to the inputs via keys or transclusion of the inputs in the outputs.
+
+  Example:
+
+  ```python
+    def input_fn():
+      features, labels = ...
+      features['unique_example_id'] = ...
+      features, labels
+
+    estimator = tf.estimator.LinearClassifier(...)
+    estimator = tf.contrib.estimator.forward_features(
+        estimator, 'unique_example_id')
+    estimator.train(...)
+    assert 'unique_example_id' in estimator.predict(...)
+  ```
+
+  Args:
+    estimator: A @{tf.estimator.Estimator} object.
+    keys: a `string` or a `list` of `string`. If it is `None`, all of the
+      `features` in `dict` is forwarded to the `predictions`. If it is a
+      `string`, only given key is forwarded. If it is a `list` of strings, all
+      the given `keys` are forwarded.
+
+  Returns:
+      A new @{tf.estimator.Estimator} which forwards features to predictions.
+
+  Raises:
+    ValueError:
+      * if `keys` is already part of `predictions`. We don't allow
+        override.
+      * if 'keys' does not exist in `features`.
+      * if feature key refers to a `SparseTensor`, since we don't support
+        `SparseTensor` in `predictions`. `SparseTensor` is common in `features`.
+    TypeError: if `keys` type is not one of `string` or list/tuple of `string`.
+  """
+
+  def verify_key_types(keys):  # pylint: disable=missing-docstring
+    if keys is None:
+      return keys
+    if isinstance(keys, six.string_types):
+      return [keys]
+    if not isinstance(keys, (list, tuple)):
+      raise TypeError('keys should be either a string or a list of strings. '
+                      'Given: {}'.format(type(keys)))
+    for key in keys:
+      if not isinstance(key, six.string_types):
+        raise TypeError('All items in the given keys list should be a string. '
+                        'There exist an item with type: {}'.format(type(key)))
+    return keys
+
+  def get_keys(features):
+    if keys is None:
+      return features.keys()
+    return keys
+
+  def verify_keys_and_predictions(features, predictions):
+    if not isinstance(predictions, dict):
+      raise ValueError(
+          'Predictions should be a dict to be able to forward features. '
+          'Given: {}'.format(type(predictions)))
+    for key in get_keys(features):
+      if key not in features:
+        raise ValueError(
+            'keys should be exist in features. Key "{}" is not in features '
+            'dict. features dict has following keys: {}. Please check '
+            'arguments of forward_features.'.format(key, features.keys()))
+      if key in predictions:
+        raise ValueError(
+            'Cannot forward feature key ({}). Since it does exist in '
+            'predictions. Existing prediction keys: {}. Please check arguments '
+            'of forward_features.'.format(key, predictions.keys()))
+
+  keys = verify_key_types(keys)
+
+  def new_model_fn(features, labels, mode, config):  # pylint: disable=missing-docstring
+    spec = estimator.model_fn(features, labels, mode, config)
+    predictions = spec.predictions
+    if predictions is None:
+      return spec
+    verify_keys_and_predictions(features, predictions)
+    for key in get_keys(features):
+      feature = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
+          features[key])
+      if not isinstance(feature, ops.Tensor):
+        raise ValueError(
+            'Forwarded feature ({}) should be a Tensor. Please use keys '
+            'argument of forward_features to filter unwanted features. Type of '
+            'features[{}] is {}.'.format(key, key, type(feature)))
+      predictions[key] = feature
+    return spec._replace(predictions=predictions)
+
+  return estimator_lib.Estimator(
+      model_fn=new_model_fn,
+      model_dir=estimator.model_dir,
+      config=estimator.config)
 
 
 class _TransformGradients(optimizer_lib.Optimizer):
@@ -208,9 +317,6 @@ class _TransformGradients(optimizer_lib.Optimizer):
 
 def _verify_metric_fn_args(metric_fn):
   args = set(estimator_util.fn_args(metric_fn))
-  if tf_inspect.ismethod(metric_fn):
-    if 'self' in args:
-      args.remove('self')
   invalid_args = list(args - _VALID_METRIC_FN_ARGS)
   if invalid_args:
     raise ValueError('metric_fn (%s) has following not expected args: %s' %

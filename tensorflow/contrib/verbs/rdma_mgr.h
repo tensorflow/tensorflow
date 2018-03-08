@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#define TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
 
 #ifdef TENSORFLOW_USE_VERBS
 
@@ -28,12 +28,17 @@ limitations under the License.
 namespace tensorflow {
 
 class RdmaMgr {
+  friend class RdmaChannel;
+  friend class RdmaAdapter;
+
  public:
   explicit RdmaMgr(const WorkerEnv* const worker_env,
                    GrpcChannelCache* const channel_cache);
   ~RdmaMgr();
   RdmaChannel* FindChannel(const string& key);
   void SetupChannels();
+  bool ConnectivityCheck();
+  void InitAllocators();
   const string& local_worker() { return local_worker_; }
 
  private:
@@ -44,11 +49,10 @@ class RdmaMgr {
   RdmaAdapter* rdma_adapter_;
   typedef std::unordered_map<string, RdmaChannel*> ChannelTable;
   ChannelTable channel_table_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(RdmaMgr);
 };
 
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_VERBS
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_

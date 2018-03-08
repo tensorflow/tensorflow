@@ -167,8 +167,8 @@ class NegativeBinomial(distribution.Distribution):
   def _log_unnormalized_prob(self, x):
     if self.validate_args:
       x = distribution_util.embed_check_nonnegative_integer_form(x)
-    return (self.total_count * math_ops.log1p(-self.probs)
-            + x * math_ops.log(self.probs))
+    return (self.total_count * math_ops.log_sigmoid(-self.logits)
+            + x * math_ops.log_sigmoid(self.logits))
 
   def _log_normalization(self, x):
     if self.validate_args:

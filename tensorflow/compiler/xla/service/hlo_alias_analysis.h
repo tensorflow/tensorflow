@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -90,10 +91,9 @@ class HloAliasAnalysis {
   // output of the given instruction.
   bool InstructionBuffersAreDistinct(const HloInstruction* instruction) const;
 
-  // Compare the dataflow analysis against a clean recomputation of the
-  // analysis. Returns an error status if there is a mismatch. Useful for
-  // verifying the correctness after updates to the analysis.
-  Status VerifyAgainstReference() const;
+  // Returns true if any HLO values in the module have interfering live ranges
+  // assuming the given ordering.
+  bool HasLiveRangeInterference(const HloOrdering& ordering) const;
 
  protected:
   explicit HloAliasAnalysis(HloModule* module);

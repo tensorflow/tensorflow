@@ -40,6 +40,28 @@ class MemoryStatsOp : public OpKernel {
       const AllocatorStats& allocator_stats) const = 0;
 };
 
+// Op that measures current memory in bytes.
+class BytesInUseOp : public MemoryStatsOp {
+ public:
+  explicit BytesInUseOp(OpKernelConstruction* context)
+      : MemoryStatsOp(context) {}
+
+ private:
+  int64 ExtractAllocatorStats(
+      const AllocatorStats& allocator_stats) const override {
+    return allocator_stats.bytes_in_use;
+  }
+};
+
+// Register this op on GPU only, see comment for MaxBytesInUse for reason
+REGISTER_KERNEL_BUILDER(Name("BytesInUse").Device(DEVICE_GPU).HostMemory("out"),
+                        BytesInUseOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("BytesInUse").Device(DEVICE_SYCL).HostMemory("out"), BytesInUseOp);
+#endif  // TENSORFLOW_USE_SYCL
+
 // Op that measures the total memory (in bytes) of a device.
 class BytesLimitOp : public MemoryStatsOp {
  public:
@@ -58,9 +80,9 @@ REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_GPU).HostMemory("out"),
                         BytesLimitOp);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_SYCL).HostMemory("out"),
-                        BytesLimitOp);
-#endif // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("BytesLimit").Device(DEVICE_SYCL).HostMemory("out"), BytesLimitOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 // Op that measures the peak memory in bytes.
 class MaxBytesInUseOp : public MemoryStatsOp {
@@ -85,6 +107,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("MaxBytesInUse").Device(DEVICE_SYCL).HostMemory("out"),
     MaxBytesInUseOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

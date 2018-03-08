@@ -25,6 +25,7 @@ import threading
 import numpy as np
 from six.moves import queue
 
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
@@ -704,8 +705,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     # The manually registered command, along with the automatically registered
     # exit commands should appear in the candidates.
     self.assertEqual(
-        [["a", "babble", "exit", "h", "help", "m", "mouse", "quit"]],
-        ui.candidates_lists)
+        [["a", "babble", "cfg", "config", "exit", "h", "help", "m", "mouse",
+          "quit"]], ui.candidates_lists)
 
     # The two candidates have no common prefix. So no command should have been
     # issued.
@@ -1056,13 +1057,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(11, len(ui.scroll_messages))
 
     for i in range(11):
-      self.assertEqual([
-          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.]])"
-      ], ui.unwrapped_outputs[i].lines)
+      cli_test_utils.assert_lines_equal_ignoring_whitespace(
+          self, ["Tensor \"m\":", ""], ui.unwrapped_outputs[i].lines[:2])
+      self.assertEqual(
+          repr(np.ones([5, 5])).split("\n"), ui.unwrapped_outputs[i].lines[2:])
 
     self.assertEqual({
         0: None,
@@ -1165,13 +1163,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, len(ui.output_array_pointer_indices))
 
     for i in range(4):
-      self.assertEqual([
-          "Tensor \"m\":", "", "array([[ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.],",
-          "       [ 1.,  1.,  1.,  1.,  1.]])"
-      ], ui.unwrapped_outputs[i].lines)
+      cli_test_utils.assert_lines_equal_ignoring_whitespace(
+          self, ["Tensor \"m\":", ""], ui.unwrapped_outputs[i].lines[:2])
+      self.assertEqual(
+          repr(np.ones([5, 5])).split("\n"), ui.unwrapped_outputs[i].lines[2:])
 
     self.assertEqual({
         0: None,

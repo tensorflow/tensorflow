@@ -94,7 +94,7 @@ struct DepthwiseConv2DKernel {
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
         const int64 index = i + j * padded_filter_inner_dim_size;
@@ -115,7 +115,7 @@ struct DepthwiseConv2DKernel {
     }
 
     if (output_scalar_size > 0) {
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         const int64 index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -246,6 +246,7 @@ extern template class LaunchConv2DOp<CPUDevice, float>;
 #if GOOGLE_CUDA
 
 // Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
@@ -307,10 +308,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
     // in_depth for input and filter must match.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
@@ -372,8 +373,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // If in_depth==1, this operation is just a standard convolution, so
     // invoke that op.
     if (std::is_same<T, float>::value && in_depth == 1) {
+      // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+      // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                stride_, stride_, padding_, output, data_format_);
+                /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                padding_, output, data_format_);
       return;
     }
 
@@ -419,12 +423,18 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<CPUDevice, T>);
 
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     DepthwiseConv2dNativeOp<GPUDevice, float>);

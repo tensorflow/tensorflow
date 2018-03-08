@@ -75,7 +75,8 @@ class OpRegistry : public OpRegistryInterface {
                 const OpRegistrationData** op_reg_data) const override;
 
   // Fills *ops with all registered OpDefs (except those with names
-  // starting with '_' if include_internal == false).
+  // starting with '_' if include_internal == false) sorted in
+  // ascending alphabetical order.
   void Export(bool include_internal, OpList* ops) const;
 
   // Returns ASCII-format OpList for all registered OpDefs (except
@@ -87,6 +88,9 @@ class OpRegistry : public OpRegistryInterface {
 
   // Get all registered ops.
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
+
+  // Get all `OpRegistrationData`s.
+  void GetOpRegistrationData(std::vector<OpRegistrationData>* op_data);
 
   // Watcher, a function object.
   // The watcher, if set by SetWatcher(), is called every time an op is

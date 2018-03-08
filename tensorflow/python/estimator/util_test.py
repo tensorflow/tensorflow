@@ -38,7 +38,16 @@ class FnArgsTest(test.TestCase):
       def __call__(self, a, b):
         return a + b
 
-    self.assertEqual(('self', 'a', 'b'), util.fn_args(Foo()))
+    self.assertEqual(('a', 'b'), util.fn_args(Foo()))
+
+  def test_bounded_method(self):
+
+    class Foo(object):
+
+      def bar(self, a, b):
+        return a + b
+
+    self.assertEqual(('a', 'b'), util.fn_args(Foo().bar))
 
   def test_partial_function(self):
     expected_test_arg = 123

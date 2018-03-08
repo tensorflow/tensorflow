@@ -75,7 +75,7 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Input("num_layers: int32")
     .Input("num_units: int32")
     .Input("input_size: int32")
-    .Attr("T: {float32, float64}")
+    .Attr("T: {float16, float32, float64}")
     .Attr("S: {int32, int64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -130,7 +130,7 @@ REGISTER_OP("CudnnRNN")
     .Output("output_h: T")
     .Output("output_c: T")
     .Output("reserve_space: T")
-    .Attr("T: {float32, float64}")
+    .Attr("T: {float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -190,7 +190,7 @@ REGISTER_OP("CudnnRNNBackprop")
     .Output("input_h_backprop: T")
     .Output("input_c_backprop: T")
     .Output("params_backprop: T")
-    .Attr("T: {float32, float64}")
+    .Attr("T: {float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -236,7 +236,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
     .Input("params: T")
     .Output("weights: num_params * T")
     .Output("biases: num_params * T")
-    .Attr("T: {float32, float64}")
+    .Attr("T: {float16, float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -251,9 +251,8 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       TF_RETURN_IF_ERROR(c->GetAttr("num_params", &num_params));
       // Set shape for weight matrices
       for (int i = 0; i < num_params; i++) {
-        c->set_output(i,
-                      c->Matrix(InferenceContext::kUnknownDim,
-                                InferenceContext::kUnknownDim));
+        c->set_output(i, c->Matrix(InferenceContext::kUnknownDim,
+                                   InferenceContext::kUnknownDim));
       }
       // Set shape for bias vectors
       for (int i = 0; i < num_params; i++) {
@@ -279,7 +278,7 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("weights: num_params * T")
     .Input("biases: num_params * T")
     .Output("params: T")
-    .Attr("T: {float32, float64}")
+    .Attr("T: {float16, float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -300,6 +299,7 @@ upcoming training or inferences.
 num_params: number of parameter sets for all layers.
     Each layer may contain multiple parameter sets, with each set consisting of
     a weight matrix and a bias vector.
-)doc", kCudnnRNNCommonAttrs));
+)doc",
+                         kCudnnRNNCommonAttrs));
 
 }  // namespace tensorflow

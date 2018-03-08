@@ -100,15 +100,35 @@ class Decoder(object):
 
     Returns:
       `(outputs, next_state, next_inputs, finished)`: `outputs` is an object
-      containing the decoder output, `next_state` is a (structure of) state tensors
-      and TensorArrays, `next_inputs` is the tensor that should be used as input for
-      the next step, `finished` is a boolean tensor telling whether the sequence
-      is complete, for each sequence in the batch.
+      containing the decoder output, `next_state` is a (structure of) state
+      tensors and TensorArrays, `next_inputs` is the tensor that should be used
+      as input for the next step, `finished` is a boolean tensor telling whether
+      the sequence is complete, for each sequence in the batch.
     """
     raise NotImplementedError
 
   def finalize(self, outputs, final_state, sequence_lengths):
     raise NotImplementedError
+
+  @property
+  def tracks_own_finished(self):
+    """Describes whether the Decoder keeps track of finished states.
+
+    Most decoders will emit a true/false `finished` value independently
+    at each time step.  In this case, the `dynamic_decode` function keeps track
+    of which batch entries are already finished, and performs a logical OR to
+    insert new batches to the finished set.
+
+    Some decoders, however, shuffle batches / beams between time steps and
+    `dynamic_decode` will mix up the finished state across these entries because
+    it does not track the reshuffle across time steps.  In this case, it is
+    up to the decoder to declare that it will keep track of its own finished
+    state by setting this property to `True`.
+
+    Returns:
+      Python bool.
+    """
+    return False
 
 
 def _create_zero_outputs(size, dtype, batch_size):
@@ -232,7 +252,10 @@ def dynamic_decode(decoder,
       """
       (next_outputs, decoder_state, next_inputs,
        decoder_finished) = decoder.step(time, inputs, state)
-      next_finished = math_ops.logical_or(decoder_finished, finished)
+      if decoder.tracks_own_finished:
+        next_finished = decoder_finished
+      else:
+        next_finished = math_ops.logical_or(decoder_finished, finished)
       if maximum_iterations is not None:
         next_finished = math_ops.logical_or(
             next_finished, time + 1 >= maximum_iterations)

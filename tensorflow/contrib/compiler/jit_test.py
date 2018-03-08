@@ -24,6 +24,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -169,16 +170,17 @@ class JITTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
 
+@test_util.with_c_api
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
     with self.test_session():
-      x = constant_op.constant(3)
-      y_nc = math_ops.add(x, x, name="not_compiled")
+      x = constant_op.constant([[3]])
+      y_nc = math_ops.matmul(x, x, name="not_compiled")
       with jit.experimental_jit_scope():
-        y_c = math_ops.add(y_nc, y_nc, name="compiled")
+        y_c = math_ops.matmul(y_nc, y_nc, name="compiled")
       x_grads = gradients.gradients([y_c], [x])[0]
-      operations = x_grads.graph.get_operations()
+      operations = x.graph.get_operations()
       c_grad_ops = [
           op for op in operations if "gradients/compiled" in op.name]
       nc_grad_ops = [
@@ -188,22 +190,22 @@ class CompilationEnabledInGradientTest(test.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "No attr named"):
+        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
-      # d/dx (4 * x)
-      self.assertAllClose(4, x_grads.eval())
+      # d/dx (x ** 4) = 4 * (x ** 3)
+      self.assertAllClose([[108]], x_grads.eval())
 
   def testCompilationGradientScopeNames(self):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope():
         # XlaScope 0
-        a1 = constant_op.constant(1)
-        a1t = a1 + a1
+        a1 = constant_op.constant([[1]])
+        a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope():
         # XlaScope 1
-        a2 = constant_op.constant(1)
-        a2t = a2 + a2
+        a2 = constant_op.constant([[1]])
+        a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
       self.assertEqual(b"jit_scope_1", a2.op.get_attr("_XlaScope"))
@@ -220,12 +222,12 @@ class CompilationEnabledInGradientTest(test.TestCase):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 0
-        a1 = constant_op.constant(1)
-        a1t = a1 + a1
+        a1 = constant_op.constant([[1]])
+        a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 1
-        a2 = constant_op.constant(1)
-        a2t = a2 + a2
+        a2 = constant_op.constant([[1]])
+        a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
       self.assertEqual(b"jit_scope_1", a2.op.get_attr("_XlaScope"))

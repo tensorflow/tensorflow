@@ -21,7 +21,6 @@ from __future__ import print_function
 import tensorflow as tf
 import os
 
-from tensorflow.examples.image_retraining import label_image
 from tensorflow.examples.image_retraining import retrain
 from tensorflow.python.framework import test_util
 
@@ -68,50 +67,58 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortResult:0'))
 
   @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
-  def testAddFinalTrainingOps(self, flags_mock):
+  def testAddFinalRetrainOps(self, flags_mock):
     with tf.Graph().as_default():
       with tf.Session() as sess:
-        bottleneck = tf.placeholder(
-            tf.float32, [1, 1024],
-            name='bottleneck')
-        retrain.add_final_training_ops(5, 'final', bottleneck, 1024)
+        bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
+        # Test creating final training op with quantization.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, False,
+                                      False)
         self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
+
+  @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
+  def testAddFinalRetrainOpsQuantized(self, flags_mock):
+    # Ensure that the training and eval graph for quantized models are correctly
+    # created.
+    with tf.Graph().as_default() as g:
+      with tf.Session() as sess:
+        bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
+        # Test creating final training op with quantization, set is_training to
+        # true.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, True, True)
+        self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
+        found_fake_quant = 0
+        for op in g.get_operations():
+          if op.type == 'FakeQuantWithMinMaxVars':
+            found_fake_quant += 1
+            # Ensure that the inputs of each FakeQuant operations has 2 Assign
+            # operations in the training graph (Assign[Min,Max]Last,
+            # Assign[Min,Max]Ema)
+            self.assertEqual(2,
+                             len([i for i in op.inputs if 'Assign' in i.name]))
+        self.assertEqual(found_fake_quant, 2)
+    with tf.Graph().as_default() as g:
+      with tf.Session() as sess:
+        bottleneck = tf.placeholder(tf.float32, [1, 1024], name='bottleneck')
+        # Test creating final training op with quantization, set is_training to
+        # false.
+        retrain.add_final_retrain_ops(5, 'final', bottleneck, 1024, True, False)
+        self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
+        found_fake_quant = 0
+        for op in g.get_operations():
+          if op.type == 'FakeQuantWithMinMaxVars':
+            found_fake_quant += 1
+            for i in op.inputs:
+              # Ensure that no operations are Assign operation since this is the
+              # evaluation graph.
+              self.assertTrue('Assign' not in i.name)
+        self.assertEqual(found_fake_quant, 2)
 
   def testAddEvaluationStep(self):
     with tf.Graph().as_default():
       final = tf.placeholder(tf.float32, [1], name='final')
-      gt = tf.placeholder(tf.float32, [1], name='gt')
+      gt = tf.placeholder(tf.int64, [1], name='gt')
       self.assertIsNotNone(retrain.add_evaluation_step(final, gt))
-
-  def testLabelImage(self):
-
-    image_filename = ('../label_image/data/grace_hopper.jpg')
-
-    # Load some default data
-    label_path = os.path.join(tf.resource_loader.get_data_files_path(),
-                              'data/labels.txt')
-    labels = label_image.load_labels(label_path)
-    self.assertEqual(len(labels), 3)
-
-    image_path = os.path.join(tf.resource_loader.get_data_files_path(),
-                              image_filename)
-
-    image = label_image.load_image(image_path)
-    self.assertEqual(len(image), 61306)
-
-    # Create trivial graph; note that the two nodes don't meet
-    with tf.Graph().as_default():
-      jpeg = tf.constant(image)
-      # Input node that doesn't lead anywhere.
-      tf.image.decode_jpeg(jpeg, name='DecodeJpeg')
-
-      # Output node, that always outputs a constant.
-      tf.constant([[10, 30, 5]], name='final')
-
-      # As label_image outputs via print, we assume that
-      # if it returns, everything is OK.
-      result = label_image.run_graph(image, labels, jpeg, 'final:0', 3)
-      self.assertEqual(result, 0)
 
   def testAddJpegDecoding(self):
     with tf.Graph().as_default():
@@ -129,6 +136,13 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
     model_info = retrain.create_model_info('inception_v3')
     self.assertIsNotNone(model_info)
     self.assertEqual(299, model_info['input_width'])
+
+  def testCreateModelInfoQuantized(self):
+    # Test for mobilenet_quantized
+    model_info = retrain.create_model_info('mobilenet_1.0_224')
+    self.assertIsNotNone(model_info)
+    self.assertEqual(224, model_info['input_width'])
+
 
 if __name__ == '__main__':
   tf.test.main()

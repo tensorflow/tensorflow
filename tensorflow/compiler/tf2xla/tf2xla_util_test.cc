@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/data_flow_ops.h"
+#include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -52,24 +58,14 @@ TEST(ValidateConfig, Good) {
 
 TEST(ValidateConfig, BadEmpty) {
   tf2xla::Config config;
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
-}
-
-TEST(ValidateConfig, BadNoFeed) {
-  tf2xla::Config config;
-  tf2xla::Fetch* fetch = config.add_fetch();
-  fetch->mutable_id()->set_node_name("foo");
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
+  ExpectErrorContains(ValidateConfig(config), "fetches must be specified");
 }
 
 TEST(ValidateConfig, BadNoFetch) {
   tf2xla::Config config;
   tf2xla::Feed* feed = config.add_feed();
   feed->mutable_id()->set_node_name("foo");
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
+  ExpectErrorContains(ValidateConfig(config), "fetches must be specified");
 }
 
 TEST(ValidateConfig, BadFeedNodeName) {
@@ -209,6 +205,53 @@ TEST(PruneGraphDefInto, Basic) {
   copy.Clear();
   TF_EXPECT_OK(PruneGraphDefInto(FetchesConfig({"a", "e"}), def, &copy));
   EXPECT_EQ(def.DebugString(), copy.DebugString());
+}
+
+TEST(SetNodeShardingFromNeighbors, Basic) {
+  // Builds a graph that adds two Tensors.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto c = ops::Add(scope.WithOpName("C"), a, b);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  Node* a_node = nullptr;
+  Node* b_node = nullptr;
+  Node* c_node = nullptr;
+  for (Node* n : graph->nodes()) {
+    if (n->name() == "A") a_node = n;
+    if (n->name() == "B") b_node = n;
+    if (n->name() == "C") c_node = n;
+  }
+
+  const int num_cores_per_replica = 4;
+
+  a_node->set_assigned_device_name("foo");
+  EXPECT_FALSE(SetNodeShardingFromNeighbors(c_node, /*out_edges=*/false).ok());
+
+  // Test where one input to c_node has a device.
+  a_node->set_assigned_device_name("/device:TPU_REPLICATED_CORE:2");
+  TF_ASSERT_OK(SetNodeShardingFromNeighbors(c_node, /*out_edges=*/false));
+  auto parse_status = ParseShardingFromDevice(*c_node, num_cores_per_replica);
+  TF_ASSERT_OK(parse_status.status());
+  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
+  EXPECT_EQ(2, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+
+  // Test where two inputs to c_node have a device.
+  b_node->set_assigned_device_name("/device:TPU_REPLICATED_CORE:1");
+  TF_ASSERT_OK(SetNodeShardingFromNeighbors(c_node, /*out_edges=*/false));
+  parse_status = ParseShardingFromDevice(*c_node, num_cores_per_replica);
+  TF_ASSERT_OK(parse_status.status());
+  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
+  EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+
+  // Test setting based on out edges.
+  TF_ASSERT_OK(SetNodeShardingFromNeighbors(a_node, /*out_edges=*/true));
+  parse_status = ParseShardingFromDevice(*a_node, num_cores_per_replica);
+  TF_ASSERT_OK(parse_status.status());
+  ASSERT_TRUE(parse_status.ValueOrDie().has_value());
+  EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
 }
 
 }  // namespace

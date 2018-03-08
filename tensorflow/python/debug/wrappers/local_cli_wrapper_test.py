@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -99,6 +100,9 @@ class LocalCLIDebuggerWrapperSessionForTest(
       self.observers["run_start_cli_run_numbers"].append(self._run_call_count)
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
+
+    readline_cli = ui_factory.get_ui("readline")
+    self._register_this_run_info(readline_cli)
 
     while True:
       command = self._command_sequence[self._command_pointer]
@@ -659,6 +663,20 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     wrapped_monitored_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], monitored_sess)
     self.assertFalse(wrapped_monitored_sess.should_stop())
+
+  def testRunsWithEmptyFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run([])
+    self.assertEqual([], run_output)
+
+  def testRunsWithEmptyNestedFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run({"foo": {"baz": []}, "bar": ()})
+    self.assertEqual({"foo": {"baz": []}, "bar": ()}, run_output)
 
 
 if __name__ == "__main__":

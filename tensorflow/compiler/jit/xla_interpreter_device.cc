@@ -25,8 +25,8 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 5> kExecAllTypes = {
-    {DT_INT32, DT_FLOAT, DT_BOOL, DT_DOUBLE, DT_INT64}};
+constexpr std::array<DataType, 6> kExecAllTypes = {
+    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
@@ -42,9 +42,9 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
-                                       DEVICE_INTERPRETER_XLA_JIT, options,
-                                       name_prefix, &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create(
+      "Interpreter", DEVICE_XLA_INTERPRETER, 0, DEVICE_INTERPRETER_XLA_JIT,
+      options, name_prefix, /*register_device_for_compilation=*/true, &device));
   devices->push_back(device.release());
   return Status::OK();
 }

@@ -52,15 +52,14 @@ string MakeStringKey(const string& name) {
 
 TEST_F(RendezvousUtilTest, SendBeforeRecv) {
   // Fire off sends before receive the tensors.
-  Rendezvous::Args args;
   TF_ASSERT_OK(SendTensorsToRendezvous(
-      rendez_, args, {MakeStringKey("hello1"), MakeStringKey("hello2")},
+      rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
       {V("hello1"), V("hello2")}));
 
   Notification n;
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
-      rendez_, args, {MakeStringKey("hello1"), MakeStringKey("hello2")},
+      rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
       &received_keys, [&n](const Status& status) { n.Notify(); });
   n.WaitForNotification();
 
@@ -71,16 +70,14 @@ TEST_F(RendezvousUtilTest, SendBeforeRecv) {
 
 TEST_F(RendezvousUtilTest, RecvBeforeSend) {
   // Fire off recvs, wait for a notification in the callback.
-  Rendezvous::Args args;
-
   Notification n;
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
-      rendez_, args, {MakeStringKey("hello1"), MakeStringKey("hello2")},
+      rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
       &received_keys, [&n](const Status& status) { n.Notify(); });
 
   TF_ASSERT_OK(SendTensorsToRendezvous(
-      rendez_, args, {MakeStringKey("hello1"), MakeStringKey("hello2")},
+      rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
       {V("hello1"), V("hello2")}));
 
   n.WaitForNotification();

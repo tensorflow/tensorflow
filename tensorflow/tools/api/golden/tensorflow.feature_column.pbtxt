@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "categorical_column_with_vocabulary_file"
-    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'num_oov_buckets\', \'default_value\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'string\'>\"], "
+    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'num_oov_buckets\', \'default_value\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \"<dtype: \'string\'>\"], "
   }
   member_method {
     name: "categorical_column_with_vocabulary_list"
@@ -34,11 +34,11 @@ tf_module {
   }
   member_method {
     name: "input_layer"
-    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "linear_model"
-    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\'], "
+    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "make_parse_example_spec"
@@ -47,6 +47,10 @@ tf_module {
   member_method {
     name: "numeric_column"
     argspec: "args=[\'key\', \'shape\', \'default_value\', \'dtype\', \'normalizer_fn\'], varargs=None, keywords=None, defaults=[\'(1,)\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "shared_embedding_columns"
+    argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "weighted_categorical_column"

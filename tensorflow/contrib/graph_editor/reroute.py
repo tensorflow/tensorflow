@@ -397,27 +397,57 @@ def swap_inputs(sgv0, sgv1):
 
 
 def reroute_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv0 to sgv1 (see reroute_inputs)."""
+  """Re-route all the inputs of two subgraphs.
+
+  Args:
+    sgv0: the first subgraph to have its inputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+    sgv1: the second subgraph to have its inputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+  Returns:
+    A tuple `(sgv0, sgv1)` of subgraph views with their inputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
+  Raises:
+    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
+      the same rules than the function subgraph.make_view.
+  """
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
 def swap_outputs(sgv0, sgv1):
-  """Swap all the outputs of sgv0 and sgv1 (see _reroute_outputs)."""
+  """Swap all the outputs of sgv0 and sgv1 (see reroute_outputs)."""
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.swap)
 
 
 def reroute_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv0 to sgv1 (see _reroute_outputs)."""
+  """Re-route all the outputs of two operations.
+
+  Args:
+    sgv0: the first subgraph to have its outputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+    sgv1: the second subgraph to have its outputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+  Returns:
+    A tuple `(sgv0, sgv1)` of subgraph views with their outputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
+  Raises:
+    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
+      the same rules than the function subgraph.make_view.
+  """
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
 def swap_ios(sgv0, sgv1):
-  """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
+  """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute_sgv)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.swap)
 
 
 def reroute_ios(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute)."""
+  """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute_sgv)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.a2b)
 
 
@@ -441,9 +471,10 @@ def remove_control_inputs(op, cops):
     if cop not in op.control_inputs:
       raise ValueError("{} is not a control_input of {}".format(op.name,
                                                                 cop.name))
+  control_inputs = [cop for cop in op.control_inputs if cop not in cops]
   # pylint: disable=protected-access
-  op._control_inputs = [cop for cop in op._control_inputs if cop not in cops]
-  op._recompute_node_def()
+  op._remove_all_control_inputs()
+  op._add_control_inputs(control_inputs)
   # pylint: enable=protected-access
 
 
@@ -466,9 +497,6 @@ def add_control_inputs(op, cops):
     if cop in op.control_inputs:
       raise ValueError("{} is already a control_input of {}".format(cop.name,
                                                                     op.name))
-  # pylint: disable=protected-access
-  op._control_inputs += cops
-  op._recompute_node_def()
-  # pylint: enable=protected-access
+  op._add_control_inputs(cops)  # pylint: disable=protected-access
 
 remove_undocumented(__name__, _allowed_symbols)

@@ -21,12 +21,13 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 namespace {
 
 // Mapping from test name; i.e. MyTest.MyTestCase to platforms on which it is
-// disabled.
+// disabled - a sequence of regexps.
 using ManifestT = std::unordered_map<string, std::vector<string>>;
 
 ManifestT ReadManifest() {
@@ -66,9 +67,6 @@ ManifestT ReadManifest() {
 
 string PrependDisabledIfIndicated(const string& test_case_name,
                                   const string& test_name) {
-  // TODO(leary): this code reads the manifest for every test case instantiated
-  // in every file. Consider switching to a singleton or using a compile-time
-  // genrule instead.
   ManifestT manifest = ReadManifest();
 
   // First try full match: test_case_name.test_name
@@ -83,11 +81,13 @@ string PrependDisabledIfIndicated(const string& test_case_name,
     }
   }
 
+  // Expect a full match vs. one of the platform regexps to disable the test.
   const std::vector<string>& disabled_platforms = it->second;
   string platform_string = XLA_PLATFORM;
-  if (std::find(disabled_platforms.begin(), disabled_platforms.end(),
-                platform_string) != disabled_platforms.end()) {
-    return "DISABLED_" + test_name;
+  for (const auto& s : disabled_platforms) {
+    if (RE2::FullMatch(/*text=*/platform_string, /*re=*/s)) {
+      return "DISABLED_" + test_name;
+    }
   }
 
   // We didn't hit in the disabled manifest entries, so don't disable it.

@@ -14,9 +14,10 @@ laptop, without requiring a GPU. This tutorial will show you how to run the
 example script on your own images, and will explain some of the options you have
 to help control the training process.
 
-Note: This version of the tutorial mainly uses bazel. A bazel free version is
-also available
+Note: A version of this tutorial is also available
 [as a codelab](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0).
+
+Before you start, you must @{$install$install tensorflow}.
 
 [TOC]
 
@@ -38,26 +39,31 @@ curl -O http://download.tensorflow.org/example_images/flower_photos.tgz
 tar xzf flower_photos.tgz
 ```
 
-Once you have the images, you can build the retrainer like this, from the root
-of your TensorFlow source directory:
+Once you have the images, you can clone the tensorflow repository using the
+following command (these examples are not included in the installation):
 
 ```sh
-bazel build tensorflow/examples/image_retraining:retrain
+git clone https://github.com/tensorflow/tensorflow
 ```
 
-If you have a machine which supports
-[the AVX instruction set](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
-(common in x86 CPUs produced in the last few years) you can improve the running
-speed of the retraining by building for that architecture, like this (after choosing appropriate options in `configure`):
+Then checkout the version of the tensorflow repository matching your
+installation and this tutorial as follows:
 
-```sh
-bazel build --config opt tensorflow/examples/image_retraining:retrain
+``` sh
+cd tensorflow
+git checkout {version}
 ```
 
-The retrainer can then be run like this:
+In the simplest cases the retrainer can then be run like this:
 
 ```sh
-bazel-bin/tensorflow/examples/image_retraining/retrain --image_dir ~/flower_photos
+python tensorflow/examples/image_retraining/retrain.py --image_dir ~/flower_photos
+```
+
+The script has many other options. You can get a full listing with:
+
+```sh
+python tensorflow/examples/image_retraining/retrain.py -h
 ```
 
 This script loads the pre-trained Inception v3 model, removes the old top layer,
@@ -149,26 +155,28 @@ can read in, so you can start using your new model immediately. Since you've
 replaced the top layer, you will need to specify the new name in the script, for
 example with the flag `--output_layer=final_result` if you're using label_image.
 
-Here's an example of how to build and run the label_image example with your
+Here's an example of how to run the label_image example with your
 retrained graphs:
 
 ```sh
-bazel build tensorflow/examples/image_retraining:label_image && \
-bazel-bin/tensorflow/examples/image_retraining/label_image \
+python tensorflow/examples/label_image/label_image.py \
 --graph=/tmp/output_graph.pb --labels=/tmp/output_labels.txt \
---output_layer=final_result:0 \
+--input_layer=Mul \
+--output_layer=final_result \
+--input_mean=128 --input_std=128 \
 --image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
 ```
 
 You should see a list of flower labels, in most cases with daisy on top
 (though each retrained model may be slightly different). You can replace the
-`--image` parameter with your own images to try those out, and use the C++ code
-as a template to integrate with your own applications.
+`--image` parameter with your own images to try those out.
 
 If you'd like to use the retrained model in your own Python program, then the
 above
-[`label_image` script](https://www.tensorflow.org/code/tensorflow/examples/image_retraining/label_image.py)
-is a reasonable starting point.
+[`label_image` script](https://www.tensorflow.org/code/tensorflow/examples/label_image/label_image.py)
+is a reasonable starting point. The `label_image`
+directory also contains C++ code which you can use as a template to integrate
+tensorflow with your own applications.
 
 If you find the default Inception v3 model is too large or slow for your
 application, take a look at the [Other Model Architectures section](/tutorials/image_retraining#other_model_architectures)
@@ -272,7 +280,7 @@ them destroys their meaning.
 
 There are several other parameters you can try adjusting to see if they help
 your results. The `--learning_rate` controls the magnitude of the updates to the
-final layer during training. Intuitively if this is smaller than the learning
+final layer during training. Intuitively if this is smaller then the learning
 will take longer, but it can end up helping the overall precision. That's not
 always the case though, so you need to experiment carefully to see what works
 for your case. The `--train_batch_size` controls how many images are examined
@@ -341,34 +349,56 @@ results, but if you intend to deploy your model on mobile devices or other
 resource-constrained environments you may want to trade off a little accuracy
 for much smaller file sizes or faster speeds. To help with that, the
 [retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)
-supports 32 different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
+supports different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
 
 These are a little less precise than Inception v3, but can result in far
-smaller file sizes (down to less than a megabyte) and can be many times faster
+smaller file sizes (a few megabytes) and can be many times faster
 to run. To train with one of these models, pass in the `--architecture` flag,
 for example:
 
 ```
 python tensorflow/examples/image_retraining/retrain.py \
-    --image_dir ~/flower_photos --architecture mobilenet_0.25_128_quantized
+    --image_dir ~/flower_photos --architecture mobilenet_0.25_128
 ```
 
-This will create a 941KB model file in `/tmp/output_graph.pb`, with 25% of the
-parameters of the full Mobilenet, taking 128x128 sized input images, and with
-its weights quantized down to eight bits on disk. You can choose '1.0', '0.75',
-'0.50', or '0.25' to control the number of weight parameters, and so the file
-size (and to some extent the speed), '224', '192', '160', or '128' for the input
-image size, with smaller sizes giving faster speeds, and an optional
-'_quantized' at the end to indicate whether the file should contain 8-bit or
-32-bit float weights.
+This will create a 1.9MB model file in `/tmp/output_graph.pb`, with only 25% of
+the number of neurons of the full Mobilenet, and trained to take 128x128 sized
+input images.
+
+You can choose '1.0', '0.75', '0.50', or '0.25' to control the number of
+neurons (activations of hidden layers); the number of weights (and hence to
+some extent the file size and speed) shrinks like the square of that fraction.
+You can choose '224', '192', '160', or '128' for the input image size,
+with smaller sizes giving faster speeds.
 
 The speed and size advantages come at a loss to accuracy of course, but for many
 purposes this isn't critical. They can also be somewhat offset with improved
 training data. For example, training with distortions allows me to get above 80%
-accuracy on the flower data set even with the 0.25/128/quantized graph above.
+accuracy on the flower data set even with the 0.25/128 graph above.
 
 If you're going to be using the Mobilenet models in label_image or your own
 programs, you'll need to feed in an image of the specified size converted to a
 float range into the 'input' tensor. Typically 24-bit images are in the range
 [0,255], and you must convert them to the [-1,1] float range expected by the
 model with the formula  `(image - 128.)/128.`.
+
+The default arguments for the `label_image` script are set for Inception V3.
+To use it with a MobileNet, specify the above normalization parameters as
+`input_mean` and `input_std` on the command line. You also must specify the
+image size that your model expects, as follows:
+
+```sh
+python tensorflow/examples/label_image/label_image.py \
+--graph=/tmp/output_graph.pb --labels=/tmp/output_labels.txt \
+--input_layer=input \
+--output_layer=final_result \
+--input_height=224 --input_width=224 \
+--input_mean=128 --input_std=128 \
+--image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
+```
+
+For more information on deploying the retrained model to a mobile device, see
+the [codelab version](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0)
+of this tutorial, especially [part 2](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2-tflite/#0), which describes
+[TensorFlow Lite](/mobile/tflite/) and the additional optimizations it offers
+(including quantization of model weights).

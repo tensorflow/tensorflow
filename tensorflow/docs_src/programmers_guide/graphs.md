@@ -89,7 +89,7 @@ to all API functions in the same context.  For example:
 * Executing `v = tf.Variable(0)` adds to the graph a @{tf.Operation} that will
   store a writeable tensor value that persists between @{tf.Session.run} calls.
   The @{tf.Variable} object wraps this operation, and can be used [like a
-  tensor](#tensor-like-objects), which will read the current value of the
+  tensor](#tensor-like_objects), which will read the current value of the
   stored value. The @{tf.Variable} object also has methods such as
   @{tf.Variable.assign$`assign`} and @{tf.Variable.assign_add$`assign_add`} that
   create @{tf.Operation} objects that, when executed, update the stored value.
@@ -100,7 +100,7 @@ to all API functions in the same context.  For example:
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,
-see [Dealing with multiple graphs](#dealing-with-multiple-graphs) for more
+see [Dealing with multiple graphs](#programming_with_multiple_graphs) for more
 advanced use cases. High-level APIs such as the @{tf.estimator.Estimator} API
 manage the default graph on your behalf, and--for example--may create different
 graphs for training and evaluation.
@@ -125,14 +125,14 @@ an operation:
   @{tf.Tensor} accepts an optional `name` argument. For example,
   `tf.constant(42.0, name="answer")` creates a new @{tf.Operation} named
   `"answer"` and returns a @{tf.Tensor} named `"answer:0"`. If the default graph
-  already contained an operation named `"answer"`, the TensorFlow would append
+  already contains an operation named `"answer"`, then TensorFlow would append
   `"_1"`, `"_2"`, and so on to the name, in order to make it unique.
 
 * The @{tf.name_scope} function makes it possible to add a **name scope** prefix
   to all operations created in a particular context. The current name scope
   prefix is a `"/"`-delimited list of the names of all active @{tf.name_scope}
   context managers. If a name scope has already been used in the current
-  context, TensorFlow appens `"_1"`, `"_2"`, and so on. For example:
+  context, TensorFlow appends `"_1"`, `"_2"`, and so on. For example:
 
   ```python
   c_0 = tf.constant(0, name="c")  # => operation named "c"
@@ -210,9 +210,8 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-
-If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed
-configuration}, you might specify the job name and task ID to place variables on
+If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed configuration},
+you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):
 
@@ -329,27 +328,27 @@ described below.
 * **`graph`.** By default, a new @{tf.Session} will be bound to---and only able
   to run operations in---the current default graph. If you are using multiple
   graphs in your program (see [Programming with multiple
-  graphs](programming-with-multiple-graphs) for more details), you can specify
+  graphs](#programming_with_multiple_graphs) for more details), you can specify
   an explicit @{tf.Graph} when you construct the session.
 
 * **`config`.** This argument allows you to specify a @{tf.ConfigProto} that
   controls the behavior of the session. For example, some of the configuration
   options include:
 
-  * `allow_soft_placement`. Set this to `True` to enable a "soft" device
+    * `allow_soft_placement`. Set this to `True` to enable a "soft" device
     placement algorithm, which ignores @{tf.device} annotations that attempt
     to place CPU-only operations on a GPU device, and places them on the CPU
     instead.
 
-  * `cluster_def`. When using distributed TensorFlow, this option allows you
+    * `cluster_def`. When using distributed TensorFlow, this option allows you
     to specify what machines to use in the computation, and provide a mapping
     between job names, task indices, and network addresses. See
     @{tf.train.ClusterSpec.as_cluster_def} for details.
 
-  * `graph_options.optimizer_options`. Provides control over the optimizations
+    * `graph_options.optimizer_options`. Provides control over the optimizations
     that TensorFlow performs on your graph before executing it.
 
-  * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
+    * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
     allocator so that it gradually increases the amount of memory allocated,
     rather than allocating most of the memory at startup.
 
@@ -404,8 +403,8 @@ y = tf.square(x)
 
 with tf.Session() as sess:
   # Feeding a value changes the result that is returned when you evaluate `y`.
-  print(sess.run(y, {x: [1.0, 2.0, 3.0]})  # => "[1.0, 4.0, 9.0]"
-  print(sess.run(y, {x: [0.0, 0.0, 5.0]})  # => "[0.0, 0.0, 25.0]"
+  print(sess.run(y, {x: [1.0, 2.0, 3.0]}))  # => "[1.0, 4.0, 9.0]"
+  print(sess.run(y, {x: [0.0, 0.0, 5.0]}))  # => "[0.0, 0.0, 25.0]"
 
   # Raises `tf.errors.InvalidArgumentError`, because you must feed a value for
   # a `tf.placeholder()` when evaluating a tensor that depends on it.
@@ -487,7 +486,7 @@ subgraph inside.
 ![](../images/mnist_deep.png)
 
 For more information about visualizing your TensorFlow application with
-TensorBoard, see the [TensorBoard tutorial](TODO).
+TensorBoard, see the [TensorBoard tutorial](../get_started/summaries_and_tensorboard.md).
 
 ## Programming with multiple graphs
 

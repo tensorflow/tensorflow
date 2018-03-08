@@ -97,7 +97,9 @@ class SimpleRendezvous : public Rendezvous {
 
 }  // namespace
 
-GraphRunner::GraphRunner(Env* env) : cpu_device_(GetCPUDevice(env)) {}
+GraphRunner::GraphRunner(Env* env)
+    : device_deleter_(GetCPUDevice(env)), device_(device_deleter_.get()) {}
+GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
 GraphRunner::~GraphRunner() {}
 
@@ -105,8 +107,20 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
                         const NamedTensorList& inputs,
                         const std::vector<string>& output_names,
                         std::vector<Tensor>* outputs) {
-  if (cpu_device_ == nullptr) {
+  if (device_ == nullptr) {
     return errors::NotFound("Cannot find a device for GraphRunner.");
+  }
+
+  if (function_library && function_library->device() &&
+      function_library->device()->device_type() != device_->device_type()) {
+    // Mismatch between function_library's device_type and device_'s
+    // device_type.
+    // TODO(matthewmurray) Can we create a new FunctionLibraryRuntime that is
+    // identical to function_library except that it uses the given 'device_'?
+    VLOG(1) << "Cannot run on: " << device_->device_type()
+            << " with a function library for a "
+            << function_library->device()->device_type() << " device.";
+    function_library = nullptr;
   }
 
   // TODO(vrv): Instead of copying the entire graph, consider modifying
@@ -123,8 +137,8 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   for (const auto& in : inputs) {
     const string& tensor_name = in.first;
     input_names.emplace_back(tensor_name);
-    string full_key = Rendezvous::CreateKey("/cpu:0", 1, "/cpu:1", tensor_name,
-                                            FrameAndIter(0, 0));
+    string full_key = Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
+                                            tensor_name, FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(full_key, &parsed));
     TF_RETURN_IF_ERROR(rendez->Send(parsed, Rendezvous::Args(), in.second,
@@ -135,8 +149,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph_to_run.get(), input_names, output_names, {} /* target nodes */,
-      cpu_device_->attributes(), false /* use_function_convention */,
-      &metadata));
+      device_->attributes(), false /* use_function_convention */, &metadata));
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
@@ -145,21 +158,20 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // should not be running expensive operators.
   auto runner = [](Executor::Args::Closure c) { c(); };
 
-  // Take ownership and pass to NewLocalExecutor
-  Graph* g = graph_to_run.release();
-
   LocalExecutorParams params;
   // The ownership of the output tensors are bound to this device's lifetime.
-  params.device = cpu_device_.get();
+  params.device = device_;
   params.function_library = function_library;
-  params.create_kernel = [this, g](const NodeDef& ndef, OpKernel** kernel) {
-    return CreateNonCachedKernel(cpu_device_.get(), nullptr, ndef,
-                                 g->versions().producer(), kernel);
+  const int producer = graph_to_run->versions().producer();
+  params.create_kernel = [this, producer](const NodeDef& ndef,
+                                          OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, nullptr, ndef, producer, kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &executor));
+  TF_RETURN_IF_ERROR(
+      NewLocalExecutor(params, std::move(graph_to_run), &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;
@@ -175,8 +187,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
 
   outputs->resize(output_names.size());
   for (size_t i = 0; i < output_names.size(); ++i) {
-    const string& output_key = Rendezvous::CreateKey(
-        "/cpu:0", 1, "/cpu:1", output_names[i], FrameAndIter(0, 0));
+    const string& output_key =
+        Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
+                              output_names[i], FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(output_key, &parsed));
     bool is_dead;

@@ -28,6 +28,7 @@ from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -54,6 +55,11 @@ CUDNN_INPUT_LINEAR_MODE = "linear_input"
 CUDNN_INPUT_SKIP_MODE = "skip_input"
 CUDNN_INPUT_AUTO_MODE = "auto_select"
 
+# pylint:disable=protected-access
+_BIAS_VARIABLE_NAME = rnn_cell_impl._BIAS_VARIABLE_NAME
+_WEIGHTS_VARIABLE_NAME = rnn_cell_impl._WEIGHTS_VARIABLE_NAME
+# pylint:enable=protected-access
+
 
 class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   """Cudnn Compatible LSTMCell.
@@ -65,8 +71,8 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units, forget_bias=0, clip_cell=False, use_peephole=False,
-        reuse=reuse)
+        num_units, forget_bias=0, cell_clip=None, use_peephole=False,
+        reuse=reuse, name="cudnn_compatible_lstm_cell")
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
 
@@ -86,9 +92,9 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
   r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  i_t = sigma(x_t * W_i + h_t-1 * R_i + b_Wi + b_Ru)  # update gate
+  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
   h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - i_t) .* h'_t + i_t .* h_t-1
+  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
   ```
 
   Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
@@ -99,9 +105,6 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   ```python
   r .* (h * R) != (r .* h) * R
   ```
-
-  TODO(jamesqin): update the impl after Cudnn 7.1 when Nvidia would adopt the
-  canonical version compatible with other tf GRU cells.
   """
 
   def __init__(self, num_units, reuse=None, kernel_initializer=None):
@@ -111,33 +114,65 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
         reuse=reuse,
         kernel_initializer=kernel_initializer)
 
+  def build(self, inputs_shape):
+    if inputs_shape[1].value is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+    self._gate_kernel = self.add_variable(
+        "gates/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth + self._num_units, 2 * self._num_units],
+        initializer=self._kernel_initializer)
+    self._gate_bias = self.add_variable(
+        "gates/%s" % _BIAS_VARIABLE_NAME,
+        shape=[2 * self._num_units],
+        initializer=(
+            self._bias_initializer
+            if self._bias_initializer is not None
+            else init_ops.constant_initializer(1.0, dtype=self.dtype)))
+
+    self._candidate_input_kernel = self.add_variable(
+        "candidate/input_projection/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, self._num_units],
+        initializer=self._kernel_initializer)
+    self._candidate_hidden_kernel = self.add_variable(
+        "candidate/hidden_projection/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[self._num_units, self._num_units],
+        initializer=self._kernel_initializer)
+
+    self._candidate_input_bias = self.add_variable(
+        "candidate/input_projection/%s" % _BIAS_VARIABLE_NAME,
+        shape=[self._num_units],
+        initializer=(
+            self._bias_initializer
+            if self._bias_initializer is not None
+            else init_ops.zeros_initializer(dtype=self.dtype)))
+    self._candidate_hidden_bias = self.add_variable(
+        "candidate/hidden_projection/%s" % _BIAS_VARIABLE_NAME,
+        shape=[self._num_units],
+        initializer=(
+            self._bias_initializer
+            if self._bias_initializer is not None
+            else init_ops.zeros_initializer(dtype=self.dtype)))
+
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope("gates"):  # Reset gate and update gate.
-      # We start with bias of 1.0 to not reset and not update.
-      bias_ones = self._bias_initializer
-      if self._bias_initializer is None:
-        dtype = inputs.dtype
-        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
-      # pylint: disable=protected-access
-      value = math_ops.sigmoid(
-          rnn_cell_impl._linear([inputs, state], 2 * self._num_units, True,
-                                bias_ones, self._kernel_initializer))
-      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
-      # pylint: enable=protected-access
-    with vs.variable_scope("candidate"):
-      # pylint: disable=protected-access
-      with vs.variable_scope("input_projection"):
-        hi = rnn_cell_impl._linear(inputs, self._num_units, True,
-                                   self._bias_initializer,
-                                   self._kernel_initializer)
-      with vs.variable_scope("hidden_projection"):
-        hh = r * (rnn_cell_impl._linear(state, self._num_units, True,
-                                        self._bias_initializer,
-                                        self._kernel_initializer))
-      # pylint: enable=protected-access
-      c = self._activation(hi + hh)
-    new_h = u * state + (1 - u) * c
+    gate_inputs = math_ops.matmul(
+        array_ops.concat([inputs, state], 1), self._gate_kernel)
+    gate_inputs = nn_ops.bias_add(gate_inputs, self._gate_bias)
+
+    value = math_ops.sigmoid(gate_inputs)
+    r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
+
+    candidate = nn_ops.bias_add(
+        math_ops.matmul(inputs, self._candidate_input_kernel),
+        self._candidate_input_bias)
+    candidate += r * nn_ops.bias_add(
+        math_ops.matmul(state, self._candidate_hidden_kernel),
+        self._candidate_hidden_bias)
+    candidate = self._activation(candidate)
+    new_h = (1-u) * candidate + u * state
     return new_h, new_h
 
 
@@ -268,16 +303,17 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       2 list for weights and biases respectively.
     """
-    weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        params=self._variables,
-        num_params=self._num_params,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
-    return (weights, biases)
+    with ops.device("/gpu:0"):
+      weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          params=self._variables,
+          num_params=self._num_params,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
+      return (weights, biases)
 
   def _CanonicalToOpaqueParams(self, cu_weights, cu_biases):
     """Converts from Cudnn canonical format to opaque params.
@@ -288,15 +324,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       a single opaque tensor.
     """
-    return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        weights=cu_weights,
-        biases=cu_biases,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
+    with ops.device("/gpu:0"):
+      return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          weights=cu_weights,
+          biases=cu_biases,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
 
   def _TransformCanonical(self, cu_weights, cu_biases):
     r"""Transform from Cudnn canonical to tf canonical.
@@ -717,12 +754,6 @@ _cudnn_rnn_common_doc_string = """
 """
 
 
-def _check_direction(direction):
-  if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
-    raise ValueError("Invalid direction: %s, expect %s or %s" %
-                     (direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION))
-
-
 def _check_rnn_mode(rnn_mode):
   if rnn_mode not in (CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_TANH, CUDNN_RNN_RELU):
     raise ValueError("Invalid rnn_mode: %s, expect one of (%s, %s, %s, %s)" %
@@ -737,14 +768,31 @@ def _get_seed(seed):
   return seed, seed2
 
 
+def check_direction(direction):
+  """Check validity of direction."""
+  if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+    raise ValueError("Invalid direction: %s, expecting %s or %s" %
+                     (direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION))
+
+
+def check_input_mode(input_mode):
+  if input_mode not in (CUDNN_INPUT_LINEAR_MODE, CUDNN_INPUT_SKIP_MODE,
+                        CUDNN_INPUT_AUTO_MODE):
+    raise ValueError("Invalid input_mode: %s, expect one of (%s, %s, %s)" %
+                     (input_mode, CUDNN_INPUT_LINEAR_MODE,
+                      CUDNN_INPUT_SKIP_MODE, CUDNN_INPUT_AUTO_MODE))
+
+
 def _get_num_params(rnn_mode, num_layers, direction):
   """Return num params for given Cudnn config."""
   if rnn_mode == CUDNN_LSTM:
-    num_params_per_layer = 8
+    num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
   elif rnn_mode == CUDNN_GRU:
-    num_params_per_layer = 6
-  elif rnn_mode in (CUDNN_RNN_RELU, CUDNN_RNN_TANH):
-    num_params_per_layer = 2
+    num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
+  elif rnn_mode == CUDNN_RNN_RELU:
+    num_params_per_layer = CUDNN_RNN_RELU_PARAMS_PER_LAYER
+  elif rnn_mode == CUDNN_RNN_TANH:
+    num_params_per_layer = CUDNN_RNN_TANH_PARAMS_PER_LAYER
   else:
     raise ValueError("Invalid \'rnn_mode\': %s", rnn_mode)
   num_params = num_layers * num_params_per_layer
@@ -794,7 +842,8 @@ def _cudnn_rnn(inputs,
     outputs, output_h, output_c
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
       input=inputs,
@@ -1017,16 +1066,16 @@ def cudnn_rnn_tanh(inputs,
                                seed, name)
 
 
-def cudnn_rnn_params_to_canonical(rnn_mode,
-                                  num_layers,
-                                  num_units,
-                                  input_size,
-                                  params,
-                                  input_mode=CUDNN_INPUT_LINEAR_MODE,
-                                  direction=CUDNN_RNN_UNIDIRECTION,
-                                  dropout=0,
-                                  seed=0,
-                                  name=None):
+def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
+                                         num_layers,
+                                         num_units,
+                                         input_size,
+                                         params,
+                                         input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                         direction=CUDNN_RNN_UNIDIRECTION,
+                                         dropout=0,
+                                         seed=0,
+                                         name=None):
   """Convert cudnn opaque params to canonical.
 
   Args:
@@ -1058,7 +1107,8 @@ def cudnn_rnn_params_to_canonical(rnn_mode,
   """
 
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   num_params = _get_num_params(rnn_mode, num_layers, direction)
   seed, seed2 = random_seed.get_seed(seed)
   weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
@@ -1077,17 +1127,17 @@ def cudnn_rnn_params_to_canonical(rnn_mode,
   return weights, biases
 
 
-def cudnn_rnn_canonical_to_params(rnn_mode,
-                                  num_layers,
-                                  num_units,
-                                  input_size,
-                                  weights,
-                                  biases,
-                                  input_mode=CUDNN_INPUT_LINEAR_MODE,
-                                  direction=CUDNN_RNN_UNIDIRECTION,
-                                  dropout=0,
-                                  seed=0,
-                                  name=None):
+def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
+                                         num_layers,
+                                         num_units,
+                                         input_size,
+                                         weights,
+                                         biases,
+                                         input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                         direction=CUDNN_RNN_UNIDIRECTION,
+                                         dropout=0,
+                                         seed=0,
+                                         name=None):
   """Converts params from the canonical format to a specific format of cuDNN.
 
   Args:
@@ -1119,7 +1169,8 @@ def cudnn_rnn_canonical_to_params(rnn_mode,
     ValueError: if rnn_mode or direction is invalid.
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
       rnn_mode=rnn_mode,
@@ -1136,16 +1187,16 @@ def cudnn_rnn_canonical_to_params(rnn_mode,
       name=name)
 
 
-def cudnn_opaque_params_size(rnn_mode,
-                             num_layers,
-                             num_units,
-                             input_size,
-                             input_mode=CUDNN_INPUT_LINEAR_MODE,
-                             direction=CUDNN_RNN_UNIDIRECTION,
-                             dtype=dtypes.float32,
-                             dropout=0,
-                             seed=0,
-                             name=None):
+def cudnn_rnn_opaque_params_size(rnn_mode,
+                                 num_layers,
+                                 num_units,
+                                 input_size,
+                                 input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                 direction=CUDNN_RNN_UNIDIRECTION,
+                                 dtype=dtypes.float32,
+                                 dropout=0,
+                                 seed=0,
+                                 name=None):
   """Returns opaque params size for specific Cudnn config.
 
   Args:
@@ -1176,7 +1227,8 @@ def cudnn_opaque_params_size(rnn_mode,
     ValueError: if rnn_mode or direction is invalid.
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   return gen_cudnn_rnn_ops.cudnn_rnn_params_size(
       rnn_mode=rnn_mode,
@@ -1278,7 +1330,7 @@ class _CudnnRNN(object):
     Returns:
       The calculated parameter buffer size.
     """
-    return cudnn_opaque_params_size(
+    return cudnn_rnn_opaque_params_size(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -1302,7 +1354,7 @@ class _CudnnRNN(object):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c. This is only relevant for LSTM.
     """
@@ -1327,7 +1379,7 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
-    return cudnn_rnn_params_to_canonical(
+    return cudnn_rnn_opaque_params_to_canonical(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -1348,7 +1400,7 @@ class _CudnnRNN(object):
     Returns:
       A function for the canonical-to-params-to-specific conversion..
     """
-    return cudnn_rnn_canonical_to_params(
+    return cudnn_rnn_canonical_to_opaque_params(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -1420,7 +1472,7 @@ class CudnnLSTM(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c.
     """
@@ -1490,7 +1542,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
     """
     return _cudnn_rnn_no_input_c(

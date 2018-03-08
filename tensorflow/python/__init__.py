@@ -60,7 +60,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
-from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -73,28 +73,31 @@ from tensorflow.python.ops.standard_ops import *
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
-from tensorflow.python.ops import linalg_ns as linalg
 
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python import data
+from tensorflow.python import keras
 from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.feature_column import feature_column_lib as feature_column
-from tensorflow.python import keras
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.profiler import profiler
-from tensorflow.python.user_ops import user_ops
-from tensorflow.python.util import compat
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
+from tensorflow.python.user_ops import user_ops
+from tensorflow.python.util import compat
+
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -113,6 +116,7 @@ from tensorflow.python.platform import test
 
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util.tf_export import tf_export
 
 # Import modules whose docstrings contribute, for use by remove_undocumented
 # below.
@@ -164,18 +168,39 @@ _allowed_symbols = [
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
+# Export protos
+# pylint: disable=undefined-variable
+tf_export('AttrValue')(AttrValue)
+tf_export('ConfigProto')(ConfigProto)
+tf_export('Event', 'summary.Event')(Event)
+tf_export('GPUOptions')(GPUOptions)
+tf_export('GraphDef')(GraphDef)
+tf_export('GraphOptions')(GraphOptions)
+tf_export('HistogramProto')(HistogramProto)
+tf_export('LogMessage')(LogMessage)
+tf_export('MetaGraphDef')(MetaGraphDef)
+tf_export('NameAttrList')(NameAttrList)
+tf_export('NodeDef')(NodeDef)
+tf_export('OptimizerOptions')(OptimizerOptions)
+tf_export('RunMetadata')(RunMetadata)
+tf_export('RunOptions')(RunOptions)
+tf_export('SessionLog', 'summary.SessionLog')(SessionLog)
+tf_export('Summary', 'summary.Summary')(Summary)
+tf_export('summary.SummaryDescription')(SummaryDescription)
+tf_export('SummaryMetadata')(SummaryMetadata)
+tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
+tf_export('TensorInfo')(TensorInfo)
+# pylint: enable=undefined-variable
+
+
 # The following symbols are kept for compatibility. It is our plan
 # to remove them in the future.
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'mul',  # use tf.multiply instead.
-    'neg',  # use tf.negative instead.
-    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
-    'list_diff',  # Use tf.listdiff instead.
     'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
@@ -211,6 +236,8 @@ _allowed_symbols.extend([
     'quint16',
     'quint8',
     'string',
+    'uint64',
+    'uint32',
     'uint16',
     'uint8',
     'resource',
@@ -222,6 +249,7 @@ _allowed_symbols.extend([
     'app',
     'bitwise',
     'compat',
+    'data',
     'distributions',
     'errors',
     'estimator',
@@ -231,12 +259,16 @@ _allowed_symbols.extend([
     'graph_util',
     'image',
     'initializers',
+    'keras',
+    'layers',
     'linalg',
     'logging',
     'losses',
+    'manip',
     'metrics',
     'newaxis',
     'nn',
+    'profiler',
     'python_io',
     'resource_loader',
     'saved_model',
@@ -247,9 +279,6 @@ _allowed_symbols.extend([
     'test',
     'train',
     'user_ops',
-    'layers',
-    'profiler',
-    'keras',
 ])
 
 # Variables framework.versions:
@@ -257,17 +286,19 @@ _allowed_symbols.extend([
     'VERSION',
     'GIT_VERSION',
     'COMPILER_VERSION',
+    'CXX11_ABI_FLAG',
+    'MONOLITHIC_BUILD',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols, [
     framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
-    control_flow_ops, confusion_matrix_m, distributions,
-    functional_ops, histogram_ops, io_ops,
-    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    control_flow_ops, confusion_matrix_m, data, distributions,
+    functional_ops, histogram_ops, io_ops, keras, layers,
+    losses, math_ops, metrics, nn, profiler, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train, layers, profiler, keras
+    train
 ])
 
 # Special dunders that we choose to export:
@@ -275,6 +306,8 @@ _exported_dunders = set([
     '__version__',
     '__git_version__',
     '__compiler_version__',
+    '__cxx11_abi_flag__',
+    '__monolithic_build__',
 ])
 
 # Expose symbols minus dunders, unless they are whitelisted above.

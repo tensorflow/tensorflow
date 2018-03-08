@@ -90,6 +90,44 @@ class WhereOpTest(test.TestCase):
 
     self._testWhere(x, truth)
 
+  def _testRandom(self, dtype, expected_err_re=None):
+    shape = [127, 33, 53]
+    x = np.random.randn(*shape) + 1j * np.random.randn(*shape)
+    x = (np.random.randn(*shape) > 0).astype(dtype)
+    truth = np.where(np.abs(x) > 0)  # Tuples of indices by axis.
+    truth = np.vstack(truth).T  # Convert to [num_true, indices].
+    self._testWhere(x, truth, expected_err_re)
+
+  def testRandomBool(self):
+    self._testRandom(np.bool)
+
+  def testRandomInt32(self):
+    self._testRandom(np.int32)
+
+  def testRandomInt64(self):
+    self._testRandom(np.int64)
+
+  def testRandomFloat(self):
+    self._testRandom(np.float32)
+
+  def testRandomDouble(self):
+    self._testRandom(np.float64)
+
+  def testRandomComplex64(self):
+    self._testRandom(np.complex64)
+
+  def testRandomComplex128(self):
+    self._testRandom(np.complex128)
+
+  def testRandomUint8(self):
+    self._testRandom(np.uint8)
+
+  def testRandomInt8(self):
+    self._testRandom(np.int8)
+
+  def testRandomInt16(self):
+    self._testRandom(np.int16)
+
   def testThreeArgument(self):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
     np_val = np.where(x > 0, x * x, -x)

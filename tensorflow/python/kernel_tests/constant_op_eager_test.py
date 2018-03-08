@@ -103,8 +103,7 @@ class ConstantTest(test.TestCase):
 
     # This integer is larger than all non-infinite numbers representable
     # by a double, raises an exception.
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "out-of-range integer"):
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
       constant_op.constant(10**310, dtypes_lib.float64)
 
   def testInt32(self):
@@ -126,8 +125,7 @@ class ConstantTest(test.TestCase):
     self.assertAllClose(np.array(orig), tf_ans.numpy())
 
     # Out of range for an int64
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "out-of-range integer"):
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
       constant_op.constant([2**72])
 
   def testComplex64(self):
@@ -218,15 +216,68 @@ class ConstantTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, None):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
+  def testShape(self):
+    self._testAll(constant_op.constant([1]).get_shape())
+
+  def testDimension(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll(x)
+
+  def testDimensionList(self):
+    x = [constant_op.constant([1]).shape[0]]
+    self._testAll(x)
+
+    # Mixing with regular integers is fine too
+    self._testAll([1] + x)
+    self._testAll(x + [1])
+
+  def testDimensionTuple(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll((x,))
+    self._testAll((1, x))
+    self._testAll((x, 1))
+
+  def testInvalidLength(self):
+
+    class BadList(list):
+
+      def __init__(self):
+        super(BadList, self).__init__([1, 2, 3])  # pylint: disable=invalid-length-returned
+
+      def __len__(self):
+        return -1
+
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList()])
+    with self.assertRaisesRegexp(ValueError, "mixed types"):
+      constant_op.constant([1, 2, BadList()])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant(BadList())
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([[BadList(), 2], 3])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), [1, 2, 3]])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), []])
+
+    # TODO(allenl, josh11b): These cases should return exceptions rather than
+    # working (currently shape checking only checks the first element of each
+    # sequence recursively). Maybe the first one is fine, but the second one
+    # silently truncating is rather bad.
+
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[3, 2, 1], BadList()])
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[], BadList()])
+
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "non-rectangular Python sequence"):
+    with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3], [4, 5]])
 
 

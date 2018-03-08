@@ -31,7 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import io
+import codecs
 import os
 import re
 import subprocess
@@ -63,12 +63,13 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"tensorflow::|"
                         r"functor::|"
+                        r"nsync_|"
                         r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported
 # from the DLL and the header they use does not decorate the symbol with
-# __declspec(dllimport). It is easier to detect what a data symbol does 
+# __declspec(dllimport). It is easier to detect what a data symbol does
 # NOT look like, so doing it with the below regex.
 DATA_EXCLUDE_RE = re.compile(r"[)(]|"
                              r"vftable|"
@@ -76,7 +77,7 @@ DATA_EXCLUDE_RE = re.compile(r"[)(]|"
                              r"vcall|"
                              r"RTTI|"
                              r"protobuf::internal::ExplicitlyConstructed")
-      
+
 def get_args():
   """Parse command line."""
   filename_list = lambda x: x.split(";")
@@ -102,7 +103,7 @@ def main():
   for lib_path in args.input:
     proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", lib_path],
                             stdout=subprocess.PIPE)
-    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+    for line in codecs.getreader("utf-8")(proc.stdout):
       cols = line.split()
       if len(cols) < 2:
         continue
@@ -130,7 +131,7 @@ def main():
     # We compare on undname but use the decorated name from candidates.
     dupes = 0
     proc = subprocess.Popen([UNDNAME, tmpfile.name], stdout=subprocess.PIPE)
-    for idx, line in enumerate(io.TextIOWrapper(proc.stdout, encoding="utf-8")):
+    for idx, line in enumerate(codecs.getreader("utf-8")(proc.stdout)):
       decorated = candidates[idx]
       if decorated in taken:
         # Symbol is already in output, done.

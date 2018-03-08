@@ -25,7 +25,7 @@ python tensorflow/examples/speech_commands/train.py
 ```
 
 The script will start off by downloading the [Speech Commands
-dataset](https://download.tensorflow.org/data/speech_commands_v0.01.tar.gz),
+dataset](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.01.tar.gz),
 which consists of 65,000 WAVE audio files of people saying thirty different
 words. This data was collected by Google and released under a CC BY license, and
 you can help improve it by [contributing five minutes of your own
@@ -246,7 +246,7 @@ results as in your server testing.
 The demo app updates its UI list of results automatically based on the labels
 text file you copy into assets alongside your frozen graph, which means you can
 easily try out different models without needing to make any code changes. You
-will need to updaye `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
+will need to update `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
 you've added if you change the paths though.
 
 ## How does this Model Work?
@@ -361,7 +361,7 @@ This will output information about the number of words correctly matched, how
 many were given the wrong labels, and how many times the model triggered when
 there was no real word spoken. There are various parameters that control how the
 signal averaging works, including `--average_window_ms` which sets the length of
-time to average results over, `--sample_stride_ms` which is the time between
+time to average results over, `--clip_stride_ms` which is the time between
 applications of the model, `--suppression_ms` which stops subsequent word
 detections from triggering for a certain time after an initial one is found, and
 `--detection_threshold`, which controls how high the average score must be

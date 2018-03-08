@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
+#define TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
 
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/core/platform/macros.h"
@@ -242,4 +242,4 @@ struct TraitsBase<false, false> {
 }  // namespace internal_statusor
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_

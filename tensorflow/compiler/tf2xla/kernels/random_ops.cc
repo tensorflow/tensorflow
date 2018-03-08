@@ -52,7 +52,8 @@ class RandomUniformOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
 };
 
-REGISTER_XLA_OP(Name("RandomUniform"), RandomUniformOp);
+REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
+                RandomUniformOp);
 
 class RandomUniformIntOp : public XlaOpKernel {
  public:
@@ -83,7 +84,8 @@ class RandomUniformIntOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformIntOp);
 };
 
-REGISTER_XLA_OP(Name("RandomUniformInt"), RandomUniformIntOp);
+REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstInput("shape"),
+                RandomUniformIntOp);
 
 class RandomStandardNormalOp : public XlaOpKernel {
  public:
@@ -111,7 +113,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomStandardNormalOp);
 };
 
-REGISTER_XLA_OP(Name("RandomStandardNormal"), RandomStandardNormalOp);
+REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstInput("shape"),
+                RandomStandardNormalOp);
 
 class TruncatedNormalOp : public XlaOpKernel {
  public:
@@ -140,7 +143,7 @@ class TruncatedNormalOp : public XlaOpKernel {
                                       xla::ComputationBuilder* b) {
       xla::ComputationDataHandle too_large = b->Gt(candidate, two_sd(false, b));
       xla::ComputationDataHandle too_small = b->Lt(candidate, two_sd(true, b));
-      return b->LogicalOr(too_large, too_small);
+      return b->Or(too_large, too_small);
     };
 
     // The algorithm we're using is roughly:
@@ -183,7 +186,8 @@ class TruncatedNormalOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("TruncatedNormal"), TruncatedNormalOp);
+REGISTER_XLA_OP(Name("TruncatedNormal").CompileTimeConstInput("shape"),
+                TruncatedNormalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow
