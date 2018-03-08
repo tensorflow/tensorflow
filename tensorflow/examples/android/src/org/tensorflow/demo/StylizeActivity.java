@@ -59,11 +59,6 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Vector;
 
 /**
  * Sample activity that stylizes the camera preview according to "A Learned Representation For
@@ -639,6 +634,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
       case KeyEvent.KEYCODE_DPAD_DOWN:
         moveOffset = grid.getNumColumns();
         break;
+      default:
+        return super.onKeyDown(keyCode, event);
     }
 
     // get the highest selected style
@@ -652,6 +649,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
     setStyle(adapter.items[(currentSelect + moveOffset + adapter.getCount()) % adapter.getCount()], 1);
 
-    return super.onKeyDown(keyCode, event);
+    return true;
   }
 }
