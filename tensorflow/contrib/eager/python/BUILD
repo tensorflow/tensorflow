@@ -266,6 +266,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
     ],
+    tags = ["notsan"],
 )
 
 filegroup(
