@@ -523,8 +523,7 @@ class MklConv2DCustomBackpropFilterOp
 
     if (biasEnabled && (bias_grad != nullptr)) {
       // Create convolution backward weights with bias primitive.
-      // Use MKLDNN dilated convolution in case of dilate rate (>0).
-      // MKLDNN dilate rate start from 0.
+      // Use dilated convolution in case dilate rates are greater than zero.
       auto bwd_desc = (dilations[kDilationH] > 0 || dilations[kDilationW] > 0) ?
         convolution_backward_weights::desc(convolution_direct,
                                   input->GetOpMemDesc(), output->GetOpMemDesc(),
@@ -563,8 +562,7 @@ class MklConv2DCustomBackpropFilterOp
                                   bias_grad);
     } else {
       // Create convolution backward weights primitive.
-      // Use MKLDNN dilated convolution in case of dilate rate (>0).
-      // MKLDNN dilate rate start from 0.
+      // Use dilated convolution in case dilate rates are greater than zero.
       auto bwd_desc = (dilations[kDilationH] > 0 || dilations[kDilationW] > 0) ?
         convolution_backward_weights::desc(convolution_direct,
                                   input->GetOpMemDesc(), output->GetOpMemDesc(),

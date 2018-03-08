@@ -435,8 +435,7 @@ class MklConv2DCustomBackpropInputOp
     CHECK_NOTNULL(output_tensor);
 
     // Create convolution backward data primitive.
-    // Use MKLDNN backward dilated convolution in case of dilate rate (>1).
-    // MKLDNN dilated rate start from 0.
+    // Use dilated convolution in case dilate rates are greater than zero.
     auto bwd_desc = (dilations[kDilationH] > 0 || dilations[kDilationW] > 0) ?
         convolution_backward_data::desc(convolution_direct,
                       output->GetOpMemDesc(), filter->GetOpMemDesc(),
