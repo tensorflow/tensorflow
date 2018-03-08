@@ -139,6 +139,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 
+# Eager execution
+from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.framework.ops import enable_eager_execution
+
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
 # documentation, or remove.
@@ -288,6 +292,12 @@ _allowed_symbols.extend([
     'COMPILER_VERSION',
     'CXX11_ABI_FLAG',
     'MONOLITHIC_BUILD',
+])
+
+# Eager execution
+_allowed_symbols.extend([
+    'enable_eager_execution',
+    'executing_eagerly',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
