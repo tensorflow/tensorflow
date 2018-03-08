@@ -91,7 +91,6 @@ cc_library(
     srcs = [
         "add_default_attributes.cc",
         "backports.cc",
-        "fake_quantize_training.cc",
         "flatten_atrous.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
@@ -105,7 +104,6 @@ cc_library(
         "remove_attribute.cc",
         "remove_control_dependencies.cc",
         "remove_device.cc",
-        "remove_ema.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
         "rename_op.cc",
@@ -148,7 +146,6 @@ tf_cc_test(
     srcs = [
         "add_default_attributes_test.cc",
         "backports_test.cc",
-        "fake_quantize_training_test.cc",
         "flatten_atrous_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
@@ -161,7 +158,6 @@ tf_cc_test(
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
         "remove_device_test.cc",
-        "remove_ema_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
         "rename_op_test.cc",
