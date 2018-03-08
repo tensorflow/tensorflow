@@ -1306,6 +1306,7 @@ tf_cc_test(
         ":while_loop_simplifier",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )
