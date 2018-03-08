@@ -26,6 +26,7 @@ py_library(
         "decorators.py",
         "for_loops.py",
         "list_comprehension.py",
+        "lists.py",
         "logical_expressions.py",
         "name_scopes.py",
         "side_effect_guards.py",
@@ -149,6 +150,16 @@ py_test(
 py_test(
     name = "list_comprehension_test",
     srcs = ["list_comprehension_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "lists_test",
+    srcs = ["lists_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
