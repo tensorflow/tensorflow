@@ -33,8 +33,19 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/python:list_ops",
         "//tensorflow/python:script_ops",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "builtins_test",
+    srcs = ["builtins_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":utils",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
