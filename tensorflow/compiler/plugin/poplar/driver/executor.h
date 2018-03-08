@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
-
 #include <list>
 #include <mutex>
 
@@ -66,6 +65,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   ~PoplarExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
+    ordinal_ = device_ordinal;
     return port::Status::OK();
   }
 
@@ -203,7 +203,6 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   // Poplar Interface
 
   port::Status InitializePoplarDevice(
-      int ordinal,
       const tensorflow::IPUOptions::DeviceConfig&);
 
   port::Status ClosePoplarDevice();
@@ -269,10 +268,12 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
             const OutputMap&,
             const Args&);
 
-  port::Status MoveDeviceToHost(TensorControl* tc) const;
+  port::Status MoveDeviceToHost(TensorControl* tc);
 
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                      const std::string& content);
+                      const std::string& content, int value);
+
+  int ordinal_;
 
   std::recursive_mutex mutex_;
 

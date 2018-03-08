@@ -120,7 +120,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         dev = opts.device_config.add()
         dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
         dev.profiling.enable_compilation_trace = True
-        dev.profiling.enable_io_trace = True
+        dev.profiling.enable_io_trace = False
         dev.profiling.enable_execution_trace = True
         dev.ipu_model_config.num_ipus = 2
         dev.ipu_model_config.tiles_per_ipu = 4

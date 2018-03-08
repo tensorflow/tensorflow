@@ -107,6 +107,7 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 }
 
 PoplarExecutor::PoplarExecutor() :
+    ordinal_(0),
     poplar_device_(poplar::Device::createCPUDevice()),
     device_open_(true),
     profile_compilation_(false),
@@ -231,7 +232,6 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 }
 
 port::Status PoplarExecutor::InitializePoplarDevice(
-    int ordinal,
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
   TF_RETURN_IF_ERROR(ClosePoplarDevice());
@@ -247,7 +247,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
       return port::Status{
           port::error::INTERNAL,
           tensorflow::strings::Printf(
-              "IPU device type not supported on ordinal %d", ordinal)};
+              "IPU device type not supported on ordinal %d", ordinal_)};
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL:
     {
       poplar::IPUModel model;
@@ -272,7 +272,7 @@ port::Status PoplarExecutor::InitializePoplarDevice(
       return port::Status{
           port::error::INTERNAL,
           tensorflow::strings::Printf(
-              "unrecognized poplar device type for ordinal %d: %d", ordinal,
+              "unrecognized poplar device type for ordinal %d: %d", ordinal_,
               type)};
   }
 
@@ -293,16 +293,19 @@ port::Status PoplarExecutor::ClosePoplarDevice() {
 }
 
 void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                                    const std::string& content) {
+                                    const std::string& content, int value) {
+  uint64 now = tensorflow::Env::Default()->NowMicros();
   tensorflow::IpuTraceEvent evt;
-  evt.set_timestamp(0.0);
+  evt.set_timestamp(static_cast<double>(now) / 1000000.0);
   evt.set_type(type);
-  evt.set_data(std::move(content));
+  evt.set_ordinal(ordinal_);
+  evt.set_data_str(std::move(content));
+  evt.set_data_int(value);
   reports_.push_back(evt);
 }
 
 void PoplarExecutor::AddCompilerReport(const std::string& report) {
-  AddEventRecord(tensorflow::IpuTraceEvent::COMPILE, report);
+  AddEventRecord(tensorflow::IpuTraceEvent::COMPILE, report, 0);
 }
 
 port::Status
@@ -430,7 +433,7 @@ PoplarExecutor::RemapArgs(const xla::Shape& shape,
 }
 
 port::Status
-PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
+PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   void* buf(static_cast<void*>(tc->data));
   if (tc->output_convertor) {
     current_engine_->readTensor(tc->output_handle, buf);
@@ -442,6 +445,10 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   tc->on_device = false;
   tc->output_handle.clear();
   tc->input_handle.clear();
+  if (profile_io_) {
+    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "", 0);
+
+  }
   return port::Status::OK();
 }
 
@@ -508,6 +515,14 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
         }
       }
 
+      if (engine_changed) {
+        // TODO Load new engine
+
+        if (profile_io_) {
+          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE, "", 0);
+        }
+      }
+
       current_engine_ = engine;
 
       // Put data on the device if:
@@ -529,6 +544,10 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           }
           tc->on_device = true;
           tc->input_handle = mem.first;
+          if (profile_io_) {
+            AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
+                           "", 0);
+          }
         }
       }
 
@@ -548,7 +567,7 @@ PoplarExecutor::ExecuteEngine(perftools::gputools::StreamExecutor* executor,
           std::stringstream stream;
           engine->reportDynamic(stream, opts);
           AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE,
-                         stream.str());
+                         stream.str(), 0);
         }
       } catch (std::logic_error e) {
         VLOG(2) << "Error producing execution report: " << e.what();

@@ -114,10 +114,10 @@ PoplarPlatform::ConfigurePoplarDevices(const tensorflow::IPUOptions& opts) {
 
     if (opts.device_config().size() > ordinal) {
       TF_RETURN_IF_ERROR(
-          e->InitializePoplarDevice(ordinal, opts.device_config(ordinal)));
+          e->InitializePoplarDevice(opts.device_config(ordinal)));
     } else {
       tensorflow::IPUOptions::DeviceConfig default_config;
-      TF_RETURN_IF_ERROR(e->InitializePoplarDevice(ordinal, default_config));
+      TF_RETURN_IF_ERROR(e->InitializePoplarDevice(default_config));
     }
   }
 

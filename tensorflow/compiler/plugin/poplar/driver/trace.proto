@@ -6,6 +6,10 @@ message IpuTraceEvent {
   // Timestamp. Seconds since the epoch. As python time()
   double timestamp = 1;
 
+  // The device/stream_executor which performed the action
+  int32 ordinal = 2;
+
+  // The type of event
   enum Type {
     COMPILE = 0;
     HOST_TO_DEVICE_TRANSFER = 1;
@@ -13,7 +17,11 @@ message IpuTraceEvent {
     LOAD_ENGINE = 3;
     EXECUTE = 4;
   };
-  Type type = 2;
+  Type type = 3;
 
-  bytes data = 3;
+  // Arbitrary string/byte event data
+  bytes data_str = 4;
+
+  // Arbitrary integer event data
+  int64 data_int = 5;
 };

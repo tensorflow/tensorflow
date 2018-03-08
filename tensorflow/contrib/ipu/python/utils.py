@@ -70,5 +70,5 @@ def extract_all_strings_from_event_trace(events):
   result = ""
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    result = result + evt.data
+    result = result + evt.data_str
   return result
