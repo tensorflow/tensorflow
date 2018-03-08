@@ -1847,13 +1847,16 @@ py_library(
         ":control_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":image_ops_gen",
         ":math_ops",
+        ":nn",
         ":nn_ops_gen",
         ":random_ops",
         ":string_ops",
         ":util",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
