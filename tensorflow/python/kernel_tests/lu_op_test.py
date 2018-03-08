@@ -48,8 +48,10 @@ class LuOpTest(test.TestCase):
       pinv = linalg_ops.matrix_inverse(p)
       pl = math_ops.matmul(pinv, l)
       plu = math_ops.matmul(pl, u)
+      print('A=',a)
       with self.test_session() as sess:
         out = plu.eval()
+        print('out=', out)
       self.assertEqual(a.shape, out.shape)
       self.assertAllClose(a, out, atol=tol, rtol=tol)
 
@@ -64,8 +66,6 @@ class LuOpTest(test.TestCase):
     for n in 1, 2, 4, 9:
       matrix = self._generateMatrix(n, n)
       self._verifyLU(matrix)
-
-
 
 if __name__ == "__main__":
   test.main()

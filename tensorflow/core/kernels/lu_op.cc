@@ -65,8 +65,8 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     outputs->at(0) =
         lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
     outputs->at(1) =
-        lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
-    outputs->at(2) = lu_decomposition.permutationP();
+        lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();        
+    outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
   }
 };
 
