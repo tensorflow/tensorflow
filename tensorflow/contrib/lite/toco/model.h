@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace toco {
 
+using tflite::QuantizationParams;
+
 enum class OperatorType {
   kNone,
   // General-purpose neural network operators.
@@ -1462,22 +1464,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-// Quantization parameters, determining the mapping of quantized values
-// to real values (i.e. determining how quantized values are mathematically
-// interpreted).
-//
-// The correspondence is as follows:
-//
-//   real_value = scale * (quantized_value - zero_point);
-//
-// In other words, zero_point designates which quantized value corresponds to
-// the real 0 value, and scale designates the difference between the real values
-// corresponding to consecutive quantized values differing by 1.
-struct QuantizationParams {
-  int32 zero_point = 0;
-  double scale = 0.;
-};
 
 class Shape {
  public:
