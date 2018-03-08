@@ -133,8 +133,12 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
     try:
       if not os.path.exists(directory):
         os.makedirs(directory)
+      # This function returns raw bytes in PY2 or unicode in PY3.
+      text = pretty_docs.build_md_page(page_info)
+      if six.PY3:
+        text = text.encode('utf-8')
       with open(path, 'wb') as f:
-        f.write(pretty_docs.build_md_page(page_info).encode('utf-8'))
+        f.write(text)
     except OSError as e:
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
