@@ -292,24 +292,23 @@ where:
     to 6006.
   * <i>TensorFlowImage</i> is required. It identifies the Docker container.
     You must specify one of the following values:
-    * <code>gcr.io/tensorflow/tensorflow</code>: TensorFlow binary image.
-    * <code>gcr.io/tensorflow/tensorflow:latest-devel</code>: TensorFlow
+    * <code>tensorflow/tensorflow</code>: TensorFlow binary image.
+    * <code>tensorflow/tensorflow:latest-devel</code>: TensorFlow
       Binary image plus source code.
 
-<code>gcr.io</code> is the Google Container Registry. Note that some
-TensorFlow images are also available at
+The TensorFlow images are available at
 [dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/).
 
 For example, the following command launches a TensorFlow CPU binary image
 in a Docker container from which you can run TensorFlow programs in a shell:
 
-<pre>$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b></pre>
+<pre>$ <b>docker run -it tensorflow/tensorflow bash</b></pre>
 
 The following command also launches a TensorFlow CPU binary image in a
 Docker container. However, in this Docker container, you can run
 TensorFlow programs in a Jupyter notebook:
 
-<pre>$ <b>docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow</b></pre>
+<pre>$ <b>docker run -it -p 8888:8888 tensorflow/tensorflow</b></pre>
 
 Docker will download the TensorFlow binary image the first time you launch it.
 
@@ -376,7 +375,7 @@ do the following:
 If you installed through Docker, start a Docker container that runs bash.
 For example:
 
-<pre>$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b></pre>
+<pre>$ <b>docker run -it tensorflow/tensorflow bash</b></pre>
 
 
 
