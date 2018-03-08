@@ -21,7 +21,6 @@ from __future__ import print_function
 import argparse
 import fnmatch
 import os
-import sys
 
 import six
 
@@ -134,8 +133,8 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
     try:
       if not os.path.exists(directory):
         os.makedirs(directory)
-      with open(path, 'w') as f:
-        f.write(pretty_docs.build_md_page(page_info))
+      with open(path, 'wb') as f:
+        f.write(pretty_docs.build_md_page(page_info).encode('utf-8'))
     except OSError as e:
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
@@ -434,19 +433,19 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       full_out_path = os.path.join(output_dir, suffix)
       if not fnmatch.fnmatch(base_name, file_pattern):
         print('Copying un-matched file %s...' % suffix)
-        open(full_out_path, 'w').write(open(full_in_path).read())
+        open(full_out_path, 'wb').write(open(full_in_path, 'rb').read())
         continue
       if dirpath.endswith('/api_guides/python'):
         print('Processing Python guide %s...' % base_name)
         content = tag_updater.process(full_in_path)
       else:
         print('Processing doc %s...' % suffix)
-        content = open(full_in_path).read()
+        content = open(full_in_path, 'rb').read().decode('utf-8')
 
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
-      with open(full_out_path, 'w') as f:
-        f.write(content)
+      with open(full_out_path, 'wb') as f:
+        f.write(content.encode('utf-8'))
 
   print('Done.')
 
