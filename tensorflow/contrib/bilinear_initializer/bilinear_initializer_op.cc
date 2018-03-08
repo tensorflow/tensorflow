@@ -46,7 +46,7 @@ void BilinearInitializerOp<T>::Compute(OpKernelContext* context) {
   }
 
 REGISTER_OP("BilinearInitializer")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Input("shape: int32")
     .Output("filter: T")
     .SetShapeFn([](shape_inference::InferenceContext* c) {

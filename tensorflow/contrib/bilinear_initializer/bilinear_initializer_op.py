@@ -28,7 +28,7 @@ _bilinear_initializer_so = loader.load_op_library(
     resource_loader.get_path_to_datafile('bilinear_initializer.so'))
 
 
-def bilinear_initializer(shape, dtype=dtypes.float32):
+def bilinear_initializer(shape, dtype=dtypes.float32, name=None):
   """Bilinear Initializer Operation.
 
   Computes batch filters with bilinear weights. Result is a
@@ -38,15 +38,20 @@ def bilinear_initializer(shape, dtype=dtypes.float32):
   (3) C = number of input channels
   (4) N = number of output channels (number of filters)
   Typical use case is weight initialization for deconvolution layer.
-  
+
   Args:
-    shape: The shape of the tensor to be initialized.
-    dtype: The data type. Only floating point types are supported.
-    
+    shape: A `Tensor` of type `int32`.
+      A tensor representing the shape of the filter to be initialized.
+    dtype: A `tf.DType` from: `tf.float32, tf.float64`.
+    name: A name for the operation (optional).
+
   Returns:
     A 2D tensor initialized with bilinear interpolation.
   """
-  return gen_bilinear_initializer_op_wrapper.bilinear_initializer(shape)
+  return gen_bilinear_initializer_op_wrapper.bilinear_initializer(
+      shape=shape,
+      T=dtype,
+      name=name)
 
 
 ops.NotDifferentiable('BilinearInitializer')

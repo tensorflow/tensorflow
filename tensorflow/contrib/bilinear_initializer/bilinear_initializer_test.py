@@ -40,7 +40,7 @@ class BilinearInitializerTest(test.TestCase):
 
       # Generate test image (tensorflow).
       dims = [kernel_width, kernel_width, channel, num_output]
-      tf_filter = bilinear_initializer(dims).eval()
+      tf_filter = bilinear_initializer(dims, dtype=img.dtype)
       new_h = factor * height
       new_w = factor * width
       img_test = self.tf_upsample(sess,
@@ -57,7 +57,7 @@ class BilinearInitializerTest(test.TestCase):
     """
     x, y = np.ogrid[:height, :width]
     img = np.repeat((x + y)[..., np.newaxis], channel, 2)
-    return img / float(height * width)
+    return (img / float(height * width)).astype(np.float32)
 
   def ski_upsample(self, factor, input_img):
     """Benchmark for testing. Use skikit learn library.
