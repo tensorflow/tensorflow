@@ -297,6 +297,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//third_party/py/numpy",
     ],
 )
 

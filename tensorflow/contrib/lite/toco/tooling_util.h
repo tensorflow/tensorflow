@@ -28,6 +28,7 @@ limitations under the License.
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/src/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
+#include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
@@ -149,71 +150,11 @@ template <ArrayDataType A>
 void GetQuantizationParamsFromMinMax(const MinMax& minmax,
                                      QuantizationParams* quantization_params) {
   using Integer = DataType<A>;
-  const Integer qmin = std::numeric_limits<Integer>::min();
-  const Integer qmax = std::numeric_limits<Integer>::max();
-  const double qmin_double = qmin;
-  const double qmax_double = qmax;
   const double rmin = minmax.min;
   const double rmax = minmax.max;
-  // 0 should always be a representable value. Let's assume that the initial
-  // min,max range contains 0.
-  CHECK_LE(rmin, 0.);
-  CHECK_GE(rmax, 0.);
-  if (rmin == rmax) {
-    // Special case where the min,max range is a point. Should be {0}.
-    CHECK_EQ(rmin, 0.);
-    CHECK_EQ(rmax, 0.);
-    quantization_params->zero_point = 0;
-    quantization_params->scale = 0.;
-    return;
-  }
 
-  // General case.
-  //
-  // First determine the scale.
-  const double scale = (rmax - rmin) / (qmax_double - qmin_double);
-
-  // Zero-point computation.
-  // First the initial floating-point computation. The zero-point can be
-  // determined from solving an affine equation for any known pair
-  // (real value, corresponding quantized value).
-  // We know two such pairs: (rmin, qmin) and (rmax, qmax).
-  // The arithmetic error on the zero point computed from either pair
-  // will be roughly machine_epsilon * (sum of absolute values of terms)
-  // so we want to use the variant that adds the smaller terms.
-  const double zero_point_from_min = qmin_double - rmin / scale;
-  const double zero_point_from_max = qmax_double - rmax / scale;
-  const double zero_point_from_min_error =
-      std::abs(qmin_double) + std::abs(rmin / scale);
-  const double zero_point_from_max_error =
-      std::abs(qmax_double) + std::abs(rmax / scale);
-
-  const double zero_point_double =
-      zero_point_from_min_error < zero_point_from_max_error
-          ? zero_point_from_min
-          : zero_point_from_max;
-
-  // Now we need to nudge the zero point to be an integer
-  // (our zero points are integer, and this is motivated by the requirement
-  // to be able to represent the real value "0" exactly as a quantized value,
-  // which is required in multiple places, for example in Im2col with SAME
-  // padding).
-  Integer nudged_zero_point = 0;
-  if (zero_point_double < qmin_double) {
-    nudged_zero_point = qmin;
-  } else if (zero_point_double > qmax_double) {
-    nudged_zero_point = qmax;
-  } else {
-    nudged_zero_point = static_cast<Integer>(std::round(zero_point_double));
-  }
-  // The zero point should always be in the range of quantized value,
-  // [qmin, qmax].
-  CHECK_GE(nudged_zero_point, qmin);
-  CHECK_LE(nudged_zero_point, qmax);
-
-  // Finally, store the result nudged quantization params.
-  quantization_params->zero_point = nudged_zero_point;
-  quantization_params->scale = scale;
+  *quantization_params =
+      ::tflite::ChooseQuantizationParams<Integer>(rmin, rmax);
 }
 
 void CheckIsReadyForQuantization(const Model& model);

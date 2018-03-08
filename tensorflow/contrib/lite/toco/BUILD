@@ -329,6 +329,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/contrib/lite/kernels/internal:quantization_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",

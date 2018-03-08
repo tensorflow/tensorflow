@@ -213,7 +213,10 @@ cc_library(
         "compatibility.h",
         "quantization_util.h",
     ],
-    deps = [":round"],
+    deps = [
+        ":round",
+        ":types",
+    ],
 )
 
 cc_test(
