@@ -52,6 +52,7 @@ class DrawBoundingBoxesOp : public OpKernel {
     const int64 batch_size = images.dim_size(0);
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
+    const int64 default_color_table_length = 10;
 
     // 0: yellow
     // 1: blue
@@ -63,11 +64,20 @@ class DrawBoundingBoxesOp : public OpKernel {
     // 7: navy blue
     // 8: aqua
     // 9: fuchsia
-    std::vector<std::array<float, 4>> color_table = {
+    float default_color_table[default_color_table_length][4] = {
         {1, 1, 0, 1},     {0, 0, 1, 1},     {1, 0, 0, 1},   {0, 1, 0, 1},
         {0.5, 0, 0.5, 1}, {0.5, 0.5, 0, 1}, {0.5, 0, 0, 1}, {0, 0, 0.5, 1},
         {0, 1, 1, 1},     {1, 0, 1, 1},
     };
+
+    std::vector<std::vector<float>> color_table;
+    for (int64 i = 0; i < default_color_table_length; i++) {
+      std::vector<float> color_value(4);
+      for (int64 j = 0; j < 4; j++) {
+        color_value[j] = default_color_table[i][j];
+      }
+      color_table.emplace_back(color_value);
+    }
 
     // Reset first color channel to 1 if image is GRY.
     // For GRY images, this means all bounding boxes will be white.
@@ -89,8 +99,11 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         auto colors = colors_tensor.matrix<float>();
         for (int64 i = 0; i < colors.dimension(0); i++) {
-          color_table.emplace_back(std::array<float, 4>{
-              colors(i, 0), colors(i, 1), colors(i, 2), colors(i, 3)});
+          std::vector<float> color_value(4);
+          for (int64 j = 0; j < 4; j++) {
+            color_value[j] = colors(i, j);
+          }
+          color_table.emplace_back(color_value);
         }
       }
     }
