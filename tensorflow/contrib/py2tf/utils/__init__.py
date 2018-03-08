@@ -20,11 +20,13 @@ from __future__ import print_function
 
 from tensorflow.contrib.py2tf.utils.builtins import dynamic_builtin
 from tensorflow.contrib.py2tf.utils.builtins import dynamic_print
+from tensorflow.contrib.py2tf.utils.builtins import dynamic_range
 from tensorflow.contrib.py2tf.utils.context_managers import control_dependency_on_returns
 from tensorflow.contrib.py2tf.utils.misc import alias_tensors
 from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_cond
 from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_while
 from tensorflow.contrib.py2tf.utils.py_func import wrap_py_func
+from tensorflow.contrib.py2tf.utils.tensor_list import dynamic_list_append
 from tensorflow.contrib.py2tf.utils.testing import fake_tf
 from tensorflow.contrib.py2tf.utils.type_check import is_tensor
 from tensorflow.contrib.py2tf.utils.type_hints import set_element_type
