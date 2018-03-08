@@ -1795,6 +1795,17 @@ class TPUEstimator(estimator_lib.Estimator):
 
       return _input_fn
 
+  def _validate_features_in_predict_input(self, result):
+    """Skip the validation.
+
+    For TPUEstimator, we do not need to check the result type. `_InputPipeline`
+    has stronger check. Parent class's check generates confusing warning msg.
+
+    Args:
+      result: `features` returned by input_fn.
+    """
+    pass
+
   def _augment_model_fn(self, model_fn, batch_axis):
     """Returns a new model_fn, which wraps the TPU support."""
 

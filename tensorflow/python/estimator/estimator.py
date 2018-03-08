@@ -516,7 +516,7 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names'
+        '_tf_api_names', '_validate_features_in_predict_input'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
@@ -669,11 +669,14 @@ class Estimator(object):
       # Unconditionally drop the label (the second element of result).
       result = result[0]
 
+    self._validate_features_in_predict_input(result)
+    return result, input_hooks
+
+  def _validate_features_in_predict_input(self, result):
     if not _has_dataset_or_queue_runner(result):
       logging.warning('Input graph does not use tf.data.Dataset or contain a '
                       'QueueRunner. That means predict yields forever. '
                       'This is probably a mistake.')
-    return result, input_hooks
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
     """Extracts the `features` and labels from return values of `input_fn`."""
