@@ -18101,11 +18101,9 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 }
 
 // Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
-//
 // if < 0, `scale * features` otherwise.
 //
-// To be used together with initialization
-// `initializer = layers.variance_scaling_initializer(factor=1.0, mode='FAN_IN')`
+// Assumes weights to have zero mean and variance 1.0 / fan_in.
 //
 // See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
