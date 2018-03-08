@@ -43,6 +43,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
+
 def GetShrunkInceptionShapes(shrink=10):
   """Iterator for smaller versions of convolution shapes in 2015 Inception.
 
