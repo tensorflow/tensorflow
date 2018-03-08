@@ -3081,7 +3081,6 @@ tf_proto_library(
             "framework/cpp_shape_inference.proto",
         ],
     ),
-    go_api_version = 2,
 )
 
 tf_proto_library_py(
