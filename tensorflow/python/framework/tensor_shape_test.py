@@ -168,6 +168,18 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertIs(None, tensor_shape.Dimension(None) != None)  # pylint: disable=g-equals-none
     self.assertTrue(tensor_shape.Dimension(12) != 12.99)
 
+  def testCompatibleWithInt(self):
+    self.assertEqual(5 + tensor_shape.Dimension(3),
+                     tensor_shape.Dimension(5) + 3)
+    self.assertEqual(5 - tensor_shape.Dimension(3),
+                     tensor_shape.Dimension(5) - 3)
+    self.assertEqual(5 * tensor_shape.Dimension(3),
+                     tensor_shape.Dimension(5) * 3)
+    self.assertEqual(5 // tensor_shape.Dimension(3),
+                     tensor_shape.Dimension(5) // 3)
+    self.assertEqual(5 % tensor_shape.Dimension(3),
+                     tensor_shape.Dimension(5) % 3)
+
   def testRepr(self):
     self.assertEqual(repr(tensor_shape.Dimension(7)), "Dimension(7)")
     self.assertEqual(repr(tensor_shape.Dimension(None)), "Dimension(None)")
