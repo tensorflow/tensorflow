@@ -3951,8 +3951,10 @@ py_test(
     srcs = ["training/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_cuda_on_cpu_tap",
+        "manual",
+        "no_oss",
         "no_windows",
+        "notap",
     ],
     deps = [
         ":client",
