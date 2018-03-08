@@ -60,10 +60,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
-    return gen_math_ops._clip_by_value(t,
-                                       clip_value_min,
-                                       clip_value_max,
-                                       name=name)
+    return gen_math_ops.clip_by_value(t,
+                                      clip_value_min,
+                                      clip_value_max,
+                                      name=name)
 
 @ops.RegisterGradient("ClipByValue")
 def _ClipByValueGrad(op, grad):

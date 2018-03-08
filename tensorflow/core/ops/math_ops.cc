@@ -1564,22 +1564,7 @@ REGISTER_OP("ClipByValue")
     .Input("clip_value_max: T")
     .Output("output: T")
     .Attr("T: numbertype")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Clips tensor values to a specified min and max.
-
-Given a tensor `t`, this operation returns a tensor of the same type and
-shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
-Any values less than `clip_value_min` are set to `clip_value_min`. Any values
-greater than `clip_value_max` are set to `clip_value_max`.
-
-t: A `Tensor`.
-clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-  as `t`. The minimum value to clip by.
-clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-  as `t`. The maximum value to clip by.
-output: A clipped `Tensor` with the same shape as input 't'.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 #ifdef INTEL_MKL
 REGISTER_OP("_MklAddN")
