@@ -30,5 +30,6 @@ except errors.NotFoundError as e:
       ' it installed. If not installed, please go to'
       ' https://developer.nvidia.com/tensorrt to download and install'
       ' TensorRT ****')
-  raise e(no_trt_message)
+  print(no_trt_message)
+  raise e
 # pylint: enable=unused-import,wildcard-import,g-import-not-at-top
