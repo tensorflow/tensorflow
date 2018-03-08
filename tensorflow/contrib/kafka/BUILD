@@ -115,6 +115,7 @@ tf_py_test(
     ],
     tags = [
         "manual",
+        "no_windows",
         "notap",
     ],
 )

@@ -51,7 +51,6 @@ py_library(
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
-        "//tensorflow/contrib/kafka",
         "//tensorflow/contrib/keras",
         "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/kfac",
@@ -112,6 +111,7 @@ py_library(
     ]) + if_not_windows([
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",  # unix dependency, need to fix code
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
+        "//tensorflow/contrib/kafka",  # has some linking issue on opensssl.
     ]),
 )
 
