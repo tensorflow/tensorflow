@@ -17,14 +17,9 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
-int TfLiteIntArrayGetSizeInBytes(int size) {
-  static TfLiteIntArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
-}
-
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   TfLiteIntArray* ret =
-      (TfLiteIntArray*)malloc(TfLiteIntArrayGetSizeInBytes(size));
+      (TfLiteIntArray*)malloc(sizeof(*ret) + sizeof(ret->data[0]) * size);
   ret->size = size;
   return ret;
 }
