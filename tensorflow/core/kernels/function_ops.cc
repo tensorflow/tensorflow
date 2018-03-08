@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -317,6 +318,8 @@ class RemoteCallOp : public AsyncOpKernel {
       if (cached_entry != handle_cache_.end()) {
         handle = cached_entry->second;
       } else {
+        port::Tracing::TraceMe activity(strings::StrCat(
+            "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
         OP_REQUIRES_OK_ASYNC(
             ctx,
             lib->Instantiate(func_.name(), AttrSlice(&attr_values),
@@ -344,21 +347,24 @@ class RemoteCallOp : public AsyncOpKernel {
       args.push_back(argument);
     }
     auto* rets = new std::vector<Tensor>;
-    lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
-      if (!status.ok()) {
-        ctx->SetStatus(status);
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
-        }
-      }
-      delete rets;
-      done();
-    });
+    auto* trace = new port::Tracing::TraceMe(strings::StrCat(
+        "RemoteCall: Run: ", func_.name(), " on ", target_device));
+    lib->Run(opts, handle, args, rets,
+             [rets, trace, done, ctx](const Status& status) {
+               if (!status.ok()) {
+                 ctx->SetStatus(status);
+               } else {
+                 for (size_t i = 0; i < rets->size(); ++i) {
+                   ctx->set_output(i, (*rets)[i]);
+                 }
+               }
+               delete rets;
+               delete trace;
+               done();
+             });
   }
 
  private:
-  string target_;
   NameAttrList func_;
 
   mutex mu_;
