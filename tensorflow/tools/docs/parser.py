@@ -709,9 +709,9 @@ def _generate_signature(func, reverse_index):
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
         default_text = (
-            astor.to_source(ast_default).rstrip('\n').replace('\t','\\t')
-                 .replace('\n','\\n').replace('"""',"'"))
-        default_text = PAREN_NUMBER_RE.sub('\\1',default_text)
+            astor.to_source(ast_default).rstrip('\n').replace('\t', '\\t')
+              .replace('\n', '\\n').replace('"""', "'"))
+        default_text = PAREN_NUMBER_RE.sub('\\1', default_text)
 
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
