@@ -48,7 +48,7 @@ struct StridedSliceContext {
     output = GetOutput(context, node, kOutputTensor);
     dims = NumDimensions(input);
   }
-  TfLiteStridedSliceParams* params;
+  const TfLiteStridedSliceParams* params;
   TfLiteTensor* input;
   TfLiteTensor* begin;
   TfLiteTensor* end;
@@ -199,18 +199,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     strides.emplace_back(1);
   }
 
-  op_context.params->begin_mask =
+  int begin_mask =
       ReverseMaskBits(op_context.params->begin_mask, op_context.dims);
-  op_context.params->end_mask =
+  int end_mask =
       ReverseMaskBits(op_context.params->end_mask, op_context.dims);
-  op_context.params->shrink_axis_mask =
+  int shrink_axis_mask =
       ReverseMaskBits(op_context.params->shrink_axis_mask, op_context.dims);
 
 #define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                      \
   kernel_type::StridedSlice(                                               \
       GetTensorData<data_type>(op_context.input),                          \
-      GetTensorDims(op_context.input), op_context.params->begin_mask,      \
-      op_context.params->end_mask, op_context.params->shrink_axis_mask,    \
+      GetTensorDims(op_context.input),                                     \
+      begin_mask, end_mask, shrink_axis_mask,                              \
       starts, stops, strides, GetTensorData<data_type>(op_context.output), \
       GetTensorDims(op_context.output))
 
