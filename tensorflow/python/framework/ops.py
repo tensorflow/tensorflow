@@ -5169,41 +5169,60 @@ def init_scope():
       yield
 
 
+@tf_export("enable_eager_execution")
 def enable_eager_execution(config=None, device_policy=None):
-  """Enables, for the rest of the lifetime of this program, eager execution.
+  """Enables eager execution for the lifetime of this program.
 
-  If not called immediately on startup risks creating breakage and bugs.
+  Eager execution provides an imperative interface to TensorFlow. With eager
+  execution enabled, TensorFlow functions execute operations immediately (as
+  opposed to adding to a graph to be executed later in a @{tf.Session}) and
+  return concrete values (as opposed to symbolic references to a node in a
+  computational graph).
 
-  Example:
+  For example:
   ```python
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   # After eager execution is enabled, operations are executed as they are
-  # defined and `Tensor`s hold concrete values, which can be accessed as
-  # `numpy.ndarray`s through the `numpy()` method.
+  # defined and Tensor objects hold concrete values, which can be accessed as
+  # numpy.ndarray`s through the numpy() method.
   assert tf.multiply(6, 7).numpy() == 42
   ```
 
+  Eager execution cannot be enabled after TensorFlow APIs have been used to
+  create or execute graphs. It is typically recommended to invoke this function
+  at program startup and not in a library (as most libraries should be usable
+  both with and without eager execution).
+
   Args:
-    config: (Optional.) A `ConfigProto` protocol buffer with configuration
-     options for the Context. Note that a lot of these options may be
-     currently unimplemented or irrelevant when eager execution is enabled.
-    device_policy: (Optional.) What policy to use when trying to run an
-     operation on a device with inputs which are not on that device.
+    config: (Optional.) A @{tf.ConfigProto} to use to configure the environment
+     in which operations are executed. Note that @{tf.ConfigProto} is also
+     used to configure graph execution (via @{tf.Session}) and many options
+     within `tf.ConfigProto` are not implemented (or are irrelevant) when
+     eager execution is enabled.
+    device_policy: (Optional.) Policy controlling how operations requiring
+     inputs on a specific device (e.g., a GPU 0) handle inputs on a different
+     device  (e.g. GPU 1 or CPU).
      Valid values:
-       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
-         correct.
-       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-         right device but raises a warning.
-       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-         hide performance problems.
-       tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
-         raising errors on the other ones.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
+        placement is not correct.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_WARN: copies the tensors which are not
+        on the right device but logs a warning.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT: silently copies the tensors.
+        Note that this may hide performance problems as there is no notification
+        provided when operations are blocked on the tensor being copied between
+        devices.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
+        int32 tensors, raising errors on the other ones.
 
   Raises:
-    ValueError: If trying to create a context after using graph operations
-     or if trying to create a context with nontrivial options which differ
-     from those of the existing context.
+    ValueError: If eager execution is enabled after creating/executing a
+     TensorFlow graph, or if options provided conflict with a previous call
+     to this function.
   """
   if config is not None and not isinstance(config, config_pb2.ConfigProto):
     raise TypeError(
@@ -5213,7 +5232,7 @@ def enable_eager_execution(config=None, device_policy=None):
                            context.DEVICE_PLACEMENT_SILENT,
                            context.DEVICE_PLACEMENT_SILENT_FOR_INT32):
     raise ValueError(
-        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_*"
+        "device_policy must be one of None, tf.contrib.eager.DEVICE_PLACEMENT_*"
     )
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
@@ -5222,7 +5241,7 @@ def enable_eager_execution(config=None, device_policy=None):
         _default_graph_stack._global_default_graph is not None)
     if graph_mode_has_been_used:
       raise ValueError(
-          "tfe.enable_eager_execution has to be called at program startup.")
+          "tf.enable_eager_execution must be called at program startup.")
   context._default_mode = context.EAGER_MODE
   if context._context is None:
     context._context = context.Context(config=config,
@@ -5245,7 +5264,7 @@ def enable_eager_execution(config=None, device_policy=None):
                                        context._context._device_policy))
   else:
     raise ValueError(
-        "tfe.enable_eager_execution has to be called at program startup.")
+        "tf.enable_eager_execution must be called at program startup.")
 
 
 def eager_run(main=None, argv=None):

@@ -993,20 +993,21 @@ class CheckpointCompatibilityTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    save_path = self._write_name_based_checkpoint()
-    root = self._initialized_model()
-    self._set_sentinels(root)
-    with self.assertRaises(AssertionError):
+    with test_util.device(use_gpu=True):
+      save_path = self._write_name_based_checkpoint()
+      root = self._initialized_model()
+      self._set_sentinels(root)
+      with self.assertRaises(AssertionError):
+        self._check_sentinels(root)
+      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      status = object_saver.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_consumed()
+      status.run_restore_ops()
       self._check_sentinels(root)
-    object_saver = checkpointable_utils.CheckpointableSaver(root)
-    status = object_saver.restore(save_path)
-    with self.assertRaises(AssertionError):
-      status.assert_consumed()
-    status.run_restore_ops()
-    self._check_sentinels(root)
-    self._set_sentinels(root)
-    status.initialize_or_restore()
-    self._check_sentinels(root)
+      self._set_sentinels(root)
+      status.initialize_or_restore()
+      self._check_sentinels(root)
 
   # TODO(allenl): Test for the core name-based saver loading object-based
   # checkpoints once object-based checkpointing is in core.

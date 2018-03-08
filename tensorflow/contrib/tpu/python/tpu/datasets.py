@@ -117,7 +117,7 @@ def StreamingFilesDataset(files,
 
   file_reader_job = file_reader_job or 'coordinator'
 
-  worker_job = worker_job or 'tpu_worker'
+  worker_job = worker_job or 'worker'
 
   if filename_shuffle_buffer_size is None:
     filename_shuffle_buffer_size = 4096

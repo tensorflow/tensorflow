@@ -31,6 +31,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@enumerate_dataset
 @@group_by_window
 @@ignore_errors
+@@make_batched_features_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
 @@padded_batch_and_drop_remainder
@@ -66,6 +67,7 @@ from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample

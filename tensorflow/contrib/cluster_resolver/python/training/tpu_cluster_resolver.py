@@ -147,7 +147,9 @@ class TPUClusterResolver(ClusterResolver):
     if service is None and should_resolve:
       if not _GOOGLE_API_CLIENT_INSTALLED:
         raise ImportError('googleapiclient must be installed before using the '
-                          'TPU cluster resolver')
+                          'TPU cluster resolver. Execute: `pip install '
+                          '--upgrade google-api-python-client` to install with '
+                          'pip.')
 
       self._service = discovery.build(
           'tpu', 'v1alpha1',

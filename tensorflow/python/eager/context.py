@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -518,8 +519,14 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
+@tf_export("executing_eagerly")
 def executing_eagerly():
-  """Returns True if the current thread has eager execution enabled."""
+  """Returns True if the current thread has eager execution enabled.
+
+  Eager execution is typically enabled via @{tf.enable_eager_execution},
+  but may also be enabled within the context of a Python function via
+  tf.contrib.eager.py_func.
+  """
   return context().executing_eagerly()
 
 
