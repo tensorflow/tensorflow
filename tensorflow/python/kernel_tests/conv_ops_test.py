@@ -43,10 +43,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
-is_mkl_available = 0 # mkl is not available by default.
-if os.getenv("TF_MKL_TEST") is not None:
-  is_mkl_available = int(os.environ['TF_MKL_TEST'])
-
 def GetShrunkInceptionShapes(shrink=10):
   """Iterator for smaller versions of convolution shapes in 2015 Inception.
 
@@ -973,7 +969,7 @@ class Conv2DTest(test.TestCase):
       self.assertArrayNear(value_2.flatten(), value.flatten(), err)
 
   def testConv2D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 6, 1],
@@ -987,7 +983,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth1ValidBackpropFilterDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1001,7 +997,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DEmptyBackpropFilterDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1015,7 +1011,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropFilterDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 4, 3],
@@ -1029,7 +1025,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DKernelSizeMatchesInputSizeBackpropFilterDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 3, 1],
@@ -1043,7 +1039,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInputStride1x1Dilation2x1(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 3, 6, 1],
@@ -1057,7 +1053,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth1ValidBackpropInputDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1071,7 +1067,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DEmptyBackpropInputDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[0, 2, 3, 1],
@@ -1085,7 +1081,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInputDilation2x1(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         # The GPU version of this test is not very stable. So adjusting the
         # error threshold to 1e-4.
@@ -1101,7 +1097,7 @@ class Conv2DTest(test.TestCase):
             err=1e-4)
 
   def testConv2DKernelSizeMatchesInputSizeBackpropInputDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 3, 3, 1],
