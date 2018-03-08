@@ -18,10 +18,20 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect as _inspect
+import six
+from collections import namedtuple
 
 from tensorflow.python.util import tf_decorator
 
 ArgSpec = _inspect.ArgSpec
+
+
+if six.PY3:
+  FullArgSpec = _inspect.FullArgSpec
+else:
+  FullArgSpec = namedtuple(
+      'FullArgSpec', ['args', 'varargs', 'varkw', 'defaults',
+      'kwonlyargs', 'kwonlydefaults', 'annotations'])
 
 
 def currentframe():
@@ -46,20 +56,32 @@ def getargspec(object):  # pylint: disable=redefined-builtin
 
 
 def getfullargspec(obj):  # pylint: disable=redefined-builtin
-  """TFDecorator-aware replacement for inspect.getfullargspec and fallback to
-  inspect.getargspec in Python 2.
+  """TFDecorator-aware replacement for inspect.getfullargspec.
 
   Args:
     obj: A callable, possibly decorated.
 
   Returns:
-    The `FullArgSpec` (`ArgSpec` in Python 2) that describes the signature of
+    The `FullArgSpec` that describes the signature of
     the outermost decorator that changes the callable's signature. If the
-    callable is not decorated, `inspect.getfullargspec()`
-    (`inspect.getargspec()` in Python 2) will be called directly on the
-    callable.
+    callable is not decorated, `inspect.getfullargspec()` will be called
+    directly on the callable.
   """
-  spec_fn = getattr(_inspect, 'getfullargspec', getattr(_inspect, 'getargspec'))
+  if six.PY2:
+    def spec_fn(target):
+      argspecs = _inspect.getargspec(target)
+      fullargspecs = FullArgSpec(
+          args=argspecs.args,
+          varargs=argspecs.varargs,
+          varkw=argspecs.keywords,
+          defaults=argspecs.defaults,
+          kwonlyargs=[],
+          kwonlydefaults={},
+          annotations={})
+      return fullargspecs
+  else:
+    spec_fn = _inspect.getfullargspec
+
   decorators, target = tf_decorator.unwrap(obj)
   return next((d.decorator_argspec for d in decorators
                if d.decorator_argspec is not None), spec_fn(target))

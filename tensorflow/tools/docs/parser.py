@@ -601,20 +601,20 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 def _get_arg_spec(func):
   """Extracts signature information from a function or functools.partial object.
 
-  For functions, uses `tf_inspect.getargspec`. For `functools.partial` objects,
-  corrects the signature of the underlying function to take into account the
-  removed arguments.
+  For functions, uses `tf_inspect.getfullargspec`. For `functools.partial`
+  objects, corrects the signature of the underlying function to take into
+  account the removed arguments.
 
   Args:
     func: A function whose signature to extract.
 
   Returns:
-    An `ArgSpec` namedtuple `(args, varargs, keywords, defaults)`, as returned
-    by `tf_inspect.getargspec`.
+    An `FullArgSpec` namedtuple `(args, varargs, varkw, defaults, etc.)`,
+    as returned by `tf_inspect.getfullargspec`.
   """
-  # getargspec does not work for functools.partial objects directly.
+  # getfullargspec does not work for functools.partial objects directly.
   if isinstance(func, functools.partial):
-    argspec = tf_inspect.getargspec(func.func)
+    argspec = tf_inspect.getfullargspec(func.func)
     # Remove the args from the original function that have been used up.
     first_default_arg = (
         len(argspec.args or []) - len(argspec.defaults or []))
@@ -637,12 +637,14 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return tf_inspect.ArgSpec(args=argspec_args,
-                              varargs=argspec.varargs,
-                              keywords=argspec.keywords,
-                              defaults=tuple(argspec_defaults))
+    # NOTE Some fields from FullArgSpec were removed here.
+    # Add them back if needed in the future.
+    return tf_inspect.FullArgSpec(args=argspec_args,
+                                  varargs=argspec.varargs,
+                                  varkw=argspec.varkw,
+                                  defaults=tuple(argspec_defaults))
   else:  # Regular function or method, getargspec will work fine.
-    return tf_inspect.getargspec(func)
+    return tf_inspect.getfullargspec(func)
 
 
 def _remove_first_line_indent(string):
@@ -657,7 +659,7 @@ def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
   This function produces a list of strings representing the arguments to a
-  python function. It uses tf_inspect.getargspec, which
+  python function. It uses tf_inspect.getfullargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -710,7 +712,7 @@ def _generate_signature(func, reverse_index):
       elif ast_default is not None:
         default_text = (
             astor.to_source(ast_default).rstrip('\n').replace('\t', '\\t')
-              .replace('\n', '\\n').replace('"""', "'"))
+            .replace('\n', '\\n').replace('"""', "'"))
         default_text = PAREN_NUMBER_RE.sub('\\1', default_text)
 
         if default_text != repr(default):
@@ -745,8 +747,8 @@ def _generate_signature(func, reverse_index):
   # Add *args and *kwargs.
   if argspec.varargs:
     args_list.append('*' + argspec.varargs)
-  if argspec.keywords:
-    args_list.append('**' + argspec.keywords)
+  if argspec.varkw:
+    args_list.append('**' + argspec.varkw)
 
   return args_list
 
