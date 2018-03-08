@@ -155,6 +155,7 @@ py_library(
     deps = [
         ":trt_convert_py",
         ":trt_ops_py",
+        "//tensorflow/python:errors",
     ],
 )
 
