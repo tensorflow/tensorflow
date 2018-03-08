@@ -192,8 +192,7 @@ dive deeper into the `tf.layers` code used to create each layer, as well as how
 to calculate loss, configure the training op, and generate predictions. If
 you're already experienced with CNNs and @{$get_started/custom_estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
-skip ahead to ["Training and Evaluating the CNN MNIST
-Classifier"](#training-and-evaluating-the-cnn-mnist-classifier).
+skip ahead to ["Training and Evaluating the CNN MNIST Classifier"](#training_and_evaluating_the_cnn_mnist_classifier).
 
 ### Input Layer
 
@@ -534,9 +533,8 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$get_started/custom_estimators#defining-the-training-op-for-the-model$"Defining
-> the training op for the model"} in the @{$get_started/custom_estimators$"Creating Estimations in
-> tf.estimator"} tutorial.
+> functions, see @{$get_started/custom_estimators#defining-the-training-op-for-the-model$"Defining the training op for the model"}
+> in the @{$get_started/custom_estimators$"Creating Estimations in tf.estimator"} tutorial.
 
 ### Add evaluation metrics
 
