@@ -64,7 +64,7 @@ class FlatBufferModel {
       const tflite::Model* model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  // Releases memory or unmaps mmaped meory.
+  // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
