@@ -22,6 +22,7 @@ import textwrap
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct.qual_names import QN
 from tensorflow.contrib.py2tf.pyct.qual_names import resolve
 from tensorflow.python.platform import test
@@ -56,7 +57,7 @@ class QNTest(test.TestCase):
     self.assertEqual(str(a_sub_b), 'a[b]')
     self.assertEqual(a_sub_b.ssf(), 'a_sub_b')
     self.assertEqual(a_sub_b.ast().value.id, 'a')
-    self.assertEqual(a_sub_b.ast().slice, 'b')
+    self.assertEqual(a_sub_b.ast().slice.value.id, 'b')
     self.assertTrue(a_sub_b.is_composite())
     self.assertTrue(a_sub_b.has_subscript())
     self.assertEqual(a_sub_b.parent.qn, ('a',))
@@ -73,8 +74,9 @@ class QNTest(test.TestCase):
     self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
     self.assertEqual(a_sub_b_sub_c.ssf(), 'a_sub_b_sub_c')
     self.assertEqual(a_sub_b_sub_c.ast().value.id, 'a')
-    self.assertEqual(a_sub_b_sub_c.ast().slice, 'b[c]')
-    self.assertEqual(b_sub_c.ast().slice, 'c')
+    self.assertEqual(a_sub_b_sub_c.ast().slice.value.value.id, 'b')
+    self.assertEqual(a_sub_b_sub_c.ast().slice.value.slice.value.id, 'c')
+    self.assertEqual(b_sub_c.ast().slice.value.id, 'c')
     self.assertEqual(a_sub_b_sub_c.parent.qn, ('a',))
     with self.assertRaises(ValueError):
       QN('a', 'b')
@@ -112,13 +114,13 @@ class QNTest(test.TestCase):
     b_sub_c = QN(b, subscript=c)
     a_sub_b_sub_c = QN(a, subscript=b_sub_c)
 
-    b_dot_c = QN(b, attr=c)
+    b_dot_c = QN(b, attr='c')
     a_sub__b_dot_c = QN(a, subscript=b_dot_c)
 
     a_sub_b = QN(a, subscript=b)
-    a_sub_b__dot_c = QN(a_sub_b, attr=c)
+    a_sub_b__dot_c = QN(a_sub_b, attr='c')
 
-    a_dot_b = QN(a, attr=b)
+    a_dot_b = QN(a, attr='b')
     a_dot_b_sub_c = QN(a_dot_b, subscript=c)
 
     self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
@@ -126,20 +128,31 @@ class QNTest(test.TestCase):
     self.assertEqual(str(a_sub_b__dot_c), 'a[b].c')
     self.assertEqual(str(a_dot_b_sub_c), 'a.b[c]')
 
-    self.assertFalse(a_sub_b_sub_c == a_sub__b_dot_c)
-    self.assertFalse(a_sub_b_sub_c == a_sub_b__dot_c)
-    self.assertFalse(a_sub_b_sub_c == a_dot_b_sub_c)
+    self.assertNotEqual(a_sub_b_sub_c, a_sub__b_dot_c)
+    self.assertNotEqual(a_sub_b_sub_c, a_sub_b__dot_c)
+    self.assertNotEqual(a_sub_b_sub_c, a_dot_b_sub_c)
 
-    self.assertFalse(a_sub__b_dot_c == a_sub_b__dot_c)
-    self.assertFalse(a_sub__b_dot_c == a_dot_b_sub_c)
+    self.assertNotEqual(a_sub__b_dot_c, a_sub_b__dot_c)
+    self.assertNotEqual(a_sub__b_dot_c, a_dot_b_sub_c)
 
-    self.assertFalse(a_sub_b__dot_c == a_dot_b_sub_c)
+    self.assertNotEqual(a_sub_b__dot_c, a_dot_b_sub_c)
 
   def test_hashable(self):
     d = {QN('a'): 'a', QN('b'): 'b'}
     self.assertEqual(d[QN('a')], 'a')
     self.assertEqual(d[QN('b')], 'b')
     self.assertTrue(QN('c') not in d)
+
+  def test_literals(self):
+    a = QN('a')
+    a_sub_str_b = QN(a, subscript=QN(qual_names.StringLiteral('b')))
+    a_sub_b = QN(a, subscript=QN('b'))
+
+    self.assertNotEqual(a_sub_str_b, a_sub_b)
+    self.assertNotEqual(hash(a_sub_str_b), hash(a_sub_b))
+
+    a_sub_three = QN(a, subscript=QN(qual_names.NumberLiteral(3)))
+    self.assertEqual(a_sub_three.ast().slice.value.n, 3)
 
 
 class QNResolverTest(test.TestCase):
