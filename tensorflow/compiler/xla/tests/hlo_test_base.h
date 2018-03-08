@@ -44,7 +44,7 @@ namespace xla {
 // enables, for one, explicitly building a graph of HLO instructions to run.
 //
 // This can also be used to write text/file-based test cases. Note that the test
-// target is responsible for linking the needed backends. A covenient way to do
+// target is responsible for linking the needed backends. A convenient way to do
 // this is to make it an xla_test: it will generate test targets linking with
 // the respective backends, which will be used as the test backend; the
 // interpreter backend is already linked with hlo_test_base so it will be the
