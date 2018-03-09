@@ -40,7 +40,6 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",  # b/72384530
         "no_pip",  # because spinn.py is under third_party/.
     ],
 )
