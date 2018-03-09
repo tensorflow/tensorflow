@@ -2867,7 +2867,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized 
   // path. The unoptimized path is slow. Thus we dont rewrite the node 
-  // and use default Eigen. But for depth_radius=2, MKL DNN optimzed 
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized 
   // path is taken, i.e., eigen node is rewritten by MKl DNN node.
   static bool LrnRewrite(const Node* n) {
     CHECK_NOTNULL(n);
@@ -2875,7 +2875,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     int depth_radius;
     CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
 
-    // if the depth_radius of LRN is not 2, dont rewrite the node by MKL DNN
+    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
     // and use eigen node instead 
     if (depth_radius == 2) {
       return true;
