@@ -155,7 +155,7 @@ CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/
 (add -T on subsequent builds to skip protobuf downloading/building)
 
 
-#### Testing the the CUDA-enabled benchmark via adb:
+#### Testing the CUDA-enabled benchmark via adb:
 Build binaries first as above, then run:
 
 ```bash

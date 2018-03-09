@@ -77,6 +77,14 @@ class HloComputation {
       return last_added_instruction_;
     }
 
+    Status ForEachInstruction(
+        const std::function<Status(const HloInstruction*)>& func) const {
+      for (const auto& instruction : instructions_) {
+        TF_RETURN_IF_ERROR(func(instruction.get()));
+      }
+      return Status::OK();
+    }
+
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
@@ -240,7 +248,7 @@ class HloComputation {
       ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // Computes and returns the ProgramShape of this computation (shape of
-  // parameters and result without layout).
+  // parameters and result with layout).
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.

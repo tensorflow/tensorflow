@@ -42,7 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return v
   if v.op.type == "VarHandleOp":
     for var in variables.trainable_variables():
@@ -73,7 +73,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return var._shared_name  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
@@ -97,6 +97,9 @@ class _RefVariableProcessor(_OptimizableVariable):
 
   def __init__(self, v):
     self._v = v
+
+  def __str__(self):
+    return "<_RefVariableProcessor(%s)>" % self._v
 
   def target(self):
     return self._v._ref()  # pylint: disable=protected-access
@@ -196,7 +199,7 @@ class _TensorProcessor(_OptimizableVariable):
 
 def _get_processor(v):
   """The processor of v."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if isinstance(v, ops.Tensor):
       return _TensorProcessor(v)
     else:
@@ -213,7 +216,11 @@ def _get_processor(v):
 
 
 @tf_export("train.Optimizer")
-class Optimizer(checkpointable.Checkpointable):
+class Optimizer(
+    # Optimizers inherit from CheckpointableBase rather than Checkpointable
+    # since they do most of their dependency management themselves (slot
+    # variables are special-cased, and non-slot variables are keyed to graphs).
+    checkpointable.CheckpointableBase):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -324,9 +331,18 @@ class Optimizer(checkpointable.Checkpointable):
     self._use_locking = use_locking
     self._name = name
     # Dictionary of slots.
-    #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
+    #  {slot_name :
+    #      {_var_key(variable_to_train): slot_for_the_variable, ... },
+    #   ... }
     self._slots = {}
     self._non_slot_dict = {}
+    # For implementing Checkpointable. Stores information about how to restore
+    # slot variables which have not yet been created
+    # (checkpointable._CheckpointPosition objects).
+    #  {slot_name :
+    #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
+    #   ... }
+    self._deferred_slot_restorations = {}
 
   def get_name(self):
     return self._name
@@ -444,7 +460,7 @@ class Optimizer(checkpointable.Checkpointable):
         var_list = tape.watched_variables()
       grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
@@ -543,7 +559,7 @@ class Optimizer(checkpointable.Checkpointable):
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        scope_name = var.op.name if context.in_graph_mode() else ""
+        scope_name = "" if context.executing_eagerly() else var.op.name
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
@@ -561,7 +577,7 @@ class Optimizer(checkpointable.Checkpointable):
             else:
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -611,7 +627,7 @@ class Optimizer(checkpointable.Checkpointable):
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.in_eager_mode()
+    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
@@ -633,19 +649,53 @@ class Optimizer(checkpointable.Checkpointable):
 
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
-    if context.in_graph_mode():
-      graph = colocate_with.graph
-    else:
-      graph = None
+    eager = context.executing_eagerly()
+    graph = None if eager else colocate_with.graph
 
     key = (name, graph)
     v = self._non_slot_dict.get(key, None)
     if v is None:
+      self._maybe_initialize_checkpointable()
       with ops.colocate_with(colocate_with):
+        if eager:
+          restored_initial_value = self._preload_simple_restoration(
+              name=name, shape=None)
+          if restored_initial_value is not None:
+            initial_value = restored_initial_value
         v = variable_scope.variable(initial_value, name=name, trainable=False)
+        # Restore this variable by name if necessary, but don't add a
+        # Checkpointable dependency. Optimizers return the current graph's
+        # non-slot variables from _checkpoint_dependencies explicitly rather
+        # than unconditionally adding dependencies (since there may be multiple
+        # non-slot variables with the same name in different graphs, trying to
+        # save all of them would result in errors).
+        self._handle_deferred_dependencies(name=name, checkpointable=v)
       self._non_slot_dict[key] = v
 
     return v
+
+  @property
+  def _checkpoint_dependencies(self):
+    """From Checkpointable. Gather graph-specific non-slot variables to save."""
+    current_graph_non_slot_variables = []
+    current_graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    for (name, _), variable_object in sorted(self._non_slot_dict.items(),
+                                             # Avoid comparing graphs
+                                             key=lambda item: item[0][0]):
+      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+        current_graph_non_slot_variables.append(
+            checkpointable.CheckpointableReference(
+                name=name, ref=variable_object))
+    return (super(Optimizer, self)._checkpoint_dependencies
+            + current_graph_non_slot_variables)
+
+  def _lookup_dependency(self, name):
+    """From Checkpointable. Find a non-slot variable in the current graph."""
+    unconditional = super(Optimizer, self)._lookup_dependency(name)
+    if unconditional is not None:
+      return unconditional
+    graph = None if context.executing_eagerly() else ops.get_default_graph()
+    return self._get_non_slot_variable(name, graph=graph)
 
   def _get_non_slot_variable(self, name, graph=None):
     return self._non_slot_dict.get((name, graph), None)
@@ -884,7 +934,11 @@ class Optimizer(checkpointable.Checkpointable):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
+      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
 
   def _get_or_make_slot_with_initializer(self, var, initializer, shape, dtype,
@@ -905,8 +959,12 @@ class Optimizer(checkpointable.Checkpointable):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_slot_with_initializer(
+      new_slot_variable = slot_creator.create_slot_with_initializer(
           var, initializer, shape, dtype, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
 
   def _zeros_slot(self, var, slot_name, op_name):
@@ -923,12 +981,43 @@ class Optimizer(checkpointable.Checkpointable):
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      named_slots[_var_key(var)] = slot_creator.create_zeros_slot(var, op_name)
+      new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=new_slot_variable)
+      named_slots[_var_key(var)] = new_slot_variable
     return named_slots[_var_key(var)]
 
-  def _process_slot_restoration(
+  # --------------
+  # For implementing the Checkpointable interface.
+  # --------------
+
+  def _restore_slot_variable(self, slot_name, variable, slot_variable):
+    """Restore a newly created slot variable's value."""
+    variable_key = _var_key(variable)
+    deferred_restorations = self._deferred_slot_restorations.get(
+        slot_name, {}).pop(variable_key, [])
+    # Iterate over restores, highest restore UID first to minimize the number
+    # of assignments.
+    deferred_restorations.sort(key=lambda position: position.restore_uid,
+                               reverse=True)
+    for checkpoint_position in deferred_restorations:
+      checkpoint_position.restore(slot_variable)
+
+  def _create_or_restore_slot_variable(
       self, slot_variable_position, slot_name, variable):
-    """Restore a slot variable's value (creating it if necessary).
+    """Restore a slot variable's value, possibly creating it.
+
+    Called when a variable which has an associated slot variable is created or
+    restored. When executing eagerly, we create the slot variable with a
+    restoring initializer.
+
+    No new variables are created when graph building. Instead,
+    _restore_slot_variable catches these after normal creation and adds restore
+    ops to the graph. This method is nonetheless important when graph building
+    for the case when a slot variable has already been created but `variable`
+    has just been added to a dependency graph (causing us to realize that the
+    slot variable needs to be restored).
 
     Args:
       slot_variable_position: A `checkpointable._CheckpointPosition` object
@@ -939,28 +1028,15 @@ class Optimizer(checkpointable.Checkpointable):
     named_slots = self._slot_dict(slot_name)
     variable_key = _var_key(variable)
     slot_variable = named_slots.get(variable_key, None)
-    if slot_variable is None:
-      if slot_variable_position.is_simple_variable():
-        initializer = checkpointable.CheckpointInitialValue(
-            checkpoint_position=slot_variable_position)
-        slot_variable = self._get_or_make_slot(
-            var=variable,
-            val=initializer,
-            slot_name=slot_name,
-            op_name=self._name)
-        if slot_variable._update_uid == slot_variable_position.restore_uid:  # pylint: disable=protected-access
-          # If our restoration was set (not given with custom getters), run
-          # it. Otherwise wait for the restore() call below to restore if
-          # necessary.
-          session = slot_variable_position.checkpoint.session
-          if session:
-            session.run(slot_variable.initializer)
-
-      else:
-        raise NotImplementedError(
-            "Currently only variables with no dependencies can be loaded as "
-            "slot variables. File a feature request if this limitation bothers "
-            "you. (Got %s)" % (slot_variable_position,))
+    if (slot_variable is None and context.executing_eagerly() and
+        slot_variable_position.is_simple_variable()):
+      initializer = checkpointable.CheckpointInitialValue(
+          checkpoint_position=slot_variable_position)
+      slot_variable = self._get_or_make_slot(
+          var=variable,
+          val=initializer,
+          slot_name=slot_name,
+          op_name=self._name)
       # Slot variables are not owned by any one object (because we don't want to
       # save the slot variable if the optimizer is saved without the non-slot
       # variable, or if the non-slot variable is saved without the optimizer;
@@ -968,4 +1044,15 @@ class Optimizer(checkpointable.Checkpointable):
       # variable, variable)). So we don't _track_ slot variables anywhere, and
       # instead special-case this dependency and otherwise pretend it's a normal
       # graph.
-    slot_variable_position.restore(slot_variable)
+    if slot_variable is not None:
+      # If we've either made this slot variable, or if we've pulled out an
+      # existing slot variable, we should restore it.
+      slot_variable_position.restore(slot_variable)
+    else:
+      # We didn't make the slot variable. Defer restoring until it gets created
+      # normally. We keep a list rather than the one with the highest restore
+      # UID in case slot variables have their own dependencies, in which case
+      # those could differ between restores.
+      self._deferred_slot_restorations.setdefault(
+          slot_name, {}).setdefault(variable_key, []).append(
+              slot_variable_position)

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -258,6 +259,20 @@ class Interpreter {
   // contain new nodes that replace 1 more nodes.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
+  // WARNING: This is a deprecated interface and will be removed as soon as
+  // possible.  Please do not use it.
+  // TODO(impjdi): Remove this interface after resolving dependencies.
+  void set_model(const Model* model) { model_ = const_cast<Model*>(model); }
+  Model* model() const { return model_; }
+
+  // The default capacity of `tensors_` vector.
+  static constexpr int kTensorsReservedCapacity = 128;
+  // The capacity headroom of `tensors_` vector before calling ops'
+  // `prepare` and `invoke` function. In these functions, it's guaranteed
+  // allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
+  // pointers to existing tensors.
+  static constexpr int kTensorsCapacityHeadroom = 16;
+
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
@@ -370,6 +385,18 @@ class Interpreter {
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
+  // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
+  // capacity. Calling this function may invalidate existing pointers to
+  // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
+  // more tensors won't invalidate the pointer to existing tensors.
+  void EnsureTensorsVectorCapacity() {
+    const int required_capacity = tensors_size() + kTensorsCapacityHeadroom;
+    if (required_capacity > tensors_.capacity()) {
+      tensors_.reserve(required_capacity);
+      context_.tensors = tensors_.data();
+    }
+  }
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -425,6 +452,11 @@ class Interpreter {
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  // WARNING: This is a deprecated interface and will be removed as soon as
+  // possible.  Please do not use it.
+  // TODO(impjdi): Remove this interface after resolving dependencies.
+  Model* model_ = nullptr;
 };
 
 }  // namespace tflite

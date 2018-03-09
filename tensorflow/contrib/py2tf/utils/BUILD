@@ -20,13 +20,15 @@ py_library(
     name = "utils",
     srcs = [
         "__init__.py",
+        "builtins.py",
         "context_managers.py",
         "misc.py",
         "multiple_dispatch.py",
-        "printing.py",
         "py_func.py",
         "tensor_list.py",
+        "testing.py",
         "type_check.py",
+        "type_hints.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -70,16 +72,7 @@ py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":utils",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "printing_test",
-    srcs = ["printing_test.py"],
-    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",

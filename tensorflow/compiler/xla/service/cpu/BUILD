@@ -105,6 +105,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -163,6 +164,7 @@ cc_library(
         ":disassembler",
         ":external_constant_pool",
         ":orc_jit_memory_mapper",
+        ":runtime_fp16",
         ":runtime_conv2d",
         ":runtime_fft",
         ":runtime_fork_join",
@@ -180,6 +182,20 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
+)
+
+cc_library(
+    name = "runtime_fp16",
+    srcs = [
+        "runtime_fp16.cc",
+    ],
+    hdrs = [
+        "runtime_fp16.h",
+    ],
+    copts = runtime_copts(),
+    deps = [
+        "//tensorflow/core:framework_lite",
+    ],
 )
 
 cc_library(
@@ -499,7 +515,6 @@ cc_library(
 
 cc_library(
     name = "runtime_matvec",
-    srcs = ["runtime_matvec.cc"],
     hdrs = ["runtime_matvec.h"],
     copts = runtime_copts(),
     deps = [

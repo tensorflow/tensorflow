@@ -66,7 +66,8 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter, const Example&);
 //     output: "12,3,4,545,3"
 //     output: "0.01,0.02"
 //   }
-bool ParseAndRunTests(std::istream* input, TestRunner* test_runner);
+bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
+                      int max_invocations = -1);
 
 }  // namespace testing
 }  // namespace tflite

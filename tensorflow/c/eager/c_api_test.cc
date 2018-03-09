@@ -932,7 +932,8 @@ TEST(CAPI, Variables) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   ASSERT_EQ(1, num_retvals);
   EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(value_handle));
-  EXPECT_EQ(0, TFE_TensorHandleNumDims(value_handle));
+  EXPECT_EQ(0, TFE_TensorHandleNumDims(value_handle, status));
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   float value = 0.0f;
   TF_Tensor* t = TFE_TensorHandleResolve(value_handle, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -974,7 +975,8 @@ void BM_ReadVariable(int iters) {
     CHECK_EQ(1, num_retvals);
     CHECK(h);
     CHECK_EQ(TF_FLOAT, TFE_TensorHandleDataType(h));
-    CHECK_EQ(0, TFE_TensorHandleNumDims(h));
+    CHECK_EQ(0, TFE_TensorHandleNumDims(h, status));
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     h = nullptr;
   }
   tensorflow::testing::StopTiming();

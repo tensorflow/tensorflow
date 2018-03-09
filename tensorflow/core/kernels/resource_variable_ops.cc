@@ -253,6 +253,7 @@ class AssignVariableOp : public OpKernel {
     std::unique_ptr<Tensor> input_alias =
         context->forward_input(1, dtype_, value.shape(), DEVICE_MEMORY, attr);
     mutex_lock ml(*variable->mu());
+    variable->is_initialized = true;
     if (input_alias) {
       *variable->tensor() = *input_alias;
       return;
@@ -363,7 +364,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(DT_VARIANT)));
 
     mutex_lock ml(*variable->mu());
-
+    variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
@@ -462,8 +463,29 @@ TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
+class VarIsInitializedOp : public OpKernel {
+ public:
+  explicit VarIsInitializedOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output));
+    auto output_tensor = output->tensor<bool, 0>();
+    Var* variable = nullptr;
+    Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
+    if (!s.ok()) {
+      output_tensor() = false;
+      return;
+    }
+    core::ScopedUnref su(variable);
+    mutex_lock ml(*variable->mu());
+    output_tensor() = variable->is_initialized;
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
-                        IsResourceInitialized<Var>);
+                        VarIsInitializedOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")

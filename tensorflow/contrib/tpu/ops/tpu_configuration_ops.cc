@@ -191,6 +191,7 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Output("topology: string")
     .Attr("embedding_config: string = ''")
     .Attr("tpu_embedding_config: string = ''")
+    .Attr("is_global_init: bool = false")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -202,6 +203,7 @@ topology.
 tpu_embedding_config: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
 describes the embedding lookups of the program.
 embedding_config: Reserved. Do not use.
+is_global_init: Reserved. Do not use.
 )doc");
 
 REGISTER_OP("ShutdownDistributedTPU")

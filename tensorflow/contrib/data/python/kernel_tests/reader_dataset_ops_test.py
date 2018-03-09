@@ -21,6 +21,8 @@ import gzip
 import os
 import zlib
 
+import numpy as np
+
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
@@ -262,12 +264,19 @@ class ReadBatchFeaturesTest(test.TestCase):
     self._num_records = 7
     self.test_filenames = self._createFiles()
 
-  def _read_batch_features(self, filenames, num_epochs, batch_size):
+  def _read_batch_features(self,
+                           filenames,
+                           num_epochs,
+                           batch_size,
+                           reader_num_threads=1,
+                           parser_num_threads=1,
+                           shuffle=False,
+                           shuffle_seed=None):
     self.filenames = filenames
     self.num_epochs = num_epochs
     self.batch_size = batch_size
 
-    return readers.read_batch_features(
+    return readers.make_batched_features_dataset(
         file_pattern=self.filenames,
         batch_size=self.batch_size,
         features={
@@ -276,8 +285,12 @@ class ReadBatchFeaturesTest(test.TestCase):
             "keywords": parsing_ops.VarLenFeature(dtypes.string)
         },
         reader=core_readers.TFRecordDataset,
-        randomize_input=False,
-        num_epochs=self.num_epochs)
+        num_epochs=self.num_epochs,
+        shuffle=shuffle,
+        shuffle_seed=shuffle_seed,
+        reader_num_threads=reader_num_threads,
+        parser_num_threads=parser_num_threads).make_one_shot_iterator(
+        ).get_next()
 
   def _record(self, f, r):
     example = example_pb2.Example(features=feature_pb2.Features(
@@ -312,23 +325,34 @@ class ReadBatchFeaturesTest(test.TestCase):
       writer.close()
     return filenames
 
-  def _next_actual_batch(self, sess):
-    file_op = self.outputs["file"]
-    keywords_indices_op = self.outputs["keywords"].indices
-    keywords_values_op = self.outputs["keywords"].values
-    keywords_dense_shape_op = self.outputs["keywords"].dense_shape
-    record_op = self.outputs["record"]
+  def _run_actual_batch(self, outputs, sess):
+    file_op = outputs["file"]
+    keywords_indices_op = outputs["keywords"].indices
+    keywords_values_op = outputs["keywords"].values
+    keywords_dense_shape_op = outputs["keywords"].dense_shape
+    record_op = outputs["record"]
     return sess.run([
         file_op, keywords_indices_op, keywords_values_op,
         keywords_dense_shape_op, record_op
     ])
 
-  def _next_expected_batch(self, file_indices, batch_size, num_epochs):
+  def _next_actual_batch(self, sess):
+    return self._run_actual_batch(self.outputs, sess)
+
+  def _next_expected_batch(self,
+                           file_indices,
+                           batch_size,
+                           num_epochs,
+                           cycle_length=1):
 
     def _next_record(file_indices):
       for j in file_indices:
         for i in range(self._num_records):
           yield j, i
+
+    def _next_record_interleaved(file_indices, cycle_length):
+      return self._interleave([_next_record([i]) for i in file_indices],
+                              cycle_length)
 
     file_batch = []
     keywords_batch_indices = []
@@ -337,7 +361,11 @@ class ReadBatchFeaturesTest(test.TestCase):
     record_batch = []
     batch_index = 0
     for _ in range(num_epochs):
-      for record in _next_record(file_indices):
+      if cycle_length == 1:
+        next_records = _next_record(file_indices)
+      else:
+        next_records = _next_record_interleaved(file_indices, cycle_length)
+      for record in next_records:
         f = record[0]
         r = record[1]
         file_batch.append(f)
@@ -365,14 +393,41 @@ class ReadBatchFeaturesTest(test.TestCase):
           [len(file_batch), keywords_batch_max_len], record_batch
       ]
 
-  def _verify_records(self, sess, batch_size, file_index=None, num_epochs=1):
+  def _interleave(self, iterators, cycle_length):
+    pending_iterators = iterators
+    open_iterators = []
+    num_open = 0
+    for i in range(cycle_length):
+      if pending_iterators:
+        open_iterators.append(pending_iterators.pop(0))
+        num_open += 1
+
+    while num_open:
+      for i in range(min(cycle_length, len(open_iterators))):
+        if open_iterators[i] is None:
+          continue
+        try:
+          yield next(open_iterators[i])
+        except StopIteration:
+          if pending_iterators:
+            open_iterators[i] = pending_iterators.pop(0)
+          else:
+            open_iterators[i] = None
+            num_open -= 1
+
+  def _verify_records(self,
+                      sess,
+                      batch_size,
+                      file_index=None,
+                      num_epochs=1,
+                      interleave_cycle_length=1):
     if file_index is not None:
       file_indices = [file_index]
     else:
       file_indices = range(self._num_files)
 
-    for expected_batch in self._next_expected_batch(file_indices, batch_size,
-                                                    num_epochs):
+    for expected_batch in self._next_expected_batch(
+        file_indices, batch_size, num_epochs, interleave_cycle_length):
       actual_batch = self._next_actual_batch(sess)
       for i in range(len(expected_batch)):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
@@ -434,6 +489,75 @@ class ReadBatchFeaturesTest(test.TestCase):
         self.assertAllEqual(record_batch, actual_batch["record"])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
+
+  def testReadWithFusedShuffleRepeatDataset(self):
+    num_epochs = 5
+    total_records = num_epochs * self._num_records
+    for batch_size in [1, 2]:
+      # Test that shuffling with same seed produces the same result.
+      with ops.Graph().as_default() as g:
+        with self.test_session(graph=g) as sess:
+          outputs1 = self._read_batch_features(
+              filenames=self.test_filenames[0],
+              num_epochs=num_epochs,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          outputs2 = self._read_batch_features(
+              filenames=self.test_filenames[0],
+              num_epochs=num_epochs,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          for _ in range(total_records // batch_size):
+            batch1 = self._run_actual_batch(outputs1, sess)
+            batch2 = self._run_actual_batch(outputs2, sess)
+            for i in range(len(batch1)):
+              self.assertAllEqual(batch1[i], batch2[i])
+
+      # Test that shuffling with different seeds produces a different order.
+      with ops.Graph().as_default() as g:
+        with self.test_session(graph=g) as sess:
+          outputs1 = self._read_batch_features(
+              filenames=self.test_filenames[0],
+              num_epochs=num_epochs,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          outputs2 = self._read_batch_features(
+              filenames=self.test_filenames[0],
+              num_epochs=num_epochs,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=15)
+          all_equal = True
+          for _ in range(total_records // batch_size):
+            batch1 = self._run_actual_batch(outputs1, sess)
+            batch2 = self._run_actual_batch(outputs2, sess)
+            for i in range(len(batch1)):
+              all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
+          self.assertFalse(all_equal)
+
+  def testParallelReadersAndParsers(self):
+    num_epochs = 5
+    for batch_size in [1, 2]:
+      for reader_num_threads in [2, 4]:
+        for parser_num_threads in [2, 4]:
+          with ops.Graph().as_default() as g:
+            with self.test_session(graph=g) as sess:
+              self.outputs = self._read_batch_features(
+                  filenames=self.test_filenames,
+                  num_epochs=num_epochs,
+                  batch_size=batch_size,
+                  reader_num_threads=reader_num_threads,
+                  parser_num_threads=parser_num_threads)
+              self._verify_records(
+                  sess,
+                  batch_size,
+                  num_epochs=num_epochs,
+                  interleave_cycle_length=reader_num_threads)
+              with self.assertRaises(errors.OutOfRangeError):
+                self._next_actual_batch(sess)
 
 
 if __name__ == "__main__":

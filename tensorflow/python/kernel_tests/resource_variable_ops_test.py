@@ -277,6 +277,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(v.assign(2.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign(3.0, read_value=True)
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign(4.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(4.0, self.evaluate(v.value()))
+
   @test_util.run_in_graph_and_eager_modes()
   def testLoad(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
@@ -329,6 +340,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
       self.assertEquals(2, math_ops.add(w, 1).eval())
 
+      self.assertEquals(v._handle, w._handle)
+      self.assertEquals(v._graph_element, w._graph_element)
+
   @test_util.run_in_graph_and_eager_modes()
   def testAssignAddMethod(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
@@ -336,12 +350,34 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(v.assign_add(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign_add(1.0, read_value=True)
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign_add(1.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(4.0, self.evaluate(v.value()))
+
   @test_util.run_in_graph_and_eager_modes()
   def testAssignSubMethod(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign_sub(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
+
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign_sub(1.0, read_value=True)
+    self.assertEqual(1.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign_sub(1.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(0.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testDestroyResource(self):
@@ -440,7 +476,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual("(10, 20, 35)", str(v.get_shape()))
     self.assertEqual("(10, 20, 35)", str(v.value().shape))
     self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           "<unknown>",
           str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
@@ -481,7 +517,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(dtypes.int32, v.dtype)
       self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
-      self.assertEqual(context.get_default_context().device_name, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
       self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())

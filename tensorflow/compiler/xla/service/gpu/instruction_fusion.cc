@@ -26,6 +26,7 @@ namespace {
 
 bool IsFusile(const HloInstruction& hlo) {
   return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
+         hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
@@ -67,17 +68,6 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // further rationale.
   if (producer->CouldBeBitcast() &&
       ImplementedAsLibraryCall(*producer->operand(0))) {
-    return false;
-  }
-
-  // We may need to know original operand layout to emit input fusion, and so
-  // far, we merely use the layout of an operand of the fusion node, which means
-  // we must fuse only elementwise operations. This restriction should be lifted
-  // later if we need to fuse other operations, e.g. transpose, for performance.
-  if ((IsReductionToVector(*consumer) ||
-       (HloOpcode::kFusion == consumer->opcode() &&
-        HloInstruction::FusionKind::kInput == consumer->fusion_kind())) &&
-      !producer->IsElementwise()) {
     return false;
   }
 

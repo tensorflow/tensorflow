@@ -141,5 +141,7 @@ def histogram_fixed_width(values,
   """
   with ops.name_scope(name, 'histogram_fixed_width',
                       [values, value_range, nbins]) as name:
-    return gen_math_ops._histogram_fixed_width(  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    return gen_math_ops._histogram_fixed_width(
         values, value_range, nbins, dtype=dtype, name=name)
+    # pylint: enable=protected-access

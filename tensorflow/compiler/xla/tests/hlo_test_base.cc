@@ -267,6 +267,28 @@ template <typename LiteralPtr>
                                   reference_preprocessor);
 }
 
+HloComputation* HloTestBase::FindComputation(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  auto it = c_find_if(module->computations(),
+                      [&](HloComputation* c) { return c->name() == name; });
+  if (it == module->computations().end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  for (const HloComputation* c : module->computations()) {
+    auto it = c_find_if(c->instructions(),
+                        [&](HloInstruction* i) { return i->name() == name; });
+    if (it != c->instructions().end()) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
+
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
 /* static */

@@ -32,7 +32,7 @@ class GradientsFunctionTest(converter_test_base.TestCase):
       return a == b
 
     node = self.parse_and_analyze(test_fn, {})
-    node = logical_expressions.transform(node)
+    node = logical_expressions.transform(node, self.ctx)
 
     with self.compiled(node, math_ops.equal) as result:
       with self.test_session() as sess:
@@ -45,7 +45,7 @@ class GradientsFunctionTest(converter_test_base.TestCase):
       return (a or b) and (a or b or c)
 
     node = self.parse_and_analyze(test_fn, {})
-    node = logical_expressions.transform(node)
+    node = logical_expressions.transform(node, self.ctx)
 
     with self.compiled(node, math_ops.logical_or,
                        math_ops.logical_and) as result:

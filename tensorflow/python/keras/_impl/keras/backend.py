@@ -55,9 +55,9 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
 
 py_all = all
 py_sum = sum
@@ -343,7 +343,7 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if 'eager' not in _GRAPH_LEARNING_PHASES:
       # Fallback to inference mode as default.
       return 0
@@ -369,11 +369,40 @@ def set_learning_phase(value):
   """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
-    raise ValueError('Expected learning phase to be ' '0 or 1.')
-  if context.in_eager_mode():
+    raise ValueError('Expected learning phase to be 0 or 1.')
+  if context.executing_eagerly():
     _GRAPH_LEARNING_PHASES['eager'] = value
   else:
     _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+
+
+@tf_contextlib.contextmanager
+def learning_phase_scope(value):
+  """Provides a scope within which the learning phase is equal to `value`.
+
+  The learning phase gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Learning phase value, either 0 or 1 (integers).
+
+  Yields:
+    The provided value.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  if value not in {0, 1}:
+    raise ValueError('Expected learning phase to be 0 or 1.')
+  previous_value = learning_phase()
+  try:
+    set_learning_phase(value)
+    yield value
+  finally:
+    # Restore learning phase to initial value.
+    if context.executing_eagerly():
+      _GRAPH_LEARNING_PHASES['eager'] = previous_value
+    else:
+      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
 @tf_export('keras.backend.get_session')
@@ -2596,7 +2625,7 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return x.numpy()
   return x.eval(session=get_session())
 
@@ -2611,7 +2640,7 @@ def batch_get_value(tensors):
   Returns:
       A list of Numpy arrays.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return [x.numpy() for x in tensors]
   if tensors:
     return get_session().run(tensors)
@@ -2629,7 +2658,7 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     x.assign(value)
   else:
     tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -2652,7 +2681,7 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype(x)))
   else:
@@ -2749,7 +2778,7 @@ class Function(object):
       self.updates_op = control_flow_ops.group(*updates_ops)
     self.name = name
     # additional tensor substitutions
-    self.feed_dict = session_kwargs.pop('feed_dict', {})
+    self.feed_dict = session_kwargs.pop('feed_dict', None)
     # additional operations
     self.fetches = session_kwargs.pop('fetches', [])
     if not isinstance(self.fetches, list):
@@ -2759,8 +2788,15 @@ class Function(object):
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
       raise TypeError('`inputs` should be a list or tuple.')
-    feed_dict = self.feed_dict.copy()
+
+    if self.feed_dict:
+      feed_dict = self.feed_dict.copy()
+    else:
+      feed_dict = {}
+
     for tensor, value in zip(self.inputs, inputs):
+      if value is None:
+        continue
       if is_sparse(tensor):
         sparse_coo = value.tocoo()
         indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
@@ -3087,7 +3123,8 @@ def rnn(step_function,
   outputs_shape[1] = inputs_shape[1]
   outputs.set_shape(outputs_shape)
 
-  last_output._uses_learning_phase = uses_learning_phase
+  if not context.executing_eagerly():
+    last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 
 

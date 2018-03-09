@@ -15,7 +15,6 @@
 """Hamiltonian Monte Carlo, a gradient-based MCMC algorithm.
 
 @@sample_chain
-@@sample_annealed_importance_chain
 @@kernel
 """
 
@@ -38,7 +37,6 @@ from tensorflow.python.ops.distributions import util as distributions_util
 
 __all__ = [
     "sample_chain",
-    "sample_annealed_importance_chain",
     "kernel",
 ]
 
@@ -46,15 +44,13 @@ __all__ = [
 KernelResults = collections.namedtuple(
     "KernelResults",
     [
-        "acceptance_probs",
+        "log_accept_ratio",
         "current_grads_target_log_prob",  # "Current result" means "accepted".
         "current_target_log_prob",  # "Current result" means "accepted".
-        "energy_change",
         "is_accepted",
         "proposed_grads_target_log_prob",
         "proposed_state",
         "proposed_target_log_prob",
-        "random_positive",
     ])
 
 
@@ -63,15 +59,13 @@ def _make_dummy_kernel_results(
     dummy_target_log_prob,
     dummy_grads_target_log_prob):
   return KernelResults(
-      acceptance_probs=dummy_target_log_prob,
+      log_accept_ratio=dummy_target_log_prob,
       current_grads_target_log_prob=dummy_grads_target_log_prob,
       current_target_log_prob=dummy_target_log_prob,
-      energy_change=dummy_target_log_prob,
       is_accepted=array_ops.ones_like(dummy_target_log_prob, dtypes.bool),
       proposed_grads_target_log_prob=dummy_grads_target_log_prob,
       proposed_state=dummy_state,
       proposed_target_log_prob=dummy_target_log_prob,
-      random_positive=dummy_target_log_prob,
   )
 
 
@@ -109,10 +103,13 @@ def sample_chain(
 
   Note: `target_log_prob_fn` is called exactly twice.
 
-  Only one out of every `num_steps_between_samples + 1` steps is included in the
-  returned results. This "thinning" comes at a cost of reduced statistical
-  power, while reducing memory requirements and autocorrelation. For more
-  discussion see [1].
+  Since HMC states are correlated, it is sometimes desirable to produce
+  additional intermediate states, and then discard them, ending up with a set of
+  states with decreased autocorrelation.  See [1].  Such "thinning" is made
+  possible by setting `num_steps_between_results > 0`.  The chain then takes
+  `num_steps_between_results` extra steps between the steps that make it into
+  the results.  The extra steps are never materialized (in calls to `sess.run`),
+  and thus do not increase memory requirements.
 
   [1]: "Statistically efficient thinning of a Markov chain sampler."
        Art B. Owen. April 2017.
@@ -225,10 +222,8 @@ def sample_chain(
       Default value: 0 (i.e., no burn-in).
     num_steps_between_results: Integer number of chain steps between collecting
       a result. Only one out of every `num_steps_between_samples + 1` steps is
-      included in the returned results. This "thinning" comes at a cost of
-      reduced statistical power, while reducing memory requirements and
-      autocorrelation. For more discussion see [1].
-      Default value: 0 (i.e., no subsampling).
+      included in the returned results.  The number of returned chain states is
+      still equal to `num_results`.  Default value: 0 (i.e., no thinning).
     seed: Python integer to seed the random number generator.
     current_target_log_prob: (Optional) `Tensor` representing the value of
       `target_log_prob_fn` at the `current_state`. The only reason to specify
@@ -243,7 +238,7 @@ def sample_chain(
       Default value: `None` (i.e., "hmc_sample_chain").
 
   Returns:
-    accepted_states: Tensor or Python list of `Tensor`s representing the
+    next_states: Tensor or Python list of `Tensor`s representing the
       state(s) of the Markov chain(s) at each result step. Has same shape as
       input `current_state` but with a prepended `num_results`-size dimension.
     kernel_results: `collections.namedtuple` of internal calculations used to
@@ -333,221 +328,6 @@ def sample_chain(
     return functional_ops.scan(**scan_kwargs)
 
 
-def sample_annealed_importance_chain(
-    proposal_log_prob_fn,
-    num_steps,
-    target_log_prob_fn,
-    current_state,
-    step_size,
-    num_leapfrog_steps,
-    seed=None,
-    name=None):
-  """Runs annealed importance sampling (AIS) to estimate normalizing constants.
-
-  This function uses Hamiltonian Monte Carlo to sample from a series of
-  distributions that slowly interpolates between an initial "proposal"
-  distribution:
-
-  `exp(proposal_log_prob_fn(x) - proposal_log_normalizer)`
-
-  and the target distribution:
-
-  `exp(target_log_prob_fn(x) - target_log_normalizer)`,
-
-  accumulating importance weights along the way. The product of these
-  importance weights gives an unbiased estimate of the ratio of the
-  normalizing constants of the initial distribution and the target
-  distribution:
-
-  `E[exp(ais_weights)] = exp(target_log_normalizer - proposal_log_normalizer)`.
-
-  Note: `proposal_log_prob_fn` and `target_log_prob_fn` are called exactly three
-  times (although this may be reduced to two times, in the future).
-
-  #### Examples:
-
-  ##### Estimate the normalizing constant of a log-gamma distribution.
-
-  ```python
-  tfd = tf.contrib.distributions
-
-  # Run 100 AIS chains in parallel
-  num_chains = 100
-  dims = 20
-  dtype = np.float32
-
-  proposal = tfd.MultivatiateNormalDiag(
-     loc=tf.zeros([dims], dtype=dtype))
-
-  target = tfd.TransformedDistribution(
-    distribution=tfd.Gamma(concentration=dtype(2),
-                           rate=dtype(3)),
-    bijector=tfd.bijectors.Invert(tfd.bijectors.Exp()),
-    event_shape=[dims])
-
-  chains_state, ais_weights, kernels_results = (
-      hmc.sample_annealed_importance_chain(
-          proposal_log_prob_fn=proposal.log_prob,
-          num_steps=1000,
-          target_log_prob_fn=target.log_prob,
-          step_size=0.2,
-          current_state=proposal.sample(num_chains),
-          num_leapfrog_steps=2))
-
-  log_estimated_normalizer = (tf.reduce_logsumexp(ais_weights)
-                              - np.log(num_chains))
-  log_true_normalizer = tf.lgamma(2.) - 2. * tf.log(3.)
-  ```
-
-  ##### Estimate marginal likelihood of a Bayesian regression model.
-
-  ```python
-  tfd = tf.contrib.distributions
-
-  def make_prior(dims, dtype):
-    return tfd.MultivariateNormalDiag(
-        loc=tf.zeros(dims, dtype))
-
-  def make_likelihood(weights, x):
-    return tfd.MultivariateNormalDiag(
-        loc=tf.tensordot(weights, x, axes=[[0], [-1]]))
-
-  # Run 100 AIS chains in parallel
-  num_chains = 100
-  dims = 10
-  dtype = np.float32
-
-  # Make training data.
-  x = np.random.randn(num_chains, dims).astype(dtype)
-  true_weights = np.random.randn(dims).astype(dtype)
-  y = np.dot(x, true_weights) + np.random.randn(num_chains)
-
-  # Setup model.
-  prior = make_prior(dims, dtype)
-  def target_log_prob_fn(weights):
-    return prior.log_prob(weights) + make_likelihood(weights, x).log_prob(y)
-
-  proposal = tfd.MultivariateNormalDiag(
-      loc=tf.zeros(dims, dtype))
-
-  weight_samples, ais_weights, kernel_results = (
-      hmc.sample_annealed_importance_chain(
-        num_steps=1000,
-        proposal_log_prob_fn=proposal.log_prob,
-        target_log_prob_fn=target_log_prob_fn
-        current_state=tf.zeros([num_chains, dims], dtype),
-        step_size=0.1,
-        num_leapfrog_steps=2))
-  log_normalizer_estimate = (tf.reduce_logsumexp(ais_weights)
-                             - np.log(num_chains))
-  ```
-
-  Args:
-    proposal_log_prob_fn: Python callable that returns the log density of the
-      initial distribution.
-    num_steps: Integer number of Markov chain updates to run. More
-      iterations means more expense, but smoother annealing between q
-      and p, which in turn means exponentially lower variance for the
-      normalizing constant estimator.
-    target_log_prob_fn: Python callable which takes an argument like
-      `current_state` (or `*current_state` if it's a list) and returns its
-      (possibly unnormalized) log-density under the target distribution.
-    current_state: `Tensor` or Python `list` of `Tensor`s representing the
-      current state(s) of the Markov chain(s). The first `r` dimensions index
-      independent chains, `r = tf.rank(target_log_prob_fn(*current_state))`.
-    step_size: `Tensor` or Python `list` of `Tensor`s representing the step size
-      for the leapfrog integrator. Must broadcast with the shape of
-      `current_state`. Larger step sizes lead to faster progress, but too-large
-      step sizes make rejection exponentially more likely. When possible, it's
-      often helpful to match per-variable step sizes to the standard deviations
-      of the target distribution in each variable.
-    num_leapfrog_steps: Integer number of steps to run the leapfrog integrator
-      for. Total progress per HMC step is roughly proportional to `step_size *
-      num_leapfrog_steps`.
-    seed: Python integer to seed the random number generator.
-    name: Python `str` name prefixed to Ops created by this function.
-      Default value: `None` (i.e., "hmc_sample_annealed_importance_chain").
-
-  Returns:
-    accepted_state: `Tensor` or Python list of `Tensor`s representing the
-      state(s) of the Markov chain(s) at the final iteration. Has same shape as
-      input `current_state`.
-    ais_weights: Tensor with the estimated weight(s). Has shape matching
-      `target_log_prob_fn(current_state)`.
-    kernel_results: `collections.namedtuple` of internal calculations used to
-      advance the chain.
-  """
-  def make_convex_combined_log_prob_fn(iter_):
-    def _fn(*args):
-      p = proposal_log_prob_fn(*args)
-      t = target_log_prob_fn(*args)
-      dtype = p.dtype.base_dtype
-      beta = (math_ops.cast(iter_ + 1, dtype)
-              / math_ops.cast(num_steps, dtype))
-      return (1. - beta) * p + beta * t
-    return _fn
-
-  with ops.name_scope(
-      name, "hmc_sample_annealed_importance_chain",
-      [num_steps, current_state, step_size, num_leapfrog_steps, seed]):
-    with ops.name_scope("initialize"):
-      [
-          current_state,
-          step_size,
-          current_log_prob,
-          current_grads_log_prob,
-      ] = _prepare_args(
-          make_convex_combined_log_prob_fn(iter_=0),
-          current_state,
-          step_size,
-          description="convex_combined_log_prob")
-      num_steps = ops.convert_to_tensor(
-          num_steps,
-          dtype=dtypes.int32,
-          name="num_steps")
-      num_leapfrog_steps = ops.convert_to_tensor(
-          num_leapfrog_steps,
-          dtype=dtypes.int32,
-          name="num_leapfrog_steps")
-    def _loop_body(iter_, ais_weights, current_state, kernel_results):
-      """Closure which implements `tf.while_loop` body."""
-      current_state_parts = (list(current_state)
-                             if _is_list_like(current_state)
-                             else [current_state])
-      # TODO(b/72994218): Consider refactoring things to avoid this unecessary
-      # call.
-      ais_weights += ((target_log_prob_fn(*current_state_parts)
-                       - proposal_log_prob_fn(*current_state_parts))
-                      / math_ops.cast(num_steps, ais_weights.dtype))
-      return [iter_ + 1, ais_weights] + list(kernel(
-          make_convex_combined_log_prob_fn(iter_),
-          current_state,
-          step_size,
-          num_leapfrog_steps,
-          seed,
-          kernel_results.current_target_log_prob,
-          kernel_results.current_grads_target_log_prob))
-
-    while_loop_kwargs = dict(
-        cond=lambda iter_, *args: iter_ < num_steps,
-        body=_loop_body,
-        loop_vars=[
-            np.int32(0),  # iter_
-            array_ops.zeros_like(current_log_prob),  # ais_weights
-            current_state,
-            _make_dummy_kernel_results(current_state,
-                                       current_log_prob,
-                                       current_grads_log_prob),
-        ])
-    if seed is not None:
-      while_loop_kwargs["parallel_iterations"] = 1
-
-    [ais_weights, current_state, kernel_results] = control_flow_ops.while_loop(
-        **while_loop_kwargs)[1:]  # Lop-off "iter_".
-
-    return [current_state, ais_weights, kernel_results]
-
-
 def kernel(target_log_prob_fn,
            current_state,
            step_size,
@@ -590,18 +370,19 @@ def kernel(target_log_prob_fn,
 
   target = tfd.Normal(loc=dtype(0), scale=dtype(1))
 
-  new_x, other_results = hmc.kernel(
+  next_x, other_results = hmc.kernel(
       target_log_prob_fn=target.log_prob,
       current_state=x,
       step_size=step_size,
       num_leapfrog_steps=3)[:4]
 
-  x_update = x.assign(new_x)
+  x_update = x.assign(next_x)
 
   step_size_update = step_size.assign_add(
       step_size * tf.where(
-        other_results.acceptance_probs > target_accept_rate,
-        0.01, -0.01))
+          tf.exp(tf.minimum(other_results.log_accept_ratio), 0.) >
+              target_accept_rate,
+          0.01, -0.01))
 
   warmup = tf.group([x_update, step_size_update])
 
@@ -752,7 +533,7 @@ def kernel(target_log_prob_fn,
       Default value: `None` (i.e., "hmc_kernel").
 
   Returns:
-    accepted_state: Tensor or Python list of `Tensor`s representing the state(s)
+    next_state: Tensor or Python list of `Tensor`s representing the state(s)
       of the Markov chain(s) at each result step. Has same shape as
       `current_state`.
     kernel_results: `collections.namedtuple` of internal calculations used to
@@ -805,30 +586,27 @@ def kernel(target_log_prob_fn,
                                            proposed_target_log_prob,
                                            proposed_momentums,
                                            independent_chain_ndims)
+    log_accept_ratio = -energy_change
 
-    # u < exp(min(-energy, 0)),  where u~Uniform[0,1)
-    # ==> -log(u) >= max(e, 0)
-    # ==> -log(u) >= e
-    # (Perhaps surprisingly, we don't have a better way to obtain a random
-    # uniform from positive reals, i.e., `tf.random_uniform(minval=0,
-    # maxval=np.inf)` won't work.)
-    random_uniform = random_ops.random_uniform(
+    # u < exp(log_accept_ratio),  where u~Uniform[0,1)
+    # ==> log(u) < log_accept_ratio
+    random_value = random_ops.random_uniform(
         shape=array_ops.shape(energy_change),
         dtype=energy_change.dtype,
         seed=seed)
-    random_positive = -math_ops.log(random_uniform)
-    is_accepted = random_positive >= energy_change
+    random_negative = math_ops.log(random_value)
+    is_accepted = random_negative < log_accept_ratio
 
     accepted_target_log_prob = array_ops.where(is_accepted,
                                                proposed_target_log_prob,
                                                current_target_log_prob)
 
-    accepted_state_parts = [_choose(is_accepted,
-                                    proposed_state_part,
-                                    current_state_part,
-                                    independent_chain_ndims)
-                            for current_state_part, proposed_state_part
-                            in zip(current_state_parts, proposed_state_parts)]
+    next_state_parts = [_choose(is_accepted,
+                                proposed_state_part,
+                                current_state_part,
+                                independent_chain_ndims)
+                        for current_state_part, proposed_state_part
+                        in zip(current_state_parts, proposed_state_parts)]
 
     accepted_grads_target_log_prob = [
         _choose(is_accepted,
@@ -840,17 +618,15 @@ def kernel(target_log_prob_fn,
 
     maybe_flatten = lambda x: x if _is_list_like(current_state) else x[0]
     return [
-        maybe_flatten(accepted_state_parts),
+        maybe_flatten(next_state_parts),
         KernelResults(
-            acceptance_probs=math_ops.exp(math_ops.minimum(-energy_change, 0.)),
+            log_accept_ratio=log_accept_ratio,
             current_grads_target_log_prob=accepted_grads_target_log_prob,
             current_target_log_prob=accepted_target_log_prob,
-            energy_change=energy_change,
             is_accepted=is_accepted,
             proposed_grads_target_log_prob=proposed_grads_target_log_prob,
             proposed_state=maybe_flatten(proposed_state_parts),
             proposed_target_log_prob=proposed_target_log_prob,
-            random_positive=random_positive,
         ),
     ]
 
@@ -882,8 +658,8 @@ def _leapfrog_integrator(current_momentums,
   momentum = tf.placeholder(np.float32)
 
   [
-      new_momentums,
-      new_positions,
+      next_momentums,
+      next_positions,
   ] = hmc._leapfrog_integrator(
       current_momentums=[momentum],
       target_log_prob_fn=tfd.MultivariateNormalDiag(
@@ -900,7 +676,7 @@ def _leapfrog_integrator(current_momentums,
   positions = np.zeros([num_iter, dims], dtype)
   for i in xrange(num_iter):
     position_, momentum_ = sess.run(
-        [new_momentums[0], new_position[0]],
+        [next_momentums[0], next_position[0]],
         feed_dict={position: position_, momentum: momentum_})
     positions[i] = position_
 
@@ -943,9 +719,9 @@ def _leapfrog_integrator(current_momentums,
       state(s) of the Markov chain(s) at each result step. Has same shape as
       input `current_state_parts`.
     proposed_target_log_prob: `Tensor` representing the value of
-      `target_log_prob_fn` at `accepted_state`.
+      `target_log_prob_fn` at `next_state`.
     proposed_grads_target_log_prob: Gradient of `proposed_target_log_prob` wrt
-      `accepted_state`.
+      `next_state`.
 
   Raises:
     ValueError: if `len(momentums) != len(state_parts)`.
@@ -1065,8 +841,8 @@ def _compute_energy_change(current_target_log_prob,
                                                   axis=-1)
     lk1 = -np.log(2.) + math_ops.reduce_logsumexp(array_ops.stack(lk1, axis=-1),
                                                   axis=-1)
-    lp0 = -current_target_log_prob   # log_potential
-    lp1 = -proposed_target_log_prob  # proposed_log_potential
+    lp0 = -current_target_log_prob   # potential
+    lp1 = -proposed_target_log_prob  # proposed_potential
     x = array_ops.stack([lp1, math_ops.exp(lk1), -lp0, -math_ops.exp(lk0)],
                         axis=-1)
 

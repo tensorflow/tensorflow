@@ -552,7 +552,7 @@ class ControlFlowTest(test.TestCase):
 
   def testCondRef(self):
     with self.test_session():
-      x = gen_state_ops._variable(
+      x = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="x",
@@ -580,7 +580,7 @@ class ControlFlowTest(test.TestCase):
 
   def testUninitializedRefIdentity(self):
     with self.test_session() as sess:
-      v = gen_state_ops._variable(
+      v = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="v",
@@ -1620,7 +1620,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileStack_1(self):
     with self.test_session():
-      s = gen_data_flow_ops._stack_v2(-1, dtypes.int32, stack_name="foo")
+      s = gen_data_flow_ops.stack_v2(-1, dtypes.int32, stack_name="foo")
       i = constant_op.constant(0)
 
       def c(i):
@@ -1629,7 +1629,7 @@ class ControlFlowTest(test.TestCase):
       def b(i):
         ni = math_ops.add(i, 1)
         ni = control_flow_ops.with_dependencies(
-            [gen_data_flow_ops._stack_push_v2(s, i)], ni)
+            [gen_data_flow_ops.stack_push_v2(s, i)], ni)
         return ni
 
       r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
@@ -1641,7 +1641,7 @@ class ControlFlowTest(test.TestCase):
 
       def b1(i, x):
         ni = math_ops.subtract(i, 1)
-        nx = x + gen_data_flow_ops._stack_pop_v2(s, dtypes.int32)
+        nx = x + gen_data_flow_ops.stack_pop_v2(s, dtypes.int32)
         return [ni, nx]
 
       _, rx = control_flow_ops.while_loop(
@@ -1839,6 +1839,23 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(lambda n: n < 6.0, b1, [n],
                                       [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
+
+  def testCondGradInNestedWhiles(self):
+    def outer_body(i, x):
+      _, x = control_flow_ops.while_loop(
+          lambda j, x: j < 3, inner_body, [0, 0.0])
+      return i + 1, x
+
+    def inner_body(j, x):
+      y = control_flow_ops.cond(math_ops.less(x, 1), lambda: 2 * x, lambda: x)
+      return j + 1, gradients_impl.gradients(y, x)[0]
+
+    i, x = control_flow_ops.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
+
+    with self.test_session() as sess:
+      i_val, x_val = sess.run([i, x])
+      self.assertEqual(i_val, 3)
+      self.assertAllClose(x_val, 1.0)
 
   def testWhile_NestedInput(self):
     with self.test_session() as sess:
