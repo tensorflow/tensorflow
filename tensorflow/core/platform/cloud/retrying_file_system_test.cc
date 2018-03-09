@@ -84,7 +84,8 @@ class MockWritableFile : public WritableFile {
 
 class MockFileSystem : public FileSystem {
  public:
-  explicit MockFileSystem(const ExpectedCalls& calls) : calls_(calls) {}
+  explicit MockFileSystem(const ExpectedCalls& calls, bool* flushed = nullptr)
+      : calls_(calls), flushed_(flushed) {}
 
   Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
@@ -156,11 +157,18 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("DeleteRecursively");
   }
 
+  void FlushCaches() override {
+    if (flushed_) {
+      *flushed_ = true;
+    }
+  }
+
   std::unique_ptr<WritableFile> writable_file_to_return;
   std::unique_ptr<RandomAccessFile> random_access_file_to_return;
 
  private:
   MockCallSequence calls_;
+  bool* flushed_ = nullptr;
 };
 
 TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
@@ -700,6 +708,15 @@ TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
   EXPECT_TRUE(
       StringPiece(status.error_message()).contains("Retriable error #10"))
       << status;
+}
+
+TEST(RetryingFileSystemTest, FlushCaches) {
+  ExpectedCalls none;
+  bool flushed = false;
+  std::unique_ptr<MockFileSystem> base_fs(new MockFileSystem(none, &flushed));
+  RetryingFileSystem fs(std::move(base_fs), 0);
+  fs.FlushCaches();
+  EXPECT_TRUE(flushed);
 }
 
 }  // namespace

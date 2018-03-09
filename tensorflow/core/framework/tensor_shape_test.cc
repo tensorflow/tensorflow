@@ -359,7 +359,8 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions");
+                                     " has negative dimensions; ",
+                                     "perhaps an un-fed placeholder?");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
@@ -581,7 +582,8 @@ TEST(TensorShapeTest, Large) {
 TEST(TensorShapeTest, Overflow) {
   int64 one = 1;
   std::vector<std::vector<int64>> overflows = {
-      {1 << 30, 1 << 30, 1 << 30}, {1 << 5, (one << 60) + 1},
+      {1 << 30, 1 << 30, 1 << 30},
+      {1 << 5, (one << 60) + 1},
   };
   for (const auto& overflow : overflows) {
     TensorShapeProto proto;

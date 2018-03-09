@@ -251,6 +251,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":saved_model_cli",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 

@@ -51,6 +51,17 @@ release of memory.
 END
   }
   attr {
+    name: "identical_element_shapes"
+    description: <<END
+If true (default is false), then all
+elements in the TensorArray will be expected to have have identical shapes.
+This allows certain behaviors, like dynamically checking for
+consistent shapes on write, and being able to fill in properly
+shaped zero tensors on stack -- even if the element_shape attribute
+is not fully defined.
+END
+  }
+  attr {
     name: "tensor_array_name"
     description: <<END
 Overrides the name used for the temporary tensor_array

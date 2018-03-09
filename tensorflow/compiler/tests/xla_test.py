@@ -53,40 +53,99 @@ class XLATestCase(test.TestCase):
     super(XLATestCase, self).__init__(method_name)
     self.device = FLAGS.test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
-    self.all_tf_types = [
+    self._all_tf_types = set([
         dtypes.as_dtype(types_pb2.DataType.Value(name))
         for name in FLAGS.types.split(',')
-    ]
-    self.int_tf_types = [
-        dtype for dtype in self.all_tf_types if dtype.is_integer
-    ]
-    self.float_tf_types = [
-        dtype for dtype in self.all_tf_types if dtype.is_floating
-    ]
-    self.complex_tf_types = [
-        dtype for dtype in self.all_tf_types if dtype.is_complex
-    ]
-    self.numeric_tf_types = (
-        self.int_tf_types + self.float_tf_types + self.complex_tf_types)
+    ])
+    self.int_tf_types = set([
+        dtype for dtype in self._all_tf_types if dtype.is_integer
+    ])
+    self._float_tf_types = set([
+        dtype for dtype in self._all_tf_types if dtype.is_floating
+    ])
+    self.complex_tf_types = set([
+        dtype for dtype in self._all_tf_types if dtype.is_complex
+    ])
+    self._numeric_tf_types = set(
+        self.int_tf_types | self._float_tf_types | self.complex_tf_types)
 
-    self.all_types = [dtype.as_numpy_dtype for dtype in self.all_tf_types]
-    self.int_types = [dtype.as_numpy_dtype for dtype in self.int_tf_types]
-    self.float_types = [dtype.as_numpy_dtype for dtype in self.float_tf_types]
-    self.complex_types = [
+    self._all_types = set(
+        [dtype.as_numpy_dtype for dtype in self._all_tf_types])
+    self.int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
+    self._float_types = set(
+        [dtype.as_numpy_dtype for dtype in self._float_tf_types])
+    self.complex_types = set([
         dtype.as_numpy_dtype for dtype in self.complex_tf_types
-    ]
-    self.numeric_types = self.int_types + self.float_types + self.complex_types
+    ])
+    self._numeric_types = set(
+        self.int_types | self._float_types | self.complex_types)
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable
     self.disabled_regex = None
+    self._method_types_filter = dict()
+    # TODO(xpan): Make it text proto if it doesn't scale.
+    # Each line of the manifest file specifies an entry. The entry can be
+    # 1) TestNameRegex  // E.g. CumprodTest.* Or
+    # 2) TestName TypeName  // E.g. AdamOptimizerTest.testSharing DT_BFLOAT16
+    # The 1) disables the entire test. While 2) only filter some numeric types
+    # so that they are not used in those tests.
+
     if FLAGS.disabled_manifest is not None:
       comments_re = re.compile('#.*$')
       manifest_file = open(FLAGS.disabled_manifest, 'r')
-      lines = manifest_file.read().splitlines()
-      lines = [comments_re.sub('', l).strip() for l in lines]
-      self.disabled_regex = re.compile('|'.join(lines))
+      disabled_tests = []
+      disabled_method_types = []
+      for l in manifest_file.read().splitlines():
+        entry = comments_re.sub('', l).strip().split(' ')
+        if len(entry) == 1:
+          disabled_tests.append(entry[0])
+        elif len(entry) == 2:
+          disabled_method_types.append(
+              (entry[0], entry[1].strip().split(',')))
+        else:
+          raise ValueError('Bad entry in manifest file.')
+
+      self.disabled_regex = re.compile('|'.join(disabled_tests))
+      for method, types in disabled_method_types:
+        self._method_types_filter[method] = set([
+            dtypes.as_dtype(types_pb2.DataType.Value(name)).as_numpy_dtype
+            for name in types])
       manifest_file.close()
+
+  @property
+  def all_tf_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    tf_types = set([dtypes.as_dtype(t)
+                    for t in self._method_types_filter.get(name, set())])
+    return self._all_tf_types - tf_types
+
+  @property
+  def float_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    return self._float_types - self._method_types_filter.get(name, set())
+
+  @property
+  def float_tf_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    return self._float_tf_types - self._method_types_filter.get(name, set())
+
+  @property
+  def numeric_tf_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    tf_types = set([dtypes.as_dtype(t)
+                    for t in self._method_types_filter.get(name, set())])
+    return self._numeric_tf_types - tf_types
+
+  @property
+  def numeric_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    return self._numeric_types - self._method_types_filter.get(name, set())
+
+  @property
+  def all_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    return self._all_types - self._method_types_filter.get(name, set())
 
   def setUp(self):
     super(XLATestCase, self).setUp()

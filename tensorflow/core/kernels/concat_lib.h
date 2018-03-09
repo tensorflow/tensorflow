@@ -23,12 +23,29 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Functors to concatenate tensors. These always take a rank-2 tensor (i.e a
+// matrix) and concatenate it along the axis 1 ("putting them next to each
+// other" as opposed to "putting them on top of one another").
+//
+// Any concatenation of n-dimensional tensors across any axis can be reduced to
+// a concatenation of two-dimensional tensors across the axis 1 by first
+// partitioning the axes of the original tensors into those less than the axis
+// to be concatenated across and the rest. Then reshape the tensors into a
+// two-dimensional tensor by collapsing these two sets of axes and concatenate
+// the resulting matrices across the axis 1, finally reshaping the result to
+// have the proper shape.
+//
+// So, for example, when stacking N tensors, reshape each to have shape
+// {1, Numelements} and reshape the result matrix to have shape
+// {1, N * NumElements} before passing it to this functor.
+
 // Assumes all inputs are nonempty
 template <typename T>
-void ConcatCPU(DeviceBase* d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
+void ConcatCPU(
+    DeviceBase* d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output);
 #if GOOGLE_CUDA
 template <typename T>
 void ConcatGPU(
@@ -41,11 +58,12 @@ void ConcatGPU(
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-void ConcatSYCL(const Eigen::SyclDevice& d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
-#endif // TENSORFLOW_USE_SYCL
+void ConcatSYCL(
+    const Eigen::SyclDevice& d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONCAT_LIB_H_

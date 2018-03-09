@@ -124,7 +124,7 @@ function build_tf_image {
 
 
 function publish_tf_image {
-  $gcr_tf_image="gcr.io/tensorflow/${tf_image}"
+  gcr_tf_image="gcr.io/tensorflow/${tf_image}"
   docker tag $tf_image $gcr_tf_image
   gcloud docker -- push $gcr_tf_image
 }

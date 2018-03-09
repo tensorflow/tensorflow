@@ -95,7 +95,7 @@ def main():
     release_prefix = 'https://storage.googleapis.com/tensorflow/libtensorflow'
     info_url = '%s/android_buildinfo-%s.json' % (release_prefix, args.version)
     aar_url = '%s/tensorflow-%s.aar' % (release_prefix, args.version)
-    build_type = 'release-matrix-android'
+    build_type = 'release-matrix-android2'
 
   # Retrieve build information
   build_info = get_json(info_url)

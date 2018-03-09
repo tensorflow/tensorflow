@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logistic regression (aka binary classifier) class.
+"""Logistic regression (aka binary classifier) class (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 This defines some useful basic metrics for using logistic regression to classify
 a binary event (0 vs 1).
@@ -74,6 +78,10 @@ def LogisticRegressor(  # pylint: disable=invalid-name
     model_fn, thresholds=None, model_dir=None, config=None,
     feature_engineering_fn=None):
   """Builds a logistic regression Estimator for binary classification.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   This method provides a basic Estimator with some additional metrics for custom
   binary classification models, including AUC, precision/recall and accuracy.

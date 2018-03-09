@@ -96,8 +96,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.SessionRunHook")
 class SessionRunHook(object):
   """Hook to extend calls to MonitoredSession.run()."""
 
@@ -189,6 +191,7 @@ class SessionRunHook(object):
     pass
 
 
+@tf_export("train.SessionRunArgs")
 class SessionRunArgs(
     collections.namedtuple("SessionRunArgs",
                            ["fetches", "feed_dict", "options"])):
@@ -213,6 +216,7 @@ class SessionRunArgs(
     return super(SessionRunArgs, cls).__new__(cls, fetches, feed_dict, options)
 
 
+@tf_export("train.SessionRunContext")
 class SessionRunContext(object):
   """Provides information about the `session.run()` call being made.
 
@@ -264,6 +268,7 @@ class SessionRunContext(object):
     self._stop_requested = True
 
 
+@tf_export("train.SessionRunValues")
 class SessionRunValues(
     collections.namedtuple("SessionRunValues",
                            ["results", "options", "run_metadata"])):

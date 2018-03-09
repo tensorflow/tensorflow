@@ -35,22 +35,23 @@ from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.Dense')
 class Dense(base.Layer):
   """Densely-connected layer class.
 
   This layer implements the operation:
-  `outputs = activation(inputs.kernel + bias)`
+  `outputs = activation(inputs * kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
-
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
@@ -155,18 +156,18 @@ class Dense(base.Layer):
       outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
                                                              [0]])
       # Reshape the output back to the original ndim of the input.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      outputs = standard_ops.matmul(inputs, self.kernel)
+      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
     if input_shape[-1].value is None:
@@ -176,6 +177,7 @@ class Dense(base.Layer):
     return input_shape[:-1].concatenate(self.units)
 
 
+@tf_export('layers.dense')
 def dense(
     inputs, units,
     activation=None,
@@ -198,9 +200,6 @@ def dense(
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
-
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     inputs: Tensor input.
@@ -230,7 +229,8 @@ def dense(
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
 
   Raises:
     ValueError: if eager execution is enabled.
@@ -253,6 +253,7 @@ def dense(
   return layer.apply(inputs)
 
 
+@tf_export('layers.Dropout')
 class Dropout(base.Layer):
   """Applies Dropout to the input.
 
@@ -286,11 +287,13 @@ class Dropout(base.Layer):
     self.noise_shape = noise_shape
     self.seed = seed
 
-  def _get_noise_shape(self, _):
+  def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
-    return self.noise_shape
+    if self.noise_shape is None:
+      return self.noise_shape
+    return nn_ops._get_noise_shape(inputs, self.noise_shape)
 
   def call(self, inputs, training=False):
 
@@ -302,7 +305,11 @@ class Dropout(base.Layer):
                             dropped_inputs,
                             lambda: array_ops.identity(inputs))
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('layers.dropout')
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -344,6 +351,7 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
+@tf_export('layers.Flatten')
 class Flatten(base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
@@ -366,11 +374,11 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    if context.in_graph_mode():
-      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    if not context.executing_eagerly():
+      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):
@@ -380,6 +388,7 @@ class Flatten(base.Layer):
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.flatten')
 def flatten(inputs, name=None):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 

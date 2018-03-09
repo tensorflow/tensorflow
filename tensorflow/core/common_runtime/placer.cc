@@ -129,7 +129,7 @@ class ColocationGraph {
     // 'string' values stored in NodeDef attribute lists, as well as StringPiece
     // values that refer to 'string' values from NodeDef::name(), without
     // performing any string allocations.
-    std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>
+    std::unordered_map<StringPiece, const Node*, StringPieceHasher>
         colocation_group_root;
 
     for (Node* node : graph_->nodes()) {
@@ -171,7 +171,7 @@ class ColocationGraph {
   }
 
   Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>*
+      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
           colocation_group_root,
       Node* node, StringPiece colocation_group) {
     const Node*& root_node = (*colocation_group_root)[colocation_group];
@@ -369,7 +369,8 @@ class ColocationGraph {
                 "Could not satisfy explicit device specification '",
                 node->requested_device(), "' because no supported kernel for ",
                 specified_device_name.type, " devices is available.",
-                debug_info);
+                debug_info, "\nRegistered kernels:\n",
+                KernelsRegisteredForOp(node->type_string()));
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
@@ -463,6 +464,7 @@ class ColocationGraph {
     // the user can see why an unsatisfiable placement occurred.
 
     std::unordered_map<string, string> type_to_devices;
+    std::vector<const Node*> colocation_nodes;
     int num_nodes_found = 0;
 
     for (const Node* node : graph_->nodes()) {
@@ -474,6 +476,7 @@ class ColocationGraph {
         continue;
       }
       ++num_nodes_found;
+      colocation_nodes.push_back(node);
       const string& op_type = node->type_string();
       string devices_registered;
       for (const auto& device_type : members_[id].supported_device_types) {
@@ -487,6 +490,13 @@ class ColocationGraph {
     for (const auto& td : type_to_devices) {
       strings::StrAppend(&text, "\n", td.first, ": ", td.second);
     }
+    strings::StrAppend(&text,
+                       "\n\nColocation members and user-requested devices:");
+    for (const Node* node : colocation_nodes) {
+      strings::StrAppend(&text, "\n  ", node->name(), " (", node->type_string(),
+                         ") ", node->requested_device());
+    }
+    strings::StrAppend(&text, "\n");
 
     if (num_nodes_found <= 1) {
       text.clear();

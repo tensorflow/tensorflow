@@ -128,10 +128,8 @@ RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_cell_wrapper/attention/bias'),
     ############################################################################
     # contrib/legacy_seq2seq/python/ops/seq2seq.py
-    ('attention_decoder/weights',
-     'attention_decoder/kernel'),
-    ('attention_decoder/biases',
-     'attention_decoder/bias'),
+    ('attention_decoder/weights', 'attention_decoder/kernel'),
+    ('attention_decoder/biases', 'attention_decoder/bias'),
     ('attention_decoder/Attention_0/weights',
      'attention_decoder/Attention_0/kernel'),
     ('attention_decoder/Attention_0/biases',
@@ -140,6 +138,19 @@ RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_decoder/AttnOutputProjection/kernel'),
     ('attention_decoder/AttnOutputProjection/biases',
      'attention_decoder/AttnOutputProjection/bias'),
+    # contrib/legacy_seq2seq/python/ops/seq2seq.py before cl/140060366
+    ('attention_decoder/Attention_0/Linear/Bias',
+     'attention_decoder/Attention_0/bias'),
+    ('attention_decoder/Attention_0/Linear/Matrix',
+     'attention_decoder/Attention_0/kernel'),
+    ('attention_decoder/AttnOutputProjection/Linear/Bias',
+     'attention_decoder/AttnOutputProjection/bias'),
+    ('attention_decoder/AttnOutputProjection/Linear/Matrix',
+     'attention_decoder/AttnOutputProjection/kernel'),
+    ('attention_decoder/LSTMCell/B', 'attention_decoder/lstm_cell/bias'),
+    ('attention_decoder/LSTMCell/W_0', 'attention_decoder/lstm_cell/kernel'),
+    ('attention_decoder/Linear/Bias', 'attention_decoder/bias'),
+    ('attention_decoder/Linear/Matrix', 'attention_decoder/kernel')
 ])
 
 _RNN_SHARDED_NAME_REPLACEMENTS = collections.OrderedDict([

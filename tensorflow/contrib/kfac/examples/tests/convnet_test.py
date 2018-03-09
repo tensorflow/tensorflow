@@ -96,7 +96,7 @@ class ConvNetTest(tf.test.TestCase):
     """
     x = np.asarray([[1.], [2.]]).astype(np.float32)
     y = np.asarray([1., 2.]).astype(np.float32)
-    x, y = (tf.contrib.data.Dataset.from_tensor_slices((x, y))
+    x, y = (tf.data.Dataset.from_tensor_slices((x, y))
             .repeat(100).batch(2).make_one_shot_iterator().get_next())
     w = tf.get_variable("w", shape=[1, 1], initializer=tf.zeros_initializer())
     y_hat = tf.matmul(x, w)

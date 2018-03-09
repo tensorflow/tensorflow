@@ -25,6 +25,7 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/core/kernels:bounds_check_lib",
+        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -39,6 +40,7 @@ tf_kernel_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
     ],
 )
 
@@ -55,9 +57,11 @@ tf_gen_op_wrapper_py(
 )
 
 tf_custom_op_py_library(
-    name = "cudnn_rnn_ops_py",
+    name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
+        "python/layers/__init__.py",
+        "python/layers/cudnn_rnn.py",
         "python/ops/cudnn_rnn_ops.py",
     ],
     dso = [
@@ -71,45 +75,6 @@ tf_custom_op_py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cudnn_rnn_ops",
-        "//tensorflow/contrib/rnn:rnn_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:common_shapes",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers_base",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:rnn_cell",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-    ],
-)
-
-tf_custom_op_py_library(
-    name = "cudnn_rnn_py",
-    srcs = [
-        "__init__.py",
-        "python/layers/__init__.py",
-        "python/layers/cudnn_rnn.py",
-    ],
-    dso = [
-        ":python/ops/_cudnn_rnn_ops.so",
-    ],
-    kernels = [
-        ":cudnn_rnn_kernels",
-        ":cudnn_rnn_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cudnn_rnn_ops",
-        ":cudnn_rnn_ops_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -130,7 +95,7 @@ cuda_py_test(
     size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
-        ":cudnn_rnn_ops_py",
+        ":cudnn_rnn_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python/ops/losses:losses",
@@ -183,10 +148,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_benchmark",
-    size = "large",
+    size = "small",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_benchmark.py"],
     additional_deps = [
-        ":cudnn_rnn_ops_py",
+        ":cudnn_rnn_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -201,7 +166,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "manual",
         "noasan",  # http://b/62067814
         "nomsan",
         "notsan",

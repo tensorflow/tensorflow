@@ -43,8 +43,8 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
   def testStaircase(self):
     with self.test_session():
-      step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
-                                     name="step", container="", shared_name="")
+      step = gen_state_ops.variable(shape=[], dtype=dtypes.int32,
+                                    name="step", container="", shared_name="")
       assign_100 = state_ops.assign(step, 100)
       assign_1 = state_ops.assign(step, 1)
       assign_2 = state_ops.assign(step, 2)
@@ -113,7 +113,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       learning_rate_decay.piecewise_constant(x, boundaries, values)
 
     # Test that ref types are valid.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       x = variables.Variable(0.0)
       x_ref = x.op.outputs[0]   # float32_ref tensor should be accepted
       boundaries, values = [1.0, 2.0], [1, 2, 3]
@@ -264,8 +264,8 @@ class ExponentialDecayTest(test_util.TensorFlowTestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
-                                   name="step", container="", shared_name="")
+    step = gen_state_ops.variable(
+        shape=[], dtype=dtypes.int32, name="step", container="", shared_name="")
     assign_step = state_ops.assign(step, 0)
     increment_step = state_ops.assign_add(step, 1)
     decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr, step,
@@ -281,8 +281,8 @@ class ExponentialDecayTest(test_util.TensorFlowTestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
-                                   name="step", container="", shared_name="")
+    step = gen_state_ops.variable(
+        shape=[], dtype=dtypes.int32, name="step", container="", shared_name="")
     assign_step = state_ops.assign(step, 0)
     increment_step = state_ops.assign_add(step, 1)
     decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr,
@@ -304,8 +304,8 @@ class InverseDecayTest(test_util.TensorFlowTestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
-                                   name="step", container="", shared_name="")
+    step = gen_state_ops.variable(
+        shape=[], dtype=dtypes.int32, name="step", container="", shared_name="")
     assign_step = state_ops.assign(step, 0)
     increment_step = state_ops.assign_add(step, 1)
     decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
@@ -323,8 +323,8 @@ class InverseDecayTest(test_util.TensorFlowTestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = gen_state_ops._variable(shape=[], dtype=dtypes.int32,
-                                   name="step", container="", shared_name="")
+    step = gen_state_ops.variable(
+        shape=[], dtype=dtypes.int32, name="step", container="", shared_name="")
     assign_step = state_ops.assign(step, 0)
     increment_step = state_ops.assign_add(step, 1)
     decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
@@ -342,10 +342,11 @@ class InverseDecayTest(test_util.TensorFlowTestCase):
 
 class CosineDecayTest(test_util.TensorFlowTestCase):
 
-  def np_cosine_decay(self, step, decay_steps):
+  def np_cosine_decay(self, step, decay_steps, alpha=0.0):
     step = min(step, decay_steps)
     completed_fraction = step / decay_steps
-    return 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
+    decay = 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
+    return (1.0 - alpha) * decay + alpha
 
   def testDecay(self):
     num_training_steps = 1000
@@ -355,6 +356,77 @@ class CosineDecayTest(test_util.TensorFlowTestCase):
         decayed_lr = learning_rate_decay.cosine_decay(
             initial_lr, step, num_training_steps)
         expected = self.np_cosine_decay(step, num_training_steps)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testAlpha(self):
+    num_training_steps = 1000
+    initial_lr = 1.0
+    alpha = 0.1
+    for step in range(0, 1500, 250):
+      with self.test_session():
+        decayed_lr = learning_rate_decay.cosine_decay(
+            initial_lr, step, num_training_steps, alpha)
+        expected = self.np_cosine_decay(step, num_training_steps, alpha)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+
+class CosineDecayRestartsTest(test_util.TensorFlowTestCase):
+  def np_cosine_decay_restarts(self, step, decay_steps, t_mul=2.0, m_mul=1.0,
+                               alpha=0.0):
+    fac = 1.0
+    while step >= decay_steps:
+      step = step - decay_steps
+      decay_steps *= t_mul
+      fac *= m_mul
+
+    completed_fraction = step / decay_steps
+    decay = fac * 0.5 * (1.0 + math.cos(math.pi * completed_fraction))
+    return (1.0 - alpha) * decay + alpha
+
+  def testDecay(self):
+    num_training_steps = 1000
+    initial_lr = 1.0
+    for step in range(0, 1500, 250):
+      with self.test_session():
+        decayed_lr = learning_rate_decay.cosine_decay_restarts(
+            initial_lr, step, num_training_steps)
+        expected = self.np_cosine_decay_restarts(step, num_training_steps)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testAlpha(self):
+    num_training_steps = 1000
+    initial_lr = 1.0
+    alpha = 0.1
+    for step in range(0, 1500, 250):
+      with self.test_session():
+        decayed_lr = learning_rate_decay.cosine_decay_restarts(
+            initial_lr, step, num_training_steps, alpha=alpha)
+        expected = self.np_cosine_decay_restarts(step, num_training_steps,
+                                                 alpha=alpha)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testMMul(self):
+    num_training_steps = 1000
+    initial_lr = 1.0
+    m_mul = 0.9
+    for step in range(0, 1500, 250):
+      with self.test_session():
+        decayed_lr = learning_rate_decay.cosine_decay_restarts(
+            initial_lr, step, num_training_steps, m_mul=m_mul)
+        expected = self.np_cosine_decay_restarts(step, num_training_steps,
+                                                 m_mul=m_mul)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testTMul(self):
+    num_training_steps = 1000
+    initial_lr = 1.0
+    t_mul = 1.0
+    for step in range(0, 1500, 250):
+      with self.test_session():
+        decayed_lr = learning_rate_decay.cosine_decay_restarts(
+            initial_lr, step, num_training_steps, t_mul=t_mul)
+        expected = self.np_cosine_decay_restarts(step, num_training_steps,
+                                                 t_mul=t_mul)
         self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
 

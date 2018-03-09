@@ -49,7 +49,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #endif  // IS_SLIM_BUILD
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
-               << ". No comprression will be used.";
+               << ". No compression will be used.";
   }
   return options;
 }
@@ -195,6 +195,21 @@ Status RecordReader::ReadRecord(uint64* offset, string* record) {
   *offset += kHeaderSize + length + kFooterSize;
   return Status::OK();
 }
+
+Status RecordReader::SkipNBytes(uint64 offset) {
+#if !defined(IS_SLIM_BUILD)
+  if (zlib_input_stream_) {
+    TF_RETURN_IF_ERROR(zlib_input_stream_->SkipNBytes(offset));
+  } else {
+#endif
+    if (options_.buffer_size > 0) {
+      TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(offset));
+    }
+#if !defined(IS_SLIM_BUILD)
+  }
+#endif
+  return Status::OK();
+}  // namespace io
 
 SequentialRecordReader::SequentialRecordReader(
     RandomAccessFile* file, const RecordReaderOptions& options)

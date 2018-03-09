@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
@@ -125,6 +126,10 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
+      if (pyarray_type == Bfloat16NumpyType()) {
+        *out_tf_datatype = TF_BFLOAT16;
+        break;
+      }
       // TODO(mrry): Support these.
       return errors::Internal("Unsupported feed type");
   }

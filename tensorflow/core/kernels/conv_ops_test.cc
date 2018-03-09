@@ -43,6 +43,8 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
       128,       // out_depths
       {{3,       // filter_rows
         3}},     // filter_cols
+      {{1,       // dilation_rows
+        1}},     // dilation_cols
       {{1,       // stride_rows
         1}},     // stride_cols
       {{0,       // padding_rows
@@ -60,6 +62,8 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
       768,       // out_depths
       {{3,       // filter_rows
         3}},     // filter_cols
+      {{1,       // dilation_rows
+        1}},     // dilation_cols
       {{1,       // stride_rows
         1}},     // stride_cols
       {{0,       // padding_rows

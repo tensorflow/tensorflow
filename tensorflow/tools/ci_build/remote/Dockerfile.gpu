@@ -18,7 +18,9 @@ RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 # Set up grpc
-RUN pip install --upgrade enum34 futures mock numpy six backports.weakref && \
+RUN pip install --upgrade \
+        enum34 futures astor gast mock numpy six \
+        backports.weakref termcolor && \
     pip install --pre 'protobuf>=3.0.0a3' && \
     pip install 'grpcio>=1.1.3'
 

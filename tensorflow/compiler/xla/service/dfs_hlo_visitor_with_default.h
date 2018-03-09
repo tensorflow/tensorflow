@@ -85,6 +85,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
+  Status HandleFft(HloInstructionPtr fft) override {
+    return DefaultAction(fft);
+  }
   Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
@@ -99,6 +102,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
+  }
+  Status HandleHostCompute(HloInstructionPtr host_compute) override {
+    return DefaultAction(host_compute);
   }
   Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
@@ -167,11 +173,23 @@ class DfsHloVisitorWithDefaultBase
   Status HandleWhile(HloInstructionPtr xla_while) override {
     return DefaultAction(xla_while);
   }
-  Status HandleSend(HloInstructionPtr send) override {
-    return DefaultAction(send);
+  Status HandleConditional(HloInstructionPtr conditional) override {
+    return DefaultAction(conditional);
   }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
+  }
+  Status HandleRecvDone(HloInstructionPtr recv_done) override {
+    return DefaultAction(recv_done);
+  }
+  Status HandleSend(HloInstructionPtr send) override {
+    return DefaultAction(send);
+  }
+  Status HandleSendDone(HloInstructionPtr send_done) override {
+    return DefaultAction(send_done);
+  }
+  Status HandleGather(HloInstructionPtr gather) override {
+    return DefaultAction(gather);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

@@ -189,6 +189,9 @@ class FileSystem {
   /// \brief Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
+  /// \brief Copy the src to target.
+  virtual Status CopyFile(const string& src, const string& target);
+
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
   /// The implementation in this class cleans up the path, removing
@@ -205,6 +208,9 @@ class FileSystem {
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual Status IsDirectory(const string& fname);
+
+  /// \brief Flushes any cached filesystem objects from memory.
+  virtual void FlushCaches();
 
   FileSystem() {}
 

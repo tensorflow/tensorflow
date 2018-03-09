@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 // Disable clang-format to prevent 'FixedPoint' header from being included
 // before 'Tensor' header on which it depends.
@@ -41,35 +40,77 @@ typedef Eigen::QInt32 qint32;
 typedef Eigen::QInt16 qint16;
 typedef Eigen::QUInt16 quint16;
 
-// see framework/bfloat16.h for description.
-struct bfloat16 {
-  EIGEN_DEVICE_FUNC bfloat16() {}
-  EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
-    const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
+}  // namespace tensorflow
+
+
+
+
+static inline tensorflow::bfloat16 FloatToBFloat16(float float_val) {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    value = p[0];
+    return *reinterpret_cast<tensorflow::bfloat16*>(
+        reinterpret_cast<uint16_t*>(&float_val));
 #else
-    value = p[1];
+    return *reinterpret_cast<tensorflow::bfloat16*>(
+        &(reinterpret_cast<uint16_t*>(&float_val)[1]));
 #endif
+}
+    
+namespace Eigen {
+// TODO(xpan): We probably need to overwrite more methods to have correct eigen
+// behavior. E.g. epsilon(), dummy_precision, etc. See NumTraits.h in eigen.
+template <>
+struct NumTraits<tensorflow::bfloat16>
+    : GenericNumTraits<tensorflow::bfloat16> {
+  enum {
+    IsInteger = 0,
+    IsSigned = 1,
+    RequireInitialization = 0
+  };
+  static EIGEN_STRONG_INLINE tensorflow::bfloat16 highest() {
+    return FloatToBFloat16(NumTraits<float>::highest());
   }
 
-  uint16_t value;
+  static EIGEN_STRONG_INLINE tensorflow::bfloat16 lowest() {
+    return FloatToBFloat16(NumTraits<float>::lowest());
+  }
+
+  static EIGEN_STRONG_INLINE tensorflow::bfloat16 infinity() {
+    return FloatToBFloat16(NumTraits<float>::infinity());
+  }
+
+  static EIGEN_STRONG_INLINE tensorflow::bfloat16 quiet_NaN() {
+    return FloatToBFloat16(NumTraits<float>::quiet_NaN());
+  }
 };
 
-}  // end namespace tensorflow
 
-namespace Eigen {
+using ::tensorflow::operator==;
+using ::tensorflow::operator!=;
+
+namespace numext {
+
 template <>
-struct NumTraits<tensorflow::bfloat16> : GenericNumTraits<uint16_t> {};
-
-EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
-                                    const tensorflow::bfloat16 b) {
-  return a.value == b.value;
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 log(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::logf(static_cast<float>(x)));
 }
 
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 exp(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::expf(static_cast<float>(x)));
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 abs(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::fabsf(static_cast<float>(x)));
+}
+
+}  // namespace numext
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(COMPILER_MSVC) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {

@@ -108,7 +108,7 @@ class TensorForestTest(test_util.TensorFlowTestCase):
     probs, paths, var = graph_builder.inference_graph(input_data)
     self.assertTrue(isinstance(probs, ops.Tensor))
     self.assertTrue(isinstance(paths, ops.Tensor))
-    self.assertIsNone(var)
+    self.assertTrue(isinstance(var, ops.Tensor))
 
   def testTrainingConstructionClassificationSparse(self):
     input_data = sparse_tensor.SparseTensor(

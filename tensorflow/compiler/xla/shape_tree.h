@@ -53,7 +53,7 @@ struct ShapeTreeNode {
   ShapeTreeNode(const ShapeTreeNode& other)
       : data(other.data), children(other.children.size()) {
     for (size_t i = 0; i < children.size(); ++i) {
-      children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+      children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
     }
   }
 
@@ -62,7 +62,7 @@ struct ShapeTreeNode {
       data = other.data;
       children.resize(other.children.size());
       for (size_t i = 0; i < children.size(); ++i) {
-        children[i] = MakeUnique<ShapeTreeNode>(*other.children[i]);
+        children[i] = ::xla::MakeUnique<ShapeTreeNode>(*other.children[i]);
       }
     }
     return *this;
@@ -116,6 +116,7 @@ class ShapeTree {
   ShapeTree(const Shape* shape, const T& init_value);
 
   ShapeTree(const ShapeTree& other) { *this = other; }
+  ShapeTree(ShapeTree&&) = default;
 
   ShapeTree& operator=(const ShapeTree& other) {
     root_ = other.root_;
@@ -132,6 +133,8 @@ class ShapeTree {
     return *this;
   }
 
+  ShapeTree& operator=(ShapeTree&& other) = default;
+
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).
   const T& element(const ShapeIndex& index) const;
@@ -139,6 +142,18 @@ class ShapeTree {
 
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
+
+  // Replaces *only* the underlying shape of this ShapeTree. The caller must own
+  // the Shape object and hence shape_storage_ is not updated.
+  //
+  // Only safe to use this if the ShapeTree was constructed with 'explicit
+  // ShapeTree(const Shape* shape)' or is moved from one such ShapeTree. The
+  // caller must ensure that the input shape is consistent with the underlying
+  // tree.
+  void replace_shape_ptr(const Shape* shape) {
+    CHECK(shape_storage_.get() == nullptr);
+    shape_ = shape;
+  }
 
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
@@ -152,28 +167,57 @@ class ShapeTree {
   using const_iterator = ShapeTreeIterator<T, /*is_const=*/true>;
 
   // begin/end for iterating over all nodes.
-  iterator begin() { return iterator(&root_, /*iterate_leaves_only=*/false); }
-  iterator end() { return iterator(nullptr, /*iterate_leaves_only=*/false); }
+  iterator begin() {
+    return iterator(&root_, /*iterate_leaves_only=*/false,
+                    /*reverse=*/false);
+  }
+  iterator end() {
+    return iterator(nullptr, /*iterate_leaves_only=*/false,
+                    /*reverse=*/false);
+  }
   const_iterator begin() const {
-    return const_iterator(&root_, /*iterate_leaves_only=*/false);
+    return const_iterator(&root_, /*iterate_leaves_only=*/false,
+                          /*reverse=*/false);
   }
   const_iterator end() const {
-    return const_iterator(nullptr, /*iterate_leaves_only=*/false);
+    return const_iterator(nullptr, /*iterate_leaves_only=*/false,
+                          /*reverse=*/false);
+  }
+
+  // rbegin/rend for iterating over all nodes in reverse.
+  iterator rbegin() {
+    return iterator(&root_, /*iterate_leaves_only=*/false,
+                    /*reverse=*/true);
+  }
+  iterator rend() {
+    return iterator(nullptr, /*iterate_leaves_only=*/false,
+                    /*reverse=*/true);
+  }
+  const_iterator rbegin() const {
+    return const_iterator(&root_, /*iterate_leaves_only=*/false,
+                          /*reverse=*/true);
+  }
+  const_iterator rend() const {
+    return const_iterator(nullptr, /*iterate_leaves_only=*/false,
+                          /*reverse=*/true);
   }
 
   // leaf_begin()/leaf_end() iterates over all leaf nodes (nodes with no
   // children).
   iterator leaf_begin() {
-    return iterator(&root_, /*iterate_leaves_only=*/true);
+    return iterator(&root_, /*iterate_leaves_only=*/true, /*reverse=*/false);
   }
   iterator leaf_end() {
-    return iterator(nullptr, /*iterate_leaves_only=*/true);
+    return iterator(nullptr, /*iterate_leaves_only=*/true,
+                    /*reverse=*/false);
   }
   const_iterator leaf_begin() const {
-    return const_iterator(&root_, /*iterate_leaves_only=*/true);
+    return const_iterator(&root_, /*iterate_leaves_only=*/true,
+                          /*reverse=*/false);
   }
   const_iterator leaf_end() const {
-    return const_iterator(nullptr, /*iterate_leaves_only=*/true);
+    return const_iterator(nullptr, /*iterate_leaves_only=*/true,
+                          /*reverse=*/false);
   }
   // range-based iterator for leaf_begin()/leaf_end().
   tensorflow::gtl::iterator_range<iterator> leaves() {
@@ -183,6 +227,22 @@ class ShapeTree {
     return tensorflow::gtl::make_range(leaf_begin(), leaf_end());
   }
 
+  iterator leaf_rbegin() {
+    return iterator(&root_, /*iterate_leaves_only=*/true, /*reverse=*/true);
+  }
+  iterator leaf_rend() {
+    return iterator(nullptr, /*iterate_leaves_only=*/true,
+                    /*reverse=*/true);
+  }
+  const_iterator leaf_rbegin() const {
+    return const_iterator(&root_, /*iterate_leaves_only=*/true,
+                          /*reverse=*/true);
+  }
+  const_iterator leaf_rend() const {
+    return const_iterator(nullptr, /*iterate_leaves_only=*/true,
+                          /*reverse=*/true);
+  }
+
   // Recursively traverses the shape and calls the given function at each
   // element. The function has the following arguments:
   //
@@ -190,7 +250,7 @@ class ShapeTree {
   //           (or compatible).
   //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
   //           for definition of index.
-  //   data : The data value at this elemnt.
+  //   data : The data value at this element.
   template <typename Fn>
   void ForEachElement(const Fn& func) const;
 
@@ -277,47 +337,84 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
   // Construct an iterator pointing at node. Node must either be the tree root
   // or nullptr (which is equivalent to end() and should not be dereferenced or
   // incremented). If iterate_leaves_only is true, the iterator will not include
-  // interior tree nodes, only leaves.
-  ShapeTreeIterator(NodeType* node, bool iterate_leaves_only)
-      : node_(node), iterate_leaves_only_(iterate_leaves_only) {
-    if (node_ && !node_->children.empty() && iterate_leaves_only) {
-      ++*this;
+  // interior tree nodes, only leaves. If reverse is true, the iterator will
+  // visit nodes in the reverse of pre-order traversal.
+  ShapeTreeIterator(NodeType* node, bool iterate_leaves_only, bool reverse)
+      : node_(node),
+        iterate_leaves_only_(iterate_leaves_only),
+        reverse_(reverse) {
+    if (node_) {
+      if (reverse_) {
+        while (!node_->children.empty()) {
+          const int child_index = node_->children.size() - 1;
+          stack_.push_back({node_, child_index});
+          node_ = node_->children[child_index].get();
+        }
+      } else {
+        if (!node_->children.empty() && iterate_leaves_only) {
+          ++*this;
+        }
+      }
     }
   }
   ShapeTreeIterator(const ShapeTreeIterator& other)
       : node_(other.node_),
         stack_(other.stack_),
-        iterate_leaves_only_(other.iterate_leaves_only_) {}
+        iterate_leaves_only_(other.iterate_leaves_only_),
+        reverse_(other.reverse_) {}
 
   ShapeTreeIterator& operator++() {
     CHECK_NE(nullptr, node_) << "walking off the end() of an iterator!";
-    // We're doing a pre-order walk, so if our current node has children take
-    // the first child.
-    if (!node_->children.empty()) {
-      stack_.push_back({node_, /*child-index=*/0});
-      node_ = node_->children[0].get();
-      if (node_->children.empty() || !iterate_leaves_only_) {
-        return *this;
-      } else {
-        // This is a non-leaf; tail-recurse.
-        return ++(*this);
+    if (reverse_) {
+      while (!stack_.empty()) {
+        node_ = stack_.back().first;
+        int64 next_child_index = stack_.back().second - 1;
+        stack_.pop_back();
+        if (next_child_index < 0) {
+          if (!iterate_leaves_only_) {
+            // All children are visited, yield <node_>.
+            return *this;
+          }
+        } else {
+          stack_.push_back({node_, next_child_index});
+          node_ = node_->children[next_child_index].get();
+          while (!node_->children.empty()) {
+            const int child_index = node_->children.size() - 1;
+            stack_.push_back({node_, child_index});
+            node_ = node_->children[child_index].get();
+          }
+          return *this;
+        }
       }
-    }
-    // Otherwise we are currently at a leaf. Walk back up until a node contains
-    // a child we haven't visited yet.
-    while (!stack_.empty()) {
-      node_ = stack_.back().first;
-      int64 next_child_index = stack_.back().second + 1;
-      stack_.pop_back();
-      if (node_->children.size() > next_child_index) {
-        stack_.push_back({node_, next_child_index});
-        node_ = node_->children[next_child_index].get();
-
+    } else {
+      // We're doing a pre-order walk, so if our current node has children take
+      // the first child.
+      if (!node_->children.empty()) {
+        stack_.push_back({node_, /*child-index=*/0});
+        node_ = node_->children[0].get();
         if (node_->children.empty() || !iterate_leaves_only_) {
           return *this;
         } else {
           // This is a non-leaf; tail-recurse.
           return ++(*this);
+        }
+      }
+      // Otherwise we are currently at a leaf. Walk back up until a node
+      // contains a child we haven't visited yet.
+      while (!stack_.empty()) {
+        node_ = stack_.back().first;
+        int64 next_child_index = stack_.back().second + 1;
+        stack_.pop_back();
+        if (node_->children.size() > next_child_index) {
+          stack_.push_back({node_, next_child_index});
+          node_ = node_->children[next_child_index].get();
+
+          if (node_->children.empty() || !iterate_leaves_only_) {
+            return *this;
+          } else {
+            // This is a non-leaf; tail-recurse.
+            return ++(*this);
+          }
         }
       }
     }
@@ -348,7 +445,7 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
     for (auto& node_and_index : stack_) {
       index.push_back(node_and_index.second);
     }
-    current_ = MakeUnique<value_type>(index, node_->data);
+    current_ = ::xla::MakeUnique<value_type>(index, node_->data);
     return *current_;
   }
 
@@ -361,6 +458,8 @@ class ShapeTreeIterator : public std::iterator<std::forward_iterator_tag,
   std::vector<std::pair<NodeType*, int64>> stack_;
   // True if we should not include interior nodes in our walk.
   bool iterate_leaves_only_;
+  // True if we should yield the reverse of the pre-order traversal.
+  bool reverse_;
   // Placeholder for the current value. Ideally this wouldn't exist and would
   // just be an rvalue, but operator -> needs to return a pointer to something.
   // We cannot just use a plain old value_type as it contains a reference so
@@ -393,7 +492,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape)
     : root_(),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
@@ -409,7 +508,7 @@ ShapeTree<T>::ShapeTree(const Shape* shape) : root_(), shape_(shape) {
 template <typename T>
 ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
     : root_(init_value),
-      shape_storage_(MakeUnique<Shape>(std::move(shape))),
+      shape_storage_(::xla::MakeUnique<Shape>(std::move(shape))),
       shape_(shape_storage_.get()) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.

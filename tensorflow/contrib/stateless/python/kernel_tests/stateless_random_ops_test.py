@@ -69,16 +69,17 @@ class StatelessOpsTest(test.TestCase):
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
     with self.test_session(use_gpu=True):
-      seed_t = array_ops.placeholder(dtypes.int64, shape=[2])
-      seeds = [(x, y) for x in range(5) for y in range(5)] * 3
-      for stateless_op, _ in CASES:
-        for shape in (), (3,), (2, 5):
-          pure = stateless_op(shape, seed=seed_t)
-          values = [(seed, pure.eval(feed_dict={seed_t: seed}))
-                    for seed in seeds]
-          for s0, v0 in values:
-            for s1, v1 in values:
-              self.assertEqual(s0 == s1, np.all(v0 == v1))
+      for seed_type in [dtypes.int32, dtypes.int64]:
+        seed_t = array_ops.placeholder(seed_type, shape=[2])
+        seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+        for stateless_op, _ in CASES:
+          for shape in (), (3,), (2, 5):
+            pure = stateless_op(shape, seed=seed_t)
+            values = [(seed, pure.eval(feed_dict={seed_t: seed}))
+                      for seed in seeds]
+            for s0, v0 in values:
+              for s1, v1 in values:
+                self.assertEqual(s0 == s1, np.all(v0 == v1))
 
   def testShapeType(self):
     with self.test_session(use_gpu=True):

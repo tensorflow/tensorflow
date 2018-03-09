@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.StudentT")
 class StudentT(distribution.Distribution):
   """Student's t-distribution.
 
@@ -245,9 +247,6 @@ class StudentT(distribution.Distribution):
             0.5 * np.log(np.pi) +
             math_ops.lgamma(0.5 * self.df) -
             math_ops.lgamma(0.5 * (self.df + 1.)))
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _cdf(self, x):
     # Take Abs(scale) to make subsequent where work correctly.

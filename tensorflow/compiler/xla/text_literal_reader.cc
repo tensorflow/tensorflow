@@ -102,9 +102,9 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape).c_str());
   }
 
-  auto result = MakeUnique<Literal>();
+  auto result = MakeUnique<Literal>(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
-  result->PopulateWithValue<float>(fill, AsInt64Slice(shape.dimensions()));
+  result->PopulateWithValue<float>(fill);
   std::vector<tensorflow::StringPiece> pieces;
   std::vector<tensorflow::StringPiece> coordinates;
   std::vector<int64> coordinate_values;

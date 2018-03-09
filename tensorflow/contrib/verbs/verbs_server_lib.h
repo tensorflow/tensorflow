@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_
+#define TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_
 
 #ifdef TENSORFLOW_USE_VERBS
 
@@ -63,4 +63,4 @@ class VerbsServer : public GrpcServer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_VERBS
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_VERBS_SERVER_LIB_H_

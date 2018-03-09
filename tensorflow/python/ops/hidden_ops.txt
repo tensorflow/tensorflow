@@ -8,6 +8,7 @@ ConcatV2
 ConjugateTranspose
 Const
 DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -21,6 +22,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -28,6 +30,10 @@ Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
+Unique
+UniqueV2
+UniqueWithCounts
+UniqueWithCountsV2
 Unpack
 
 # candidate_sampling_ops
@@ -224,6 +230,7 @@ BatchSelfAdjointEigV2
 BatchSvd
 LogMatrixDeterminant
 MatrixExponential
+MatrixLogarithm
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -341,6 +348,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -355,6 +363,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

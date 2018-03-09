@@ -21,12 +21,11 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import custom_gradient
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Importing nn_grad for the registration functions.
@@ -165,40 +164,6 @@ class TapeTest(test.TestCase):
     t = constant_op.constant(1.0)
     g, = backprop.gradients_function(fn, [0])(t)
     self.assertAllEqual(g, 1.0)
-
-  def testTapeGC(self):
-    # TODO(apassos) figure out how to test this without using tape internal
-    # APIs.
-    tape.push_new_tape()
-
-    def f():
-      x = constant_op.constant(1.0)
-      tape.watch(x)
-      x = gradient_is_constant(x)
-      x = gradient_is_constant(x)
-      x = gradient_is_constant(x)
-
-    f()
-    t = tape.pop_tape()
-    tensor_tape, op_tape = t.export()
-    self.assertEqual(len(tensor_tape), 1)  # The watched tensor will remain on
-                                           # the tape
-    self.assertEqual(len(op_tape), 0)  # No operations should remain on the tape
-
-  def testCustomGradientGraphMode(self):
-    with context.graph_mode(), self.test_session():
-
-      @custom_gradient.custom_gradient
-      def f(x):
-
-        def grad(dresult):
-          return dresult * 10.0
-
-        return x, grad
-
-      inp = constant_op.constant(1.0)
-      grad = gradients_impl.gradients(f(inp), inp)
-      self.assertAllEqual(grad[0].eval(), 10.0)
 
 
 if __name__ == '__main__':

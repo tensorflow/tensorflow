@@ -17,13 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import dataset_ops as contrib_dataset_ops
+from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
+from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
@@ -31,77 +31,147 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
 
-class TextLineDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` comprising lines from one or more text files."""
+def make_batched_features_dataset(file_pattern,
+                                  batch_size,
+                                  features,
+                                  reader=core_readers.TFRecordDataset,
+                                  reader_args=None,
+                                  num_epochs=None,
+                                  shuffle=True,
+                                  shuffle_buffer_size=10000,
+                                  shuffle_seed=None,
+                                  prefetch_buffer_size=1,
+                                  reader_num_threads=1,
+                                  parser_num_threads=2,
+                                  sloppy_ordering=False):
+  """Returns a `Dataset` of feature dictionaries from `Example` protos.
 
-  @deprecation.deprecated(None, "Use `tf.data.TextLineDataset`.")
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TextLineDataset`.
+  Example:
 
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
-        to buffer. A value of 0 results in the default buffering values chosen
-        based on the compression type.
-    """
-    dataset = readers.TextLineDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TextLineDataset, self).__init__(dataset)
+  ```
+  serialized_examples = [
+    features {
+      feature { key: "age" value { int64_list { value: [ 0 ] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "code", "art" ] } } }
+    },
+    features {
+      feature { key: "age" value { int64_list { value: [] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "sports" ] } } }
+    }
+  ]
+  ```
+
+  We can use arguments:
+
+  ```
+  features: {
+    "age": FixedLenFeature([], dtype=tf.int64, default_value=-1),
+    "gender": FixedLenFeature([], dtype=tf.string),
+    "kws": VarLenFeature(dtype=tf.string),
+  }
+  ```
+
+  And the expected output is:
+
+  ```python
+  {
+    "age": [[0], [-1]],
+    "gender": [["f"], ["f"]],
+    "kws": SparseTensor(
+      indices=[[0, 0], [0, 1], [1, 0]],
+      values=["code", "art", "sports"]
+      dense_shape=[2, 2]),
+  }
+  ```
+
+  Args:
+    file_pattern: List of files or patterns of file paths containing
+      `Example` records. See `tf.gfile.Glob` for pattern rules.
+    batch_size: An int representing the number of consecutive elements of this
+      dataset to combine in a single batch.
+    features: A `dict` mapping feature keys to `FixedLenFeature` or
+      `VarLenFeature` values. See `tf.parse_example`.
+    reader: A function or class that can be
+      called with a `filenames` tensor and (optional) `reader_args` and returns
+      a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
+    reader_args: Additional arguments to pass to the reader class.
+    num_epochs: Integer specifying the number of times to read through the
+      dataset. If None, cycles through the dataset forever. Defaults to `None`.
+    shuffle: A boolean, indicates whether the input should be shuffled. Defaults
+      to `True`.
+    shuffle_buffer_size: Buffer size of the ShuffleDataset. A large capacity
+      ensures better shuffling but would increase memory usage and startup time.
+    shuffle_seed: Randomization seed to use for shuffling.
+    prefetch_buffer_size: Number of feature batches to prefetch in order to
+      improve performance. Recommended value is the number of batches consumed
+      per training step (default is 1).
+    reader_num_threads: Number of threads used to read `Example` records. If >1,
+      the results will be interleaved.
+    parser_num_threads: Number of threads to use for parsing `Example` tensors
+      into a dictionary of `Feature` tensors.
+    sloppy_ordering: If `True`, reading performance will be improved at
+      the cost of non-deterministic ordering. If `False`, the order of elements
+      produced is deterministic prior to shuffling (elements are still
+      randomized if `shuffle=True`. Note that if the seed is set, then order
+      of elements after shuffling is deterministic). Defaults to `False`.
+
+  Returns:
+    A dataset of `dict` elements. Each `dict` maps feature keys to
+    `Tensor` or `SparseTensor` objects.
+  """
+  # Create dataset of all matching filenames
+  if shuffle:
+    dataset = dataset_ops.Dataset.list_files(file_pattern, shuffle=True)
+  else:
+    # TODO(b/73959787): Use Dataset.list_files() once ordering is deterministic.
+    filenames = _get_file_names(file_pattern, shuffle)
+    dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
+
+  # Read `Example` records from files as tensor objects.
+  if reader_args is None:
+    reader_args = []
+
+  # Read files sequentially (if reader_num_threads=1) or in parallel
+  dataset = dataset.apply(
+      interleave_ops.parallel_interleave(
+          lambda filename: reader(filename, *reader_args),
+          cycle_length=reader_num_threads,
+          sloppy=sloppy_ordering))
+
+  # Extract values if the `Example` tensors are stored as key-value tuples.
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda _, v: v)
+
+  # Apply dataset repeat and shuffle transformations.
+  repeat_dataset = (num_epochs != 1)
+  if repeat_dataset and shuffle:
+    # Used fused shuffle_and_repeat operation for better performance
+    dataset = dataset.apply(
+        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
+                                       shuffle_seed))
+  elif repeat_dataset:
+    dataset = dataset.repeat(num_epochs)
+  elif shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+
+  dataset = dataset.batch(batch_size)
+
+  # Parse `Example` tensors to a dictionary of `Feature` tensors.
+  dataset = dataset.map(
+      lambda x: parsing_ops.parse_example(x, features),
+      num_parallel_calls=parser_num_threads)
+  dataset = dataset.prefetch(prefetch_buffer_size)
+  return dataset
 
 
-class TFRecordDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` comprising records from one or more TFRecord files."""
-
-  @deprecation.deprecated(None, "Use `tf.data.TFRecordDataset`.")
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TFRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes in the read buffer. 0 means no buffering.
-    """
-    dataset = readers.TFRecordDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TFRecordDataset, self).__init__(dataset)
-
-
-class FixedLengthRecordDataset(contrib_dataset_ops.Dataset):
-  """A `Dataset` of fixed-length records from one or more binary files."""
-
-  @deprecation.deprecated(None, "Use `tf.data.FixedLengthRecordDataset`.")
-  def __init__(self,
-               filenames,
-               record_bytes,
-               header_bytes=None,
-               footer_bytes=None,
-               buffer_size=None):
-    """Creates a `FixedLengthRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      record_bytes: A `tf.int64` scalar representing the number of bytes in
-        each record.
-      header_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to skip at the start of a file.
-      footer_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to ignore at the end of a file.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to buffer when reading.
-    """
-    dataset = readers.FixedLengthRecordDataset(
-        filenames, record_bytes, header_bytes, footer_bytes, buffer_size)
-    super(FixedLengthRecordDataset, self).__init__(dataset)
-
-
+@deprecation.deprecated(None,
+                        "Use `tf.contrib.data.make_batched_features_dataset`")
 def read_batch_features(file_pattern,
                         batch_size,
                         features,
-                        reader,
+                        reader=core_readers.TFRecordDataset,
                         reader_args=None,
                         randomize_input=True,
                         num_epochs=None,
@@ -155,59 +225,38 @@ def read_batch_features(file_pattern,
       dataset to combine in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
-    reader: A function or class that can be called with a `filenames` tensor
-      and (optional) `reader_args` and returns a `Dataset` of serialized
-      Examples.
+    reader: A function or class that can be
+      called with a `filenames` tensor and (optional) `reader_args` and returns
+      a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
     reader_args: Additional arguments to pass to the reader class.
     randomize_input: Whether the input should be randomized.
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever.
-    capacity: Capacity of the ShuffleDataset. A large capacity ensures better
+    capacity: Buffer size of the ShuffleDataset. A large capacity ensures better
       shuffling but would increase memory usage and startup time.
-
   Returns:
-    A dict from keys in features to Tensor or SparseTensor objects.
+    A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
-  filenames = _get_file_names(file_pattern, randomize_input)
-  if reader_args:
-    dataset = reader(filenames, *reader_args)
-  else:
-    dataset = reader(filenames)
-  if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda unused_k, v: v)
-  elif dataset.output_types != dtypes.string:
-    raise TypeError("`reader` must be a dataset of `tf.string` values, "
-                    "or `(tf.string, tf.string)` key-value pairs.")
-  if num_epochs != 1:
-    dataset = dataset.repeat(num_epochs)
-  if randomize_input:
-    dataset = dataset.shuffle(capacity)
-  dataset = dataset.batch(batch_size)
-  dataset = dataset.map(lambda x: _parse_example(x, features))
+  dataset = make_batched_features_dataset(
+      file_pattern,
+      batch_size,
+      features,
+      reader=reader,
+      reader_args=reader_args,
+      shuffle=randomize_input,
+      num_epochs=num_epochs,
+      shuffle_buffer_size=capacity)
   iterator = dataset.make_one_shot_iterator()
   outputs = iterator.get_next()
-  index = 0
-  result = {}
-  for key in sorted(features.keys()):
-    feature = features[key]
-    if isinstance(feature, parsing_ops.FixedLenFeature):
-      result[key] = outputs[index]
-      index += 1
-    else:
-      result[key] = sparse_tensor_lib.SparseTensor(
-          indices=outputs[index],
-          values=outputs[index + 1],
-          dense_shape=outputs[index + 2])
-      index += 3
-  return result
+  return outputs
 
 
-def _get_file_names(file_pattern, randomize_input):
+def _get_file_names(file_pattern, shuffle):
   """Parse list of file names from pattern, optionally shuffled.
 
   Args:
     file_pattern: File glob pattern, or list of glob patterns.
-    randomize_input: Whether to shuffle the order of file names.
+    shuffle: Whether to shuffle the order of file names.
 
   Returns:
     List of file names matching `file_pattern`.
@@ -228,31 +277,12 @@ def _get_file_names(file_pattern, randomize_input):
     raise ValueError("No files match %s." % file_pattern)
 
   # Sort files so it will be deterministic for unit tests.
-  if not randomize_input:
+  if not shuffle:
     file_names = sorted(file_names)
   return file_names
 
 
-def _parse_example(serialized, features):
-  parsed = parsing_ops.parse_example(serialized, features)
-  result = []
-  for key in sorted(features.keys()):
-    val = parsed[key]
-    if isinstance(val, sparse_tensor_lib.SparseTensor):
-      result.extend([val.indices, val.values, val.dense_shape])
-    else:
-      result.append(val)
-  return tuple(result)
-
-
-class SqlDataset(contrib_dataset_ops.Dataset):
-
-  def __init__(self, driver_name, data_source_name, query, output_types):
-    dataset = _SqlDataset(driver_name, data_source_name, query, output_types)
-    super(SqlDataset, self).__init__(dataset)
-
-
-class _SqlDataset(dataset_ops.Dataset):
+class SqlDataset(dataset_ops.Dataset):
   """A `Dataset` consisting of the results from a SQL query."""
 
   def __init__(self, driver_name, data_source_name, query, output_types):
@@ -284,7 +314,7 @@ class _SqlDataset(dataset_ops.Dataset):
       output_types: A tuple of `tf.DType` objects representing the types of the
         columns returned by `query`.
     """
-    super(_SqlDataset, self).__init__()
+    super(SqlDataset, self).__init__()
     self._driver_name = ops.convert_to_tensor(
         driver_name, dtype=dtypes.string, name="driver_name")
     self._data_source_name = ops.convert_to_tensor(
@@ -298,6 +328,10 @@ class _SqlDataset(dataset_ops.Dataset):
                                        self._data_source_name, self._query,
                                        nest.flatten(self.output_types),
                                        nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
 
   @property
   def output_shapes(self):

@@ -88,9 +88,7 @@ def char_cnn_model(features, labels, mode):
             'prob': tf.nn.softmax(logits)
         })
 
-  onehot_labels = tf.one_hot(labels, MAX_LABEL, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
   if mode == tf.estimator.ModeKeys.TRAIN:
     optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())

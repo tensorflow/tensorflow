@@ -5,7 +5,7 @@ This page highlights TensorFlow models in real world use.
 
 ## Model zoo
 
-Please visit our collection of TensorFlow models in the 
+Please visit our collection of TensorFlow models in the
 [TensorFlow Zoo](https://github.com/tensorflow/models).
 
 If you have built a model with TensorFlow, please consider publishing it in
@@ -21,6 +21,14 @@ This section describes some of the current uses of the TensorFlow system.
 > Please feel free to email us a brief description of how you're using
 > TensorFlow, or even better, send us a pull request to add an entry to this
 > file.
+
+* **Deep Speech**
+<ul>
+   <li>**Organization**: Mozilla</li>
+   <li> **Domain**: Speech Recognition</li>
+   <li> **Description**:  A TensorFlow implementation motivated by Baidu's Deep Speech architecture.</li>
+   <li> **More info**: [GitHub Repo](https://github.com/mozilla/deepspeech)</li>
+</ul>
 
 * **RankBrain**
 <ul>

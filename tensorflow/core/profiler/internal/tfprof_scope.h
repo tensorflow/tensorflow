@@ -17,8 +17,8 @@ limitations under the License.
 // For example, 'name1/name2' is a child of 'name1'.
 // Stats are aggregated from descendants to ancestors.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
 
 #include <map>
 #include <memory>
@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_show.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -74,4 +74,4 @@ class TFScope : public TFShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SCOPE_H_

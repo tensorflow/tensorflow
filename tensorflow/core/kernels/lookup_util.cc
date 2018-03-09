@@ -359,8 +359,8 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   // time.
   Status s = table->Initialize(iter);
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
-    LOG(WARNING) << "Table trying to initialize from file " << filename
-                 << " is already initialized.";
+    LOG(INFO) << "Table trying to initialize from file " << filename
+              << " is already initialized.";
     return Status::OK();
   }
   return s;

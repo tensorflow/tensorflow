@@ -48,6 +48,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:template",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -73,7 +74,10 @@ py_test(
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+    ],
     deps = [
         ":feature_column",
         ":feature_column_py",
@@ -84,6 +88,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:partitioned_variables",
@@ -92,6 +97,8 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:numpy_io",
     ],
 )

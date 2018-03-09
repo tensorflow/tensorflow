@@ -1,10 +1,11 @@
 index.md
-get_started.md
-mnist/beginners.md
-mnist/pros.md
-mnist/mechanics.md
-estimator.md
-input_fn.md
-summaries_and_tensorboard.md
-graph_viz.md
-tensorboard_histograms.md
+
+### Getting Started
+get_started_for_beginners.md
+premade_estimators.md
+
+### Details
+checkpoints.md
+feature_columns.md
+datasets_quickstart.md
+custom_estimators.md

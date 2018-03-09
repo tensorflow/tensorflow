@@ -37,7 +37,7 @@ class IndexUtil {
   static int64 MultidimensionalIndexToLinearIndex(
       const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index);
 
-  // Coverts a linear index into multidimensional index (eg {x, y, z}) based on
+  // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional
   // index is dimension 0.
   static std::vector<int64> LinearIndexToMultidimensionalIndex(
@@ -68,6 +68,18 @@ class IndexUtil {
   //  GetDimensionStride(F32[5,8,10,4]{3,2,1,0}, 1) ==
   //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10
   static int64 GetDimensionStride(const Shape& shape, int64 dimension);
+
+  // Returns true iff the given multi-index is contained in the bounds for the
+  // shape.
+  static bool IndexInBounds(const Shape& shape,
+                            tensorflow::gtl::ArraySlice<int64> index);
+
+  // Compares the given indices in lexicographic order.  lhs[0] and rhs[0] are
+  // compared first, and lhs[rank-1] and rhs[rank-1] last.  If lhs is larger,
+  // then -1 is returned. If rhs is larger, then 1 is returned.  Otherwise, 0 is
+  // returned.
+  static int CompareIndices(tensorflow::gtl::ArraySlice<int64> lhs,
+                            tensorflow::gtl::ArraySlice<int64> rhs);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);

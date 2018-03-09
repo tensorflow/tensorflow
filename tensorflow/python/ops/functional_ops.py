@@ -41,12 +41,14 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
 # pylint: disable=unused-import
-from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
+from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 # pylint: enable=unused-import
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
+@tf_export("foldl")
 def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldl on the list of tensors unpacked from `elems` on dimension 0.
@@ -88,7 +90,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldl", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -134,6 +136,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return r_a
 
 
+@tf_export("foldr")
 def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldr on the list of tensors unpacked from `elems` on dimension 0.
@@ -175,7 +178,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldr", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -221,6 +224,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return r_a
 
 
+@tf_export("map_fn")
 def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
            swap_memory=False, infer_shape=True, name=None):
   """map on the list of tensors unpacked from `elems` on dimension 0.
@@ -339,7 +343,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -424,6 +428,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     return output_pack(results_flat)
 
 
+@tf_export("scan")
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
          swap_memory=False, infer_shape=True, name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.
@@ -453,7 +458,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
   `[i1, i2]` then an appropriate signature for `fn` in `python2` is:
-  `fn = lambda (acc_p1, acc_p2), (t1 [t2, t3]):` and `fn` must return a list,
+  `fn = lambda (acc_p1, acc_p2), (t1, [t2, t3]):` and `fn` must return a list,
   `[acc_n1, acc_n2]`.  An alternative correct signature for `fn`, and the
    one that works in `python3`, is:
   `fn = lambda a, t:`, where `a` and `t` correspond to the input tuples.
@@ -531,7 +536,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "scan", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager

@@ -116,7 +116,7 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   return Status::OK();
 }
 
-// Create the bdoy subgraph defined by `body`. `outputs` must be non-null and
+// Create the body subgraph defined by `body`. `outputs` must be non-null and
 // empty.
 Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
                   const std::vector<Output>& inputs,

@@ -29,7 +29,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace scatter_op {
 
@@ -117,7 +117,7 @@ struct AssignSYCL<scatter_op::UpdateOp::DIV> {
     p.device(d) = p / u;
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace internal
 }  // namespace scatter_op
@@ -156,7 +156,7 @@ struct ScatterFunctorBase {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctorBase <SYCLDevice, T, Index, op> {
+struct ScatterFunctorBase<SYCLDevice, T, Index, op> {
   Index operator()(OpKernelContext* c, const SYCLDevice& d,
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
@@ -171,13 +171,13 @@ struct ScatterFunctorBase <SYCLDevice, T, Index, op> {
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      scatter_op::internal::AssignSYCL<op>::Run(d, params.template chip<0>(index),
-                                            updates.template chip<0>(i));
+      scatter_op::internal::AssignSYCL<op>::Run(
+          d, params.template chip<0>(index), updates.template chip<0>(i));
     }
     return -1;
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T, typename Index>
 struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
@@ -217,7 +217,7 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor<CPUDevice, T, Index, op>
-        : ScatterFunctorBase<CPUDevice, T, Index, op>{};
+    : ScatterFunctorBase<CPUDevice, T, Index, op> {};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
@@ -239,7 +239,7 @@ struct ScatterFunctorSYCL {
     return -1;
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

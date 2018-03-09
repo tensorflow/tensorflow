@@ -21,7 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.platform import test
 
@@ -73,6 +75,32 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       self.assertAllClose(
           -softmax.inverse_log_det_jacobian(y).eval(),
           softmax.forward_log_det_jacobian(x).eval(),
+          atol=0.,
+          rtol=1e-7)
+
+  def testBijectorUnknownShape(self):
+    with self.test_session():
+      softmax = SoftmaxCentered(event_ndims=1)
+      self.assertEqual("softmax_centered", softmax.name)
+      x = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
+      real_x = np.log([[2., 3, 4], [4., 8, 12]])
+      y = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
+      real_y = [[0.2, 0.3, 0.4, 0.1], [0.16, 0.32, 0.48, 0.04]]
+      self.assertAllClose(real_y, softmax.forward(x).eval(
+          feed_dict={x: real_x}))
+      self.assertAllClose(real_x, softmax.inverse(y).eval(
+          feed_dict={y: real_y}))
+      self.assertAllClose(
+          -np.sum(np.log(real_y), axis=1),
+          softmax.inverse_log_det_jacobian(y).eval(
+              feed_dict={y: real_y}),
+          atol=0.,
+          rtol=1e-7)
+      self.assertAllClose(
+          -softmax.inverse_log_det_jacobian(y).eval(
+              feed_dict={y: real_y}),
+          softmax.forward_log_det_jacobian(x).eval(
+              feed_dict={x: real_x}),
           atol=0.,
           rtol=1e-7)
 
