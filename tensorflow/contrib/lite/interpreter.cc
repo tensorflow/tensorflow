@@ -92,7 +92,9 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
+  context_.eigen_context = nullptr;
   context_.gemm_context = nullptr;
+  context_.recommended_num_threads = 0;
 
   // Invalid to call these these except from TfLiteDelegate
   SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
@@ -691,10 +693,7 @@ void Interpreter::UseNNAPI(bool enable) {
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
-  // TODO(ahentz): this forces us to link against gemmlowp even when the ops
-  // don't use it. We should implement some dynamic mechanism for this sort of
-  // library-specific initialization.
-  tflite::gemm_support::SetMaxNumThreads(&context_, num_threads);
+  context_.recommended_num_threads = num_threads;
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {

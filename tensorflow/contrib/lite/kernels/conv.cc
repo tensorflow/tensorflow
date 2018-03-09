@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/kernels/eigen_support.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h"
@@ -87,18 +88,15 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
   gemm_support::IncrementUsageCounter(context);
+  eigen_support::IncrementUsageCounter(context);
 
-  // TODO(ahentz): This is the gemmlowp context, which really only applies to
-  // quantized kernels. However, Interpreter::SetNumThreads() should also be
-  // setting the number of kernel on Eigen, so this works OK as a proxy for
-  // now.
-  int num_threads = gemm_support::GetFromContext(context)->max_num_threads();
-  data->run_multithreaded_kernel = num_threads != 1;
+  data->run_multithreaded_kernel = context->recommended_num_threads != 1;
 
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+  eigen_support::DecrementUsageCounter(context);
   gemm_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }

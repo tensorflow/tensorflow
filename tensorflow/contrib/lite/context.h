@@ -324,9 +324,14 @@ typedef struct TfLiteContext {
       struct TfLiteContext*, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
 
+  // Number of threads that are recommended to subsystems like gemmlowp and
+  // eigen.
+  int recommended_num_threads;
+
   // TODO(ahentz): we should create a more general mechanism for this sort of
   // library-global objects.
   void* gemm_context;
+  void* eigen_context;
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {
