@@ -111,6 +111,7 @@ py_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
     ]) + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka",
         ],
@@ -138,6 +139,7 @@ cc_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
     ]) + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_kernels",
         ],
@@ -166,6 +168,7 @@ cc_library(
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
     ] + select({
+        "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
         ],
