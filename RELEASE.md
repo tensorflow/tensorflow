@@ -1,11 +1,14 @@
 # Release 1.7.0
 
 ## Major Features And Improvements
+* Eager mode is moving out of contrib, try `tf.enable_eager_execution()`.
 * Graph rewrites emulating fixed-point quantization compatible with TensorFlow Lite, supported by new `tf.contrib.quantize` package.
 * Easily customize gradient computation with `tf.custom_gradient`.
 * TensorBoard Debugger Plugin, tfdbg: TensorFlow Debugger's graphical user interface (GUI), is now in alpha.
 * Experimental support for reading a sqlite database as a `Dataset` with new `tf.contrib.data.SqlDataset`.
 * Distributed Mutex / CriticalSection added to `tf.contrib.framework.CriticalSection`.
+* Better text processing with `tf.regex_replace`.
+* Easy, efficient sequence input with `tf.contrib.data.bucket_by_sequence_length`
 
 ## Bug Fixes and Other Changes
 * Accelerated Linear Algebra (XLA):
@@ -24,8 +27,11 @@
   * Add `potential_scale_reduction` to `tf.contrib.bayesflow.mcmc_diagnostics`.
   * Add `BatchNormalization`, `Kumaraswamy` bijectors.
   * Deprecate `tf.contrib.learn`. Please check contrib/learn/README.md for instructions on how to convert existing code.
-  * Remove deprecated `tf.contrib.data.Dataset`, `tf.contrib.data.Iterator`, `tf.contrib.data.FixedLengthRecordDataset`, `tf.contrib.data.TextLineDataset`, and `tf.contrib.data.TFRecordDataset` classes.
+  * `tf.contrib.data`
+    * Remove deprecated `tf.contrib.data.Dataset`, `tf.contrib.data.Iterator`, `tf.contrib.data.FixedLengthRecordDataset`, `tf.contrib.data.TextLineDataset`, and `tf.contrib.data.TFRecordDataset` classes.
+    * Added `bucket_by_sequence_length`, `sliding_window_batch`, and `make_batched_features_dataset`
   * Remove unmaintained `tf.contrib.ndlstm`. You can find it externally at https://github.com/tmbarchive/tfndlstm.
+  * Moved most of `tf.contrib.bayesflow` to its own repo: `tfp`
 * Other:
   * tf.py_func now reports the full stack trace if an exception occurs.
   * Integrate `TPUClusterResolver` with GKE's integration for Cloud TPUs.
