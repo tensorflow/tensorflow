@@ -72,6 +72,10 @@ bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
 
+bool IsConcat(const NodeDef& node) {
+  return node.op() == "Concat" || node.op() == "ConcatV2";
+}
+
 bool IsConcatOffset(const NodeDef& node) { return node.op() == "ConcatOffset"; }
 
 bool IsConstant(const NodeDef& node) { return node.op() == "Const"; }
@@ -212,6 +216,8 @@ bool IsNextIteration(const NodeDef& node) {
   const auto& op = node.op();
   return op == "NextIteration" || op == "RefNextIteration";
 }
+
+bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
   const auto& op = node.op();
