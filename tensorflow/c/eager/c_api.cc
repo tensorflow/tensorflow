@@ -105,8 +105,11 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (!status->status.ok()) {
     return nullptr;
   }
-  return new TFE_Context(*opts, std::unique_ptr<tensorflow::DeviceMgr>(
-                                    new tensorflow::DeviceMgr(devices)));
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
+      new tensorflow::DeviceMgr(devices));
+  tensorflow::Rendezvous* r =
+      new tensorflow::IntraProcessRendezvous(device_mgr.get());
+  return new TFE_Context(*opts, std::move(device_mgr), r);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
