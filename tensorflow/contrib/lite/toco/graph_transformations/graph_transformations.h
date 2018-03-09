@@ -114,6 +114,7 @@ void RunGraphTransformations(Model* model, const string& message,
 // List of all graph transformations
 DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
+DECLARE_GRAPH_TRANSFORMATION(ConvertSqueezeToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialAddNToAdd)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialStackToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTransposeToReshape)

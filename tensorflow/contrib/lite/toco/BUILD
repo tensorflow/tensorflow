@@ -173,6 +173,7 @@ cc_library(
         "graph_transformations/convert_expanddims_to_reshape.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/convert_reorder_axes.cc",
+        "graph_transformations/convert_squeeze_to_reshape.cc",
         "graph_transformations/convert_trivial_addn_to_add.cc",
         "graph_transformations/convert_trivial_stack_to_reshape.cc",
         "graph_transformations/convert_trivial_transpose_to_reshape.cc",
