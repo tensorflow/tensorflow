@@ -212,7 +212,7 @@ class DetectReturnInUnsupportedControlFlow(gast.NodeVisitor):
 
   def __init__(self):
     self.cant_return = False
-    super(gast.NodeVisitor, self).__init__()
+    super(DetectReturnInUnsupportedControlFlow, self).__init__()
 
   def visit_While(self, node):
     self.cant_return = True
