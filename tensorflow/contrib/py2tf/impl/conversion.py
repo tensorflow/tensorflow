@@ -29,6 +29,7 @@ from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
 from tensorflow.contrib.py2tf.converters import for_loops
+from tensorflow.contrib.py2tf.converters import ifexp
 from tensorflow.contrib.py2tf.converters import lists
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import name_scopes
@@ -307,6 +308,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
+  node = ifexp.transform(node, ctx)
   node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
