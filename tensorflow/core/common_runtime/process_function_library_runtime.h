@@ -33,6 +33,7 @@ class ProcessFunctionLibraryRuntime {
       const DeviceMgr* device_mgr, Env* env, int graph_def_version,
       const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
+      thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr);
 
   // With `custom_kernel_creator`.
@@ -41,6 +42,7 @@ class ProcessFunctionLibraryRuntime {
                                 const FunctionLibraryDefinition* lib_def,
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator,
+                                thread::ThreadPool* thread_pool,
                                 DistributedFunctionLibraryRuntime* parent);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
@@ -174,6 +176,7 @@ class ProcessFunctionLibraryRuntime {
 
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
+  thread::ThreadPool* default_thread_pool_;
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);

@@ -134,7 +134,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options(), cluster_flr));
+      item->lib_def.get(), graph_options.optimizer_options(),
+      worker_env_->compute_pool, cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());

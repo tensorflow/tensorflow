@@ -71,7 +71,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     cluster_flr_.reset(new TestClusterFLR());
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, cluster_flr_.get()));
+        opts, nullptr, cluster_flr_.get()));
     rendezvous_ = new IntraProcessRendezvous(device_mgr_.get());
   }
 
@@ -153,7 +153,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr(
       new ProcessFunctionLibraryRuntime(
           nullptr /* device_mgr */, Env::Default(), TF_GRAPH_DEF_VERSION,
-          lib_def.get(), opts, nullptr /* cluster_flr */));
+          lib_def.get(), opts, nullptr, nullptr /* cluster_flr */));
   FunctionLibraryRuntime* flr =
       proc_flr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   EXPECT_NE(flr, nullptr);
