@@ -1968,15 +1968,14 @@ class Stream {
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
   // them into any stream.
+  //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
-
-  // Identical to ThenDoHostCallback; only exposed for testing purposes.
-  Stream &ThenDoHostCallbackForTest(std::function<void()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
