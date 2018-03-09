@@ -193,7 +193,10 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   const Shape& accumulator_shape = reducer_shape.result();
   if (ShapeUtil::Rank(accumulator_shape) != 0) {
-    return InvalidArgument("Reduction function must have rank 0.");
+    return InvalidArgument(
+        "Reduction function must have rank 0 (rank %lld reduction function "
+        "given).",
+        ShapeUtil::Rank(accumulator_shape));
   }
 
   // Check that the accumulator can be passed in as the first argument.
