@@ -167,6 +167,10 @@ class Dimension(object):
     else:
       return Dimension(self._value + other.value)
 
+  def __radd__(self, other):
+    """Returns the sum of `other` and `self`."""
+    return self.__add__(other)
+
   def __sub__(self, other):
     """Returns the subtraction of `other` from `self`.
 
@@ -190,6 +194,10 @@ class Dimension(object):
       return Dimension(None)
     else:
       return Dimension(self._value - other.value)
+
+  def __rsub__(self, other):
+    """Returns the subtraction of `self` from `other`."""
+    return as_dimension(other).__sub__(self)
 
   def __mul__(self, other):
     """Returns the product of `self` and `other`.
@@ -215,6 +223,10 @@ class Dimension(object):
     else:
       return Dimension(self._value * other.value)
 
+  def __rmul__(self, other):
+    """Returns the product of `other` and `self`."""
+    return self.__mul__(other)
+
   def __floordiv__(self, other):
     """Returns the quotient of `self` and `other` rounded down.
 
@@ -238,6 +250,10 @@ class Dimension(object):
       return Dimension(None)
     else:
       return Dimension(self._value // other.value)
+
+  def __rfloordiv__(self, other):
+    """Returns the quotient of `other` and `self` rounded down."""
+    return as_dimension(other).__floordiv__(self)
 
   def __div__(self, other):
     """DEPRECATED: Use `__floordiv__` via `x // y` instead.
@@ -278,6 +294,10 @@ class Dimension(object):
       return Dimension(None)
     else:
       return Dimension(self._value % other.value)
+
+  def __rmod__(self, other):
+    """Returns `other` modulo `self`."""
+    return as_dimension(other).__mod__(self)
 
   def __lt__(self, other):
     """Returns True if `self` is known to be less than `other`.
