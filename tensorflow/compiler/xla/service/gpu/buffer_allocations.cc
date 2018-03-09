@@ -98,6 +98,14 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
     }
   }
 
+  if (VLOG_IS_ON(2)) {
+    for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+      const auto& buf = buffer_allocations->buffers_[i];
+      VLOG(2) << "Buffer " << i << " -> " << buf.opaque() << " (" << buf.size()
+              << "B)";
+    }
+  }
+
   return std::move(buffer_allocations);
 }
 

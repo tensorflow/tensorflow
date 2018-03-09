@@ -59,7 +59,7 @@ class ConvolutionThunk : public Thunk {
                    const Shape& input_shape, const Shape& filter_shape,
                    const Shape& output_shape, const Window& window,
                    const ConvolutionDimensionNumbers& dim_nums, int64 algorithm,
-                   const HloInstruction* hlo);
+                   bool tensor_ops_enabled, const HloInstruction* hlo);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
@@ -99,6 +99,7 @@ class ConvolutionThunk : public Thunk {
   const Window window_;
   const ConvolutionDimensionNumbers dim_nums_;
   int64 algorithm_;
+  bool tensor_ops_enabled_;
 };
 
 }  // namespace gpu

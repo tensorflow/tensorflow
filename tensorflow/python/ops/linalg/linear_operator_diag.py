@@ -26,10 +26,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorDiag",]
 
 
+@tf_export("linalg.LinearOperatorDiag")
 class LinearOperatorDiag(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square diagonal matrix.
 
@@ -65,7 +67,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
-  # since the batch dimensions, [2, 1], are brodcast to
+  # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)

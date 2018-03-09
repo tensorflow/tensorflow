@@ -26,11 +26,20 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool IsTrivialOp(const NodeDef& node) {
+bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
   // Remove the stop gradient nodes since they serve no purpose once the graph
   // is built. Also remove Identity ops.
-  if (IsStopGradient(node) || IsIdentity(node)) {
+  if (IsStopGradient(node)) {
     return true;
+  }
+  if (IsIdentity(node)) {
+    if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
+        rewriter.IsDrivenByControlDependency(node) ||
+        rewriter.DrivesControlDependency(node)) {
+      return false;
+    } else {
+      return true;
+    }
   }
   if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
     return true;
@@ -41,7 +50,7 @@ bool IsTrivialOp(const NodeDef& node) {
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
-  std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
+  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
 
   // Prune all the nodes that won't be executed, ie all the nodes that aren't in
   // the fanin of a fetch node. If fetch nodes aren't specified, we'll assume
@@ -50,6 +59,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (!nodes_to_preserve.empty()) {
     std::vector<string> terminal_nodes(nodes_to_preserve.begin(),
                                        nodes_to_preserve.end());
+    std::sort(terminal_nodes.begin(), terminal_nodes.end());
     bool ill_formed = false;
     std::vector<const NodeDef*> keep =
         ComputeTransitiveFanin(item.graph, terminal_nodes, &ill_formed);
@@ -58,7 +68,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
       // let's be conservative and preserve the graph as is.
       return errors::InvalidArgument("Invalid input graph.");
     }
-    // Try to keep the nodes ordored somewhat topologically since this helps
+    // Try to keep the nodes ordered somewhat topologically since this helps
     // further optimizations perform better.
     for (int i = keep.size() - 1; i >= 0; --i) {
       *runnable_item.graph.add_node() = *keep[i];
@@ -72,7 +82,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   // Check if we can further prune the graph, by removing the trivial ops.
   std::unordered_set<const NodeDef*> nodes_to_delete;
   for (auto& node : runnable_item.graph.node()) {
-    if (!IsTrivialOp(node)) {
+    if (!IsTrivialOp(node, rewriter)) {
       continue;
     }
 
@@ -95,8 +105,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     //   converting references to non-references. It is important to preserve
     //   these non-references since the partitioner will avoid sending
     //   non-references across partitions more than once.
-    if (!rewriter.DrivesControlDependency(node) &&
-        !rewriter.IsDrivenByControlDependency(node) &&
+    if (!rewriter.RemovalIncreasesEdgeCount(node) &&
         !rewriter.IsConnectedToFunction(node) &&
         !rewriter.IsDrivenByAnotherDevice(node) &&
         !rewriter.ReceivesRefValue(node)) {
@@ -112,13 +121,16 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
+  const bool fetches_are_known = !item.fetch.empty();
   for (auto& node : runnable_item.graph.node()) {
-    NodeDef* new_node = pruned_graph->add_node();
-    *new_node = node;
-    new_node->clear_input();
-    rewriter.ForwardInputs(node, nodes_to_delete, new_node);
+    if (!fetches_are_known ||
+        nodes_to_delete.find(&node) == nodes_to_delete.end()) {
+      NodeDef* new_node = pruned_graph->add_node();
+      *new_node = node;
+      new_node->clear_input();
+      rewriter.ForwardInputs(node, nodes_to_delete, new_node);
+    }
   }
-
   VLOG(1) << "Pruned " << nodes_to_delete.size()
           << " nodes from the graph. The graph now contains "
           << pruned_graph->node_size() << " nodes.";

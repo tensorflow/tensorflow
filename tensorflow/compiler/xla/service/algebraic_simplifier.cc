@@ -122,6 +122,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBitcast(HloInstruction* bitcast) override;
 
+  Status HandleBitcastConvert(HloInstruction* bitcast) override;
+
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
   Status HandleConcatenate(HloInstruction* concatenate) override;
@@ -411,6 +413,13 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
+Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
+    HloInstruction* bitcast) {
+  // Eliminate bitcast converts between same shape.
+  ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
+  return Status::OK();
+}
+
 Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // If a copy feeds a copy, make it a single copy.
   if (copy->operand(0)->opcode() == HloOpcode::kCopy) {
@@ -515,6 +524,18 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   if (ShapeUtil::IsTuple(constant->shape())) {
     return ReplaceInstruction(
         constant, BuildTupleConstant(computation_, constant->literal()));
+  }
+
+  // If a literal is all the same element replace it with a scalar broadcast.
+  if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
+      constant->literal().IsAllFirst()) {
+    std::unique_ptr<Literal> unique_scalar =
+        MakeUnique<Literal>(constant->literal().GetFirstScalarLiteral());
+    HloInstruction* scalar = computation_->AddInstruction(
+        HloInstruction::CreateConstant(std::move(unique_scalar)));
+    return ReplaceWithNewInstruction(
+        constant,
+        HloInstruction::CreateBroadcast(constant->shape(), scalar, {}));
   }
   return Status::OK();
 }
@@ -1603,6 +1624,14 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // we can only remove the op if its indices never wrap.)
   if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
+  }
+
+  // If any dimension of update is 0, elide the DynamicUpdateSlice.  This
+  // optimization becomes invalid should we later prefer to warn about out of
+  // bound indices.
+  if (ShapeUtil::HasZeroElements(update->shape())) {
+    return ReplaceInstruction(dynamic_update_slice,
+                              dynamic_update_slice->mutable_operand(0));
   }
   return Status::OK();
 }

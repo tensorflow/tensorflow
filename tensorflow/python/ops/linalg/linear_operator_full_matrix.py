@@ -23,10 +23,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorFullMatrix"]
 
 
+@tf_export("linalg.LinearOperatorFullMatrix")
 class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   """`LinearOperator` that wraps a [batch] matrix.
 

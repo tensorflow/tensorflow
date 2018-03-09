@@ -193,7 +193,7 @@ class FunctionTest(test.TestCase):
 
     @function.Defun(dtypes.float32, dtypes.float32)
     def XSquarePlusOneGrad(x, dy):
-      dx = functional_ops._symbolic_gradient(
+      dx = functional_ops.symbolic_gradient(
           input=[x, dy], Tout=[dtypes.float32], f="XSquarePlusOneFn", name="dx")
       return dx
 
@@ -295,7 +295,7 @@ class FunctionTest(test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = functional_ops._symbolic_gradient(
+      dx, dy = functional_ops.symbolic_gradient(
           input=[x, y, dz], Tout=[dtypes.float32] * 2, f="Foo")
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
@@ -725,9 +725,16 @@ class FunctionTest(test.TestCase):
 
       y = Foo(constant_op.constant([[10.]]))
 
+      @function.Defun()
+      def Bar():
+        return w
+
+      z = Bar()
+
     with self.test_session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(y.eval(), [[12.0]])
+      self.assertAllEqual(z.eval(), [[1.0]])
 
   def testCaptureControls(self):
     g = ops.Graph()
@@ -1458,7 +1465,7 @@ class FunctionInlineControlTest(test.TestCase):
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-        return math_ops.reduce_sum(x, 1, keep_dims=True)
+        return math_ops.reduce_sum(x, 1, keepdims=True)
 
       @function.Defun(dtype)
       def Forward(x):

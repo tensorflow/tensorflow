@@ -108,11 +108,13 @@ bool DoGemmWithAlgorithm(MatrixDescriptor lhs_matrix,
   return stream
       ->ThenBlasGemmWithAlgorithm(
           lhs_transpose, rhs_transpose, output_matrix.num_rows,
-          output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/1.0,
-          lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
-          /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/0.0,
-          &output_data, /*leading dim of output=*/output_matrix.num_rows,
-          computation_type, algorithm, output_profile_result)
+          output_matrix.num_cols, /*size of reduce dim=*/k,
+          /*alpha=*/static_cast<Element>(1.0f), lhs_data,
+          /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
+          /*leading dim of RHS=*/rhs_matrix.num_rows,
+          /*beta=*/static_cast<Element>(0.0f), &output_data,
+          /*leading dim of output=*/output_matrix.num_rows, computation_type,
+          algorithm, output_profile_result)
       .ok();
 }
 
@@ -137,9 +139,9 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    DCHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
-                                        computation_type, algorithm, stream,
-                                        &profile_result));
+    CHECK(DoGemmWithAlgorithm<Element>(lhs_matrix, rhs_matrix, output_matrix,
+                                       computation_type, algorithm, stream,
+                                       &profile_result));
 
     if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
                                          best_result.elapsed_time_in_ms()) {
@@ -161,6 +163,8 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
 // DoGemm/DoGemmWithAlgorithm/DoGemmAutotune.
 auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
   switch (type) {
+    case F16:
+      return &DoGemm<Eigen::half>;
     case F32:
       return &DoGemm<float>;
     case F64:
@@ -172,6 +176,8 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
 auto GetGemmWithAlgorithmFn(PrimitiveType type)
     -> decltype(&DoGemmWithAlgorithm<float>) {
   switch (type) {
+    case F16:
+      return &DoGemmWithAlgorithm<Eigen::half>;
     case F32:
       return &DoGemmWithAlgorithm<float>;
     case F64:
@@ -182,6 +188,8 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
 }
 auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
   switch (type) {
+    case F16:
+      return &DoGemmAutotune<Eigen::half>;
     case F32:
       return &DoGemmAutotune<float>;
     case F64:
@@ -196,6 +204,10 @@ auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
 // separately from the precision of the inputs and result.
 se::blas::ComputationType GetBlasComputationType(PrimitiveType type) {
   switch (type) {
+    case F16:
+      // Use F32 as computation type for F16 as we currently only implement the
+      // cuDNN pseudo half configuration for half precision.
+      return se::blas::ComputationType::kF32;
     case F32:
       return se::blas::ComputationType::kF32;
     case F64:
@@ -315,6 +327,9 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
           stream,
           /*output_profile_result=*/nullptr);
     }
+
+    // Autotune will fail when CUDA 8 and GPU sm_50 or older are used.
+    // Use the older Gemm API in this case.
     return GetGemmFn(element_type)(lhs_matrix, rhs_matrix, output_matrix,
                                    stream);
   };

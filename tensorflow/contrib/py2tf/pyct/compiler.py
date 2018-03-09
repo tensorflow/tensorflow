@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 # TODO(mdan): Use six for compatibility here.
+import atexit
 import imp
 import os
 import tempfile
@@ -38,10 +39,14 @@ def ast_to_source(node, indentation):
                                             astor.string_repr.pretty_string)
   generator.visit(node)
   generator.result.append('\n')
-  return astor.source_repr.pretty_source(generator.result).lstrip()
+  # In some versions of Python, literals may appear as actual values. This
+  # ensures everything is string.
+  code = map(str, generator.result)
+  return astor.source_repr.pretty_source(code).lstrip()
 
 
-def ast_to_object(node, indentation='  ', source_prefix=None):
+def ast_to_object(
+    node, indentation='  ', source_prefix=None, delete_on_exit=True):
   """Return the Python objects represented by given AST.
 
   Compiling the AST code this way ensures that the source code is readable by
@@ -51,6 +56,8 @@ def ast_to_object(node, indentation='  ', source_prefix=None):
     node: The code to compile, as an AST object.
     indentation: The string to use for indentation.
     source_prefix: Optional string to print as-is into the source file.
+    delete_on_exit: Whether to delete the temporary file used for compilation
+        on exit.
 
   Returns:
     A module object containing the compiled source code.
@@ -63,4 +70,6 @@ def ast_to_object(node, indentation='  ', source_prefix=None):
       f.write(source_prefix)
       f.write('\n')
     f.write(source)
-  return imp.load_source(module_name, f.name)
+  if delete_on_exit:
+    atexit.register(lambda: os.remove(f.name))
+  return imp.load_source(module_name, f.name), source

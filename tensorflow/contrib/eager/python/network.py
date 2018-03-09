@@ -639,7 +639,7 @@ def _make_custom_getter_for_deferred_restorations():
       # Mark as already restored from this checkpoint.
       delayed_restoration.checkpointed_variables_to_restore[
           checkpoint_name] = None
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         delayed_restoration.session.run(variable.initializer)
     if found_value:
       # Error checking should run even if we've already restored a value.
@@ -772,7 +772,7 @@ def save_network_checkpoint(
                  variable_map[mapped_name]._shared_name,
                  variable._shared_name,
                  network.scope_name))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     sess = None
   else:
     sess = ops.get_default_session()
@@ -853,7 +853,7 @@ def _restore_existing_variables(network, save_path, map_func, user_map_func):
             network_name=network.name,
             network_scope_name=network.scope_name))
   if existing_variables_by_checkpoint_name:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()
@@ -880,7 +880,7 @@ def _set_restore_on_create(network, save_path, map_func, user_map_func,
   # _DeferredRestoration objects once a Network has been built (so that
   # restoring in a loop does not take increasing amounts of memory).
   if checkpointed_variables_to_restore:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()

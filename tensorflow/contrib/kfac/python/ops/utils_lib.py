@@ -40,6 +40,8 @@ _allowed_symbols = [
     "fwd_gradients",
     "ensure_sequence",
     "batch_execute",
+    "matmul_sparse_dense",
+    "matmul_diag_sparse",
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

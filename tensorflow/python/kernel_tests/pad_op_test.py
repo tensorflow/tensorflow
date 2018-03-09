@@ -238,6 +238,29 @@ class PadOpTest(test.TestCase):
       x = np.random.rand(3, 2, 1, 1).astype(t)
       self._testAll(x + 1j * x, [[0, 0], [0, 0], [0, 0], [0, 0]], 0 + 0j)
 
+  def testString(self):
+    # Numpy does not support padding strings so we compare padding manually.
+    x = ops.convert_to_tensor([["Hello", "World"],
+                               ["Goodnight", "Moon"]])
+
+    constant = array_ops.pad(x, [[1, 0], [0, 1]], mode="CONSTANT",
+                             constant_values="PAD")
+    reflect = array_ops.pad(x, [[1, 0], [0, 1]], mode="REFLECT",
+                            constant_values="PAD")
+    symmetric = array_ops.pad(x, [[1, 0], [0, 1]], mode="SYMMETRIC",
+                              constant_values="PAD")
+    with self.test_session(use_gpu=True):
+      self.assertAllEqual([[b"PAD", b"PAD", b"PAD"],
+                           [b"Hello", b"World", b"PAD"],
+                           [b"Goodnight", b"Moon", b"PAD"]], constant.eval())
+      self.assertAllEqual([[b"Goodnight", b"Moon", b"Goodnight"],
+                           [b"Hello", b"World", b"Hello"],
+                           [b"Goodnight", b"Moon", b"Goodnight"]],
+                          reflect.eval())
+      self.assertAllEqual([[b"Hello", b"World", b"World"],
+                           [b"Hello", b"World", b"World"],
+                           [b"Goodnight", b"Moon", b"Moon"]], symmetric.eval())
+
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.
     inp = constant_op.constant(0.0, shape=[4, 4, 4, 4])

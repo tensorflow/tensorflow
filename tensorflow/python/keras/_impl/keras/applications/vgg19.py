@@ -32,7 +32,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import preprocess_input
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Conv2D
 from tensorflow.python.keras._impl.keras.layers import Dense
 from tensorflow.python.keras._impl.keras.layers import Flatten
@@ -44,12 +44,14 @@ from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import layer_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg19_weights_tf_dim_ordering_tf_kernels.h5'
 WEIGHTS_PATH_NO_TOP = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
+@tf_export('keras.applications.VGG19', 'keras.applications.vgg19.VGG19')
 def VGG19(include_top=True,
           weights='imagenet',
           input_tensor=None,

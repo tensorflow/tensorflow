@@ -368,8 +368,8 @@ class Tensor(_TensorLike):
       A `TensorShape` representing the shape of this tensor.
 
     """
-    if _USE_C_API:
-      graph = self._op._graph._c_graph  # pylint: disable=protected-access
+    graph = self._op._graph._c_graph # pylint: disable=protected-access
+    if graph:
       with errors.raise_exception_on_not_ok_status() as status:
         num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
                                                   status)
@@ -395,10 +395,10 @@ class Tensor(_TensorLike):
         "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
   def __iter__(self):
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       raise TypeError(
-          "`Tensor` objects are not iterable when eager execution is not "
-          "enabled. To iterate over this tensor use `tf.map_fn`.")
+          "Tensor objects are not iterable when eager execution is not "
+          "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
       raise TypeError("Cannot iterate over a tensor with unknown shape.")
@@ -466,7 +466,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if not _USE_C_API:
+    if not self._op._graph._c_graph:  # pylint: disable=protected-access # ASIM
       self._shape_val = self._shape_val.merge_with(shape)
       return
     if not isinstance(shape, tensor_shape.TensorShape):
@@ -772,7 +772,7 @@ class _EagerTensorBase(Tensor):
       six.raise_from(core._status_to_exception(e.code, e.message), None)
 
     # Record the copy on tape and define backprop copy as well.
-    if not context.in_graph_mode():
+    if context.executing_eagerly():
       self_device = self.device
       def grad_fun(dresult):
         return [dresult._copy(device_name=self_device)]
@@ -782,7 +782,11 @@ class _EagerTensorBase(Tensor):
 
   @property
   def shape(self):
-    return tensor_shape.TensorShape(self._shape_tuple())
+    if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
+      # `_tensor_shape` is declared and defined in the definition of
+      # `EagerTensor`, in C.
+      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+    return self._tensor_shape
 
   def get_shape(self):
     """Alias of Tensor.shape."""
@@ -989,7 +993,7 @@ def internal_convert_to_tensor(value,
 
   """
   if ctx is None: ctx = context.context()
-  if ctx.in_eager_mode():
+  if ctx.executing_eagerly():
     # Fast path for EagerTensors that don't need any conversion.
     if isinstance(value, EagerTensor):
       # Note that we don't check that value's dtype matches the dtype
@@ -1618,7 +1622,7 @@ class Operation(object):
           for i, x in zip(inputs, input_types)):
         raise TypeError("In op '%s', input types (%s) are not compatible "
                         "with expected types (%s)" %
-                        (self.node_def.name, [i.dtype for i in inputs],
+                        (node_def.name, [i.dtype for i in inputs],
                          input_types))
 
     # Build the list of control inputs.
@@ -1657,7 +1661,7 @@ class Operation(object):
       self._c_op = c_op
     elif self._graph._c_graph:  # pylint: disable=protected-access
       if op_def is None:
-        op_def = self._graph._registered_ops[node_def.op]
+        op_def = self._graph._get_op_def(node_def.op)
       # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
       # Refactor so we don't have to do this here.
       grouped_inputs = self._reconstruct_sequence_inputs(
@@ -2164,16 +2168,7 @@ class Operation(object):
     """
     # pylint: enable=line-too-long
     if self._c_op:
-      with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          # pylint: disable=protected-access
-          c_api.TF_GraphGetOpDef(self._graph._c_graph,
-                                 compat.as_bytes(self.type), buf, status)
-          # pylint: enable=protected-access
-        data = c_api.TF_GetBuffer(buf)
-      op_def = op_def_pb2.OpDef()
-      op_def.ParseFromString(compat.as_bytes(data))
-      return op_def
+      return self._graph._get_op_def(self.type)
     else:
       return self._op_def_val
 
@@ -2699,15 +2694,20 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    # Protects the core state that may be accessed by multiple readers.
-    # Only state that can be returned via public accessors (`as_graph_def()`,
-    # `get_operations()`, `as_graph_element()`, `get_collection()`, and
-    # `get_collection_ref()`) is by the lock. Thread-safety is provided on a
-    # best-effort basis to support buggy programs, and is not guaranteed by the
-    # public `tf.Graph` API.
+    # Protects core state that can be returned via public accessors, as well as
+    # synchronizes Session.run calls with methods that create and mutate ops
+    # (e.g. Graph.create_op()). This synchronization is necessary because it's
+    # illegal to modify an operation after it's been run. Thread-safety is
+    # provided on a best-effort basis to support buggy programs, and is not
+    # guaranteed by the public `tf.Graph` API.
+    #
+    # The lock must be reentrant because create_op can be called recursively due
+    # to control flow. Without a reentrant lock, many methods would also need a
+    # "locked" version or parameter (including generated code).
+    #
     # NOTE(mrry): This does not protect the various stacks. A warning will
     # be reported if these are used from multiple threads
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
@@ -2716,15 +2716,21 @@ class Graph(object):
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
+    self._stack_state_is_thread_local = False
+    self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    self._device_function_stack = []
+    # After switch_to_thread_local(), self._thread_local._device_function_stack
+    # is used instead.
+    self._graph_device_function_stack = []
     # Default original_op applied to new ops.
     self._default_original_op = None
     # Current control flow context. It could be either CondContext or
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    self._control_dependencies_stack = []
+    # After switch_to_thread_local(),
+    # self._thread_local._control_dependencies_stack is used instead.
+    self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
     self._collections = {}
     # The graph-level random seed
@@ -2746,8 +2752,9 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops
-    self._colocation_stack = []
+    # Stack of colocate_with ops. After switch_to_thread_local(),
+    # self._thread_local._colocation_stack is used instead.
+    self._graph_colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -2770,16 +2777,19 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if _USE_C_API or self._use_c_api_hack():
+    if self._use_c_api_hack():
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
+      # The C API requires all ops to have shape functions. Disable this
+      # requirement (many custom ops do not have shape functions, and we don't
+      # want to break these existing cases).
+      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
     else:
       self._scoped_c_graph = None
-    self._variable_creator_stack = []
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
     """Temporary hack; can be overridden to force C API usage."""
-    return False
+    return _USE_C_API
 
   def _convert_stack(self, stack, include_func_start_lineno=False):
     """Converts a stack extracted using _extract_stack() to a traceback stack.
@@ -2815,17 +2825,26 @@ class Graph(object):
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
   def _variable_creator_scope(self, creator):
+    # This step makes a copy of the existing stack, and it also initializes
+    # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._variable_creator_stack.append(creator)
+    self._thread_local._variable_creator_stack.append(creator)
     try:
       yield
     finally:
-      self._variable_creator_stack = old
+      self._thread_local._variable_creator_stack = old
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
-  def _get_variable_creator_stack(self):
-    return list(self._variable_creator_stack)
+  @property
+  def _variable_creator_stack(self):
+    if not hasattr(self._thread_local, "_variable_creator_stack"):
+      self._thread_local._variable_creator_stack = []
+    return list(self._thread_local._variable_creator_stack)
+
+  @_variable_creator_stack.setter
+  def _variable_creator_stack(self, variable_creator_stack):
+    self._thread_local._variable_creator_stack = variable_creator_stack
 
   def _extract_stack(self):
     """A lightweight, extensible re-implementation of traceback.extract_stack.
@@ -3039,7 +3058,7 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    if _USE_C_API:
+    if self._c_graph:
       with self._lock:
         with c_api_util.tf_buffer() as buf:
           with errors.raise_exception_on_not_ok_status() as status:
@@ -3257,17 +3276,20 @@ class Graph(object):
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
-    ret = Operation(
-        node_def,
-        self,
-        inputs=inputs,
-        output_types=dtypes,
-        control_inputs=control_inputs,
-        input_types=input_types,
-        original_op=self._default_original_op,
-        op_def=op_def)
-    self._create_op_helper(ret, compute_shapes=compute_shapes,
-                           compute_device=compute_device)
+    # _create_op_helper mutates the new Operation. _lock ensures a Session.run
+    # call cannot occur between creating and mutating the op.
+    with self._lock:
+      ret = Operation(
+          node_def,
+          self,
+          inputs=inputs,
+          output_types=dtypes,
+          control_inputs=control_inputs,
+          input_types=input_types,
+          original_op=self._default_original_op,
+          op_def=op_def)
+      self._create_op_helper(ret, compute_shapes=compute_shapes,
+                             compute_device=compute_device)
     return ret
 
   def _create_op_from_tf_operation(self, c_op, compute_device=True):
@@ -3359,9 +3381,9 @@ class Graph(object):
           if (op.device and pydev.canonical_name(op.device) !=
               pydev.canonical_name(colocation_op.device)):
             logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. "
-                            "Ignoring colocation property.", op.name,
-                            colocation_op.name, op.device,
+                            "a different device: %s vs %s. Postponing "
+                            "error-checking until all devices are assigned.",
+                            op.name, colocation_op.name, op.device,
                             colocation_op.device)
           else:
             op._set_device(colocation_op.device)  # pylint: disable=protected-access
@@ -3377,8 +3399,8 @@ class Graph(object):
     # (2) "is_stateful" is set in OpDef
     # (3) "container" attribute is in OpDef
     # (4) "container" attribute is None
-    if (self._container and op.type in self._registered_ops and
-        self._registered_ops[op.type].is_stateful):
+    # TODO(skyewm): remove op.op_def check when _USE_C_API is removed.
+    if self._container and op.op_def and op.op_def.is_stateful:
       try:
         container_attr = op.get_attr("container")
       except ValueError:
@@ -3657,6 +3679,22 @@ class Graph(object):
   @property
   def _last_id(self):
     return self._next_id_counter
+
+  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
+    """Returns the `OpDef` proto for `type`. `type` is a string."""
+    if self._c_graph:
+      with c_api_util.tf_buffer() as buf:
+        with errors.raise_exception_on_not_ok_status() as status:
+          # pylint: disable=protected-access
+          c_api.TF_GraphGetOpDef(self._c_graph,
+                                 compat.as_bytes(type), buf, status)
+          # pylint: enable=protected-access
+        data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      return op_def
+    else:
+      return self._registered_ops[type]
 
   def as_default(self):
     """Returns a context manager that makes this `Graph` the default graph.
@@ -4662,6 +4700,79 @@ class Graph(object):
     else:
       return tensor_or_op not in self._unfetchable_ops
 
+  def switch_to_thread_local(self):
+    """Make device, colocation and dependencies stacks thread-local.
+
+    Device, colocation and dependencies stacks are not thread-local be default.
+    If multiple threads access them, then the state is shared.  This means that
+    one thread may affect the behavior of another thread.
+
+    After this method is called, the stacks become thread-local.  If multiple
+    threads access them, then the state is not shared.  Each thread uses its own
+    value; a thread doesn't affect other threads by mutating such a stack.
+
+    The initial value for every thread's stack is set to the current value
+    of the stack when `switch_to_thread_local()` was first called.
+    """
+    if not self._stack_state_is_thread_local:
+      self._stack_state_is_thread_local = True
+
+  @property
+  def _device_function_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where device_function_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_device_function_stack"):
+        self._thread_local._device_function_stack = (
+            self._graph_device_function_stack[:])
+      return self._thread_local._device_function_stack
+    else:
+      return self._graph_device_function_stack
+
+  @_device_function_stack.setter
+  def _device_function_stack(self, device_function_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._device_function_stack = device_function_stack
+    else:
+      self._graph_device_function_stack = device_function_stack
+
+  @property
+  def _colocation_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where colocation_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_colocation_stack"):
+        self._thread_local._colocation_stack = self._graph_colocation_stack[:]
+      return self._thread_local._colocation_stack
+    else:
+      return self._graph_colocation_stack
+
+  @_colocation_stack.setter
+  def _colocation_stack(self, colocation_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._colocation_stack = colocation_stack
+    else:
+      self._graph_colocation_stack = colocation_stack
+
+  @property
+  def _control_dependencies_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where control_dependencies_stack
+      # doesn't yet exist.
+      if not hasattr(self._thread_local, "_control_dependencies_stack"):
+        self._thread_local._control_dependencies_stack = (
+            self._graph_control_dependencies_stack[:])
+      return self._thread_local._control_dependencies_stack
+    else:
+      return self._graph_control_dependencies_stack
+
+  @_control_dependencies_stack.setter
+  def _control_dependencies_stack(self, control_dependencies):
+    if self._stack_state_is_thread_local:
+      self._thread_local._control_dependencies_stack = control_dependencies
+    else:
+      self._graph_control_dependencies_stack = control_dependencies
+
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
 # apply to inner graph mode code. Fix that.
@@ -4686,15 +4797,15 @@ def device(device_name_or_function):
   Raises:
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
-  if context.in_graph_mode():
-    return get_default_graph().device(device_name_or_function)
-  else:
+  if context.executing_eagerly():
     # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  else:
+    return get_default_graph().device(device_name_or_function)
 
 
 @tf_export("container")
@@ -4713,13 +4824,20 @@ def container(container_name):
 
 @tf_export("colocate_with")
 def colocate_with(op, ignore_existing=False):
-  if context.in_graph_mode():
-    return get_default_graph().colocate_with(op, ignore_existing)
-  else:
+  if context.executing_eagerly():
     if op is not None:
       return device(op.device)
     else:
       return _NullContextmanager()
+  else:
+    default_graph = get_default_graph()
+    if isinstance(op, EagerTensor):
+      if default_graph.building_function:
+        op = internal_convert_to_tensor(op)
+      else:
+        raise ValueError("Encountered an Eager-defined Tensor during graph "
+                         "construction, but a function was not being built.")
+    return default_graph.colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
@@ -4739,10 +4857,10 @@ def control_dependencies(control_inputs):
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
-  if context.in_graph_mode():
-    return get_default_graph().control_dependencies(control_inputs)
-  else:
+  if context.executing_eagerly():
     return _NullContextmanager()
+  else:
+    return get_default_graph().control_dependencies(control_inputs)
 
 
 class _DefaultStack(threading.local):
@@ -5005,75 +5123,106 @@ def init_scope():
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
-  in_graph_mode = context.in_graph_mode()
-  # Retrieve the active name scope: entering an `init_scope` preserves
-  # the name scope of the current context.
-  if in_graph_mode:
+  if context.executing_eagerly():
+    # Fastpath.
+    with tape.stop_recording():
+      yield
+  else:
+    # Retrieve the active name scope: entering an `init_scope` preserves
+    # the name scope of the current context.
     default_graph = get_default_graph()
     scope = default_graph.get_name_scope()
-  else:
-    scope = context.context().scope_name
-  if scope and scope[-1] != '/':
-    # Names that end with trailing slashes are treated by `name_scope` as
-    # absolute.
-    scope = scope + '/'
+    if scope and scope[-1] != '/':
+      # Names that end with trailing slashes are treated by `name_scope` as
+      # absolute.
+      scope = scope + '/'
 
-  outer_context = None
-  if in_graph_mode and not _default_graph_stack.stack:
-    outer_context = default_graph.as_default
-  else:
-    for stack_entry in reversed(context.context_stack.stack):
-      if not stack_entry.is_building_function:
-        outer_context = stack_entry.enter_context_fn
-        break
+    outer_context = None
+    if not _default_graph_stack.stack:
+      # If the default graph stack is empty, then we cannot be building a
+      # function. Install the global graph (which, in this case, is also the
+      # default graph) as the outer context.
+      if default_graph.building_function:
+        raise RuntimeError("The global graph is building a function.")
+      outer_context = default_graph.as_default
+    else:
+      # Find a context that is not building a function.
+      for stack_entry in reversed(context.context_stack.stack):
+        if not stack_entry.is_building_function:
+          outer_context = stack_entry.enter_context_fn
+          break
 
-  if outer_context is None:
-    raise AssertionError("All graphs are building functions, and no "
+      if outer_context is None:
+        # As a last resort, obtain the global default graph; this graph doesn't
+        # necessarily live on the graph stack (and hence it doesn't necessarily
+        # live on the context stack), but it is stored in the graph stack's
+        # encapsulating object.
+        outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
+
+    if outer_context is None:
+      # Sanity check; this shouldn't be triggered.
+      raise RuntimeError("All graphs are building functions, and no "
                          "eager context was previously active.")
 
-  try:
     with outer_context(), name_scope(scope), control_dependencies(
         None), tape.stop_recording():
       yield
-  finally:
-    pass
 
 
+@tf_export("enable_eager_execution")
 def enable_eager_execution(config=None, device_policy=None):
-  """Enables, for the rest of the lifetime of this program, eager execution.
+  """Enables eager execution for the lifetime of this program.
 
-  If not called immediately on startup risks creating breakage and bugs.
+  Eager execution provides an imperative interface to TensorFlow. With eager
+  execution enabled, TensorFlow functions execute operations immediately (as
+  opposed to adding to a graph to be executed later in a @{tf.Session}) and
+  return concrete values (as opposed to symbolic references to a node in a
+  computational graph).
 
-  Example:
+  For example:
   ```python
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   # After eager execution is enabled, operations are executed as they are
-  # defined and `Tensor`s hold concrete values, which can be accessed as
-  # `numpy.ndarray`s through the `numpy()` method.
+  # defined and Tensor objects hold concrete values, which can be accessed as
+  # numpy.ndarray`s through the numpy() method.
   assert tf.multiply(6, 7).numpy() == 42
   ```
 
+  Eager execution cannot be enabled after TensorFlow APIs have been used to
+  create or execute graphs. It is typically recommended to invoke this function
+  at program startup and not in a library (as most libraries should be usable
+  both with and without eager execution).
+
   Args:
-    config: (Optional.) A `ConfigProto` protocol buffer with configuration
-     options for the Context. Note that a lot of these options may be
-     currently unimplemented or irrelevant when eager execution is enabled.
-    device_policy: (Optional.) What policy to use when trying to run an
-     operation on a device with inputs which are not on that device.
+    config: (Optional.) A @{tf.ConfigProto} to use to configure the environment
+     in which operations are executed. Note that @{tf.ConfigProto} is also
+     used to configure graph execution (via @{tf.Session}) and many options
+     within `tf.ConfigProto` are not implemented (or are irrelevant) when
+     eager execution is enabled.
+    device_policy: (Optional.) Policy controlling how operations requiring
+     inputs on a specific device (e.g., a GPU 0) handle inputs on a different
+     device  (e.g. GPU 1 or CPU).
      Valid values:
-       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
-         correct.
-       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-         right device but raises a warning.
-       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-         hide performance problems.
-       tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
-         raising errors on the other ones.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
+        placement is not correct.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_WARN: copies the tensors which are not
+        on the right device but logs a warning.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT: silently copies the tensors.
+        Note that this may hide performance problems as there is no notification
+        provided when operations are blocked on the tensor being copied between
+        devices.
+
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
+        int32 tensors, raising errors on the other ones.
 
   Raises:
-    ValueError: If trying to create a context after using graph operations
-     or if trying to create a context with nontrivial options which differ
-     from those of the existing context.
+    ValueError: If eager execution is enabled after creating/executing a
+     TensorFlow graph, or if options provided conflict with a previous call
+     to this function.
   """
   if config is not None and not isinstance(config, config_pb2.ConfigProto):
     raise TypeError(
@@ -5083,7 +5232,7 @@ def enable_eager_execution(config=None, device_policy=None):
                            context.DEVICE_PLACEMENT_SILENT,
                            context.DEVICE_PLACEMENT_SILENT_FOR_INT32):
     raise ValueError(
-        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_*"
+        "device_policy must be one of None, tf.contrib.eager.DEVICE_PLACEMENT_*"
     )
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
@@ -5092,7 +5241,7 @@ def enable_eager_execution(config=None, device_policy=None):
         _default_graph_stack._global_default_graph is not None)
     if graph_mode_has_been_used:
       raise ValueError(
-          "tfe.enable_eager_execution has to be called at program startup.")
+          "tf.enable_eager_execution must be called at program startup.")
   context._default_mode = context.EAGER_MODE
   if context._context is None:
     context._context = context.Context(config=config,
@@ -5115,7 +5264,7 @@ def enable_eager_execution(config=None, device_policy=None):
                                        context._context._device_policy))
   else:
     raise ValueError(
-        "tfe.enable_eager_execution has to be called at program startup.")
+        "tf.enable_eager_execution must be called at program startup.")
 
 
 def eager_run(main=None, argv=None):
@@ -5530,6 +5679,9 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
+name_scope_cache = {}
+
+
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
@@ -5572,7 +5724,7 @@ class name_scope(object):  # pylint: disable=invalid-name
     self._default_name = default_name
     self._values = values
     self._ctx = context.context()
-    self._in_eager_mode = self._ctx.in_eager_mode()
+    self._in_eager_mode = self._ctx.executing_eagerly()
 
   def __enter__(self):
     """Start the scope block.
@@ -5589,7 +5741,11 @@ class name_scope(object):  # pylint: disable=invalid-name
       if not self._name:
         scope_name = ""
       else:
-        if self._name[-1] == "/":
+        cache_key = self._name, self._old_name, self._default_name
+        if cache_key in name_scope_cache:
+          self._ctx.scope_name = name_scope_cache[cache_key]
+          return self._ctx.scope_name
+        elif self._name[-1] == "/":
           # A trailing slash breaks out of nested name scopes, indicating a
           # fully specified scope name, for compatibility with Graph.name_scope.
           scope_name = self._name
@@ -5598,6 +5754,7 @@ class name_scope(object):  # pylint: disable=invalid-name
           scope_name = (
               self._old_name + name_with_trailing_slash
               if self._old_name else name_with_trailing_slash)
+        name_scope_cache[cache_key] = scope_name
       self._ctx.scope_name = scope_name
       return scope_name
     else:
@@ -5746,7 +5903,7 @@ def get_from_proto_function(collection_name):
 
 
 def _assert_collection_is_ok(collection_name):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
       raise ValueError("When Eager Execution is enabled, variable "
                        "collections are not supported.")

@@ -77,10 +77,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
-    name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'float32\'>\", \'False\', \'None\'], "
-  }
-  member_method {
     name: "average_pooling1d"
     argspec: "args=[\'inputs\', \'pool_size\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'valid\', \'channels_last\', \'None\'], "
   }

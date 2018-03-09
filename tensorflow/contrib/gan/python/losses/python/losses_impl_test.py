@@ -481,6 +481,29 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
                       })
       self.assertAlmostEqual(self._expected_loss, loss, 5)
 
+  def test_loss_with_gradient_norm_target(self):
+    """Test loss value with non default gradient norm target."""
+    generated_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+    real_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+
+    loss = tfgan_losses.wasserstein_gradient_penalty(
+        generated_data,
+        real_data,
+        self._kwargs['generator_inputs'],
+        self._kwargs['discriminator_fn'],
+        self._kwargs['discriminator_scope'],
+        target=2.0)
+
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      loss = sess.run(
+          loss,
+          feed_dict={
+              generated_data: self._generated_data_np,
+              real_data: self._real_data_np,
+          })
+      self.assertAlmostEqual(1.0, loss, 5)
+
   def test_reuses_scope(self):
     """Test that gradient penalty reuses discriminator scope."""
     num_vars = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))

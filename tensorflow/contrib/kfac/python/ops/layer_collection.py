@@ -143,6 +143,7 @@ class LayerCollection(object):
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
     self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_embedding_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_multi_approximation = (
@@ -177,6 +178,17 @@ class LayerCollection(object):
       A `dict` mapping tuples of parameters to an optional string.
     """
     return self._linked_parameters
+
+  @property
+  def default_embedding_approximation(self):
+    return self._default_embedding_approximation
+
+  def set_default_embedding_approximation(self, value):
+    if value != APPROX_KRONECKER_NAME:
+      raise ValueError(
+          "{} is not a valid approximation for embedding variables.".format(
+              value))
+    self._default_embedding_approximation = value
 
   @property
   def default_generic_approximation(self):
@@ -416,6 +428,46 @@ class LayerCollection(object):
       return self.linked_parameters[params_set]
     else:
       return None
+
+  def register_embedding(self,
+                         params,
+                         inputs,
+                         outputs,
+                         approx=None,
+                         reuse=VARIABLE_SCOPE):
+    """Registers a fully connnected layer.
+
+    Args:
+      params: Embedding matrix of shape [vocab_size, embedding_size].
+      inputs: Tensor of shape [batch_size, input_size] and dtype int32. Indices
+        into embedding matrix.
+      outputs: Tensor of shape [batch_size, output_size]. Outputs
+        produced by layer.
+      approx: str. Must be "kron".
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_embedding_approximation
+
+    if approx != APPROX_KRONECKER_NAME:
+      raise ValueError("Bad value {} for approx.".format(approx))
+
+    if isinstance(params, (tuple, list)):
+      raise ValueError("Bias not supported.")
+
+    vocab_size = int(params.shape[0])
+    block = self.register_block(
+        params, fb.EmbeddingKFACFB(self, vocab_size), reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
 
   def register_fully_connected(self,
                                params,

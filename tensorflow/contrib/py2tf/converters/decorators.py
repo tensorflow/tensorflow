@@ -33,6 +33,7 @@ class DecoratorsTransformer(gast.NodeTransformer):
 
   def __init__(self, remove_decorators):
     self.remove_decorators = remove_decorators
+    self.additional_dependencies = set()
 
   # pylint:disable=invalid-name
 
@@ -44,13 +45,38 @@ class DecoratorsTransformer(gast.NodeTransformer):
         dec_func = dec.func
       else:
         dec_func = dec
+
+      # Special cases.
+      # TODO(mdan): Is there any way we can treat these more generically?
+      # We may want to forego using decorators altogether if we can't
+      # properly support them.
+      if isinstance(dec_func, gast.Name) and dec_func.id in ('classmethod',):
+        # Assumption: decorators are only visible in the AST when converting
+        # a function inline (via another decorator).
+        # In that case, the converted function is no longer part of the
+        # original object that it was declared into.
+        # This is currently verified by tests.
+        continue
+
       if not anno.hasanno(dec_func, 'live_val'):
         raise ValueError(
             'Could not resolve decorator: %s' % pretty_printer.fmt(dec_func))
+
       dec_value = anno.getanno(dec_func, 'live_val')
       if dec_value not in self.remove_decorators:
-        kept_decorators.append(dec)
-    node.decorator_list = kept_decorators
+        kept_decorators.append((dec, dec_value))
+
+    for _, dec_value in kept_decorators:
+      if dec_value.__module__ == '__main__':
+        raise ValueError(
+            'decorator "%s" was not allowed because it is declared '
+            'in the module "%s". To fix this, declare it in a separate '
+            'module that we can import it from.' % (dec_value,
+                                                    dec_value.__module__))
+      else:
+        self.additional_dependencies.add(dec_value)
+
+    node.decorator_list = [dec for dec, _ in kept_decorators]
     return node
 
   # pylint:enable=invalid-name
@@ -59,4 +85,4 @@ class DecoratorsTransformer(gast.NodeTransformer):
 def transform(node, remove_decorators):
   transformer = DecoratorsTransformer(remove_decorators)
   node = transformer.visit(node)
-  return node
+  return node, transformer.additional_dependencies

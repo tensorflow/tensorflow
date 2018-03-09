@@ -26,6 +26,7 @@ See the @{$python/image} guide.
 @@extract_jpeg_shape
 @@decode_png
 @@encode_png
+@@is_jpeg
 @@decode_image
 @@resize_images
 @@resize_area

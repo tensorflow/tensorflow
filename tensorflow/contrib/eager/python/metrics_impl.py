@@ -30,12 +30,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.training import checkpointable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(object):
+class Metric(checkpointable.CheckpointableBase):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:
@@ -93,11 +93,12 @@ class Metric(object):
   `aggregate()`, it is for use by TensorFlow infrastructure.
   """
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, use_global_variables=False):
     self._built = False
     self._vars = []
     self._initial_values = {}
     self._updates = []
+    self._use_global_variables = use_global_variables
     name = name or self.__class__.__name__
     # Replace things like spaces in name to create a valid scope name.
     scope_name = _to_replace.sub("_", name)
@@ -108,13 +109,13 @@ class Metric(object):
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      self._construction_scope = context.eager_mode
+    else:
       # We make self.call() into a graph callable here, so that we can
       # return a single op that performs all of the variable updates.
       self._construction_scope = ops.get_default_graph().as_default
       self.call = function.defun(self.call)
-    else:
-      self._construction_scope = context.eager_mode
 
   # ---- API for users ----
   def __call__(self, *args, **kwargs):
@@ -155,10 +156,11 @@ class Metric(object):
       initialization. Under eager execution, the variables are reset to their
       initial values as a side effect and this function returns None.
     """
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      for v in self._vars:
+        v.assign(self._initial_values[v])
+    else:
       return control_flow_ops.group([v.initializer for v in self._vars])
-    for v in self._vars:
-      v.assign(self._initial_values[v])
 
   # ---- To be implemented by descendants ---
   def build(self, *args, **kwargs):
@@ -200,10 +202,10 @@ class Metric(object):
 
   def value(self):
     """In graph mode returns the result Tensor while in eager the callable."""
-    if context.in_graph_mode():
-      return self.result()
-    else:
+    if context.executing_eagerly():
       return self.result
+    else:
+      return self.result()
 
   # We can support two different strategies of for doing data-parallel
   # distributed metric computations:
@@ -245,19 +247,31 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    collections = None if context.in_eager_mode() else [
-        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
-    ]
-    v = variable_scope.get_variable(
-        name,
-        shape,
-        dtype,
-        initializer,
+    if context.executing_eagerly():
+      collections = None
+    else:
+      if self._use_global_variables:
+        collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+      else:
+        collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      collections += [ops.GraphKeys.METRIC_VARIABLES]
+    # Variables are Checkpointable dependencies of Metrics regardless of the
+    # global/local distinction. Users can avoid saving variables by not adding a
+    # dependency on the Metric.
+    v = self._add_variable_with_custom_getter(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
         trainable=False,
         collections=collections,
-        use_resource=True)
+        use_resource=True,
+        getter=variable_scope.get_variable,
+        # Raise duplicate variable exceptions from get_variable rather than
+        # Checkpointable.
+        overwrite=True)
     self._vars.append(v)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self._initial_values[v] = v.value()
     return v
 
@@ -267,8 +281,10 @@ class Mean(Metric):
   # TODO(josh11b): Maybe have a dtype argument that defaults to tf.float64?
   # Or defaults to type of the input if it is tf.float32, else tf.float64?
 
-  def __init__(self, name=None, dtype=dtypes.float64):
-    super(Mean, self).__init__(name=name)
+  def __init__(self, name=None, dtype=dtypes.float64,
+               use_global_variables=False):
+    super(Mean, self).__init__(name=name,
+                               use_global_variables=use_global_variables)
     self.dtype = dtype
 
   def build(self, *args, **kwargs):

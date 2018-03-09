@@ -32,12 +32,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables  # pylint: disable=unused-import
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -424,8 +424,9 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
           "W_O_diag", shape=[self._num_units], dtype=dtype)
 
     # initialize the first freq state to be zero
-    m_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]), self._num_units],
-                                  dtype)
+    m_prev_freq = array_ops.zeros(
+        [inputs.shape[0].value or inputs.get_shape()[0], self._num_units],
+        dtype)
     for fq in range(len(freq_inputs)):
       c_prev = array_ops.slice(state, [0, 2 * fq * self._num_units],
                                [-1, self._num_units])
@@ -2130,7 +2131,7 @@ class Conv1DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_1d_lstm_cell", **kwargs):
     """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
+    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, name=name, **kwargs)
 
 
 class Conv2DLSTMCell(ConvLSTMCell):
@@ -2141,7 +2142,7 @@ class Conv2DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_2d_lstm_cell", **kwargs):
     """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, name=name, **kwargs)
 
 
 class Conv3DLSTMCell(ConvLSTMCell):
@@ -2152,7 +2153,7 @@ class Conv3DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_3d_lstm_cell", **kwargs):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
+    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, name=name, **kwargs)
 
 
 def _conv(args, filter_size, num_features, bias, bias_start=0.0):
@@ -2224,6 +2225,13 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
 
   O. Kuchaiev and B. Ginsburg
   "Factorization Tricks for LSTM Networks", ICLR 2017 workshop.
+
+  In brief, a G-LSTM cell consists of one LSTM sub-cell per group, where each
+  sub-cell operates on an evenly-sized sub-vector of the input and produces an
+  evenly-sized sub-vector of the output.  For example, a G-LSTM cell with 128
+  units and 4 groups consists of 4 LSTMs sub-cells with 32 units each.  If that
+  G-LSTM cell is fed a 200-dim input, then each sub-cell receives a 50-dim part
+  of the input and produces a 32-dim part of the output.
   """
 
   def __init__(self,
@@ -2319,9 +2327,12 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     """Run one step of G-LSTM.
 
     Args:
-      inputs: input Tensor, 2D, [batch x num_units].
-      state: this must be a tuple of state Tensors, both `2-D`,
-      with column sizes `c_state` and `m_state`.
+      inputs: input Tensor, 2D, [batch x num_inputs].  num_inputs must be
+        statically-known and evenly divisible into groups.  The innermost
+        vectors of the inputs are split into evenly-sized sub-vectors and fed
+        into the per-group LSTM sub-cells.
+      state: this must be a tuple of state Tensors, both `2-D`, with column
+        sizes `c_state` and `m_state`.
 
     Returns:
       A tuple containing:
@@ -2336,11 +2347,24 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
 
     Raises:
       ValueError: If input size cannot be inferred from inputs via
-        static shape inference.
+        static shape inference, or if the input shape is incompatible
+        with the number of groups.
     """
     (c_prev, m_prev) = state
 
     self._batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+
+    # If the input size is statically-known, calculate and validate its group
+    # size.  Otherwise, use the output group size.
+    input_size = inputs.shape[1].value
+    if input_size is None:
+      raise ValueError("input size must be statically known")
+    if input_size % self._number_of_groups != 0:
+      raise ValueError(
+          "input size (%d) must be divisible by number_of_groups (%d)" %
+          (input_size, self._number_of_groups))
+    input_group_size = int(input_size / self._number_of_groups)
+
     dtype = inputs.dtype
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope, initializer=self._initializer):
@@ -2353,8 +2377,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         with vs.variable_scope("group%d" % group_id):
           x_g_id = array_ops.concat(
               [
-                  self._get_input_for_group(inputs, group_id,
-                                            self._group_shape[0]),
+                  self._get_input_for_group(inputs, group_id, input_group_size),
                   self._get_input_for_group(m_prev, group_id,
                                             self._group_shape[0])
               ],
@@ -2682,7 +2705,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     return m, new_state
 
 
-class SRUCell(rnn_cell_impl._LayerRNNCell):
+class SRUCell(rnn_cell_impl.LayerRNNCell):
   """SRU, Simple Recurrent Unit
 
      Implementation based on

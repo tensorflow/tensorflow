@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -32,9 +33,23 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
+
+
+safe_div = losses_impl._safe_div  # pylint: disable=protected-access
+
+
+class SafeDivTest(test.TestCase):
+
+  def testEager(self):
+    with context.eager_mode():
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   constant_op.constant(0.0)), 0.0)
+      self.assertAllEqual(safe_div(constant_op.constant(1.0),
+                                   0.0), 0.0)
 
 
 class AbsoluteDifferenceLossTest(test.TestCase):
@@ -953,8 +968,8 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     # Compute the expected loss 'manually'.
     total = np.zeros((batch_size,))
     for b in range(batch_size):
-      for i in range(dims-1):
-        for j in range(i+1, dims):
+      for i in range(dims - 1):
+        for j in range(i + 1, dims):
           x = self._predictions[b, i].item() - self._predictions[b, j].item()
           y = self._labels[b, i].item() - self._labels[b, j].item()
           diff = (x - y)
@@ -1059,8 +1074,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
         [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
     ])
-    self._test_valid_weights(
-        labels, predictions, expected_loss=137.5)
+    self._test_valid_weights(labels, predictions, expected_loss=137.5)
 
   def test3dWeightedScalar(self):
     labels = np.array([
@@ -1073,8 +1087,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     weight = 3.0
     self._test_valid_weights(
-        labels, predictions, expected_loss=weight * 137.5,
-        weights=weight)
+        labels, predictions, expected_loss=weight * 137.5, weights=weight)
 
   def _test_invalid_weights(
       self, labels, predictions, weights=1.0):
@@ -1124,7 +1137,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     self._test_valid_weights(
         # TODO(ptucker): This doesn't look right.
-        labels, predictions, expected_loss=9 * 137.5,
+        labels,
+        predictions,
+        expected_loss=9 * 137.5,
         weights=np.ones((2, 3, 3)))
 
   def testLossWithAllZeroBatchSpecificWeights(self):

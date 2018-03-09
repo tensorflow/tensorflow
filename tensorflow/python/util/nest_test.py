@@ -429,6 +429,15 @@ class NestTest(test.TestCase):
     inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
     nest.assert_shallow_structure(inp_ab, inp_ba)
 
+    # This assertion is expected to pass: two namedtuples with the same
+    # name and field names are considered to be identical.
+    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
+    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
+    inp_shallow = same_name_type_0(1, 2)
+    inp_deep = same_name_type_1(1, [1, 2, 3])
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.
     input_tree = [[[2, 2], [3, 3]], [[4, 9], [5, 5]]]

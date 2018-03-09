@@ -29,6 +29,7 @@ _allowed_symbols = [
     'NaiveDiagonalFB',
     'FullyConnectedDiagonalFB',
     'KroneckerProductFB',
+    'EmbeddingKFACFB',
     'FullyConnectedKFACBasicFB',
     'ConvKFCBasicFB',
     'ConvDiagonalFB',
@@ -36,7 +37,9 @@ _allowed_symbols = [
     'compute_pi_tracenorm',
     'compute_pi_adjusted_damping',
     'num_conv_locations',
-    'normalize_damping'
+    'normalize_damping',
+    'LEFT_MULTIPLY',
+    'RIGHT_MULTIPLY',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

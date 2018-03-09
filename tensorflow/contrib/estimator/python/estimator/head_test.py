@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -1104,6 +1105,76 @@ class MultiLabelHead(test.TestCase):
         labels=labels,
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
+
+
+class PoissonRegressionHead(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
+
+  def test_train(self):
+    head = head_lib.poisson_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    labels = np.array([[1], [2], [3]], dtype=np.int32)
+    # With x = exp(logits), z = labels.
+    # loss = -ln(exp(-x) * (x^z) / z!)
+    #      = x - z * ln(x) + ln(z!)
+    #      = exp(logits) - labels * logits - ln(labels!)
+    # But for ln(z!) and z > 1, the Stirling approximation is used
+    # ln(z!) = z*ln(z) - z + 0.5*ln(2*pi*z)
+    # loss = [exp(0) - 1 * 0 + ln(1!),
+    #         exp(-1) - 2 * (-1) + 2*ln(2) - 2 + 0.5*ln(2*pi*2),
+    #         exp(1) - 3 * 1 + 3*ln(3) - 3 + 0.5*ln(2*pi*3)]
+    #      = [1.0, 3.020, 1.482]
+    # sum_loss = 5.502
+    expected_loss = 5.502
+    atol = 0.001
+    expected_train_result = b'my_train_op'
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_near(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          atol=atol, name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run([spec.loss, spec.train_op])
+      self.assertAlmostEqual(expected_loss, loss, delta=atol)
+      self.assertEqual(expected_train_result, train_result)
+
+  def test_predict(self):
+    head = head_lib.poisson_regression_head()
+
+    # Create estimator spec.
+    logits = np.array([[0], [-1], [1]], dtype=np.float32)
+    expected_predictions = np.exp(logits)
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42.,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    # Assert spec contains expected tensors.
+    keys = prediction_keys.PredictionKeys
+    self.assertItemsEqual(
+        (keys.PREDICTIONS, keys.LOGITS), spec.predictions.keys())
+    self.assertEqual(dtypes.float32, spec.predictions[keys.PREDICTIONS].dtype)
+    self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
+
+    # Assert predictions.
+    with self.test_session():
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllClose(
+          expected_predictions, spec.predictions[keys.PREDICTIONS].eval())
+      self.assertAllClose(logits, spec.predictions[keys.LOGITS].eval())
 
 
 if __name__ == '__main__':

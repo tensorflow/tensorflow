@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H
-#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H
+#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H_
+#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H_
 
 #include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers_impl.h"
 #include "tensorflow/contrib/lite/examples/label_image/label_image.h"
@@ -31,8 +31,8 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
             int wanted_channels, Settings* s);
 
 // explicit instantiation
-template void resize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
-                              int, int, Settings*);
+template void resize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int, int,
+                              int, Settings*);
 template void resize<float>(float*, unsigned char*, int, int, int, int, int,
                             int, Settings*);
 

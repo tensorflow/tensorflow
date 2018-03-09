@@ -146,7 +146,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     suffix_dim_size *= input.shape().dim_size(i);
   }
   auto input_reshaped =
-      input.shaped<T, 3>({1, input.shape().dim_size(0), suffix_dim_size});
+      input.shaped<T, 2>({input.shape().dim_size(0), suffix_dim_size});
 
   int64 position = 0;
   for (const int64 size : sizes) {
@@ -155,13 +155,13 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     Tensor output;
     TF_RETURN_IF_ERROR(
         context->allocate_temp(input.dtype(), output_shape, &output));
-    auto output_shaped = output.shaped<T, 3>({1, size, suffix_dim_size});
+    auto output_shaped = output.shaped<T, 2>({size, suffix_dim_size});
 
-    Eigen::DSizes<Eigen::DenseIndex, 3> slice_indices{0, position, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 3> slice_sizes{1, size, suffix_dim_size};
-    functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                   output_shaped, input_reshaped, slice_indices,
-                                   slice_sizes);
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{position, 0};
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{size, suffix_dim_size};
+    functor::Split<CPUDevice, T, 2>()(context->eigen_device<CPUDevice>(),
+                                      output_shaped, input_reshaped,
+                                      slice_indices, slice_sizes);
 
     outputs->emplace_back(output);
 
@@ -207,7 +207,7 @@ Status Split(OpKernelContext* context, const Tensor& input,
 class BatchResource : public ResourceBase {
  public:
   static Status Create(int32 num_batch_threads, int32 max_batch_size,
-                       int32 batch_timeout_micros,
+                       int32 batch_timeout_micros, int32 max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        std::unique_ptr<BatchResource>* resource) {
     std::unique_ptr<BatchResource> new_resource(new BatchResource);
@@ -218,6 +218,8 @@ class BatchResource : public ResourceBase {
         Batcher::Create(batcher_options, &new_resource->batcher_));
 
     new_resource->batcher_queue_options_.max_batch_size = max_batch_size;
+    new_resource->batcher_queue_options_.max_enqueued_batches =
+        max_enqueued_batches;
     new_resource->batcher_queue_options_.batch_timeout_micros =
         batch_timeout_micros;
 
@@ -513,6 +515,8 @@ class BatchKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
     OP_REQUIRES_OK(c,
                    c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
+    OP_REQUIRES_OK(c,
+                   c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
     OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
   }
@@ -524,7 +528,7 @@ class BatchKernel : public AsyncOpKernel {
           std::unique_ptr<BatchResource> new_resource;
           TF_RETURN_IF_ERROR(BatchResource::Create(
               num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-              allowed_batch_sizes_, &new_resource));
+              max_enqueued_batches_, allowed_batch_sizes_, &new_resource));
           *r = new_resource.release();
           return Status::OK();
         };
@@ -570,6 +574,7 @@ class BatchKernel : public AsyncOpKernel {
   int32 num_batch_threads_;
   int32 max_batch_size_;
   int32 batch_timeout_micros_;
+  int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
 };
 

@@ -497,7 +497,9 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     shallow_tree: an arbitrarily nested structure.
     input_tree: an arbitrarily nested structure.
     check_types: if `True` (default) the sequence types of `shallow_tree` and
-      `input_tree` have to be the same.
+      `input_tree` have to be the same. Note that even with check_types==True,
+      this function will consider two different namedtuple classes with the same
+      name and _fields attribute to be the same class.
 
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
@@ -513,10 +515,21 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "Input has type: %s." % type(input_tree))
 
     if check_types and not isinstance(input_tree, type(shallow_tree)):
-      raise TypeError(
-          "The two structures don't have the same sequence type. Input "
-          "structure has type %s, while shallow structure has type %s."
-          % (type(input_tree), type(shallow_tree)))
+      # Duck-typing means that nest should be fine with two different
+      # namedtuples with identical name and fields.
+      shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
+      input_is_namedtuple = _is_namedtuple(input_tree, False)
+      if shallow_is_namedtuple and input_is_namedtuple:
+        if not _same_namedtuples(shallow_tree, input_tree):
+          raise TypeError(
+              "The two namedtuples don't have the same sequence type. Input "
+              "structure has type %s, while shallow structure has type %s."
+              % (type(input_tree), type(shallow_tree)))
+      else:
+        raise TypeError(
+            "The two structures don't have the same sequence type. Input "
+            "structure has type %s, while shallow structure has type %s."
+            % (type(input_tree), type(shallow_tree)))
 
     if len(input_tree) != len(shallow_tree):
       raise ValueError(

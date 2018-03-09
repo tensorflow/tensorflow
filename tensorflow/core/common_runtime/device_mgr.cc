@@ -94,8 +94,8 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }
-    LOG(WARNING) << "Unknown device: " << name
-                 << " all devices: " << str_util::Join(device_names, ", ");
+    VLOG(1) << "Unknown device: " << name
+            << " all devices: " << str_util::Join(device_names, ", ");
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;

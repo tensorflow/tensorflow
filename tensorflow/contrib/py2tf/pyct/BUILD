@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE"])
+
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
@@ -19,9 +21,10 @@ py_library(
     srcs = [
         "__init__.py",
         "anno.py",
+        "ast_util.py",
         "compiler.py",
         "context.py",
-        "copier.py",
+        "inspect_utils.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",
@@ -49,6 +52,17 @@ py_test(
 )
 
 py_test(
+    name = "ast_util_test",
+    srcs = ["ast_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
     srcs_version = "PY2AND3",
@@ -60,8 +74,8 @@ py_test(
 )
 
 py_test(
-    name = "copier_test",
-    srcs = ["copier_test.py"],
+    name = "inspect_utils_test",
+    srcs = ["inspect_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",
@@ -83,6 +97,16 @@ py_test(
 py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "qual_names_test",
+    srcs = ["qual_names_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",

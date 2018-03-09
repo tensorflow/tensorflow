@@ -223,7 +223,7 @@ Status Literal::CopySliceFromInternal(
     Literal::StrideConfig stride_config(src_literal.shape(), shape(),
                                         copy_size);
 
-    auto copy_proc = [&](const std::vector<int64>& indexes) {
+    auto copy_proc = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       // Map from multi-dimensional index, to source index.
       std::transform(indexes.begin(), indexes.end(), src_base.begin(),
                      src_indexes.begin(), std::plus<int64>());
@@ -234,7 +234,8 @@ Status Literal::CopySliceFromInternal(
       int64 src_index = linear_index(src_literal.shape(), src_indexes);
       int64 dest_index = linear_index(shape(), dest_indexes);
 
-      StridedCopy(data<NativeT>(), dest_index, stride_config.dest_stride,
+      // `this->` is needed to workaround MSVC bug: #16882
+      StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
                   src_literal.data<NativeT>(), src_index,
                   stride_config.source_stride, stride_config.minor_loop_size);
       return true;
@@ -243,6 +244,28 @@ Status Literal::CopySliceFromInternal(
     ShapeUtil::ForEachIndex(src_literal.shape(), stride_config.base,
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
+  }
+  return Status::OK();
+}
+
+Status Literal::CopyElementFrom(const Literal& src_literal,
+                                tensorflow::gtl::ArraySlice<int64> src_index,
+                                tensorflow::gtl::ArraySlice<int64> dest_index) {
+  DCHECK_EQ(shape().element_type(), src_literal.shape().element_type());
+  const int64 src_linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      src_literal.shape(), src_index);
+  const int64 dest_linear_index =
+      IndexUtil::MultidimensionalIndexToLinearIndex(shape(), dest_index);
+  const int64 primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+  char* dest_address =
+      static_cast<char*>(untyped_data()) + dest_linear_index * primitive_size;
+  const char* source_address =
+      static_cast<const char*>(src_literal.untyped_data()) +
+      src_linear_index * primitive_size;
+  if (dest_address != source_address) {
+    memcpy(dest_address, source_address, primitive_size);
   }
   return Status::OK();
 }
@@ -342,7 +365,7 @@ Status Literal::Piece::CopyFrom(const Literal::Piece& src) {
 #undef COPY_ELEMENTS
       default:
         return Unimplemented(
-            "Unhandled primitive type %s",
+            "Copying a Literal object with element type %s is not implemented.",
             PrimitiveType_Name(subshape().element_type()).c_str());
     }
   }
@@ -490,7 +513,10 @@ Status Literal::CopySliceFrom(const Literal& src_literal,
     default:
       break;
   }
-  return Unimplemented("Unhandled primitive type %d", shape().element_type());
+  return Unimplemented(
+      "Copying a slice from a Literal object with element type %d is not "
+      "implemented.",
+      shape().element_type());
 }
 
 /* static */ Literal Literal::Zero(PrimitiveType primitive_type) {
@@ -807,9 +833,10 @@ std::unique_ptr<Literal> Literal::Slice(
   DimensionVector result_dimensions;
   for (int64 dnum = 0; dnum < ShapeUtil::Rank(shape()); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
-    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum));
+    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
+        << "dnum = " << dnum;
     int64 dimension = limit_indices[dnum] - start_indices[dnum];
-    CHECK_GT(dimension, 0);
+    CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
   const auto result_shape =
@@ -1006,6 +1033,49 @@ tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
 
 void Literal::SortSparseElements(const ShapeIndex& shape_index) {
   piece(shape_index).SortSparseElements();
+}
+
+Literal Literal::GetFirstScalarLiteral() const {
+  CHECK(ShapeUtil::IsArray(shape_));
+  CHECK_GT(ShapeUtil::ElementsIn(shape_), 0);
+  switch (shape_.element_type()) {
+    case PRED:
+      return std::move(*Literal::CreateR0<bool>(GetFirstElement<bool>()));
+    // 8 bit types.
+    case S8:
+      return std::move(*Literal::CreateR0<int8>(GetFirstElement<int8>()));
+    case U8:
+      return std::move(*Literal::CreateR0<uint8>(GetFirstElement<uint8>()));
+    // 16 bit types.
+    case BF16:
+      return std::move(
+          *Literal::CreateR0<bfloat16>(GetFirstElement<bfloat16>()));
+    case F16:
+      return std::move(*Literal::CreateR0<half>(GetFirstElement<half>()));
+    case S16:
+      return std::move(*Literal::CreateR0<int16>(GetFirstElement<int16>()));
+    case U16:
+      return std::move(*Literal::CreateR0<uint16>(GetFirstElement<uint16>()));
+    // 32 bit types.
+    case F32:
+      return std::move(*Literal::CreateR0<float>(GetFirstElement<float>()));
+    case S32:
+      return std::move(*Literal::CreateR0<int32>(GetFirstElement<int32>()));
+    case U32:
+      return std::move(*Literal::CreateR0<uint32>(GetFirstElement<uint32>()));
+    // 64 bit types.
+    case C64:
+      return std::move(
+          *Literal::CreateR0<complex64>(GetFirstElement<complex64>()));
+    case F64:
+      return std::move(*Literal::CreateR0<double>(GetFirstElement<double>()));
+    case S64:
+      return std::move(*Literal::CreateR0<int64>(GetFirstElement<int64>()));
+    case U64:
+      return std::move(*Literal::CreateR0<uint64>(GetFirstElement<uint64>()));
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << shape_.element_type();
+  }
 }
 
 void Literal::Piece::SortSparseElements() {
@@ -1257,11 +1327,17 @@ string Literal::ToString(bool print_layout) const {
 
 /* static */ std::unique_ptr<Literal> Literal::MakeTupleOwned(
     std::vector<std::unique_ptr<Literal>> elements) {
-  std::vector<const Literal*> element_ptrs;
+  std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto& element : elements) {
-    element_ptrs.push_back(element.get());
+    element_shapes.push_back(element->shape());
   }
-  return MakeTuple(element_ptrs);
+  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  for (int64 i = 0; i < elements.size(); ++i) {
+    TF_CHECK_OK(
+        literal->MoveFrom(std::move(*elements[i]), /*dest_shape_index=*/{i}));
+  }
+  return literal;
 }
 
 void Literal::EachCellAsString(
@@ -1344,8 +1420,8 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
       return ConvertToC64<primitive_src_type>(src_literal);
     // Other types are not yet supported.
     default:
-      return InvalidArgument(
-          "Unimplemented: Convert from type %s to type %s",
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
           PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
           PrimitiveType_Name(primitive_dest_type).c_str());
   }
@@ -1374,10 +1450,29 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
-      return InvalidArgument("Unimplemented: Convert from type %s to type %s",
-                             PrimitiveType_Name(shape().element_type()).c_str(),
-                             PrimitiveType_Name(primitive_dest_type).c_str());
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
+          PrimitiveType_Name(shape().element_type()).c_str(),
+          PrimitiveType_Name(primitive_dest_type).c_str());
   }
+}
+
+StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(
+    const Shape& dest_shape) const {
+  if (!ShapeUtil::IsTuple(dest_shape)) {
+    return Convert(dest_shape.element_type());
+  }
+  std::vector<Literal> elements;
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+    auto element = LiteralView::Create(*this, {i});
+    TF_ASSIGN_OR_RETURN(
+        auto new_element,
+        element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
+    elements.push_back(std::move(*new_element));
+  }
+  auto converted = MakeUnique<Literal>();
+  *converted = Literal::MoveIntoTuple(&elements);
+  return std::move(converted);
 }
 
 template <typename NativeT>
@@ -1562,6 +1657,92 @@ bool Literal::IsAllComplex(complex64 value) const {
     default:
       return false;
   }
+}
+
+bool Literal::IsAllFirst() const {
+  for (const auto& pair : pieces_) {
+    const Piece& piece = pair.second;
+    if (!ShapeUtil::IsArray(piece.subshape())) {
+      continue;
+    }
+
+    // Empty shapes are not all the first element since there is no first
+    // element.
+    if (ShapeUtil::HasZeroElements(piece.subshape())) {
+      return false;
+    }
+    auto piece_is_all = [&]() {
+      switch (piece.subshape().element_type()) {
+        case PRED: {
+          auto data = piece.data<bool>();
+          return AllElementsEqualValue<bool>(data, data[0]);
+        }
+        // 8 bit types
+        case S8: {
+          auto data = piece.data<int8>();
+          return AllElementsEqualValue<int8>(data, data[0]);
+        }
+        case U8: {
+          auto data = piece.data<uint8>();
+          return AllElementsEqualValue<uint8>(data, data[0]);
+        }
+        // 16 bit types
+        case BF16: {
+          auto data = piece.data<bfloat16>();
+          return AllElementsEqualValue<bfloat16>(data, data[0]);
+        }
+        case F16: {
+          auto data = piece.data<half>();
+          return AllElementsEqualValue<half>(data, data[0]);
+        }
+        case S16: {
+          auto data = piece.data<int16>();
+          return AllElementsEqualValue<int16>(data, data[0]);
+        }
+        case U16: {
+          auto data = piece.data<uint16>();
+          return AllElementsEqualValue<uint16>(data, data[0]);
+        }
+        // 32 bit types
+        case F32: {
+          auto data = piece.data<float>();
+          return AllElementsEqualValue<float>(data, data[0]);
+        }
+        case U32: {
+          auto data = piece.data<uint32>();
+          return AllElementsEqualValue<uint32>(data, data[0]);
+        }
+        case S32: {
+          auto data = piece.data<int32>();
+          return AllElementsEqualValue<int32>(data, data[0]);
+        }
+        // 64 bit types
+        case C64: {
+          auto data = piece.data<complex64>();
+          return AllElementsEqualValue<complex64>(data, data[0]);
+        }
+        case F64: {
+          auto data = piece.data<double>();
+          return AllElementsEqualValue<double>(data, data[0]);
+        }
+        case S64: {
+          auto data = piece.data<int64>();
+          return AllElementsEqualValue<int64>(data, data[0]);
+        }
+        case U64: {
+          auto data = piece.data<uint64>();
+          return AllElementsEqualValue<uint64>(data, data[0]);
+        }
+        default:
+          return false;
+      }
+    };
+
+    if (!piece_is_all()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool Literal::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {

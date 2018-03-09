@@ -150,7 +150,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     self._global_map = ea_custom_getter._global_map
 
     if moving_rate is None:
-      self._moving_rate = BETA / communication_period / num_worker
+      self._moving_rate = self.BETA / communication_period / num_worker
     else:
       self._moving_rate = moving_rate
     if rho is None:

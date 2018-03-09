@@ -24,9 +24,11 @@ from __future__ import print_function
 from tensorflow.python.ops import gen_manip_ops as _gen_manip_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
+
 # pylint: disable=protected-access
-def roll(input, shift, axis):
+def roll(input, shift, axis):  # pylint: disable=redefined-builtin
   return _gen_manip_ops.roll(input, shift, axis)
+
 
 roll.__doc__ = _gen_manip_ops.roll.__doc__
 # pylint: enable=protected-access
