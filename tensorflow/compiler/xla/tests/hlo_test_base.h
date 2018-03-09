@@ -104,8 +104,7 @@ class HloTestBase : public ::testing::Test {
 
   // Executes the given hlo module on two backends and compares results.
   //
-  // 'arguments': the input of the hlo module. The LiteralPtr type accepts
-  // Literal* or std::unique_ptr<Literal>.
+  // 'arguments': the input of the hlo module.
   //
   // 'error': if has value, expects the results to be near (within the error
   // bound). Otherwise, expects the results to be equal.
@@ -114,20 +113,18 @@ class HloTestBase : public ::testing::Test {
   // backend, but it might need to be tailored so that it is able to run on the
   // reference backend. Note that the program shape of the module must not be
   // modified.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
@@ -232,10 +229,9 @@ class HloTestBase : public ::testing::Test {
   // Runs the module on two platforms with or without running hlo passes and
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
-  template <typename LiteralPtr>
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       const tensorflow::gtl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };

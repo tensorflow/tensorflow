@@ -110,7 +110,7 @@ HloRunner::HloRunner(se::Platform* platform) {
 
 HloRunner::~HloRunner() {}
 
-StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
+StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     const tensorflow::gtl::ArraySlice<Literal*> arguments,
     bool run_hlo_passes) {
