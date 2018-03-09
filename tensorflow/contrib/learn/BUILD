@@ -227,6 +227,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/monitors_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # b/74437598
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
