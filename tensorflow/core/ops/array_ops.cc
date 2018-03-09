@@ -1168,7 +1168,9 @@ REGISTER_OP("Unique")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(1, c->input(0));
-      return Status::OK();
+      // Assert that the input rank is 1.
+      ShapeHandle dummy;
+      return c->WithRank(c->input(0), 1, &dummy);
     });
 
 REGISTER_OP("UniqueV2")
