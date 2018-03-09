@@ -305,6 +305,7 @@ def wasserstein_gradient_penalty(
     discriminator_fn,
     discriminator_scope,
     epsilon=1e-10,
+    target=1.0,
     weights=1.0,
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -324,6 +325,8 @@ def wasserstein_gradient_penalty(
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
+    target: Optional Python number or `Tensor` indicating the target value of
+      gradient norm. Defaults to 1.0.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `real_data` and `generated_data`, and must be broadcastable to
       them (i.e., all dimensions must be either `1`, or the same as the
@@ -374,7 +377,7 @@ def wasserstein_gradient_penalty(
     # For numerical stability, add epsilon to the sum before taking the square
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
-    penalties = math_ops.square(slopes - 1.0)
+    penalties = math_ops.square(slopes / target - 1.0)
     penalty = losses.compute_weighted_loss(
         penalties, weights, scope=scope, loss_collection=loss_collection,
         reduction=reduction)

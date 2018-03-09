@@ -41,7 +41,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
+// TODO(b/74260408): This test is timing out if bfloat16 is enabled on
+// GPU. Last timed out on 2018-03-06.
+#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16) && !defined(XLA_TEST_BACKEND_GPU)
 // Tests both F32 and BF16.
 static std::array<bool, 2> use_bfloat16_params{false, true};
 #else
@@ -272,7 +274,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
 
   builder_.ReduceWindow(
       input,
-      CreateConstantFromLiteral(*Literal::CreateR0<float>(3.0f), &builder_),
+      CreateConstantFromLiteral(*Literal::CreateR0<float>(0.0f), &builder_),
       reduce_fn,
       /*window_dimensions=*/{1, 1, 2, 1},
       /*window_strides=*/{1, 1, 1, 1}, padding);
@@ -282,7 +284,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   };
 
   auto expected =
-      ReferenceUtil::ReduceWindow4DGeneric(input_array, 3.0f, reduce_func,
+      ReferenceUtil::ReduceWindow4DGeneric(input_array, 0.0f, reduce_func,
                                            /*window=*/{1, 1, 2, 1},
                                            /*stride=*/{1, 1, 1, 1}, padding);
 
@@ -800,6 +802,14 @@ const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
                            /*pad_high=*/{1, 1, 0, 0},
                            /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
+
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 1, 32768 - 3, 2},
+                           /*window_bounds=*/{1, 1, 4, 1},
+                           /*strides=*/{1, 1, 4, 1},
+                           /*pad_low=*/{0, 0, 1, 0},
+                           /*pad_high=*/{0, 0, 2, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kMax},
 };
 
 INSTANTIATE_TEST_CASE_P(

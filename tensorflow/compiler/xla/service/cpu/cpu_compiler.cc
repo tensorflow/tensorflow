@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
@@ -275,6 +276,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
+    pass.AddPass<ConditionalSimplifier>();
   }
   pipeline.AddPass<TransposeFolding>(
       [](const HloInstruction& dot,
@@ -888,13 +890,11 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
-        post_optimization_ir_dump_hook);
-    llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
+        pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
+    std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);
-    llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();
-    ObjectFileData object_file_data(object_file_data_ref.begin(),
-                                    object_file_data_ref.end());
+    ObjectFileData object_file_data(object_file->getBufferStart(),
+                                    object_file->getBufferEnd());
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {

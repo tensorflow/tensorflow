@@ -1250,7 +1250,7 @@ Status DirectSession::GetOrCreateExecutors(
     item->device = device;
     Executor* executor;
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, partition_graph.release(), &executor));
+        NewLocalExecutor(params, std::move(partition_graph), &executor));
     item->executor.reset(executor);
   }
 

@@ -212,7 +212,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   // Now that we know the index of the induction variable, we can we can try to
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
-  HloEvaluator evaluator;
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->mutable_operand(0);
   auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
@@ -564,9 +564,11 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   //
   // This is not a fundamental limitation.  The control operands can be moved
   // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.
-  // Nevertheless our infrastructure sees loop simplification as removal of
-  // these nodes and currently doesn't allow it.
+  // the loop aren't removed, just cloned and added back to the loop.  But
+  // moving an op out of the loop also removes implicit control dependencies
+  // between the op and the ops outside the loop, so we'd have to add those back
+  // for things like infeed/outfeed.  It gets complicated.  So for now we just
+  // avoid it.
   if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();

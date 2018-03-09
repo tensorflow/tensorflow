@@ -129,7 +129,7 @@ class LinearOperatorDiagTest(
     with self.test_session() as sess:
       x = random_ops.random_normal(shape=(2, 2, 3, 4))
 
-      # This LinearOperatorDiag will be brodacast to (2, 2, 3, 3) during solve
+      # This LinearOperatorDiag will be broadcast to (2, 2, 3, 3) during solve
       # and matmul with 'x' as the argument.
       diag = random_ops.random_uniform(shape=(2, 1, 3))
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)

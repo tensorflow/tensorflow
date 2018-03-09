@@ -478,7 +478,7 @@ class optional : private internal_optional::optional_data<T>,
     return *this;
   }
 
-  // Copy assigment, standard semantics.
+  // Copy assignment, standard semantics.
   optional& operator=(const optional& src) = default;
 
   // Move assignment, standard semantics.

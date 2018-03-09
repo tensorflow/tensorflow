@@ -131,7 +131,7 @@ def generate_batch(batch_size, num_skips, skip_window):
   batch = np.ndarray(shape=(batch_size), dtype=np.int32)
   labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
   span = 2 * skip_window + 1  # [ skip_window target skip_window ]
-  buffer = collections.deque(maxlen=span)
+  buffer = collections.deque(maxlen=span)  # pylint: disable=redefined-builtin
   if data_index + span > len(data):
     data_index = 0
   buffer.extend(data[data_index:data_index + span])

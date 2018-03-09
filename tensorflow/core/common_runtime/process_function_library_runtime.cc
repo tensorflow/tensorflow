@@ -145,7 +145,7 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
-      LOG(ERROR) << "Could not find device: " << device_name;
+      VLOG(1) << "Could not find device: " << device_name;
       return nullptr;
     }
   }
@@ -246,7 +246,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   string target_device;
   {
     mutex_lock l(mu_);
-    CHECK_EQ(1, function_data_.count(handle));
+    CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
     target_device = function_data_[handle].target_device;
   }
   flr = GetFLR(target_device);

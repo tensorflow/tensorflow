@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf import utils
+
+
 PYTHON_LITERALS = {
     'None': None,
     'False': False,
@@ -27,14 +30,21 @@ PYTHON_LITERALS = {
 
 DEFAULT_UNCOMPILED_MODULES = set((
     ('tensorflow',),
+    (utils.__name__,),
+
+    # All of tensorflow's subpackages. Unlike the root tf module, they don't
+    # have well-known names. Not refering to the module directly to avoid
+    # circular imports.
+    (utils.__name__[:-len('.contrib.py2tf.utils')],),
 ))
 
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
 # TODO(mdan): Also allow controlling the generated names (for testability).
-# TODO(mdan): Verify that these names are not hidden by generated code.
-# TODO(mdan): Make sure copybara renames the reference below.
 COMPILED_IMPORT_STATEMENTS = (
+    'from __future__ import print_function',
     'import tensorflow as tf',
+    'from tensorflow.contrib.py2tf.impl import api as '
+    'py2tf_api',
     'from tensorflow.contrib.py2tf import utils as '
     'py2tf_utils')

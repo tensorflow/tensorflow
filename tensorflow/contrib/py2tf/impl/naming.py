@@ -115,8 +115,14 @@ class Namer(object):
       else:
         raise ValueError('Unexpected symbol type "%s"' % type(s))
 
+    pieces = name_root.split('_')
+    if pieces[-1].isdigit():
+      name_root = '_'.join(pieces[:-1])
+      n = int(pieces[-1])
+    else:
+      n = 0
     new_name = name_root
-    n = 0
+
     while (new_name in self.global_namespace or
            new_name in all_reserved_locals or new_name in self.generated_names):
       n += 1

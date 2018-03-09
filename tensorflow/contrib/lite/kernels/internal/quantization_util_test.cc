@@ -22,6 +22,51 @@ namespace {
 
 using ::testing::Pair;
 
+// Example taken from http://www.tensorflow.org/performance/quantization
+//
+//  Quantized | Float
+//  --------- | -----
+//  0         | -10.0
+//  255       | 30.0
+//  128       | 10.0
+TEST(QuantizationUtilTest, ChooseQuantizationParams) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 30.0);
+  EXPECT_NEAR(qp.scale, 0.156863, 1e-5);
+  EXPECT_EQ(qp.zero_point, 64);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 30.0);
+  EXPECT_NEAR(qp.scale, 0.117647, 1e-5);
+  EXPECT_EQ(qp.zero_point, 0);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroNotInRange) {
+  // Assumption is that zero is within the range.
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, 30.0), "");
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangePositive) {
+  // Assumption is that zero is within the range.
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(30.0, 30.0), "");
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangeZero) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 0.0);
+  EXPECT_NEAR(qp.scale, 0.0, 1e-5);
+  EXPECT_EQ(qp.zero_point, 0);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 0.0);
+  EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
+  EXPECT_EQ(qp.zero_point, 255);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
+}
+
 TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
   auto quantize = [](double d) {
     int32_t q;
@@ -31,7 +76,7 @@ TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
   };
 
   EXPECT_DEATH(quantize(-0.1), "");
-  EXPECT_THAT(quantize(0.0), Pair(0, 0));
+  EXPECT_DEATH(quantize(0.0), "");
   EXPECT_THAT(quantize(0.25), Pair(1073741824, 1));
 
   // Around 0.5 we can see the change in exponent and how we try hard to

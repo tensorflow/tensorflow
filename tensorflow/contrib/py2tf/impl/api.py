@@ -26,7 +26,10 @@ import six
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import conversion
 from tensorflow.contrib.py2tf.pyct import compiler
+from tensorflow.contrib.py2tf.pyct import inspect_utils
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.utils import builtins
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 # TODO(mdan): Properly document the type hints.
@@ -83,7 +86,7 @@ def convert_inline(f, *args, **kwargs):
   return convert(arg_value_hints)(f)(*args, **kwargs)
 
 
-def convert(recursive=False, arg_types=None):
+def convert(recursive=False, verbose=False, arg_types=None):
   """Decorator that compiles a function to graph mode.
 
   The decorator is dynamic - invoking compilation whenever the decorated
@@ -92,6 +95,7 @@ def convert(recursive=False, arg_types=None):
   Args:
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
+    verbose: Whether to output the compiled code in the logs.
     arg_types: See to_graph.
 
   Returns:
@@ -108,27 +112,7 @@ def convert(recursive=False, arg_types=None):
 
     @wraps(f)
     def wrapper(*args, **kwargs):
-      """Wrapper that calls the compiled version of the wrapped function."""
-      partial_types = ()
-      arg_values = {}
-      arg_names = tf_inspect.getargspec(f)[0]
-      for name, arg in zip(arg_names, args):
-        arg_values[name] = arg
-        arg_class = arg.__class__
-        # If arg_value_hints specifies any name, use that instead.
-        if name not in arg_types:
-          arg_types[name] = (arg_class.__name__, arg_class)
-        if name == 'self' and tf_inspect.isclass(arg_class):
-          # Annotated methods need to specify that their owner type is partial,
-          # otherwise other members they call will not be converted.
-          partial_types = (arg_class,)
-      wrapped = to_graph(
-          f,
-          recursive=recursive,
-          arg_values=arg_values,
-          arg_types=arg_types,
-          partial_types=partial_types)
-      return wrapped(*args, **kwargs)
+      return converted_call(f, recursive, verbose, arg_types, *args, **kwargs)
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
@@ -138,8 +122,81 @@ def convert(recursive=False, arg_types=None):
   return decorator
 
 
+def converted_call(f, recursive, verbose, arg_types, *args, **kwargs):
+  """Compiles a function call inline."""
+  # TODO(mdan): This needs cleanup.
+  # In particular, we may want to avoid renaming functions altogether.
+
+  if conversion.is_whitelisted_for_graph(f):
+    return f(*args, **kwargs)
+
+  unknown_arg_value = object()  # Sentinel for arguments of unknown value
+
+  if tf_inspect.isbuiltin(f):
+    return builtins.dynamic_builtin(f, *args, **kwargs)
+
+  if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
+    # Regular functions
+    target_entity = f
+    arg_map_target = f
+    effective_args = args
+    f_class = inspect_utils.getmethodclass(f)
+
+    if f_class is not None:
+      partial_types = (f_class,)
+    else:
+      partial_types = ()
+
+  elif tf_inspect.isclass(f):
+    # Constructors
+    target_entity = f
+    arg_map_target = f.__init__
+    effective_args = (unknown_arg_value,) + args
+    partial_types = ()
+
+  elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+    # Callable objects
+    target_entity = f.__call__
+    arg_map_target = f.__call__
+    effective_args = (f,) + args
+    partial_types = (f.__class__,)
+
+  else:
+    NotImplementedError('unknown callable type "%s"' % type(f))
+
+  arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
+  for name, arg in arg_values.items():
+    if arg is unknown_arg_value:
+      continue
+    arg_class = arg.__class__
+    # If arg_value_hints specifies any name, use that instead.
+    if name not in arg_types:
+      arg_types[name] = (arg_class.__name__, arg_class)
+
+  # When called from within a decorator, this is the only indication that
+  # the function is a method - it appears that the decorator is applied
+  # before the method is bound.
+  if not partial_types:
+    if 'self' in arg_values:
+      if tf_inspect.isclass(arg_values['self'].__class__):
+        partial_types = (arg_values['self'].__class__,)
+    elif 'cls' in arg_values:
+      if tf_inspect.isclass(arg_values['cls']):
+        partial_types = (arg_values['cls'],)
+
+  converted_f = to_graph(
+      target_entity,
+      recursive=recursive,
+      verbose=verbose,
+      arg_values=arg_values,
+      arg_types=arg_types,
+      partial_types=partial_types)
+  return converted_f(*effective_args, **kwargs)
+
+
 def to_graph(e,
              recursive=True,
+             verbose=False,
              arg_values=None,
              arg_types=None,
              partial_types=None):
@@ -155,6 +212,7 @@ def to_graph(e,
     e: A Python entity.
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
+    verbose: Whether to output the compiled code in the logs.
     arg_values: A dict containing value hints for symbols like function
         parameters.
     arg_types: A dict containing type hints for symbols like function
@@ -170,22 +228,26 @@ def to_graph(e,
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
-      partial_types=partial_types)
+      partial_types=partial_types,
+      api_module=tf_inspect.getmodule(to_graph))
   _, name = conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   module = gast.Module([])
   for import_line in config.COMPILED_IMPORT_STATEMENTS:
-    module.body.append(parser.parse_str(import_line))
+    module.body.extend(parser.parse_str(import_line).body)
   for dep in conversion_map.dependency_cache.values():
     module.body.append(dep)
-  compiled_node = compiler.ast_to_object(module)
+  compiled_node, compiled_src = compiler.ast_to_object(module)
 
   # The compiled code should see everything the entry function saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
   if tf_inspect.isfunction(e):
-    compiled_node.__dict__.update(six.get_function_globals(e))
-
+    compiled_node.__dict__.update(inspect_utils.getnamespace(e))
   compiled_fn = getattr(compiled_node, name)
+
+  if verbose:
+    logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
+
   return compiled_fn
 
 
@@ -213,7 +275,8 @@ def to_code(e,
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
-      partial_types=partial_types)
+      partial_types=partial_types,
+      api_module=tf_inspect.getmodule(to_graph))
   conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   imports = '\n'.join(config.COMPILED_IMPORT_STATEMENTS)

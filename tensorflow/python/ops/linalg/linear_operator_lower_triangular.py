@@ -26,12 +26,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
     "LinearOperatorLowerTriangular",
 ]
 
 
+@tf_export("linalg.LinearOperatorLowerTriangular")
 class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square lower triangular matrix.
 

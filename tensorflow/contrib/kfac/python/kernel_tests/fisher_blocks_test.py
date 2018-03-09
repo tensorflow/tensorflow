@@ -26,6 +26,7 @@ from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
@@ -236,10 +237,10 @@ class NaiveDiagonalFBTest(test.TestCase):
       self.assertAllClose(output_flat, explicit)
 
 
-class FullyConnectedDiagonalFB(test.TestCase):
+class FullyConnectedDiagonalFBTest(test.TestCase):
 
   def setUp(self):
-    super(FullyConnectedDiagonalFB, self).setUp()
+    super(FullyConnectedDiagonalFBTest, self).setUp()
 
     self.batch_size = 4
     self.input_size = 6
@@ -373,6 +374,65 @@ class FullyConnectedDiagonalFB(test.TestCase):
       multiply_inverse_result = sess.run(block.multiply_inverse(params))
 
     return multiply_result, multiply_inverse_result
+
+
+class EmbeddingKFACFBTest(test.TestCase):
+
+  def testInstantiateFactors(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+
+      # Create a Fisher Block.
+      vocab_size = 5
+      block = fb.EmbeddingKFACFB(lc.LayerCollection(), vocab_size)
+
+      # Add some examples.
+      inputs = array_ops.constant([[0, 1], [1, 2], [2, 3]])
+      outputs = array_ops.constant([[0.], [1.], [2.]])
+      block.register_additional_minibatch(inputs, outputs)
+
+      # Instantiate factor's variables. Ensure it doesn't fail.
+      grads = outputs**2.
+      damping = array_ops.constant(0.)
+      block.instantiate_factors(([grads],), damping)
+
+  def testMultiplyInverse(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+
+      # Create a Fisher Block.
+      vocab_size = 5
+      block = fb.EmbeddingKFACFB(lc.LayerCollection(), vocab_size)
+
+      # Add some examples.
+      inputs = array_ops.constant([[0, 1], [1, 2], [2, 3]])
+      outputs = array_ops.constant([[0.], [1.], [2.]])
+      block.register_additional_minibatch(inputs, outputs)
+
+      # Instantiate factor's variables. Ensure it doesn't fail.
+      grads = outputs**2.
+      damping = array_ops.constant(0.)
+      block.instantiate_factors(([grads],), damping)
+
+      # Create a sparse update.
+      indices = array_ops.constant([1, 3, 4])
+      values = array_ops.constant([[1.], [1.], [1.]])
+      sparse_vector = ops.IndexedSlices(
+          values, indices, dense_shape=[vocab_size, 1])
+      dense_vector = array_ops.reshape([0., 1., 0., 1., 1.], [vocab_size, 1])
+
+      # Compare Fisher-vector product against explicit result.
+      result = block.multiply_inverse(sparse_vector)
+      expected_result = linalg_ops.matrix_solve(block.full_fisher_block(),
+                                                dense_vector)
+
+      sess.run(tf_variables.global_variables_initializer())
+      self.assertAlmostEqual(
+          sess.run(expected_result[1]), sess.run(result.values[0]))
+      self.assertAlmostEqual(
+          sess.run(expected_result[3]), sess.run(result.values[1]))
+      self.assertAlmostEqual(
+          sess.run(expected_result[4]), sess.run(result.values[2]))
 
 
 class FullyConnectedKFACBasicFBTest(test.TestCase):

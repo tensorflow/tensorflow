@@ -21,7 +21,7 @@ newcomers.
 * Other:
   * Add `tf.contrib.distributions.Kumaraswamy`.
   * `RetryingFileSystem::FlushCaches()` calls the base FileSystem's `FlushCaches()`.
-  * Add auto_correlation to distributions.
+  * Add `auto_correlation` to distributions.
   * Add `tf.contrib.distributions.Autoregressive`.
   * Add SeparableConv1D layer.
   * Add convolutional Flipout layers.
@@ -31,12 +31,12 @@ newcomers.
   * Output variance over trees predictions for classifications tasks.
   * For `pt` and `eval` commands, allow writing tensor values to filesystem as numpy files.
   * gRPC: Propagate truncated errors (instead of returning gRPC internal error).
-  * Augment parallel_interleave to support 2 kinds of prefetching.
+  * Augment `parallel_interleave` to support 2 kinds of prefetching.
   * Improved XLA support for C64-related ops log, pow, atan2, tanh.
   * Add probabilistic convolutional layers.
 
 ## API Changes
-* Introducing prepare_variance boolean with default setting to False for backward compatibility.
+* Introducing `prepare_variance` boolean with default setting to False for backward compatibility.
 * Move `layers_dense_variational_impl.py` to `layers_dense_variational.py`.
 
 ## Known Bugs
@@ -633,7 +633,7 @@ answered questions, and were part of inspiring discussions.
 * Fixed LIBXSMM integration.
 * Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
 * Improve implicit broadcasting lowering.
-* Improving stability of GCS/Bigquery clients by a faster retrying of stale transmissions.
+* Improving stability of GCS/BigQuery clients by a faster retrying of stale transmissions.
 * Remove OpKernelConstruction::op_def() as part of minimizing proto dependencies.
 * VectorLaplaceDiag distribution added.
 * Android demo no longer requires libtensorflow_demo.so to run (libtensorflow_inference.so still required)

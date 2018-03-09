@@ -118,7 +118,7 @@ from tensorflow.python.framework.ops import register_tensor_conversion_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.python.framework.dtypes import *
+from tensorflow.python.framework.dtypes import *  # pylint: disable=redefined-builtin
 
 # Load a TensorFlow plugin
 from tensorflow.python.framework.load_library import *

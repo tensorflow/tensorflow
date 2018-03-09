@@ -60,7 +60,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testReduceInvalidAxis(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # The shape check is in run a graph construction time. In eager mode,
       # it misses the check, magically return result given wrong shape.
       return
@@ -105,7 +105,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.test_session(use_gpu=True):
-        y_tf_np = math_ops.reduce_logsumexp(x_np, keep_dims=True).eval()
+        y_tf_np = math_ops.reduce_logsumexp(x_np, keepdims=True).eval()
         self.assertEqual(y_tf_np.ndim, x_np.ndim)
         y_np = log(np.sum(exp(x_np), keepdims=True))
         self.assertAllClose(y_tf_np, y_np)
@@ -249,7 +249,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testAcceptsRefs(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       var = resource_variable_ops.ResourceVariable(10, name="var")
     else:
       var = variables.Variable(10)

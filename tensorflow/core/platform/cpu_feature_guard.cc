@@ -106,7 +106,7 @@ void InfoAboutUnusedCPUFeatures() {
     CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
 #endif  // __AVX2__
 
-#else   // if defined(_MSC_VER) && !defined(__clang__)
+#else  // if defined(_MSC_VER) && !defined(__clang__)
 
 #ifndef __SSE__
     CheckIfFeatureUnused(CPUFeature::SSE, "SSE", missing_instructions);

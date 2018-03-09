@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(intel): Improve error handling in this file; instead of CHECK failing
+// all over the place, we should log an error and execute the original graph.
 #ifdef INTEL_MKL
 
 #include <algorithm>
@@ -1030,8 +1032,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<const char*>(zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -1144,7 +1145,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -1323,8 +1325,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -1829,7 +1830,7 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
 
     // Create node.
     Node* new_node;
-    nb.Finalize(&**g, &new_node);
+    TF_CHECK_OK(nb.Finalize(&**g, &new_node));
     CHECK_NOTNULL(new_node);
 
     // Set the Mkl layer label for this op.
@@ -2211,7 +2212,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
-#else  // INTEL_MKL_ML
+#else   // INTEL_MKL_ML
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -2452,8 +2453,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAddN, AddNRewrite});
-    rinfo_.push_back({csinfo_.add,
-                      mkl_op_registry::GetMklOpName(csinfo_.add),
+    rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
@@ -2509,8 +2509,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.mul,
                       mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsDataType, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.relu,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu),
+    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
@@ -2536,7 +2535,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.sub,
                       mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsDataType, AlwaysRewrite});
-
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});

@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
 
@@ -84,10 +85,9 @@ def conjugate_gradient(operator,
   cg_state = collections.namedtuple("CGState", ["i", "x", "r", "p", "gamma"])
 
   def stopping_criterion(i, state):
-    return math_ops.logical_and(i < max_iter,
-                                linalg_ops.norm(state.r) > tol)
+    return math_ops.logical_and(i < max_iter, linalg_ops.norm(state.r) > tol)
 
-  def cg_step(i, state):
+  def cg_step(i, state):  # pylint: disable=missing-docstring
     z = operator.apply(state.p)
     alpha = state.gamma / util.dot(state.p, z)
     x = state.x + alpha * state.p
@@ -108,8 +108,7 @@ def conjugate_gradient(operator,
     rhs = array_ops.expand_dims(rhs, -1)
     if x is None:
       x = array_ops.expand_dims(
-          array_ops.zeros(
-              n, dtype=rhs.dtype.base_dtype), -1)
+          array_ops.zeros(n, dtype=rhs.dtype.base_dtype), -1)
       r0 = rhs
     else:
       x = array_ops.expand_dims(x, -1)
@@ -119,7 +118,7 @@ def conjugate_gradient(operator,
     else:
       p0 = preconditioner.apply(r0)
     gamma0 = util.dot(r0, p0)
-    tol = tol * linalg_ops.norm(r0)
+    tol *= linalg_ops.norm(r0)
     i = constant_op.constant(0, dtype=dtypes.int32)
     state = cg_state(i=i, x=x, r=r0, p=p0, gamma=gamma0)
     _, state = control_flow_ops.while_loop(stopping_criterion, cg_step,

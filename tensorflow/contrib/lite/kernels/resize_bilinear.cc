@@ -85,7 +85,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutputTensor(context, input, size, output));
-    TfLiteTensorRealloc(output->bytes, output);
   }
 
   if (output->type == kTfLiteFloat32) {

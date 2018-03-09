@@ -345,6 +345,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._send_traceback_and_source_code = send_traceback_and_source_code
     self._sent_graph_version = -1
+    grpc_wrapper.register_signal_handler()
 
   def before_run(self, run_context):
     if self._send_traceback_and_source_code:

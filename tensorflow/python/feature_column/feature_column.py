@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned ${tf.estimator.Estimator}s.
+canned @{tf.estimator.Estimator}s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -157,6 +157,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -511,6 +512,7 @@ def make_parse_example_spec(feature_columns):
 
   ```python
   # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
   feature_b = numeric_column(...)
   feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
   feature_a_x_feature_c = crossed_column(
@@ -662,6 +664,7 @@ def embedding_column(
       trainable=trainable)
 
 
+@tf_export('feature_column.shared_embedding_columns')
 def shared_embedding_columns(
     categorical_columns, dimension, combiner='mean', initializer=None,
     shared_embedding_collection_name=None, ckpt_to_load_from=None,
@@ -1623,7 +1626,7 @@ class _FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of ${tf.parse_example} for all
+    supported objects. Please check documentation of @{tf.parse_example} for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -1674,7 +1677,7 @@ class _DenseColumn(_FeatureColumn):
       weight_collections: List of graph collections to which Variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.Variable}).
 
     Returns:
       `Tensor` of shape [batch_size] + `_variable_shape`.
@@ -1732,7 +1735,7 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a ${tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -1767,7 +1770,7 @@ class _CategoricalColumn(_FeatureColumn):
       weight_collections: List of graph collections to which variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.get_variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.get_variable}).
     """
     pass
 

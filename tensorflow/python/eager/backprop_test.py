@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -32,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
@@ -114,6 +114,19 @@ class BackpropTest(test.TestCase):
     # TODO(apassos) raise the right error here
     with self.assertRaises(RuntimeError):
       backprop.gradients_function(f)(constant_op.constant(1.0))
+
+  def testGradientsFunctionInCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def f(x):
+      (y,) = backprop.gradients_function(lambda x: x * x)(x)
+
+      def grad(dy):
+        return [2 * dy]
+
+      return y, grad
+
+    self.assertAllEqual(f(1.0), 2.0)
 
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
@@ -205,10 +218,21 @@ class BackpropTest(test.TestCase):
     def f(x):
       return x * x
 
-    wrapped_fn = backprop.make_vjp(f)
+    wrapped_fn = backprop.make_vjp(f, persistent=False)
     result, vjp = wrapped_fn(constant_op.constant(3.0))
     self.assertAllEqual(result, 9.0)
     self.assertAllEqual(vjp(2.0)[0], 12.0)
+
+  def testPersistentMakeVJP(self):
+
+    def f(x):
+      return x * x
+
+    wrapped_fn = backprop.make_vjp(f, persistent=True)
+    _, vjp = wrapped_fn(constant_op.constant(3.0))
+    vjp_result1 = vjp(2.0)[0]
+    vjp_result2 = vjp(2.0)[0]
+    self.assertAllEqual(vjp_result1, vjp_result2, 12.0)
 
   @test_util.assert_no_new_tensors
   def testGradGrad(self):

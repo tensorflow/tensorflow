@@ -25,6 +25,9 @@ bool IsGoogleCudaEnabled();
 // half-precision matrix multiplications and convolution operations.
 bool CudaSupportsHalfMatMulAndConv();
 
+// Returns true if INTEL_MKL is defined
+bool IsMklEnabled();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_UTIL_PORT_H_

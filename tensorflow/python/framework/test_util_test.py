@@ -82,6 +82,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     else:
       print("GoogleCuda is disabled")
 
+  def testIsMklEnabled(self):
+    # This test doesn't assert anything.
+    # It ensures the py wrapper function is generated correctly.
+    if test_util.IsMklEnabled():
+      print("MKL is enabled")
+    else:
+      print("MKL is disabled")
+
   def testAssertProtoEqualsStr(self):
 
     graph_str = "node { name: 'w1' op: 'params' }"

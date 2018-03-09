@@ -106,6 +106,9 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
+  CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
+                                          OperatorType::kLogSoftmax);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -377,6 +380,13 @@ TEST_F(OperatorTest, StridedSlice) {
   EXPECT_EQ(op.ellipsis_mask, output_toco_op->ellipsis_mask);
   EXPECT_EQ(op.new_axis_mask, output_toco_op->new_axis_mask);
   EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
+}
+
+TEST_F(OperatorTest, BuiltinTopKV2) {
+  TopKV2Operator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

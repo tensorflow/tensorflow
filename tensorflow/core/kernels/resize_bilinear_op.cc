@@ -51,9 +51,8 @@ class ResizeBilinearOp : public OpKernel {
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor image_data = input.tensor<T, 4>();
-    typename TTypes<float, 4>::Tensor output_data =
-        st.output->tensor<float, 4>();
+    typename TTypes<T, 4>::ConstTensor image_data(input.tensor<T, 4>());
+    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     functor::ResizeBilinear<Device, T>()(context->eigen_device<Device>(),
                                          image_data, st.height_scale,
@@ -258,9 +257,8 @@ class ResizeBilinearOpGrad : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<float, 4>::ConstTensor input_grad =
-        input.tensor<float, 4>();
-    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
+    TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
     functor::ResizeBilinearGrad<Device, T>()(context->eigen_device<Device>(),
                                              input_grad, st.height_scale,

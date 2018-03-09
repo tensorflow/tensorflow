@@ -57,45 +57,60 @@ int GetSingleScalarInputIndexOfBinaryOp(Model* model, const Operator* op,
 }  // namespace
 
 bool IdentifyRelu1::Run(Model* model, std::size_t op_index) {
-  const auto maximum_it = model->operators.begin() + op_index;
-  const auto* maximum_op = maximum_it->get();
-  if (maximum_op->type != OperatorType::kTensorFlowMaximum) {
+  // Follow sequences of min+max and max+min. First get the leading op.
+  const auto op_it = model->operators.begin() + op_index;
+  const auto* op_0 = op_it->get();
+  if (op_0->type != OperatorType::kTensorFlowMinimum &&
+      op_0->type != OperatorType::kTensorFlowMaximum) {
     return false;
   }
-  CHECK_EQ(maximum_op->inputs.size(), 2);
-  if (maximum_op->outputs.size() != 1) {
-    return false;
-  }
-  int scalar_input_index =
-      GetSingleScalarInputIndexOfBinaryOp(model, maximum_op, -1.0f);
-  if (scalar_input_index == -1) {
-    return false;
-  }
-  const auto* minimum_op = GetOpWithInput(*model, maximum_op->outputs[0]);
-  if (!minimum_op || minimum_op->type != OperatorType::kTensorFlowMinimum) {
-    return false;
-  }
-  if (GetSingleScalarInputIndexOfBinaryOp(model, minimum_op, 1.0f) == -1) {
-    return false;
-  }
-  CHECK_EQ(minimum_op->inputs.size(), 2);
 
-  // Create and emplace Relu1 node
+  // Get the paired op and ensure it's the counter to the first.
+  const auto* op_1 = GetOpWithInput(*model, op_0->outputs[0]);
+  if (!op_1 ||
+      (op_1->type != OperatorType::kTensorFlowMinimum &&
+       op_1->type != OperatorType::kTensorFlowMaximum) ||
+      op_0->type == op_1->type) {
+    return false;
+  }
+
+  const auto* min_op =
+      op_0->type == OperatorType::kTensorFlowMinimum ? op_0 : op_1;
+  const auto* max_op =
+      op_0->type == OperatorType::kTensorFlowMaximum ? op_0 : op_1;
+
+  CHECK_EQ(min_op->inputs.size(), 2);
+  CHECK_EQ(max_op->inputs.size(), 2);
+  if (min_op->outputs.size() != 1 || max_op->outputs.size() != 1) {
+    return false;
+  }
+
+  // Get the original input to the min+max pair.
+  int min_scalar_input_index =
+      GetSingleScalarInputIndexOfBinaryOp(model, min_op, 1.0f);
+  int max_scalar_input_index =
+      GetSingleScalarInputIndexOfBinaryOp(model, max_op, -1.0f);
+  if (min_scalar_input_index == -1 || max_scalar_input_index == -1) {
+    return false;
+  }
+  int op_0_scalar_input_index =
+      op_0 == min_op ? min_scalar_input_index : max_scalar_input_index;
+
+  // Create and emplace Relu1 node.
   auto* relu1_op = new Relu1Operator;
-  relu1_op->inputs = {maximum_op->inputs[!scalar_input_index]};
-  relu1_op->outputs = minimum_op->outputs;
-  model->operators.emplace(maximum_it, relu1_op);
+  relu1_op->inputs = {op_0->inputs[!op_0_scalar_input_index]};
+  relu1_op->outputs = op_1->outputs;
+  model->operators.emplace(op_it, relu1_op);
 
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
 
-  // Erase Maximum scalar input & operator
-  model->EraseArray(maximum_op->inputs[scalar_input_index]);
-  model->operators.erase(FindOperator(model, maximum_op));
-
-  // Erase Minimum inputs & operator
-  model->EraseArray(minimum_op->inputs[0]);
-  model->EraseArray(minimum_op->inputs[1]);
-  model->operators.erase(FindOperator(model, minimum_op));
+  // Erase op scalar inputs & operators. Note that we preserve the non-scalar
+  // input to the first op as that's been redirected to the relu1_op.
+  DeleteArrayIfUsedOnce(op_0->inputs[op_0_scalar_input_index], model);
+  DeleteArrayIfUsedOnce(op_1->inputs[0], model);
+  DeleteArrayIfUsedOnce(op_1->inputs[1], model);
+  model->operators.erase(FindOperator(model, op_0));
+  model->operators.erase(FindOperator(model, op_1));
 
   return true;
 }

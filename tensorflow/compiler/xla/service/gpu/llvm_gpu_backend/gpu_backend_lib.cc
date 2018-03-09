@@ -252,7 +252,7 @@ void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
 
-  llvm::WriteBitcodeToFile(&module, outfile.os());
+  llvm::WriteBitcodeToFile(module, outfile.os());
   outfile.keep();
 }
 

@@ -24,6 +24,7 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.tools import selective_registration_header_lib
@@ -93,11 +94,16 @@ class PrintOpFilegroupTest(test.TestCase):
 
     ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
+    matmul_prefix = ''
+    if test_util.IsMklEnabled():
+      matmul_prefix = 'Mkl'
+
     self.assertListEqual(
         [
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, double, false >'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, float, false >'),  #
+            ('MatMul',
+             matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
+            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, false >'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #
@@ -112,8 +118,9 @@ class PrintOpFilegroupTest(test.TestCase):
     self.assertListEqual(
         [
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, double, false >'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, float, false >'),  #
+            ('MatMul',
+             matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
+            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, false >'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #

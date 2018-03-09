@@ -93,7 +93,9 @@ def make_custom_export_strategy(name,
                          "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
-  return export_strategy.ExportStrategy(name, export_fn)
+
+  return export_strategy.ExportStrategy(
+      name, export_fn, strip_default_attrs=True)
 
 
 def convert_to_universal_format(dtec, sorted_feature_names,

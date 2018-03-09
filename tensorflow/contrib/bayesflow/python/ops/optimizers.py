@@ -14,7 +14,7 @@
 # ==============================================================================
 """Probabilistic optimizer modules.
 
-See ${python/contrib.bayesflow.optimizers}.
+See @{tf.contrib.bayesflow.optimizers}.
 """
 
 from __future__ import absolute_import

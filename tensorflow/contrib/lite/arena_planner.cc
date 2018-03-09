@@ -128,6 +128,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 }
 
 TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
+  // Grow the size of `allocs_` if necessary. This allows allocating temporary
+  // tensors in op's `prepare` function.
+  TF_LITE_ENSURE(context_, graph_info_->num_tensors() >= allocs_.size());
+  allocs_.resize(graph_info_->num_tensors());
+
   TF_LITE_ENSURE_STATUS(CalculateAllocations(first_node, last_node));
   TF_LITE_ENSURE_STATUS(Commit());
 
