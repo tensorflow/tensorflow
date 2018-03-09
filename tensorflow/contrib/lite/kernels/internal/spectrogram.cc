@@ -54,6 +54,7 @@ inline int Log2Floor(uint n) {
       log += shift;
     }
   }
+  assert(value == 1);
   return log;
 }
 
