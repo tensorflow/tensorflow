@@ -444,6 +444,7 @@ bool SetOpAttrScalar(
                                         &dims[i])) {
           return false;
         }
+        Py_DECREF(inner_py_value);
       }
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }

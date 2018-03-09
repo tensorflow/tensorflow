@@ -265,6 +265,46 @@ class Interpreter {
   void set_model(const Model* model) { model_ = const_cast<Model*>(model); }
   Model* model() const { return model_; }
 
+  // Ensure the data in `tensor.data` is readable. In case delegate is used,
+  // it might require to copy the data from delegate buffer to raw memory.
+  TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
+    TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
+    TfLiteTensor* tensor = &tensors_[tensor_index];
+    if (tensor->data_is_stale) {
+      TF_LITE_ENSURE(&context_, tensor->delegate != nullptr);
+      TF_LITE_ENSURE(&context_,
+                     tensor->buffer_handle != kTfLiteNullBufferHandle);
+      // This can be null if the delegate doesn't use its own buffer.
+      TF_LITE_ENSURE(&context_,
+                     tensor->delegate->CopyFromBufferHandle != nullptr);
+      tensor->delegate->CopyFromBufferHandle(tensor->delegate,
+                                             tensor->buffer_handle,
+                                             tensor->data.raw, tensor->bytes);
+      tensor->data_is_stale = false;
+    }
+    return kTfLiteOk;
+  }
+
+  // Set the delegate buffer handle to a tensor. It can be called in the
+  // following cases:
+  // 1. Set the buffer handle to a tensor that's not being written by a
+  //    delegate. For example, feeding an OpenGL texture as the input of the
+  //    inference graph.
+  // 2. Set the buffer handle to a tensor that uses the same delegate.
+  //    For example, set an OpenGL texture as the output of inference, while
+  //    the node which produces output is an OpenGL delegate node.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteDelegate* delegate);
+
+  // Get the delegate buffer handle, and the delegate which can process the
+  // buffer handle.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus GetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle* buffer_handle,
+                               TfLiteDelegate** delegate);
+
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
   // The capacity headroom of `tensors_` vector before calling ops'
@@ -355,14 +395,15 @@ class Interpreter {
   // Entry point for C API ReplaceSubgraphsWithDelegateKernels
   static TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
       TfLiteContext* context, TfLiteRegistration registration,
-      const TfLiteIntArray* nodes_to_replace);
+      const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
 
   // Update the execution graph to replace some of the nodes with stub
   // nodes. Specifically any node index that has `nodes[index]==1` will be
   // slated for replacement with a delegate kernel specified by registration.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
-      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace);
+      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
+      TfLiteDelegate* delegate);
 
   // WARNING: This is an experimental interface that is subject to change.
   // Gets the internal pointer to a TensorFlow lite node by node_index.

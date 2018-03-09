@@ -1542,20 +1542,19 @@ class Model(Network):
         max_queue_size: Integer. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
         workers: Integer. Maximum number of processes to spin up
-            when using process based threading.
+            when using process-based threading.
             If unspecified, `workers` will default to 1. If 0, will
             execute the generator on the main thread.
-        use_multiprocessing: Boolean. If True, use process based threading.
-            If unspecified, `workers` will default to False.
-            Note that because
-            this implementation relies on multiprocessing,
-            you should not pass
-            non picklable arguments to the generator
-            as they can't be passed
-            easily to children processes.
-        shuffle: Whether to shuffle the order of the batches at
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
+        shuffle: Boolean. Whether to shuffle the order of the batches at
             the beginning of each epoch. Only used with instances
-            of `Sequence` (keras.utils.Sequence).
+            of `Sequence` (`keras.utils.Sequence`).
+            Has no effect when `steps_per_epoch` is not `None`.
         initial_epoch: Epoch at which to start training
             (useful for resuming a previous training run)
 
@@ -1625,16 +1624,15 @@ class Model(Network):
             the `len(generator)` as a number of steps.
         max_queue_size: maximum size for the generator queue
         workers: Integer. Maximum number of processes to spin up
-            when using process based threading.
+            when using process-based threading.
             If unspecified, `workers` will default to 1. If 0, will
             execute the generator on the main thread.
-        use_multiprocessing: if True, use process based threading.
-            Note that because
-            this implementation relies on multiprocessing,
-            you should not pass
-            non picklable arguments to the generator
-            as they can't be passed
-            easily to children processes.
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1684,16 +1682,15 @@ class Model(Network):
             the `len(generator)` as a number of steps.
         max_queue_size: Maximum size for the generator queue.
         workers: Integer. Maximum number of processes to spin up
-            when using process based threading.
+            when using process-based threading.
             If unspecified, `workers` will default to 1. If 0, will
             execute the generator on the main thread.
-        use_multiprocessing: If `True`, use process based threading.
-            Note that because
-            this implementation relies on multiprocessing,
-            you should not pass
-            non picklable arguments to the generator
-            as they can't be passed
-            easily to children processes.
+        use_multiprocessing: Boolean.
+            If `True`, use process-based threading.
+            If unspecified, `use_multiprocessing` will default to `False`.
+            Note that because this implementation relies on multiprocessing,
+            you should not pass non-picklable arguments to the generator
+            as they can't be passed easily to children processes.
         verbose: verbosity mode, 0 or 1.
 
     Returns:

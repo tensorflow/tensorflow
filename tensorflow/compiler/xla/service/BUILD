@@ -1167,6 +1167,17 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "hlo_creation_utils",
+    srcs = ["hlo_creation_utils.cc"],
+    hdrs = ["hlo_creation_utils.h"],
+    deps = [
+        ":hlo",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
     name = "batchnorm_expander",
     srcs = ["batchnorm_expander.cc"],
     hdrs = ["batchnorm_expander.h"],
@@ -1174,7 +1185,6 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
-        ":shape_inference",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1213,9 +1223,9 @@ cc_library(
     hdrs = ["algebraic_simplifier.h"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_pass",
         ":hlo_query",
-        ":shape_inference",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1306,6 +1316,7 @@ tf_cc_test(
         ":while_loop_simplifier",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )

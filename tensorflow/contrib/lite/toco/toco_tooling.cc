@@ -52,6 +52,7 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialStackToReshape);
   transformations->Add(new ConvertTrivialTransposeToReshape);
@@ -76,6 +77,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantGather);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);

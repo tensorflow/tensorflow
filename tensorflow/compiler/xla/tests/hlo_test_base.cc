@@ -140,15 +140,10 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
   return std::move(reference_module);
 }
 
-template <typename LiteralPtr>
 StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  static_assert(
-      std::is_same<Literal*, LiteralPtr>::value ||
-          std::is_same<std::unique_ptr<Literal>, LiteralPtr>::value,
-      "The LiteralPtr type only accepts Literal* or std::unique_ptr<Literal>.");
   TF_RETURN_IF_ERROR(
       VerifyHloModule(*test_runner_.backend().platform(), module.get()));
   TF_ASSIGN_OR_RETURN(auto reference_module,
@@ -165,9 +160,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                                       error);
 }
 
-template <typename LiteralPtr>
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -179,9 +173,8 @@ template <typename LiteralPtr>
   return result.ValueOrDie();
 }
 
-template <typename LiteralPtr>
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -198,8 +191,14 @@ template <typename LiteralPtr>
     const std::function<void(HloModule*)>& reference_preprocessor) {
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
-  return RunAndCompare<std::unique_ptr<Literal>>(
-      std::move(module), fake_arguments, error, reference_preprocessor);
+
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+
+  return RunAndCompare(std::move(module), fake_argument_ptrs, error,
+                       reference_preprocessor);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
@@ -207,8 +206,13 @@ template <typename LiteralPtr>
     const std::function<void(HloModule*)>& reference_preprocessor) {
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
-  return RunAndCompareNoHloPasses<std::unique_ptr<Literal>>(
-      std::move(module), fake_arguments, error, reference_preprocessor);
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+
+  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
+                                  reference_preprocessor);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
