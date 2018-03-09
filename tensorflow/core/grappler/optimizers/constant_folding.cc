@@ -1510,7 +1510,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
 }
 
 Status ConstantFolding::SimplifyGraph(GraphDef* output,
-                                      GraphProperties* properties,
+                                      const GraphProperties& properties,
                                       bool use_shape_info) {
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (int i = 0; i < output->node_size(); ++i) {
@@ -1520,7 +1520,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     if (use_shape_info &&
         (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
       const auto& shape =
-          properties->GetInputProperties(node->name())[0].shape();
+          properties.GetInputProperties(node->name())[0].shape();
       // The node is replaceable iff
       // unknown_rank == false && (dim_size == 0 || all dims have size 1)
       bool replaceable = !shape.unknown_rank();
@@ -1649,7 +1649,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-    if (use_shape_info && IsSimplifiableReshape(*node, *properties)) {
+    if (use_shape_info && IsSimplifiableReshape(*node, properties)) {
       DataType output_type = node->attr().at("T").type();
       node->set_op("Identity");
       node->clear_attr();
@@ -1667,8 +1667,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // Simplify arithmetic operations with ones or zeros.
     if (use_shape_info &&
         (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
-        properties->HasInputProperties(node->name()) &&
-        properties->HasOutputProperties(node->name())) {
+        properties.HasInputProperties(node->name()) &&
+        properties.HasOutputProperties(node->name())) {
       const NodeDef* x = node_map_->GetNode(node->input(0));
       const NodeDef* y = node_map_->GetNode(node->input(1));
       if (x == nullptr || y == nullptr) {
@@ -1676,12 +1676,12 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                        node->DebugString());
       }
       const TensorShapeProto& output_shape =
-          properties->GetOutputProperties(node->name())[0].shape();
+          properties.GetOutputProperties(node->name())[0].shape();
 
       // Simplify element-wise multiplication by ones or addition/subtraction
       // of zeros.
       const TensorShapeProto& y_shape =
-          properties->GetInputProperties(node->name())[1].shape();
+          properties.GetInputProperties(node->name())[1].shape();
       const bool x_is_zero = IsZeros(*x);
       const bool x_is_one = IsOnes(*x);
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
@@ -1708,7 +1708,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
 
       const TensorShapeProto& x_shape =
-          properties->GetInputProperties(node->name())[0].shape();
+          properties.GetInputProperties(node->name())[0].shape();
       const bool y_is_zero = IsZeros(*y);
       const bool y_is_one = IsOnes(*y);
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
@@ -1921,11 +1921,13 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // folding of ops when more than one but not all inputs are constant.
     // For AddN and AccumulateNV2, we may furthermore reorder inputs, since
     // addition is commutative.
-    const int num_non_control_inputs = NumNonControlInputs(*node);
+    // TODO(rmlarsen): Concat/Pack/ParallelConcat which are not commutative, so
+    // we have to preserve order and can only push consecutive runs of constant
+    // inputs into sub-nodes.
     if (IsAggregate(*node) && IsCommutative(*node) &&
-        num_non_control_inputs > 2) {
+        NumNonControlInputs(*node) > 2) {
       const int num_control_inputs =
-          node->input_size() - num_non_control_inputs;
+          node->input_size() - NumNonControlInputs(*node);
       std::vector<int> const_inputs;
       std::vector<int> nonconst_inputs;
       for (int i = 0; i < node->input_size(); ++i) {
@@ -1941,7 +1943,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       // Promote AccumulateNV2 with all constant inputs to AddN, since it is
       // a fake node that cannot be constant folded by itself.
-      if (const_inputs.size() == num_non_control_inputs &&
+      if (const_inputs.size() == NumNonControlInputs(*node) &&
           node->op() == "AccumulateNV2") {
         node->set_op("AddN");
         node->mutable_attr()->erase("shape");
@@ -1951,7 +1953,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const string new_node_name = OptimizedNodeName(
           *node, strings::StrCat("_partial_split_", const_inputs.size()));
       if (1 < const_inputs.size() &&
-          const_inputs.size() < num_non_control_inputs &&
+          const_inputs.size() < NumNonControlInputs(*node) &&
           !node_map_->NodeExists(new_node_name)) {
         NodeDef* added_node = output->add_node();
         *added_node = *node;
@@ -1985,121 +1987,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                               const_inputs.size() - 1);
         (*node->mutable_attr())["N"].set_i(node->input_size() -
                                            num_control_inputs);
-        properties->ClearInputProperties(node->name());
         (*added_node->mutable_attr())["N"].set_i(const_inputs.size());
         graph_modified_ = true;
-        continue;
-      }
-    }
-
-    // Partial constant folding for Concat which is not commutative, so
-    // we have to preserve order and can only push consecutive runs of constant
-    // inputs into sub-nodes.
-    if (IsConcat(*node) && num_non_control_inputs > 3) {
-      bool already_optimized = false;
-      const string optimized = strings::StrCat(node->name(), "_partial_split_");
-      for (const string& input : node->input()) {
-        if (input.rfind(optimized) != string::npos) {
-          already_optimized = true;
-          break;
-        }
-      }
-      if (already_optimized) {
-        continue;
-      }
-      int axis_arg = -1;
-      int begin = 0;
-      int end = num_non_control_inputs;
-      if (node->op() == "Concat") {
-        begin = 1;
-        axis_arg = 0;
-      } else if (node->op() == "ConcatV2") {
-        end = num_non_control_inputs - 1;
-        axis_arg = num_non_control_inputs - 1;
-      } else {
-        continue;
-      }
-
-      const NodeDef* axis_arg_node =
-          node_map_->GetNode(NodeName(node->input(axis_arg)));
-      if (axis_arg_node == nullptr || !IsReallyConstant(*axis_arg_node)) {
-        // We cannot constant fold Concat unless we know the axis.
-        // Skip node.
-        continue;
-      }
-
-      // We search for consecutive runs of constant inputs in the range
-      // [begin:end[ and push then down into child nodes.
-      std::vector<std::pair<int, int>> constant_input_runs;
-      int first = begin;
-      int last = begin;
-      while (last < end) {
-        while (first < end && !IsReallyConstant(*node_map_->GetNode(
-                                  NodeName(node->input(first))))) {
-          ++first;
-        }
-        // Invariant: node[first] is constant || first >= end.
-        last = first + 1;
-        while (last < end && IsReallyConstant(*node_map_->GetNode(
-                                 NodeName(node->input(last))))) {
-          ++last;
-        }
-        // Invariant: node[last] is not constant || last >= end
-        // Discard intervals shorter than 2 elements.
-        if (first < end && (last - first) > 1) {
-          constant_input_runs.emplace_back(first, last);
-        }
-        first = last;
-      }
-
-      std::set<int> inputs_to_delete;
-      for (auto interval : constant_input_runs) {
-        // Push the constant inputs in the interval to a child node than can be
-        // constant folded.
-        const string new_node_name = OptimizedNodeName(
-            *node, strings::StrCat("_partial_split_", interval.first));
-        if (node_map_->NodeExists(new_node_name)) {
-          break;
-        }
-        NodeDef* added_node = output->add_node();
-        *added_node = *node;
-        added_node->set_name(new_node_name);
-        node_map_->AddNode(added_node->name(), added_node);
-        added_node->clear_input();
-        for (int i = interval.first; i < interval.second; ++i) {
-          added_node->add_input(node->input(i));
-          node_map_->UpdateOutput(NodeName(node->input(i)), node->name(),
-                                  added_node->name());
-          if (i != interval.first) {
-            inputs_to_delete.insert(i);
-          }
-        }
-        added_node->add_input(node->input(axis_arg));
-        (*added_node->mutable_attr())["N"].set_i(interval.second -
-                                                 interval.first);
-        node_map_->AddOutput(NodeName(node->input(axis_arg)),
-                             added_node->name());
-
-        // Overwrite the first constant input with the result of the added
-        // child node.
-        node->set_input(interval.first, added_node->name());
-        node_map_->AddOutput(added_node->name(), node->name());
-      }
-      if (!constant_input_runs.empty()) {
-        graph_modified_ = true;
-        if (!inputs_to_delete.empty()) {
-          // Fix up the inputs to the original node.
-          std::vector<string> tmp(node->input().begin(), node->input().end());
-          node->clear_input();
-          for (int i = 0; i < tmp.size(); ++i) {
-            if (inputs_to_delete.find(i) == inputs_to_delete.end()) {
-              node->add_input(tmp[i]);
-            }
-          }
-          (*node->mutable_attr())["N"].set_i(node->input_size() - 1);
-          properties->ClearInputProperties(node->name());
-        }
-        continue;
       }
     }
   }
@@ -2141,7 +2030,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
-  TF_RETURN_IF_ERROR(SimplifyGraph(output, &properties, can_use_shape_info));
+  TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));
 
   return Status::OK();
 }
