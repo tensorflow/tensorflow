@@ -110,7 +110,12 @@ py_library(
         "//tensorflow/python:util",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
-    ]),
+    ]) + select({
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -120,7 +125,6 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/data/kernels:dataset_kernels",
-        "//tensorflow/contrib/kafka:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
@@ -133,7 +137,12 @@ cc_library(
         "//tensorflow/contrib/text:all_kernels",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
-    ]),
+    ]) + select({
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka:dataset_kernels",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -146,7 +155,6 @@ cc_library(
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
-        "//tensorflow/contrib/kafka:dataset_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
@@ -157,7 +165,12 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
-    ],
+    ] + select({
+        "//tensorflow:with_kafka_support": [
+            "//tensorflow/contrib/kafka:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
