@@ -459,7 +459,7 @@ accuracy_score = classifier.evaluate(x=test_set.data,
 
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on {$tflearn$tf-learn's iris tutorial}, contains a full example of how to
+based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.2/get_started/tflearn), contains a full example of how to
 use the tfdbg with `Estimator`s. To run this example, do:
 
 ```none
@@ -753,6 +753,7 @@ There are three possible workarounds or solutions:
    # For LocalCLIDebugHook
    hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
    ```
+
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
    tfdbg cleans up the dump directories before exiting.
 *  Reduce the batch size used during the runs.
@@ -795,7 +796,7 @@ sess.run(b)
        tensor `b` is effectively also a constant tensor. TensorFlow's graph
        optimization folds the graph that contains `a` and `b` into a single
        node to speed up future runs of the graph, which is why `tfdbg` does
-       not generate any intermediate tensor dumps. However, if `a` were a
+       not generate any intermediate tensor dumps. However, if `a` was a
        @{tf.Variable}, as in the following example:
 
 ``` python
