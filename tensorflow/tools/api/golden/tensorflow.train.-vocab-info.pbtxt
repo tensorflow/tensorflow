@@ -1,4 +1,4 @@
-path: "tensorflow.estimator.VocabInfo"
+path: "tensorflow.train.VocabInfo"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"

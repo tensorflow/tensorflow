@@ -4002,6 +4002,25 @@ py_test(
 )
 
 py_test(
+    name = "warm_starting_util_test",
+    size = "small",
+    srcs = ["training/warm_starting_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":init_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "monitored_session_test",
     size = "medium",
     srcs = ["training/monitored_session_test.py"],
