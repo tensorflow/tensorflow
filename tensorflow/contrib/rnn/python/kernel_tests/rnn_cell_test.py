@@ -1085,7 +1085,6 @@ class RNNCellTest(test.TestCase):
 
 
 class LayerNormBasicGRUCellTest(test.TestCase):
-
   # NOTE: all the values in the current test case have been calculated.
 
   def testMultiCellLayerNormBasicGRUCell(self):
@@ -1113,9 +1112,10 @@ class LayerNormBasicGRUCellTest(test.TestCase):
         actual_state0 = res[1][0]
         actual_state1 = res[1][1]
 
-        self.assertAllClose(expected_state1, actual_h, 1e-5)
-        self.assertAllClose(expected_state0, actual_state0, 1e-5)
-        self.assertAllClose(expected_state1, actual_state1, 1e-5)
+        atol = 1e-5
+        self.assertAllClose(expected_state1, actual_h, atol=atol)
+        self.assertAllClose(expected_state0, actual_state0, atol=atol)
+        self.assertAllClose(expected_state1, actual_state1, atol=atol)
 
   def testLayerNormBasicGRUCellWithInputSizeDifferentThanNbUnits(self):
     with self.test_session() as sess:
@@ -1133,7 +1133,7 @@ class LayerNormBasicGRUCellTest(test.TestCase):
 
         expected_h = np.array([[0.06287911, 0.82106697]])
         self.assertEqual(len(res), 2)
-        self.assertAllClose(res[1], expected_h, 1e-5)
+        self.assertAllClose(res[1], expected_h, atol=1e-5)
 
   def testLayerNormBasicGRUCellWithoutLayerNorm(self):
     with self.test_session() as sess:
@@ -1151,7 +1151,7 @@ class LayerNormBasicGRUCellTest(test.TestCase):
 
         expected_h = np.array([[0.99140896, 0.99281532, 0.99422168]])
         self.assertEqual(len(res), 2)
-        self.assertAllClose(res[1], expected_h, 1e-5)
+        self.assertAllClose(res[1], expected_h, atol=1e-5)
 
         
 class LayerNormBasicLSTMCellTest(test.TestCase):

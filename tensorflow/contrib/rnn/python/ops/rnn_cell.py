@@ -1386,11 +1386,13 @@ class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
     return out
 
   def _norm(self, inp, scope):
+    # layer_norm is using gamma and beta variables already initialized in build method
+    # this allows to parametrize gamma/beta initializations
+    # reuse is therefore set to True
     return layers.layer_norm(inp, reuse=True, scope=scope)
 
   def build(self, inputs_shape):
     if inputs_shape[1].value is None:
-
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
 
@@ -1403,36 +1405,36 @@ class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
                 "candidate_linear_x",
                 "candidate_linear_h"]
       for scope in scopes:
-        self.add_variable(scope+"/gamma",
+        self.add_variable(scope + "/gamma",
                           shape=[self._num_units],
                           initializer=init_ops.constant_initializer(self._g))
-        self.add_variable(scope+"/beta",
+        self.add_variable(scope + "/beta",
                           shape=[self._num_units],
                           initializer=init_ops.constant_initializer(self._b))
 
-    self.update_gate_kernel = self.add_variable(
+    self._update_gate_kernel = self.add_variable(
       "update_gate/kernel",
       shape=[input_depth + self._num_units, self._num_units])
-    self.reset_gate_kernel = self.add_variable(
+    self._reset_gate_kernel = self.add_variable(
       "reset_gate/kernel",
       shape=[input_depth + self._num_units, self._num_units])
-    self.candidate_linear_x_kernel = self.add_variable(
+    self._candidate_linear_x_kernel = self.add_variable(
       "candidate_linear_x/kernel",
       shape=[input_depth, self._num_units])
-    self.candidate_linear_h_kernel = self.add_variable(
+    self._candidate_linear_h_kernel = self.add_variable(
       "candidate_linear_h/kernel",
       shape=[self._num_units, self._num_units])
 
-    self.update_gate_bias = self.add_variable(
+    self._update_gate_bias = self.add_variable(
       "update_gate/bias",
       shape=[self._num_units]) if not self._layer_norm else None
-    self.reset_gate_bias = self.add_variable(
+    self._reset_gate_bias = self.add_variable(
       "reset_gate/bias",
       shape=[self._num_units]) if not self._layer_norm else None
-    self.candidate_linear_x_bias = self.add_variable(
+    self._candidate_linear_x_bias = self.add_variable(
       "candidate_linear_x/bias",
       shape=[self._num_units]) if not self._layer_norm else None
-    self.candidate_linear_h_bias = self.add_variable(
+    self._candidate_linear_h_bias = self.add_variable(
       "candidate_linear_h/bias",
       shape=[self._num_units]) if not self._layer_norm else None
 
@@ -1444,11 +1446,11 @@ class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
     args = array_ops.concat([inputs, state], 1)
 
     z = self._linear(args,
-                     kernel=self.update_gate_kernel,
-                     bias=self.update_gate_bias)
+                     kernel=self._update_gate_kernel,
+                     bias=self._update_gate_bias)
     r = self._linear(args,
-                     kernel=self.reset_gate_kernel,
-                     bias=self.reset_gate_bias)
+                     kernel=self._reset_gate_kernel,
+                     bias=self._reset_gate_bias)
 
     if self._layer_norm:
       z = self._norm(z, "update_gate")
@@ -1458,11 +1460,11 @@ class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
     r = math_ops.sigmoid(r)
 
     _x = self._linear(inputs,
-                      kernel=self.candidate_linear_x_kernel,
-                      bias=self.candidate_linear_x_bias)
+                      kernel=self._candidate_linear_x_kernel,
+                      bias=self._candidate_linear_x_bias)
     _h = self._linear(state,
-                      kernel=self.candidate_linear_h_kernel,
-                      bias=self.candidate_linear_h_bias)
+                      kernel=self._candidate_linear_h_kernel,
+                      bias=self._candidate_linear_h_bias)
 
     if self._layer_norm:
       _x = self._norm(_x, scope="candidate_linear_x")
