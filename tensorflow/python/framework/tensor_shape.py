@@ -156,7 +156,7 @@ class Dimension(object):
     ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
@@ -166,6 +166,17 @@ class Dimension(object):
       return Dimension(None)
     else:
       return Dimension(self._value + other.value)
+
+  def __radd__(self, other):
+    """Returns the sum of `other` and `self`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the sum of `self` and `other`.
+    """
+    return self + other
 
   def __sub__(self, other):
     """Returns the subtraction of `other` from `self`.
@@ -180,16 +191,31 @@ class Dimension(object):
     ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
-      A Dimension whose value is the subtraction of sum of `other` from `self`.
+      A Dimension whose value is the subtraction of `other` from `self`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
       return Dimension(self._value - other.value)
+
+  def __rsub__(self, other):
+    """Returns the subtraction of `self` from `other`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the subtraction of `self` from `other`.
+    """
+    other = as_dimension(other)
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(other.value - self._value)
 
   def __mul__(self, other):
     """Returns the product of `self` and `other`.
@@ -204,16 +230,31 @@ class Dimension(object):
     ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A Dimension whose value is the product of `self` and `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
       return Dimension(self._value * other.value)
+
+  def __rmul__(self, other):
+    """Returns the product of `self` and `other`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the product of `self` and `other`.
+    """
+    return self * other
 
   def __floordiv__(self, other):
     """Returns the quotient of `self` and `other` rounded down.
@@ -228,7 +269,25 @@ class Dimension(object):
     ```
 
     Args:
-      other: Another `Dimension`.
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A `Dimension` whose value is the integer quotient of `self` and `other`.
+    """
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(self._value // other.value)
+
+  def __rfloordiv__(self, other):
+    """Returns the quotient of `other` and `self` rounded down.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A `Dimension` whose value is the integer quotient of `self` and `other`.
@@ -237,7 +296,7 @@ class Dimension(object):
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
-      return Dimension(self._value // other.value)
+      return Dimension(other.value // self._value)
 
   def __div__(self, other):
     """DEPRECATED: Use `__floordiv__` via `x // y` instead.
@@ -256,7 +315,7 @@ class Dimension(object):
     return self // other
 
   def __mod__(self, other):
-    """Returns `self` modulo `other.
+    """Returns `self` modulo `other`.
 
     Dimension moduli are computed as follows:
 
@@ -268,16 +327,34 @@ class Dimension(object):
     ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
       return Dimension(self._value % other.value)
+
+  def __rmod__(self, other):
+    """Returns `other` modulo `self`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is `other` modulo `self`.
+    """
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    return other % self
 
   def __lt__(self, other):
     """Returns True if `self` is known to be less than `other`.
