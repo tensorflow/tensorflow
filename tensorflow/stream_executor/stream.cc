@@ -5020,12 +5020,6 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
   return *this;
 }
 
-Stream &Stream::ThenDoHostCallbackForTest(std::function<void()> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  return ThenDoHostCallback(callback);
-}
-
 Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
   VLOG_CALL(PARAM(callback));
 

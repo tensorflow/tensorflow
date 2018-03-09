@@ -25,6 +25,12 @@ namespace gpu {
 namespace {
 
 bool IsFusile(const HloInstruction& hlo) {
+  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
+  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
+  // unfused GTE is an input to a kernel (including a fusion kernel), we
+  // compute the address of the GTE at the top of the kernel.  Often we know the
+  // address of the GTE result statically, so we can do this without chasing any
+  // pointers.
   return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
          hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
@@ -32,7 +38,6 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
-         hlo.opcode() == HloOpcode::kGetTupleElement ||
          hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||

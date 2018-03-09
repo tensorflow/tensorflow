@@ -18,22 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.contrib.py2tf.utils import py_func
+from tensorflow.contrib.py2tf.utils import type_check
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
 
 
 def dynamic_builtin(f, *args, **kwargs):
   """Converts a builtin function call inline."""
-  if not tf_inspect.isbuiltin(f):
+  # Some built-ins may be objects.
+  if not tf_inspect.isbuiltin(f) and f not in (range,):
     return f(*args, **kwargs)
 
   if f is len:
     return dynamic_len(*args, **kwargs)
+  if six.PY2 and f is xrange:
+    return dynamic_range(*args, **kwargs)
+  if f is range:
+    return dynamic_range(*args, **kwargs)
 
-  raise NotImplementedError('The "%s" builtin is not yet supported.' % f)
+  raise NotImplementedError(
+      'The "%s" builtin is not yet supported.' % f.__name__)
 
 
 def dynamic_len(list_or_tensor):
@@ -46,6 +56,22 @@ def dynamic_len(list_or_tensor):
     return array_ops.shape(list_or_tensor)[0]
 
   return len(list_or_tensor)
+
+
+def dynamic_range(start_or_stop, stop=None, step=None):
+  """Implementation of range using dynamic dispatch."""
+  if type_check.is_tensor(start_or_stop, stop, step):
+    if step is not None:
+      return math_ops.range(start_or_stop, stop, step)
+    if stop is not None:
+      return math_ops.range(start_or_stop, stop)
+    return math_ops.range(start_or_stop)
+
+  if step is not None:
+    return range(start_or_stop, stop, step)
+  elif stop is not None:
+    return range(start_or_stop, stop)
+  return range(start_or_stop)
 
 
 def is_tf_print_compatible(value):

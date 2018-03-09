@@ -174,7 +174,9 @@ bool HasResourceInputOrOutput(const Node& node) {
 }
 
 struct NodeCompare {
-  bool operator()(const Node* a, const Node* b) { return a->id() < b->id(); }
+  bool operator()(const Node* a, const Node* b) const {
+    return a->id() < b->id();
+  }
 };
 using OrderedNodeSet = std::set<Node*, NodeCompare>;
 

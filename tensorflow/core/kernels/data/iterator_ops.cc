@@ -868,8 +868,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
     // owned thread pool.
     thread_pool_->Schedule(std::bind(
         [this, ctx, iterator](DoneCallback done) {
-          core::ScopedUnref unref_iterator(iterator);
-
           std::vector<Tensor> components;
           bool end_of_sequence = false;
 
@@ -886,17 +884,22 @@ class IteratorGetNextOp : public AsyncOpKernel {
           };
           IteratorContext iter_ctx(std::move(params));
 
-          OP_REQUIRES_OK_ASYNC(
-              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-              done);
-          OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                            errors::OutOfRange("End of sequence"), done);
+          Status s =
+              iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+          // NOTE(mrry): We must unref the iterator before calling `done()`, to
+          // avoid destruction races.
+          iterator->Unref();
 
-          for (int i = 0; i < components.size(); ++i) {
-            // TODO(mrry): Check that the shapes match the shape attrs.
-            ctx->set_output(i, components[i]);
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < components.size(); ++i) {
+              // TODO(mrry): Check that the shapes match the shape attrs.
+              ctx->set_output(i, components[i]);
+            }
           }
-
           done();
         },
         std::move(done)));

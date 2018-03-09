@@ -29,6 +29,8 @@ from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
 from tensorflow.contrib.py2tf.converters import for_loops
+from tensorflow.contrib.py2tf.converters import ifexp
+from tensorflow.contrib.py2tf.converters import lists
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import name_scopes
 from tensorflow.contrib.py2tf.converters import side_effect_guards
@@ -299,10 +301,14 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   node = _static_analysis_pass(node, ctx)
 
+  # TODO(mdan): Clean this up.
+  # Some intermediate analyses are not required, and some comments got orphaned.
+
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
+  node = ifexp.transform(node, ctx)
   node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
@@ -317,6 +323,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = single_return.transform(node, ctx)
 
   node = _static_analysis_pass(node, ctx)
+  node = lists.transform(node, ctx)
   node = for_loops.transform(node, ctx)
   # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)

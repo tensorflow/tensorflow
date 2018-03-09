@@ -14,7 +14,6 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
-    go_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

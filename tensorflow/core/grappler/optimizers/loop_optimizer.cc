@@ -64,9 +64,10 @@ std::vector<int> GetStackPushNodesToConvert(const SimpleGraphView& graph_view,
                op_types_to_traverse.find(fanout_node.op()) !=
                    op_types_to_traverse.end()) {
       continue;
-    } else {
-      // The node is either a StackPop node or something unexpected behind which
-      // may hide a StackPop node, so we leave the graph alone.
+    } else if (!IsStackPopOp(fanout_node) ||
+               !graph_view.outputs(fanout_idx).empty()) {
+      // The node is either a stack pop with consumers or something unexpected
+      // so we leave the graph alone.
       nodes_to_convert.clear();
       break;
     }
@@ -85,7 +86,7 @@ Status RemoveStackOps(const GraphDef& graph, GraphDef* optimized_graph) {
            GetStackPushNodesToConvert(graph_view, node_idx)) {
         // We found push nodes without corresponding pops. Convert them to
         // Identity passing the data through and add a control dependency from
-        // the op supplying the handle.
+        // the op supplying the stack handle.
         NodeDef* push_node = optimized_graph->mutable_node(push_node_idx);
         VLOG(1) << "Converting " << push_node_idx << " : "
                 << push_node->DebugString();

@@ -724,9 +724,9 @@ class GradientBoostedDecisionTreeModel(object):
       active_handlers_current_layer = (
           active_handlers_current_layer <
           self._learner_config.feature_fraction_per_tree)
-      active_handlers = array_ops.stack(active_handlers_current_layer,
-                                        array_ops.ones(
-                                            [len(handlers)], dtype=dtypes.bool))
+      active_handlers = array_ops.stack([
+          active_handlers_current_layer,
+          array_ops.ones([len(handlers)], dtype=dtypes.bool)], axis=1)
     else:
       active_handlers = array_ops.ones([len(handlers), 2], dtype=dtypes.bool)
 

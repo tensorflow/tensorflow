@@ -727,9 +727,12 @@ void ConvertSqueezeOperator(const NodeDef& node,
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
 
-  const auto& squeeze_dims = GetListAttr(node, "squeeze_dims");
-  for (int i = 0; i < squeeze_dims.i_size(); ++i) {
-    op->squeeze_dims.push_back(squeeze_dims.i(i));
+  // When omitted we are to squeeze all dimensions == 1.
+  if (HasAttr(node, "squeeze_dims")) {
+    const auto& squeeze_dims = GetListAttr(node, "squeeze_dims");
+    for (int i = 0; i < squeeze_dims.i_size(); ++i) {
+      op->squeeze_dims.push_back(squeeze_dims.i(i));
+    }
   }
 
   model->operators.emplace_back(op);

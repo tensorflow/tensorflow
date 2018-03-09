@@ -267,6 +267,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = ["notsan"],
 )
 
 filegroup(

@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -383,13 +383,9 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       !lhs->operand(0)->IsConstant() && lhs->operand(1)->IsConstant()) {
     auto* c1 = lhs->mutable_operand(1);
     auto* c2 = rhs;
-    TF_ASSIGN_OR_RETURN(
-        Shape sum_of_constants_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, c1, c2));
 
-    auto* sum_of_constants =
-        computation_->AddInstruction(HloInstruction::CreateBinary(
-            sum_of_constants_shape, HloOpcode::kAdd, c1, c2));
+    TF_ASSIGN_OR_RETURN(auto* sum_of_constants,
+                        CreateBinaryHlo(HloOpcode::kAdd, c1, c2));
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
                                           lhs->mutable_operand(0),
@@ -641,31 +637,24 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   if (lhs->opcode() == HloOpcode::kDivide &&
       rhs->opcode() == HloOpcode::kDivide) {
     TF_ASSIGN_OR_RETURN(
-        const Shape a_times_d_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
-                                           lhs->operand(0), rhs->operand(1)));
-    auto a_times_d = computation_->AddInstruction(HloInstruction::CreateBinary(
-        a_times_d_shape, HloOpcode::kMultiply, lhs->mutable_operand(0),
-        rhs->mutable_operand(1)));
+        auto a_times_d,
+        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(0),
+                        rhs->mutable_operand(1)));
     TF_ASSIGN_OR_RETURN(
-        const Shape b_times_c_shape,
-        ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply,
-                                           lhs->operand(1), rhs->operand(0)));
-    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1),
-        rhs->mutable_operand(0)));
-    return ReplaceWithNewInstruction(
-        divide, HloInstruction::CreateBinary(
-                    divide->shape(), HloOpcode::kDivide, a_times_d, b_times_c));
+        auto b_times_c,
+        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1),
+                        rhs->mutable_operand(0)));
+    TF_ASSIGN_OR_RETURN(auto new_divide, CreateBinaryHlo(HloOpcode::kDivide,
+                                                         a_times_d, b_times_c));
+
+    return ReplaceInstruction(divide, new_divide);
   }
 
   // (A / B) / C => A / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(const Shape b_times_c_shape,
-                        ShapeInference::InferBinaryOpShape(
-                            HloOpcode::kMultiply, lhs->operand(1), rhs));
-    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        b_times_c_shape, HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+    TF_ASSIGN_OR_RETURN(
+        auto b_times_c,
+        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -674,11 +663,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
   // A / (B / C) => (A*C) / B
   if (rhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(const Shape a_times_c_shape,
-                        ShapeInference::InferBinaryOpShape(
-                            HloOpcode::kMultiply, lhs, rhs->operand(1)));
-    auto a_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
-        a_times_c_shape, HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(
+        auto a_times_c,
+        CreateBinaryHlo(HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -1311,17 +1298,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
         padding_dimension->set_edge_padding_high(0);
       }
     }
-    TF_ASSIGN_OR_RETURN(Shape nonzero_pad_shape,
-                        ShapeInference::InferPadShape(pad->operand(0)->shape(),
-                                                      pad->operand(1)->shape(),
-                                                      nonzero_padding));
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
+                        CreatePadHlo(pad->mutable_operand(0),
+                                     pad->mutable_operand(1), nonzero_padding));
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
-    TF_RETURN_IF_ERROR(
-        LayoutUtil::CopyLayoutBetweenShapes(pad->shape(), &nonzero_pad_shape));
-    HloInstruction* nonzero_pad = computation_->AddInstruction(
-        HloInstruction::CreatePad(nonzero_pad_shape, pad->mutable_operand(0),
-                                  pad->mutable_operand(1), nonzero_padding));
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        pad->shape(), nonzero_pad->mutable_shape()));
 
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
@@ -1334,7 +1318,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       if (padding_dimension.edge_padding_low() < 0) {
         start = -1 * padding_dimension.edge_padding_low();
       }
-      int64 end = nonzero_pad_shape.dimensions(i);
+      int64 end = nonzero_pad->shape().dimensions(i);
       if (padding_dimension.edge_padding_high() < 0) {
         end += padding_dimension.edge_padding_high();
       }
@@ -1343,16 +1327,14 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       strides.push_back(1);
     }
 
-    // Verify that the slice shape matches the pad shape.
     TF_ASSIGN_OR_RETURN(
-        Shape inferred_slice_shape,
-        ShapeInference::InferSliceShape(nonzero_pad_shape, start_indices,
-                                        end_indices, strides));
-    TF_RET_CHECK(ShapeUtil::Compatible(inferred_slice_shape, pad->shape()));
+        HloInstruction * slice,
+        CreateSliceHlo(nonzero_pad, start_indices, end_indices, strides));
 
-    std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
-        pad->shape(), nonzero_pad, start_indices, end_indices, strides);
-    return ReplaceWithNewInstruction(pad, std::move(slice));
+    // Verify that the slice shape matches the pad shape.
+    TF_RET_CHECK(ShapeUtil::Compatible(slice->shape(), pad->shape()));
+
+    return ReplaceInstruction(pad, slice);
   }
 
   return Status::OK();

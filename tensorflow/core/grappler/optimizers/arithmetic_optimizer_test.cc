@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
 namespace {
 
 string OptimizedName(const string& name) {
@@ -46,8 +47,32 @@ void VerifyGraphsMatch(const GraphDef& original_graph,
     }
   }
 }
+}  // namespace
 
-class ArithmeticOptimizerTest : public ::testing::Test {};
+class ArithmeticOptimizerTest : public ::testing::Test {
+ protected:
+  // Optimize a graph using ArithmeticOptimizer and prune all the nodes that no
+  // longer have any output consumers.
+  void OptimizeAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+                        GraphDef* output) {
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
+  }
+
+  // TODO(ezhulenev): Make private. After migration to stages each test
+  // should explicitly enable required optimization for tests isolation
+  void DisableAllStages(ArithmeticOptimizer* optimizer) {
+    ArithmeticOptimizer::ArithmeticOptimizerOptions options{
+        /*enable_add_to_addn_combining*/ false};
+    optimizer->options_ = options;
+  }
+
+  void EnableAddToAddNCombining(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_add_to_addn_combining = true;
+  }
+};
 
 TEST_F(ArithmeticOptimizerTest, NoOp) {
   // This trivial graph is so basic there's nothing to optimize.
@@ -350,7 +375,10 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   for (int i = 0; i < item.graph.node_size(); ++i) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
+
   ArithmeticOptimizer optimizer;
+  DisableAllStages(&optimizer);
+
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -1164,6 +1192,169 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
                    [](const NodeDef& node) { return node.op() == "Cast"; }));
 }
 
-}  // namespace
+TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope sx = s.NewSubScope("x");
+  tensorflow::Scope sy = s.NewSubScope("y");
+
+  auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {2, 2}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {2, 2}, DT_FLOAT);
+  auto add_ab = ops::Add(sx.WithOpName("Add_ab"), a, b);
+  auto add_abc = ops::Add(sy.WithOpName("Add_abc"), add_ab, c);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), add_abc);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableAddToAddNCombining(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     +
+  //    / \
+  //   +   c      -->    AddN(a, b, c)
+  //  / \
+  // a   b
+  EXPECT_EQ(5, output.node_size());
+
+  NodeMap node_map(&output);
+
+  // check add tree was replaced with AddN
+  const NodeDef* collapsed_add = CHECK_NOTNULL(
+      node_map.GetNode("y/ArithmeticOptimizer/AddOpsGroup_Add_abc_Add_ab"));
+
+  EXPECT_EQ("AddN", collapsed_add->op());
+  EXPECT_EQ(3, collapsed_add->input_size());
+  EXPECT_EQ("a", collapsed_add->input(0));
+  EXPECT_EQ("b", collapsed_add->input(1));
+  EXPECT_EQ("c", collapsed_add->input(2));
+
+  // check output was re-wired to new node
+  const NodeDef* updated_outputs = CHECK_NOTNULL(node_map.GetNode("outputs"));
+
+  EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {2, 2}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {2, 2}, DT_FLOAT);
+  auto add_ab = ops::Add(s.WithOpName("Add_ab"), a, b);
+  auto add_abc = ops::Add(s.WithOpName("Add_abc"), add_ab, c);
+
+  auto x = ops::Variable(s.WithOpName("x"), {2, 2}, DT_FLOAT);
+  auto y = ops::Variable(s.WithOpName("y"), {2, 2}, DT_FLOAT);
+  auto z = ops::Variable(s.WithOpName("z"), {2, 2}, DT_FLOAT);
+  auto add_xy = ops::Add(s.WithOpName("Add_xy"), x, y);
+  auto add_xyz = ops::Add(s.WithOpName("Add_xyz"), add_xy, z);
+
+  auto mul = ops::Multiply(s.WithOpName("Mul"), add_abc, add_xyz);
+  auto outputs = ops::Identity(s.WithOpName("outputs"), mul);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableAddToAddNCombining(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //         *
+  //      /     \
+  //     +       +                        *
+  //    / \     / \                    /     \
+  //   +   c   x   + -->    AddN(a, b, c)  AddN(x, y, z))
+  //  / \         / \
+  // a   b       y   z
+  EXPECT_EQ(10, output.node_size());
+
+  NodeMap node_map(&output);
+
+  // check left Add subtree replaced with AddN
+  const NodeDef* collapsed_left = CHECK_NOTNULL(
+      node_map.GetNode("ArithmeticOptimizer/AddOpsGroup_Add_abc_Add_ab"));
+
+  EXPECT_EQ("AddN", collapsed_left->op());
+  EXPECT_EQ(3, collapsed_left->input_size());
+  EXPECT_EQ("a", collapsed_left->input(0));
+  EXPECT_EQ("b", collapsed_left->input(1));
+  EXPECT_EQ("c", collapsed_left->input(2));
+
+  // check right Add subtree replaced with AddN
+  const NodeDef* collapsed_right = CHECK_NOTNULL(
+      node_map.GetNode("ArithmeticOptimizer/AddOpsGroup_Add_xyz_Add_xy"));
+
+  EXPECT_EQ("AddN", collapsed_right->op());
+  EXPECT_EQ(3, collapsed_right->input_size());
+  EXPECT_EQ("x", collapsed_right->input(0));
+  EXPECT_EQ("y", collapsed_right->input(1));
+  EXPECT_EQ("z", collapsed_right->input(2));
+
+  // check that Mul inputs re-wired to new Nodes
+  const NodeDef* updated_mul = CHECK_NOTNULL(node_map.GetNode("Mul"));
+
+  EXPECT_EQ("Mul", updated_mul->op());
+  EXPECT_EQ(2, updated_mul->input_size());
+  EXPECT_EQ(collapsed_left->name(), updated_mul->input(0));
+  EXPECT_EQ(collapsed_right->name(), updated_mul->input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {2, 2}, DT_FLOAT);
+  auto c = ops::Variable(s.WithOpName("c"), {2, 2}, DT_FLOAT);
+  auto add_ab = ops::Add(s.WithOpName("Add_ab"), a, b);
+  auto add_bc = ops::Add(s.WithOpName("Add_bc"), b, c);
+  auto add_all = ops::Add(s.WithOpName("Add_all"), add_ab, add_bc);
+  auto outputs = ops::Identity(s.WithOpName("outputs"), add_all);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableAddToAddNCombining(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     +
+  //    / \
+  //   +   +     -->    AddN(a, b, b, c)
+  //  / \ / \                   ^
+  // a   b   c                  b added twice!
+  EXPECT_EQ(5, output.node_size());
+
+  NodeMap node_map(&output);
+
+  // check Add tree replaced with AddN
+  const NodeDef* collapsed_add = CHECK_NOTNULL(node_map.GetNode(
+      "ArithmeticOptimizer/AddOpsGroup_Add_all_Add_ab_Add_bc"));
+
+  EXPECT_EQ("AddN", collapsed_add->op());
+  EXPECT_EQ(4, collapsed_add->input_size());
+  EXPECT_EQ("a", collapsed_add->input(0));
+  EXPECT_EQ("b", collapsed_add->input(1));
+  EXPECT_EQ("b", collapsed_add->input(2));
+  EXPECT_EQ("c", collapsed_add->input(3));
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

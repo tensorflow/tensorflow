@@ -237,16 +237,16 @@ class LayerCollectionTest(test.TestCase):
 
       # Create a new loss function by name.
       lc.register_categorical_predictive_distribution(logits, name='loss1')
-      self.assertEqual(1, len(lc.losses))
+      self.assertEqual(1, len(lc.towers_by_loss))
 
       # Add logits to same loss function.
       lc.register_categorical_predictive_distribution(
           logits, name='loss1', reuse=True)
-      self.assertEqual(1, len(lc.losses))
+      self.assertEqual(1, len(lc.towers_by_loss))
 
       # Add another new loss function.
       lc.register_categorical_predictive_distribution(logits, name='loss2')
-      self.assertEqual(2, len(lc.losses))
+      self.assertEqual(2, len(lc.towers_by_loss))
 
   def testLossFunctionWithoutName(self):
     """Ensure loss functions get unique names if 'name' not specified."""
@@ -298,13 +298,9 @@ class LayerCollectionTest(test.TestCase):
             name='loss1',
             reuse=layer_collection.VARIABLE_SCOPE)
 
-      self.assertEqual(len(lc.losses), 1)
-      loss = lc.losses[0]
-
+      self.assertEqual(len(lc.towers_by_loss), 1)
       # Three successful registrations.
-      self.assertEqual(loss.params.shape.as_list(),
-                       [3 * batch_size, output_size])
-      self.assertEqual(loss.targets.shape.as_list(), [3 * batch_size])
+      self.assertEqual(len(lc.towers_by_loss[0]), 3)
 
   def testRegisterCategoricalPredictiveDistributionBatchSize1(self):
     with ops.Graph().as_default():
@@ -478,17 +474,6 @@ class LayerCollectionTest(test.TestCase):
       self.assertEqual(2, len(lc.get_factors()))
       variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertTrue(all([var.name.startswith(scope) for var in variables]))
-
-  def testGetUseCountMap(self):
-    """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
-    lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {
-        'a': MockFisherBlock(),
-        ('a', 'c'): MockFisherBlock(),
-        ('b', 'c'): MockFisherBlock()
-    }
-    use_count_map = lc.get_use_count_map()
-    self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
 
   def testIdentifyLinkedParametersSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', shape=())
