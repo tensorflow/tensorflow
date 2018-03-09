@@ -2092,8 +2092,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "Dynamic slice start number of dimensions %lld (%s) must match rank "
-        "%lld of slice input (%s).",
+        "Dynamic update slice start number of dimensions %lld (%s) must match "
+        "rank %lld of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
         ShapeUtil::Rank(operand_shape),
         ShapeUtil::HumanString(operand_shape).c_str());
