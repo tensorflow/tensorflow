@@ -25,6 +25,19 @@ namespace tensorflow {
 
 const char ProcessFunctionLibraryRuntime::kDefaultFLRDevice[] = "null";
 
+Status ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
+    DistributedFunctionLibraryRuntime* parent, const string& function_name,
+    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options) {
+  mutex_lock l(mu_);
+  if (!init_started_) {
+    init_started_ = true;
+    init_result_ = parent->Instantiate(function_name, lib_def, attrs, options,
+                                       &local_handle_);
+  }
+  return init_result_;
+}
+
 ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
@@ -167,7 +180,8 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
     if (function_data_.count(h) != 0) return h;
   }
   h = next_handle_;
-  function_data_.insert({h, FunctionData(device_name, local_handle)});
+  FunctionData* fd = new FunctionData(device_name, local_handle);
+  function_data_[h] = std::unique_ptr<FunctionData>(fd);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -196,19 +210,19 @@ ProcessFunctionLibraryRuntime::GetHandleOnDevice(
   if (function_data_.count(handle) == 0) {
     return kInvalidLocalHandle;
   }
-  const FunctionData& function_data = function_data_[handle];
-  if (function_data.target_device != device_name) {
+  FunctionData* function_data = function_data_[handle].get();
+  if (function_data->target_device() != device_name) {
     return kInvalidLocalHandle;
   }
-  return function_data.local_handle;
+  return function_data->local_handle();
 }
 
 string ProcessFunctionLibraryRuntime::GetDeviceName(
     FunctionLibraryRuntime::Handle handle) {
   mutex_lock l(mu_);
   CHECK_EQ(1, function_data_.count(handle));
-  const FunctionData& function_data = function_data_[handle];
-  return function_data.target_device;
+  FunctionData* function_data = function_data_[handle].get();
+  return function_data->target_device();
 }
 
 Status ProcessFunctionLibraryRuntime::Instantiate(
@@ -225,11 +239,26 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
         "Currently don't support instantiating functions on device: ",
         options.target);
   }
-  FunctionLibraryRuntime::Handle cluster_handle;
-  TF_RETURN_IF_ERROR(parent_->Instantiate(function_name, *lib_def_, attrs,
-                                          options, &cluster_handle));
+
   string function_key = Canonicalize(function_name, attrs);
-  *handle = AddHandle(function_key, options.target, cluster_handle);
+  FunctionData* f;
+  {
+    mutex_lock l(mu_);
+    FunctionLibraryRuntime::Handle h =
+        gtl::FindWithDefault(table_, function_key, kInvalidHandle);
+    if (h == kInvalidHandle || function_data_.count(h) == 0) {
+      h = next_handle_;
+      FunctionData* fd = new FunctionData(options.target, kInvalidHandle);
+      function_data_[h] = std::unique_ptr<FunctionData>(fd);
+      table_[function_key] = h;
+      next_handle_++;
+    }
+    f = function_data_[h].get();
+    *handle = h;
+  }
+  TF_RETURN_IF_ERROR(
+      f->DistributedInit(parent_, function_name, *lib_def_, attrs, options));
+
   return Status::OK();
 }
 
@@ -247,7 +276,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   {
     mutex_lock l(mu_);
     CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
-    target_device = function_data_[handle].target_device;
+    target_device = function_data_[handle]->target_device();
   }
   flr = GetFLR(target_device);
   if (flr != nullptr) {
@@ -276,8 +305,8 @@ void ProcessFunctionLibraryRuntime::Run(
       done(errors::NotFound("Handle: ", handle, " not found."));
       return;
     }
-    target_device = function_data_[handle].target_device;
-    local_handle = function_data_[handle].local_handle;
+    target_device = function_data_[handle]->target_device();
+    local_handle = function_data_[handle]->local_handle();
   }
   flr = GetFLR(target_device);
   if (flr != nullptr) {

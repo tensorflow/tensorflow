@@ -3156,6 +3156,7 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
+        ":lib",
         ":test",
         ":test_main",
         ":testlib",
