@@ -30,6 +30,27 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+
+// Stub method which returns kTfLiteError when the function is forbidden.
+// We're registrating this function to several different function to save
+// compiled binary size. Please note the restrictions:
+// * The type of first parameter have to be `TfLiteContext*`.
+// * All paramteters must be trivailly destructible. (E.g. No C++ class)
+TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
+  context->ReportError(context,
+                       "The function is forbidden if not calling in delegate.");
+  return kTfLiteError;
+}
+
+// Set the ForbiddenContextFunction to a compatible function pointer.
+template <typename FunctionType>
+void SetForbiddenContextFunction(FunctionType* func) {
+  *func = reinterpret_cast<FunctionType>(ForbiddenContextFunction);
+}
+
+}  // namespace
+
 // A trivial implementation of GraphInfo around the Interpreter.
 // NOTE: this interpreter info represents the subset of the
 // graph that is executed according to execution plan. Thus,
@@ -74,9 +95,9 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.gemm_context = nullptr;
 
   // Invalid to call these these except from TfLiteDelegate
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
-  context_.GetExecutionPlan = nullptr;
+  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
+  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.GetExecutionPlan);
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -686,9 +707,9 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   TfLiteStatus status = delegate->Prepare(&context_, delegate);
   // Remove additional context info.
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
-  context_.GetExecutionPlan = nullptr;
+  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
+  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.GetExecutionPlan);
   return status;
 }
 

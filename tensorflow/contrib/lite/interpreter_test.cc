@@ -561,6 +561,46 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.calls, 1);
 }
 
+TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+  TfLiteRegistration registration = {
+      .init = nullptr, .free = nullptr, .prepare = nullptr, .invoke = nullptr};
+  // These functions are only supported inside Delegate's Prepare function.
+  // The test verifies that these functions returns `kTfLiteError`, but not
+  // `kTfLiteOk` or just crashes.
+  registration.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+    {
+      TfLiteIntArray* execution_plan;
+      EXPECT_EQ(context->GetExecutionPlan(context, &execution_plan),
+                kTfLiteError);
+    }
+    {
+      TfLiteNode* node;
+      TfLiteRegistration* registration;
+      EXPECT_EQ(
+          context->GetNodeAndRegistration(context, 0, &node, &registration),
+          kTfLiteError);
+    }
+    {
+      TfLiteRegistration delegate_registration = {nullptr, nullptr, nullptr,
+                                                  nullptr};
+      TfLiteIntArray nodes_to_replace;
+      nodes_to_replace.size = 0;
+      EXPECT_EQ(context->ReplaceSubgraphsWithDelegateKernels(
+                    context, delegate_registration, &nodes_to_replace, nullptr),
+                kTfLiteError);
+    }
+    return kTfLiteError;
+  };
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                              &registration),
+            kTfLiteOk);
+  EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteError);
+}
+
 TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(Interpreter::kTensorsReservedCapacity),
