@@ -143,19 +143,14 @@ Status QrShapeFn(InferenceContext* c) {
 // Input is [...,M,M].
 // First, second, and third outputs are:
 //   [...,M,M]; [...,M,M]; [...,M,M];
-Status LuShapeFn(InferenceContext* c) {
-  /*
-  ShapeHandler input;
-  DimensionHandle m = c->Dim(input, -2);
-  DimensionHandle n = c->Dim(input, -1);
-  */
-  ShapeHandle l_shape;
-  ShapeHandle u_shape;
-  ShapeHandle p_shape;
-
-  c->set_output(0, l_shape);
-  c->set_output(1, u_shape);
-  c->set_output(2, p_shape);
+Status LuShapeFn(InferenceContext* c) {  
+  // TODO: add ERROR CHECK
+  //c->set_output(0, l_shape);
+  c->set_output(0, c->input(0));
+  //c->set_output(1, u_shape);
+  c->set_output(1, c->input(0));
+  //c->set_output(2, p_shape);
+  c->set_output(2, c->input(0));
   return Status::OK();
 }
 
@@ -355,32 +350,7 @@ REGISTER_OP("Lu")
     .Output("u: T")
     .Output("p: T")
     .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(LuShapeFn)
-    .Doc(R"doc(
-Computes the LU decomposition of one or more square matrices.
-
-The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices.
-
-
-```python
-# l is a tensor of lower triangular matrices.
-# u is a tensor of upper triangular matrices.
-# p is a tensor of permutation matrix.
-# a = p.inverse()*l*u
-l, u, p= lu(a) 
-```
-
-The input has to be square matrix. 
-
-The output is a tensor of the same shape as the input
-containing the LU decompositions for all input submatrices `[..., :, :]`.
-
-input: Shape is `[..., M, M]`.
-l: Shape is `[..., M, M]`.
-u: Shape is `[..., M, M]`.
-p: Shape is `[..., M, M]`.
-)doc");
+    .SetShapeFn(LuShapeFn);
 
 REGISTER_OP("Svd")
     .Input("input: T")

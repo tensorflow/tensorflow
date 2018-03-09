@@ -67,6 +67,13 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     outputs->at(1) =
         lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();        
     outputs->at(2) = lu_decomposition.permutationP();//.indices().data();    
+    /*
+    using namespace std;
+    cout<<outputs->at(0)<<endl;
+    cout<<outputs->at(1)<<endl;
+    cout<<outputs->at(2)<<endl;
+    */
+    
   }
 };
 
