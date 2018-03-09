@@ -159,7 +159,7 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   NodeDef bias_add_node;
   bias_add_node.set_op("BiasAdd");
   bias_add_node.set_name(conv_output_name);
-  bias_add_op.attr["data_format"].CopyFrom(conv_node.attr["data_format"])
+  bias_add_node.attr["data_format"].CopyFrom(conv_node.attr["data_format"])
   CopyNodeAttr(conv_node, "T", "T", &bias_add_node);
   AddNodeInput(conv_node.name(), &bias_add_node);
   AddNodeInput(bias_offset_node.name(), &bias_add_node);
