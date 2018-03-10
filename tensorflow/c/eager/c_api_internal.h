@@ -48,14 +48,14 @@ TFE_ContextDevicePlacementPolicy PlacementPolicy(
 
 struct TFE_Context {
   explicit TFE_Context(const TFE_ContextOptions& opts,
-                       std::unique_ptr<tensorflow::DeviceMgr> device_mgr)
+                       std::unique_ptr<tensorflow::DeviceMgr> device_mgr,
+                       tensorflow::Rendezvous* rendezvous)
       : soft_placement(
             opts.session_options.options.config.allow_soft_placement()),
         policy(PlacementPolicy(soft_placement, opts.policy)),
         device_manager(std::move(device_mgr)),
         devices(device_manager->ListDevices()),
-        rendezvous(
-            new tensorflow::IntraProcessRendezvous(device_manager.get())),
+        rendezvous(rendezvous),
         pflr(new tensorflow::ProcessFunctionLibraryRuntime(
             device_manager.get(), opts.session_options.options.env,
             TF_GRAPH_DEF_VERSION, &func_lib_def, {})),

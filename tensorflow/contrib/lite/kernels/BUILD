@@ -41,6 +41,22 @@ cc_library(
 )
 
 cc_library(
+    name = "eigen_support",
+    srcs = [
+        "eigen_support.cc",
+    ],
+    hdrs = [
+        "eigen_support.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":op_macros",
+        "//tensorflow/contrib/lite:context",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "gemm_support",
     srcs = [
         "gemm_support.cc",
@@ -173,6 +189,7 @@ cc_library(
     }),
     deps = [
         ":activation_functor",
+        ":eigen_support",
         ":kernel_util",
         ":op_macros",
         "//tensorflow/contrib/lite:builtin_op_data",

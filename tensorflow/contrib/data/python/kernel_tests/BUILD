@@ -168,10 +168,10 @@ py_test(
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_cuda_on_cpu_tap",
+        "manual",
         "no_oss",
         "no_pip",
-        "nomsan",
+        "notap",
     ],
     deps = [
         ":dataset_serialization_test",

@@ -548,6 +548,53 @@ TEST_F(DependencyOptimizerTest, IdentityInputs) {
   EXPECT_EQ("s:1", output.node(5).input(0));
 }
 
+TEST_F(DependencyOptimizerTest, IdentityN) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
+  Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
+  auto s = ops::Switch(scope.WithOpName("s"), x, b);
+
+  // IdentityN nodes to be removed.
+  auto id_f = ops::IdentityN(scope.WithOpName("id_f"), {s.output_false});
+  auto id_t = ops::IdentityN(scope.WithOpName("id_t"), {s.output_true});
+
+  // IdentityN node that can't be removed.
+  auto id_b =
+      ops::IdentityN(scope.WithOpName("id_b"), {s.output_false, s.output_true});
+
+  // Outputs
+  Output out1 = ops::Identity(scope.WithOpName("out1"), id_f[0]);
+  Output out2 = ops::Identity(scope.WithOpName("out2"), id_t[0]);
+  Output out3 = ops::Identity(scope.WithOpName("out3"), id_b[0]);
+  Output out4 = ops::Identity(scope.WithOpName("out4"), id_b[1]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"out1", "out2", "out3", "out4"};
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(9, output.node_size());
+  EXPECT_EQ("out1", output.node(5).name());
+  EXPECT_EQ(1, output.node(5).input_size());
+  EXPECT_EQ("s", output.node(5).input(0));
+
+  EXPECT_EQ("out2", output.node(6).name());
+  EXPECT_EQ(1, output.node(6).input_size());
+  EXPECT_EQ("s:1", output.node(6).input(0));
+
+  EXPECT_EQ("out3", output.node(7).name());
+  EXPECT_EQ(1, output.node(7).input_size());
+  EXPECT_EQ("id_b", output.node(7).input(0));
+
+  EXPECT_EQ("out4", output.node(8).name());
+  EXPECT_EQ(1, output.node(8).input_size());
+  EXPECT_EQ("id_b:1", output.node(8).input(0));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

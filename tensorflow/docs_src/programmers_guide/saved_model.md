@@ -256,18 +256,53 @@ with tf.Session(graph=tf.Graph()) as sess:
   builder.add_meta_graph_and_variables(sess,
                                        [tag_constants.TRAINING],
                                        signature_def_map=foo_signatures,
-                                       assets_collection=foo_assets)
+                                       assets_collection=foo_assets,
+                                       strip_default_attrs=True)
 ...
 # Add a second MetaGraphDef for inference.
 with tf.Session(graph=tf.Graph()) as sess:
   ...
-  builder.add_meta_graph([tag_constants.SERVING])
+  builder.add_meta_graph([tag_constants.SERVING], strip_default_attrs=True)
 ...
 builder.save()
 ```
 
+<a name="forward_compatibility"></a>
+#### Forward compatibility via `strip_default_attrs=True`
 
-### Load a SavedModel in Python
+Following the guidance below gives you forward compatibility only if the set of
+Ops has not changed.
+
+The @{tf.saved_model.builder.SavedModelBuilder$`SavedModelBuilder`} class allows
+users to control whether default-valued attributes must be stripped from the
+@{$extend/tool_developers#nodes$`NodeDefs`}
+while adding a meta graph to the SavedModel bundle. Both
+@{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`SavedModelBuilder.add_meta_graph_and_variables`}
+and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`SavedModelBuilder.add_meta_graph`}
+methods accept a Boolean flag `strip_default_attrs` that controls this behavior.
+
+If `strip_default_attrs` is `False`, the exported @{tf.MetaGraphDef} will have
+the default valued attributes in all its @{tf.NodeDef} instances.
+This can break forward compatibility with a sequence of events such as the
+following:
+
+*  An existing Op (`Foo`) is updated to include a new attribute (`T`) with a
+   default (`bool`) at version 101.
+*  A model producer such as a "trainer binary" picks up this change (version 101)
+   to the `OpDef` and re-exports an existing model that uses Op `Foo`.
+*  A model consumer (such as [Tensorflow Serving](/serving)) running an older
+   binary (version 100) doesn't have attribute `T` for Op `Foo`, but tries to
+   import this model. The model consumer doesn't recognize attribute `T` in a
+   `NodeDef` that uses Op `Foo` and therefore fails to load the model.
+*  By setting `strip_default_attrs` to True, the model producers can strip away
+   any default valued attributes in the `NodeDefs`. This helps ensure that newly
+   added attributes with defaults don't cause older model consumers to fail
+   loading models regenerated with newer training binaries.
+
+See [compatibility guidance](https://www.tensorflow.org/programmers_guide/version_compat)
+for more information.
+
+### Loading a SavedModel in Python
 
 The Python version of the SavedModel
 @{tf.saved_model.loader$loader}
@@ -458,7 +493,8 @@ To export your trained Estimator, call
 the `serving_input_receiver_fn`.
 
 ```py
-estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn)
+estimator.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                            strip_default_attrs=True)
 ```
 
 This method builds a new graph by first calling the

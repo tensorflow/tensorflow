@@ -76,8 +76,7 @@ class IrArray {
           llvm::IRBuilder<>* ir_builder);
 
     // Constructs an index from the given multi-dimensional index and the shape
-    // that it indexes into. Also, computes the linear index according to
-    // "shape".
+    // that it indexes into.
     //
     // Precondition: "shape" has a layout.
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,

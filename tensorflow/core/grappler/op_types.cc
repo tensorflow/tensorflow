@@ -144,6 +144,9 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
+  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
+    return true;
+  }
   return op == "Identity" || op == "RefIdentity";
 }
 

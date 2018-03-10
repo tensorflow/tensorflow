@@ -1354,6 +1354,8 @@ void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
 
 int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
+    case ArrayDataType::kBool:
+      return sizeof(bool);
     case ArrayDataType::kFloat:
       return 4;
     case ArrayDataType::kInt8:
@@ -1379,7 +1381,7 @@ int ElementSize(ArrayDataType data_type) {
       LOG(FATAL) << "Transient arrays with strings are not supported yet";
       return 0;
     default:
-      LOG(FATAL) << "Should not get here.";
+      LOG(FATAL) << "Unknown data_type = " << static_cast<int>(data_type);
       return 0;
   }
 }

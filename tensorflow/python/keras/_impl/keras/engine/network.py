@@ -406,6 +406,7 @@ class Network(base_layer.Layer):
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
 
+    If `name` and `index` are both provided, `index` will take precedence.
     Indices are based on order of horizontal graph traversal (bottom-up).
 
     Arguments:
@@ -437,7 +438,7 @@ class Network(base_layer.Layer):
 
   @property
   def updates(self):
-    """Retrieve the network's updates.
+    """Retrieves the network's updates.
 
     Will only include updates that are either
     unconditional, or conditional on inputs to this model
@@ -517,7 +518,7 @@ class Network(base_layer.Layer):
 
   @property
   def losses(self):
-    """Retrieve the network's losses.
+    """Retrieves the network's losses.
 
     Will only include losses that are either
     unconditional, or conditional on inputs to this model
@@ -600,7 +601,7 @@ class Network(base_layer.Layer):
     return specs
 
   def call(self, inputs, training=None, mask=None):
-    """Call the model on new inputs.
+    """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
@@ -1030,7 +1031,7 @@ class Network(base_layer.Layer):
           layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
-      """Deserialize a layer, then call it on appropriate inputs.
+      """Deserializes a layer, then call it on appropriate inputs.
 
       Arguments:
           layer_data: layer config dict.
@@ -1087,7 +1088,7 @@ class Network(base_layer.Layer):
     return cls(inputs=input_tensors, outputs=output_tensors, name=name)
 
   def save(self, filepath, overwrite=True, include_optimizer=True):
-    """Save the model to a single HDF5 file.
+    """Saves the model to a single HDF5 file.
 
     The savefile includes:
         - The model architecture, allowing to re-instantiate the model.
@@ -1193,7 +1194,7 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
-    """Util hared between different serialization methods.
+    """Util shared between different serialization methods.
 
     Returns:
         Model config with Keras version information added.
@@ -1333,7 +1334,7 @@ def _make_node_key(layer_name, node_index):
 
 
 def _map_graph_network(inputs, outputs):
-  """Validate a network's topology and gather its layers and nodes.
+  """Validates a network's topology and gather its layers and nodes.
 
   Arguments:
     inputs: List of input tensors.

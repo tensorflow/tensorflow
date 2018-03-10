@@ -42,6 +42,29 @@ class ControlFlowTest(converter_test_base.TestCase):
       l = []
       self.assertEqual(test_fn(l), result.test_fn(l))
 
+  def test_for_with_iterated_expression(self):
+
+    eval_count = [0]
+
+    def count_evals(x):
+      eval_count[0] += 1
+      return x
+
+    def test_fn(n):
+      s = 0
+      for e in count_evals(range(n)):
+        s += e
+      return s
+
+    node = self.parse_and_analyze(test_fn, {'count_evals': count_evals})
+    node = for_loops.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      result.count_evals = count_evals
+      self.assertEqual(test_fn(5), result.test_fn(5))
+      # count_evals ran twice, once for test_fn and another for result.test_fn
+      self.assertEqual(eval_count[0], 2)
+
 
 if __name__ == '__main__':
   test.main()

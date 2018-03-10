@@ -51,7 +51,7 @@ class BuiltinFunctionTransformer(transformer.Base):
   def visit_Call(self, node):
     self.generic_visit(node)
     # TODO(mdan): This won't work if the function was hidden.
-    if isinstance(node.func, gast.Name) and node.func.id in ('len',):
+    if isinstance(node.func, gast.Name) and node.func.id in ('len', 'range'):
       return self._convert_builtin(node)
     # Print needs to be handled separately because it can be read as statement.
     if isinstance(node.func, gast.Name) and node.func.id == 'print':
