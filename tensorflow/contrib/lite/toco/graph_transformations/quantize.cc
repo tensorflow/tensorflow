@@ -49,6 +49,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
+         type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
 }
 
