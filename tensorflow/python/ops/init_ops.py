@@ -514,9 +514,8 @@ class Orthogonal(Initializer):
     if dtype is None:
       dtype = self.dtype
     # Check the shape
-    if len(shape) < 2:
-      raise ValueError("The tensor to initialize must be "
-                       "at least two-dimensional")
+    if isinstance(shape, int) or len(shape) == 1:
+      return array_ops.ones(shape, dtype)
     # Flatten the input shape with the last dimension remaining
     # its original shape so it works for conv2d
     num_rows = 1
