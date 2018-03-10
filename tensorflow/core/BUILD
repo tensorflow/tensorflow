@@ -3349,6 +3349,39 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "common_runtime_function_threadpool_test",
+    size = "small",
+    srcs = ["common_runtime/function_threadpool_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:shape_ops",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_test_gpu(
     name = "gpu_allocator_retry_test",
     size = "medium",

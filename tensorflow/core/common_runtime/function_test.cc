@@ -530,59 +530,6 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   }
 }
 
-TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {
-  using test::function::blocking_op_state;
-  using test::function::BlockingOpState;
-
-  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "FLRTest", 1);
-  Init({test::function::BlockingOpFn(), test::function::XTimesTwo()}, tp);
-
-  auto x = test::AsScalar<float>(1.3);
-  Tensor y;
-  blocking_op_state = new BlockingOpState();
-
-  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
-  bool finished_running = false;
-  tp1->Schedule([&x, &y, &finished_running, this]() {
-    TF_CHECK_OK(InstantiateAndRun(flr0_, "BlockingOpFn", {}, {x}, {&y},
-                                  false /* add_runner */));
-    finished_running = true;
-  });
-
-  // InstantiateAndRun shouldn't finish because BlockingOpFn should be blocked.
-  EXPECT_FALSE(finished_running);
-
-  FunctionLibraryRuntime::Handle h;
-  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &h));
-
-  auto x1 = test::AsTensor<float>({1, 2, 3, 4});
-  Tensor y1;
-  std::atomic<int32> num_done(0);
-  FunctionLibraryRuntime::Options opts;
-  for (int i = 0; i < 4; ++i) {
-    tp1->Schedule([&h, &x1, &y1, &opts, &num_done, this]() {
-      TF_CHECK_OK(Run(flr0_, h, opts, {x1}, {&y1}, false /* add_runner */));
-      num_done.fetch_add(1);
-    });
-  }
-  // All the 4 Run() calls should be blocked because the runner is occupied.
-  EXPECT_EQ(0, num_done.load());
-
-  blocking_op_state->AwaitState(1);
-  blocking_op_state->MoveToState(1, 2);
-  // Now the runner should be unblocked and all the other Run() calls should
-  // proceed.
-  blocking_op_state->AwaitState(3);
-  blocking_op_state->MoveToState(3, 0);
-  delete tp1;
-  EXPECT_TRUE(finished_running);
-  EXPECT_EQ(4, num_done.load());
-
-  delete blocking_op_state;
-  blocking_op_state = nullptr;
-  delete tp;
-}
-
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -855,7 +802,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__10")
+        s.WithOpName("x4/x2/scale/_12__cf__6")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -1061,13 +1008,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_6__cf__15")
+        s.WithOpName("scale/_6__cf__11")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_5__cf__14")
+        s.WithOpName("Func/_1/sy/_5__cf__10")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
