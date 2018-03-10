@@ -305,6 +305,14 @@ class IteratorContext {
     return params_.allocator_getter(attrs);
   }
 
+  std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
+    return params_.allocator_getter;
+  }
+
+  std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
+    return params_.stats_aggregator_getter;
+  }
+
  private:
   Params params_;
 };
@@ -466,11 +474,11 @@ class GraphDatasetBase : public DatasetBase {
   }
 
   // Key for storing the Dataset graph in the serialized format.
-  static const char kDatasetGraphKey[];
+  TF_EXPORT static const char kDatasetGraphKey[];
 
   // Key for storing the output node of the Dataset graph in the serialized
   // format.
-  static const char kDatasetGraphOutputNodeKey[];
+  TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
 
  private:
   Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,

@@ -130,6 +130,8 @@ class LayerCollection(object):
     fisher_factors: an OrderedDict mapping tuples to FisherFactor instances.
     losses: a list of LossFunction objects. The loss to be optimized is their
         sum.
+    loss_colocation_ops: ops to colocate loss function evaluations with.  These
+        will typically be the inputs to the losses.
   """
 
   def __init__(self,
@@ -148,14 +150,21 @@ class LayerCollection(object):
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_multi_approximation = (
         APPROX_KRONECKER_SERIES_2_NAME)
+    self.loss_colocation_ops = {}
+    self._vars_to_uses = defaultdict(lambda: 0)
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
 
   @property
   def losses(self):
-    """LossFunctions registered with this LayerCollection."""
-    return list(self._loss_dict.values())
+    """Tuple of LossFunction objects registered with this LayerCollection."""
+    return nest.flatten(self.towers_by_loss)
+
+  @property
+  def towers_by_loss(self):
+    """Tuple across losses of LossFunction objects registered to each tower."""
+    return tuple(tuple(lst) for lst in self._loss_dict.values())
 
   @property
   def registered_variables(self):
@@ -290,23 +299,74 @@ class LayerCollection(object):
     self.fisher_blocks[layer_key] = fisher_block
     return fisher_block
 
-  def get_use_count_map(self):
-    """Returns a dict of variables to their number of registrations."""
-    # TODO(b/70283403): Reimplement this in the old way, where each
-    # registration function would be responsible for incrementing the count.
-    # Also, this version has a bug: it won't do the right thing for generic
-    # registration for parameters that are shared.  i.e. it won't set the use
-    # count to infinity.
-    vars_to_uses = defaultdict(int)
-    for key, block in six.iteritems(self.fisher_blocks):
-      n = (
-          block.num_inputs()*block.num_registered_minibatches if isinstance(
-              block, (fb.FullyConnectedSeriesFB, fb.FullyConnectedMultiIndepFB))
-          else block.num_registered_minibatches)
-      key = utils.ensure_sequence(key)
-      for k in key:
-        vars_to_uses[k] += n
-    return vars_to_uses
+  def register_loss_function(self,
+                             loss,
+                             colocation_op,
+                             base_name,
+                             name=None,
+                             reuse=VARIABLE_SCOPE):
+    """Registers a LossFunction object.
+
+    Args:
+      loss: The LossFunction object.
+      colocation_op: The op to colocate the loss function's computations with.
+      base_name: The name to derive a new unique name from is the name argument
+        is None.
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: If reuse == True and name == None.
+      ValueError: If reuse == True and seed != None.
+      KeyError: If reuse == True and no existing LossFunction with 'name' found.
+      KeyError: If reuse == False and existing LossFunction with 'name' found.
+    """
+
+    name = name or self._graph.unique_name(base_name)
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      if name is None:
+        raise ValueError(
+            "If reuse is enabled, loss function's name must be set.")
+
+      loss_list = self._loss_dict.get(name, None)
+
+      if loss_list is None:
+        raise KeyError(
+            "Unable to find loss function named {}. Register a new loss "
+            "function with reuse=False.".format(name))
+    else:
+      if name in self._loss_dict:
+        raise KeyError(
+            "Loss function named {} already exists. Set reuse=True to append "
+            "another minibatch/tower.".format(name))
+
+      loss_list = []
+      self._loss_dict[name] = loss_list
+
+    loss_list.append(loss)
+    self.loss_colocation_ops[loss] = colocation_op
+
+  def _get_use_count_map(self):
+    """Returns a dict mapping variables to their number of registrations."""
+    return self._vars_to_uses
+
+  def _add_uses(self, params, uses):
+    """Register additional uses by params in the graph.
+
+    Args:
+      params: Variable or tuple of Variables. Parameters for a layer.
+      uses: int or float. Number of additional uses for these parameters.
+    """
+    params = params if isinstance(params, (tuple, list)) else (params,)
+    for var in params:
+      self._vars_to_uses[var] += uses
 
   def check_registration(self, variables):
     """Checks that all variable uses have been registered properly.
@@ -324,7 +384,7 @@ class LayerCollection(object):
     # Note that overlapping parameters (i.e. those that share variables) will
     # be caught by layer_collection.LayerParametersDict during registration.
 
-    reg_use_map = self.get_use_count_map()
+    reg_use_map = self._get_use_count_map()
 
     error_messages = []
 
@@ -414,12 +474,27 @@ class LayerCollection(object):
     inputs_to_losses = nest.flatten(tuple(loss.inputs for loss in self.losses))
     self._subgraph = utils.SubGraph(inputs_to_losses)
 
+  def eval_losses(self):
+    """Return evaluated losses (colocated with inputs to losses)."""
+    evals = []
+    for loss in self.losses:
+      with ops.colocate_with(self.loss_colocation_ops[loss]):
+        evals.append(loss.evaluate())
+    return evals
+
+  def eval_losses_on_samples(self):
+    """Return losses evaluated on samples (colocated with inputs to losses)."""
+    evals = []
+    for loss in self.losses:
+      with ops.colocate_with(self.loss_colocation_ops[loss]):
+        evals.append(loss.evaluate_on_sample())
+    return evals
+
   def total_loss(self):
-    return math_ops.add_n(tuple(loss.evaluate() for loss in self.losses))
+    return math_ops.add_n(self.eval_losses())
 
   def total_sampled_loss(self):
-    return math_ops.add_n(
-        tuple(loss.evaluate_on_sample() for loss in self.losses))
+    return math_ops.add_n(self.eval_losses_on_samples())
 
   def _get_linked_approx(self, params):
     """If params were linked, return their specified approximation."""
@@ -469,6 +544,8 @@ class LayerCollection(object):
         params, fb.EmbeddingKFACFB(self, vocab_size), reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
 
+    self._add_uses(params, 1)
+
   def register_fully_connected(self,
                                params,
                                inputs,
@@ -505,8 +582,11 @@ class LayerCollection(object):
     block_type = _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES[approx]
     has_bias = isinstance(params, (tuple, list))
 
-    block = self.register_block(params, block_type(self, has_bias), reuse=reuse)
+    block = self.register_block(params, block_type(self, has_bias=has_bias),
+                                reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
+
+    self._add_uses(params, 1)
 
   def register_conv2d(self,
                       params,
@@ -553,6 +633,8 @@ class LayerCollection(object):
         params, block_type(self, params, strides, padding), reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
 
+    self._add_uses(params, 1)
+
   def register_generic(self,
                        params,
                        batch_size,
@@ -586,8 +668,10 @@ class LayerCollection(object):
     block = self.register_block(params, block_type(self, params), reuse=reuse)
     block.register_additional_minibatch(batch_size)
 
+    self._add_uses(params, float("inf"))
+
   def register_fully_connected_multi(self, params, inputs, outputs,
-                                     approx=None):
+                                     approx=None, reuse=VARIABLE_SCOPE):
     """Register fully connected layers with shared parameters.
 
     This can handle general fully-connected layers with shared parameters, but
@@ -604,6 +688,9 @@ class LayerCollection(object):
         [batch_size, output_size]. Outputs produced by layer. In the case of
         RNNs, one Tensor per time step.
       approx: str. One of "kron_indep", "kron_series_1", or "kron_series_2".
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
 
     Raises:
       ValueError: For improper value to 'approx'.
@@ -621,11 +708,14 @@ class LayerCollection(object):
       raise ValueError("Bad value {} for approx.".format(approx))
     block_type = _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES[approx]
 
-    # For now we don't support multiple minibatches for this type of layer, so
-    # we set reuse=False
-    self.register_block(params,
-                        block_type(self, inputs, outputs, has_bias=has_bias),
-                        reuse=False)
+    block = self.register_block(params, block_type(self, has_bias=has_bias),
+                                reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
+    self._add_uses(params, len(inputs))
+
+  # TODO(b/74108452): change the loss registration functions names to refer
+  # to "loss functions" instead of distributions.  Following naming convention
+  # of the loss function classes themselves.
 
   def register_categorical_predictive_distribution(self,
                                                    logits,
@@ -648,50 +738,20 @@ class LayerCollection(object):
       reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
         If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
         tf.get_variable_scope().reuse.
-
-    Raises:
-      ValueError: If reuse == True and name == None.
-      ValueError: If reuse == True and seed != None.
-      KeyError: If reuse == True and no existing LossFunction with 'name' found.
-      KeyError: If reuse == False and existing LossFunction with 'name' found.
     """
-    name = name or self._graph.unique_name(
-        "register_categorical_predictive_distribution")
-
-    if reuse == VARIABLE_SCOPE:
-      reuse = variable_scope.get_variable_scope().reuse
-
-    if reuse:
-      if name is None:
-        raise ValueError(
-            "If reuse is enabled, loss function's name must be set.")
-      if seed is not None:
-        raise ValueError(
-            "Seed can only be specified at LossFunction instantiation.")
-
-      loss = self._loss_dict.get(name, None)
-
-      if loss is None:
-        raise KeyError(
-            "Unable to find loss function named {}. Create a new LossFunction "
-            "with reuse=False.".format(name))
-
-      loss.register_additional_minibatch(logits, targets=targets)
-    else:
-      if name in self._loss_dict:
-        raise KeyError(
-            "Loss function named {} already exists. Set reuse=True to append "
-            "another minibatch.".format(name))
-      loss = lf.CategoricalLogitsNegativeLogProbLoss(
-          logits, targets=targets, seed=seed)
-      self._loss_dict[name] = loss
+    loss = lf.CategoricalLogitsNegativeLogProbLoss(logits, targets=targets,
+                                                   seed=seed)
+    self.register_loss_function(loss, logits,
+                                "categorical_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def register_normal_predictive_distribution(self,
                                               mean,
                                               var=0.5,
                                               seed=None,
                                               targets=None,
-                                              name=None):
+                                              name=None,
+                                              reuse=VARIABLE_SCOPE):
     """Registers a normal predictive distribution.
 
     Args:
@@ -708,21 +768,22 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
     """
-    name = name or self._graph.unique_name(
-        "register_normal_predictive_distribution")
-    if name in self._loss_dict:
-      raise NotImplementedError(
-          "Adding logits to an existing LossFunction not yet supported.")
-    loss = lf.NormalMeanNegativeLogProbLoss(
-        mean, var, targets=targets, seed=seed)
-    self._loss_dict[name] = loss
+    loss = lf.NormalMeanNegativeLogProbLoss(mean, var, targets=targets,
+                                            seed=seed)
+    self.register_loss_function(loss, mean,
+                                "normal_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def register_multi_bernoulli_predictive_distribution(self,
                                                        logits,
                                                        seed=None,
                                                        targets=None,
-                                                       name=None):
+                                                       name=None,
+                                                       reuse=VARIABLE_SCOPE):
     """Registers a multi-Bernoulli predictive distribution.
 
     Args:
@@ -735,15 +796,15 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
     """
-    name = name or self._graph.unique_name(
-        "register_multi_bernoulli_predictive_distribution")
-    if name in self._loss_dict:
-      raise NotImplementedError(
-          "Adding logits to an existing LossFunction not yet supported.")
-    loss = lf.MultiBernoulliNegativeLogProbLoss(
-        logits, targets=targets, seed=seed)
-    self._loss_dict[name] = loss
+    loss = lf.MultiBernoulliNegativeLogProbLoss(logits, targets=targets,
+                                                seed=seed)
+    self.register_loss_function(loss, logits,
+                                "multi_bernoulli_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def make_or_get_factor(self, cls, args):
     """Insert 'cls(args)' into 'self.fisher_factors' if not already present.

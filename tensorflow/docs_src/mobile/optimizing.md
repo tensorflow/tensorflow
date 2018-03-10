@@ -290,8 +290,8 @@ run it on a 64-bit ARM device:
 
 You can interpret the results in exactly the same way as the desktop version
 above. If you have any trouble figuring out what the right input and output
-names and types are, take a look at the @{$mobile/prepare_models$Preparing
-models} page for details about detecting these for your model, and look at the
+names and types are, take a look at the @{$mobile/prepare_models$Preparing models}
+page for details about detecting these for your model, and look at the
 `summarize_graph` tool which may give you
 helpful information.
 

@@ -41,7 +41,7 @@ class TestEnv {
     device_mgr_.reset(new DeviceMgr({device}));
     flib_runtime_ = NewFunctionLibraryRuntime(device_mgr_.get(), Env::Default(),
                                               device, TF_GRAPH_DEF_VERSION,
-                                              &flib_def_, {}, nullptr);
+                                              &flib_def_, nullptr, {}, nullptr);
   }
 
   FunctionLibraryRuntime* function_library_runtime() const {

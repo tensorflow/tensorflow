@@ -93,7 +93,7 @@ uint64 XlaCompilationCache::Signature::Hash::operator()(
 
 Status XlaCompilationCache::BuildSignature(
     const NameAttrList& function, int num_constant_args,
-    const std::vector<OptionalTensor>& variable_args, OpKernelContext* ctx,
+    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     Signature* signature) {
   signature->name = Canonicalize(function.name(), AttrSlice(&function.attr()));
   signature->arg_values.resize(num_constant_args);
@@ -115,7 +115,8 @@ Status XlaCompilationCache::BuildSignature(
   }
   // For variable signatures, use the type and shape of the variable's
   // current value.
-  for (const OptionalTensor& variable : variable_args) {
+  for (auto& iterator : variable_args) {
+    const OptionalTensor& variable = iterator.second;
     TF_RET_CHECK(input_num < ctx->num_inputs());
     if (variable.present) {
       signature->arg_types.emplace_back(variable.value.dtype(),
@@ -133,7 +134,7 @@ namespace {
 // Builds a XlaCompiler::Argument vector from the arguments to the _XlaLaunch
 // op. The first `num_constant_args` arguments must be host-memory Tensors.
 Status BuildArguments(int num_constant_args,
-                      const std::vector<OptionalTensor>& variable_args,
+                      const std::map<int, OptionalTensor>& variable_args,
                       OpKernelContext* ctx,
                       std::vector<XlaCompiler::Argument>* args) {
   args->resize(ctx->num_inputs());
@@ -175,17 +176,17 @@ Status BuildArguments(int num_constant_args,
 
   // Handles resource variables.
   TF_RET_CHECK(input_num + num_variable_args == ctx->num_inputs());
-  for (int variable_id = 0; variable_id < num_variable_args; ++variable_id) {
+  for (auto& iterator : variable_args) {
     const Tensor& input = ctx->input(input_num);
     TF_RET_CHECK(input.dtype() == DT_RESOURCE);
 
     XlaCompiler::Argument& arg = (*args)[input_num];
 
-    arg.name = variable_args[variable_id].name;
+    arg.name = iterator.second.name;
     arg.kind = XlaCompiler::Argument::kResource;
     arg.resource_kind = XlaResource::kVariable;
-    if (variable_args[variable_id].present) {
-      const Tensor& value = variable_args[variable_id].value;
+    if (iterator.second.present) {
+      const Tensor& value = iterator.second.value;
       arg.type = value.dtype();
       arg.shape = value.shape();
       arg.initialized = true;
@@ -233,7 +234,7 @@ Status XlaCompilationCache::BuildExecutable(
 
 Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
-    int num_constant_args, const std::vector<OptionalTensor>& variable_args,
+    int num_constant_args, const std::map<int, OptionalTensor>& variable_args,
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
@@ -250,10 +251,12 @@ Status XlaCompilationCache::Compile(
               << " present=" << ctx->has_input(i)
               << " shape=" << shape.DebugString();
     }
-    for (const OptionalTensor& variable : variable_args) {
+    for (auto& iterator : variable_args) {
+      const OptionalTensor& variable = iterator.second;
       VLOG(2) << "variable present=" << variable.present
               << " type=" << DataTypeString(variable.value.dtype())
-              << " shape=" << variable.value.shape().DebugString();
+              << " shape=" << variable.value.shape().DebugString()
+              << " TF arg= " << iterator.first;
     }
     VLOG(2) << "num_outputs = " << ctx->num_outputs();
     for (int i = 0; i < ctx->num_outputs(); i++) {

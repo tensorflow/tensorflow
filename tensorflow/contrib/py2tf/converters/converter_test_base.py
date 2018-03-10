@@ -25,6 +25,7 @@ from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import pretty_printer
 from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
@@ -52,26 +53,49 @@ class FakeNamer(object):
     return ('renamed_%s' % '_'.join(original_fqn)), True
 
 
+class FakeNoRenameNamer(FakeNamer):
+
+  def compiled_function_name(self, original_fqn, **_):
+    return str(original_fqn), False
+
+
 class TestCase(test.TestCase):
   """Base class for unit tests in this module. Contains relevant utilities."""
 
   @contextlib.contextmanager
   def compiled(self, node, *symbols):
-    source = '<compile failed>'
+    source = None
+
+    self.dynamic_calls = []
+    def converted_call(*args):
+      """Mock version of api.converted_call."""
+      self.dynamic_calls.append(args)
+      return 7
+
     try:
       result, source = compiler.ast_to_object(node)
-      result.tf = self.make_fake_tf(*symbols)
+      result.tf = self.make_fake_mod('fake_tf', *symbols)
       result.py2tf_utils = utils
+      result.py2tf_api = self.make_fake_mod('fake_api', converted_call)
       yield result
     except Exception:  # pylint:disable=broad-except
-      print('Offending compiled code:\n%s' % source)
+      if source is None:
+        print('Offending AST:\n%s' % pretty_printer.fmt(node, color=False))
+      else:
+        print('Offending compiled code:\n%s' % source)
       raise
 
-  def make_fake_tf(self, *symbols):
-    fake_tf = imp.new_module('fake_tf')
+  def make_fake_mod(self, name, *symbols):
+    fake_mod = imp.new_module(name)
     for s in symbols:
-      setattr(fake_tf, s.__name__, s)
-    return fake_tf
+      if hasattr(s, '__name__'):
+        setattr(fake_mod, s.__name__, s)
+      elif hasattr(s, 'name'):
+        # This is a bit of a hack, but works for things like tf.int32
+        setattr(fake_mod, s.name, s)
+      else:
+        raise ValueError('can not attach %s - what should be its name?' % s)
+    return fake_mod
 
   def attach_namespace(self, module, **ns):
     for k, v in ns.items():
@@ -94,7 +118,8 @@ class TestCase(test.TestCase):
         arg_values=None,
         arg_types=arg_types,
         owner_type=owner_type,
-        recursive=recursive)
+        recursive=recursive,
+        type_annotation_func=utils.set_element_type)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})

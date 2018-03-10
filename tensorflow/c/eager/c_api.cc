@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -67,6 +69,18 @@ std::atomic_int_fast64_t func_id_generator(0);
 #endif  // TENSORFLOW_EAGER_USE_XLA
 }  // namespace
 
+TFE_ContextDevicePlacementPolicy PlacementPolicy(
+    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy) {
+  if (!soft_placement) {
+    return original_policy;
+  }
+  if (original_policy == TFE_DEVICE_PLACEMENT_EXPLICIT ||
+      original_policy == TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32) {
+    return TFE_DEVICE_PLACEMENT_SILENT;
+  }
+  return original_policy;
+}
+
 extern "C" {
 
 TFE_ContextOptions* TFE_NewContextOptions() { return new TFE_ContextOptions; }
@@ -84,22 +98,18 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
-  TF_Graph* graph = TF_NewGraph();
-  TF_Session* session = TF_NewSession(graph, &opts->session_options, status);
-  if (status->status.ok()) {
-    if (session->device_mgr == nullptr || session->devices.empty()) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Provided TF_SessionOptions are not compatible with eager execution "
-          "(perhaps the TF_SessionOptions alluded to session execution in a "
-          "remote address space?)");
-    }
-  }
+  std::vector<tensorflow::Device*> devices;
+  status->status = tensorflow::DeviceFactory::AddDevices(
+      opts->session_options.options, "/job:localhost/replica:0/task:0",
+      &devices);
   if (!status->status.ok()) {
-    TF_DeleteGraph(graph);
     return nullptr;
   }
-
-  return new TFE_Context(*opts, session);
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
+      new tensorflow::DeviceMgr(devices));
+  tensorflow::Rendezvous* r =
+      new tensorflow::IntraProcessRendezvous(device_mgr.get());
+  return new TFE_Context(*opts, std::move(device_mgr), r);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
@@ -108,15 +118,14 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
     tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
   }
-  TF_Graph* graph = ctx->session->graph;
-  TF_DeleteSession(ctx->session, status);
-  TF_DeleteGraph(graph);
   ctx->rendezvous->Unref();
   delete ctx;
 }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
-  return TF_SessionListDevices(ctx->session, status);
+  TF_DeviceList* list = new TF_DeviceList;
+  ctx->device_manager->ListDeviceAttributes(&list->response);
+  return list;
 }
 
 void TFE_ContextClearCaches(TFE_Context* ctx) {
@@ -145,7 +154,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
-  return new TFE_TensorHandle(tensor, nullptr);
+  return new TFE_TensorHandle(tensor, nullptr, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }
@@ -154,18 +163,22 @@ TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
   return static_cast<TF_DataType>(h->t.dtype());
 }
 
-int TFE_TensorHandleNumDims(TFE_TensorHandle* h) { return h->t.dims(); }
+int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
+  status->status = tensorflow::Status::OK();
+  return h->t.dims();
+}
 
-int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index) {
+int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
+                            TF_Status* status) {
+  status->status = tensorflow::Status::OK();
   return h->t.dim_size(dim_index);
 }
 
-const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h) {
-  // TODO(apassos) this will be potentially incorrect in the distributed case as
-  // our local device will have a name which depends on the ClusterSpec and
-  // hence will require the context to resolve.
-  return (h->d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
-                           : h->d->name().c_str();
+const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
+  status->status = tensorflow::Status::OK();
+  return (h->op_device == nullptr)
+             ? "/job:localhost/replica:0/task:0/device:CPU:0"
+             : h->op_device->name().c_str();
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
@@ -187,13 +200,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  tensorflow::Device* dstd = ctx->devices()[0];
+  tensorflow::Device* dstd = ctx->devices[0];
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &dstd);
+    status->status = ctx->device_manager->LookupDevice(device_name, &dstd);
     if (!status->status.ok()) return nullptr;
   }
 
-  tensorflow::Device* srcd = h->d == nullptr ? ctx->devices()[0] : h->d;
+  tensorflow::Device* srcd = h->d == nullptr ? ctx->devices[0] : h->d;
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
@@ -202,7 +215,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   // has device type XLA_CPU, and the other CPU.
   const bool both_on_cpu = src_cpu && dst_cpu;
   if (is_same_device || both_on_cpu) {
-    return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
+    dstd = dst_cpu ? nullptr : dstd;
+    return new TFE_TensorHandle(h->t, dstd, dstd);
   }
   tensorflow::Tensor* src = &(h->t);
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
@@ -221,7 +235,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
-    return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
+    dstd = dst_cpu ? nullptr : dstd;
+    return new TFE_TensorHandle(dst, dstd, dstd);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
   if (!src_cpu) {
@@ -249,7 +264,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                  });
   n.WaitForNotification();
   return (TF_GetCode(status) == TF_OK)
-             ? new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd)
+             ? new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd,
+                                    dst_cpu ? nullptr : dstd)
              : nullptr;
 }
 
@@ -274,8 +290,7 @@ void TFE_DeleteOp(TFE_Op* op) { delete op; }
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status =
-        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status = op->ctx->device_manager->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   op->device = d;
@@ -283,7 +298,7 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device =
-      (op->device == nullptr) ? op->ctx->devices()[0] : op->device;
+      (op->device == nullptr) ? op->ctx->devices[0] : op->device;
   return device->name().c_str();
 }
 
@@ -297,16 +312,15 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   // Questionable heuristic ...
-  //
-  // Motivation: After an 'op' is placed on GPU because some of its earlier
-  // inputs are on GPU, we want to keep the 'op' there, even if some later
-  // inputs of it are not on GPU.
-  if (IsCPU(op->device) && !IsCPU(h->d)) {
+  // - If a device was explicitly set on the op, always use that.
+  // - If not, place on the first non-host device seen.
+  if (op->device == nullptr && !IsCPU(h->d)) {
     op->device = h->d;
   }
   if (!status->status.ok()) return;
   op->inputs.push_back(h->t);
   op->input_devices.push_back(h->d);
+  op->input_op_devices.push_back(h->op_device);
   op->attrs.NumInputs(op->inputs.size());
 }
 
@@ -522,7 +536,8 @@ tensorflow::Status ValidateInputTypeAndPlacement(
       }
       // We are only here if the policy is warn or silent copies, so we should
       // trigger a copy.
-      TFE_TensorHandle original{op->inputs[i], op->input_devices[i]};
+      TFE_TensorHandle original{op->inputs[i], op->input_devices[i],
+                                op->device};
       TF_Status* s = TF_NewStatus();
       TFE_TensorHandle* copied_tensor = TFE_TensorHandleCopyToDevice(
           &original, ctx, expected_device->name().c_str(), s);
@@ -726,6 +741,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   // via `op_input_to_func_input`, adjust the actual inputs accordingly.
   launch_op->inputs = op->inputs;
   launch_op->input_devices = op->input_devices;
+  launch_op->input_op_devices = op->input_op_devices;
   if (!op_input_to_func_input.empty()) {
     DCHECK_EQ(op->inputs.size(), op_input_to_func_input.size());
     if (!op->input_devices.empty()) {
@@ -772,15 +788,38 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   return launch_op;
 }
 #endif  // TENSORFLOW_EAGER_USE_XLA
+
+tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
+                                 TFE_Context* ctx, TF_Status* status) {
+  tensorflow::DeviceSet ds;
+  for (tensorflow::Device* d : ctx->devices) {
+    ds.AddDevice(d);
+  }
+  tensorflow::DeviceTypeVector final_devices;
+  status->status = tensorflow::SupportedDeviceTypesForNode(
+      ds.PrioritizedDeviceTypeList(), ndef, &final_devices);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  if (final_devices.empty()) {
+    status->status = tensorflow::errors::Internal(
+        "Could not find valid device for node ", ndef.DebugString());
+    return nullptr;
+  }
+  for (tensorflow::Device* d : ctx->devices) {
+    if (d->device_type() == final_devices[0].type_string()) {
+      return d;
+    }
+  }
+  status->status = tensorflow::errors::Unknown(
+      "Could not find a device for node ", ndef.DebugString());
+  return nullptr;
+}
+
 }  // namespace
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  TFE_Context* ctx = op->ctx;
-  // TODO(ashankar): ASSUMPTION: ctx->devices()[0] is always CPU
-  tensorflow::Device* device =
-      (op->device == nullptr) ? ctx->devices()[0] : op->device;
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
   std::unique_ptr<TFE_Op> xla_launch_op;
   if (op->use_xla && op->name != "_XlaLaunch") {
@@ -791,10 +830,33 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     op = xla_launch_op.get();
   }
 #endif  // TENSORFLOW_EAGER_USE_XLA
+  TFE_Context* ctx = op->ctx;
+  tensorflow::Device* device = op->device;
+  // Ensure all resource-touching ops run in the device the resource is,
+  // regardless of anything else that has been specified. This is identical to
+  // the graph mode behavior.
+  for (int i = 0; i < op->inputs.size(); ++i) {
+    if (op->inputs[i].dtype() == tensorflow::DT_RESOURCE &&
+        op->input_op_devices[i] != device) {
+      tensorflow::Device* d = op->input_op_devices[i] == nullptr
+                                  ? ctx->devices[0]
+                                  : op->input_op_devices[i];
+      VLOG(1) << "Changing device of operation " << op->name << " to "
+              << d->name() << " because input #" << i
+              << " is a resource in this device.";
+      device = d;
+      op->device = d;
+    }
+  }
+  if (!ctx->soft_placement && device == nullptr) {
+    // TODO(ashankar): ASSUMPTION: ctx->devices[0] is always CPU
+    device = ctx->devices[0];
+  }
 
   std::vector<tensorflow::Tensor> outputs(1);
   const tensorflow::MemoryTypeVector* output_memory_types = nullptr;
-  tensorflow::Fprint128 cache_key = op->attrs.CacheKey(device->name());
+  tensorflow::Fprint128 cache_key =
+      op->attrs.CacheKey(device == nullptr ? "unspecified" : device->name());
   tensorflow::KernelAndDevice* kernel;
   {
     tensorflow::tf_shared_lock l(ctx->cache_mu);
@@ -802,6 +864,17 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   }
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
+    if (ctx->soft_placement && device == nullptr) {
+      device = SelectDevice(ndef, ctx, status);
+      if (!status->status.ok()) {
+        return;
+      }
+    }
+    CHECK(device != nullptr);
+    if (ctx->log_device_placement) {
+      LOG(INFO) << "Executing op " << ndef.op() << " in device "
+                << device->name();
+    }
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
     // Knowledge of the implementation of Init (and in-turn
     // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
@@ -815,12 +888,37 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       delete kernel;
       return;
     }
+    // Update output_dtypes inside `kernel`.
+    const tensorflow::OpDef* op_def = nullptr;
+    const tensorflow::FunctionDef* function_def =
+        ctx->func_lib_def.Find(ndef.op());
+    if (function_def != nullptr) {
+      op_def = &(function_def->signature());
+    }
+    if (op_def == nullptr) {
+      status->status = OpDefForOp(ndef.op().c_str(), &op_def);
+      if (!status->status.ok()) {
+        return;
+      }
+    }
+    tensorflow::DataTypeVector input_dtypes;
+    status->status = InOutTypesForNode(ndef, *op_def, &input_dtypes,
+                                       kernel->output_dtypes());
+    if (!status->status.ok()) {
+      return;
+    }
     tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
   }
+  if (device == nullptr) {
+    // TODO(apassos) debug how the assignment below might return a different
+    // device from the one requested above.
+    device = kernel->device();
+  }
+
   std::vector<TFE_TensorHandle*> copied_tensors;
   status->status = ValidateInputTypeAndPlacement(
-      ctx, ctx->devices()[0], device, op, kernel->kernel(), &copied_tensors);
+      ctx, ctx->devices[0], device, op, kernel->kernel(), &copied_tensors);
   output_memory_types = &kernel->kernel()->output_memory_types();
   if (!status->status.ok()) {
     for (auto* t : copied_tensors) {
@@ -859,13 +957,13 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       auto* step_stats = ctx->run_metadata.mutable_step_stats();
       // Lazily initialize the RunMetadata with information about all devices if
       // this is the first call.
-      while (step_stats->dev_stats_size() < ctx->devices().size()) {
+      while (step_stats->dev_stats_size() < ctx->devices.size()) {
         step_stats->add_dev_stats();
       }
       // Find the current device's index.
       int device_idx = 0;
-      for (int i = 0; i < ctx->devices().size(); ++i) {
-        if (ctx->devices()[i] == device) {
+      for (int i = 0; i < ctx->devices.size(); ++i) {
+        if (ctx->devices[i] == device) {
           device_idx = i;
           break;
         }
@@ -883,7 +981,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
         (*output_memory_types)[i] == tensorflow::HOST_MEMORY) {
       d = nullptr;
     }
-    retvals[i] = new TFE_TensorHandle(outputs[i], d);
+    retvals[i] = new TFE_TensorHandle(outputs[i], d, device);
   }
 }
 
@@ -909,7 +1007,7 @@ void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
 }  // extern "C"
 
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
-  return new TFE_TensorHandle(t, nullptr);
+  return new TFE_TensorHandle(t, nullptr, nullptr);
 }
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
@@ -83,7 +85,8 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-from tensorflow.contrib.lite.python import lite
+if os.name != 'nt':
+  from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
@@ -92,6 +95,7 @@ from tensorflow.contrib.summary import summary
 from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg", globals(),
                     "tensorflow.contrib.ffmpeg")
+del os
 del LazyLoader
 
 del absolute_import

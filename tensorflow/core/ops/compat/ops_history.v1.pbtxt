@@ -37667,6 +37667,32 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "RegexReplace"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "pattern"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "rewrite"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "replace_global"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "Relu"
   input_arg {
     name: "features"
@@ -38208,6 +38234,38 @@ op {
     name: "f"
     type: "func"
   }
+}
+op {
+  name: "RemoteCall"
+  input_arg {
+    name: "target"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  is_stateful: true
 }
 op {
   name: "RemoteFusedGraphExecute"

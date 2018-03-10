@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
-import six
 
 from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import asserts
@@ -30,17 +29,22 @@ from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
 from tensorflow.contrib.py2tf.converters import for_loops
+from tensorflow.contrib.py2tf.converters import ifexp
+from tensorflow.contrib.py2tf.converters import lists
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import name_scopes
 from tensorflow.contrib.py2tf.converters import side_effect_guards
+from tensorflow.contrib.py2tf.converters import single_return
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
+from tensorflow.contrib.py2tf.pyct import inspect_utils
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
+from tensorflow.contrib.py2tf.utils import type_hints
 from tensorflow.python.util import tf_inspect
 
 
@@ -48,7 +52,9 @@ from tensorflow.python.util import tf_inspect
 
 
 class ConversionMap(object):
-  """ConversionMaps keep track of converting function hierarchies.
+  """ConversionMap keeps track of converting function hierarchies.
+
+  This object is mutable, and is updated as functions are converted.
 
   Attributes:
     recursive: Whether to recusrively convert any functions that the decorator
@@ -97,6 +103,24 @@ class ConversionMap(object):
     self.dependency_cache[original_entity] = converted_ast
 
 
+def is_whitelisted_for_graph(o):
+  """Check whether an entity is whitelisted for use in graph mode.
+
+  Examples of whitelisted entities include all members of the tensorflow
+  package.
+
+  Args:
+    o: A Python entity.
+  Returns:
+    Boolean
+  """
+  m = tf_inspect.getmodule(o)
+  for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
+    if m.__name__.startswith(prefix):
+      return True
+  return False
+
+
 def entity_to_graph(o, conversion_map, arg_values, arg_types):
   """Compile a Python entity into equivalent TensorFlow.
 
@@ -136,14 +160,20 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
 
   conversion_map.add_to_cache(o, node)
   if conversion_map.recursive:
-    for obj in conversion_map.name_map.keys():
-      if obj not in conversion_map.dependency_cache:
-        if (hasattr(obj, 'im_class') and
-            getattr(obj, 'im_class') not in conversion_map.partial_types):
-          # Class members are converted with their objects, unless they're
-          # only converted partially.
-          continue
-        entity_to_graph(obj, conversion_map, {}, {})
+    while True:
+      candidate = None
+      for obj in conversion_map.name_map.keys():
+        if obj not in conversion_map.dependency_cache:
+          candidate = obj
+          break
+      if candidate is None:
+        break
+      if (hasattr(candidate, 'im_class') and
+          getattr(candidate, 'im_class') not in conversion_map.partial_types):
+        # Class members are converted with their objects, unless they're
+        # only converted partially.
+        continue
+      entity_to_graph(candidate, conversion_map, {}, {})
 
   return node, new_name
 
@@ -151,11 +181,12 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
 def class_to_graph(c, conversion_map):
   """Specialization of `entity_to_graph` for classes."""
   converted_members = {}
-  members = tf_inspect.getmembers(c, predicate=tf_inspect.ismethod)
+  method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
+  members = tf_inspect.getmembers(c, predicate=method_filter)
   if not members:
-    raise ValueError('Cannot convert %s: it has no member methods.')
+    raise ValueError('Cannot convert %s: it has no member methods.' % c)
 
-  class_globals = None
+  class_namespace = None
   for _, m in members:
     node, _ = function_to_graph(
         m,
@@ -164,16 +195,16 @@ def class_to_graph(c, conversion_map):
         arg_types={'self': (c.__name__, c)},
         owner_type=c)
     # TODO(mdan): Do not assume all members have the same view of globals.
-    if class_globals is None:
-      class_globals = six.get_function_globals(m)
+    if class_namespace is None:
+      class_namespace = inspect_utils.getnamespace(m)
     converted_members[m] = node
-  namer = conversion_map.new_namer(class_globals)
+  namer = conversion_map.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
   node = gast.ClassDef(
       class_name,
       bases=[],
       keywords=[],
-      body=converted_members.values(),
+      body=list(converted_members.values()),
       decorator_list=[])
 
   return node, class_name
@@ -202,19 +233,11 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
   """Specialization of `entity_to_graph` for callable functions."""
   node, source = parser.parse_entity(f)
   node = node.body[0]
-  namespace = six.get_function_globals(f)
 
-  # This is needed for non-global functions.
-  closure = six.get_function_closure(f)
-  if closure:
-    for e in closure:
-      if callable(e.cell_contents):
-        fn = e.cell_contents
-        namespace[fn.__name__] = fn
-
+  namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, conversion_map.api_module)
-
   namer = conversion_map.new_namer(namespace)
+
   ctx = context.EntityContext(
       namer=namer,
       source_code=source,
@@ -223,7 +246,8 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       arg_values=arg_values,
       arg_types=arg_types,
       owner_type=owner_type,
-      recursive=conversion_map.recursive)
+      recursive=conversion_map.recursive,
+      type_annotation_func=type_hints.set_element_type)
   node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
@@ -276,10 +300,15 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # to re-run the analysis.
 
   node = _static_analysis_pass(node, ctx)
+
+  # TODO(mdan): Clean this up.
+  # Some intermediate analyses are not required, and some comments got orphaned.
+
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
+  node = ifexp.transform(node, ctx)
   node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
@@ -291,6 +320,10 @@ def node_to_graph(node, ctx, nocompile_decorators):
   ctx.namespace['len'] = len
 
   node = _static_analysis_pass(node, ctx)
+  node = single_return.transform(node, ctx)
+
+  node = _static_analysis_pass(node, ctx)
+  node = lists.transform(node, ctx)
   node = for_loops.transform(node, ctx)
   # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
@@ -302,7 +335,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   # control_flow may create new symbols and change scopes.
   node = _static_analysis_pass(node, ctx)
-  node = logical_expressions.transform(node)
+  node = logical_expressions.transform(node, ctx)
   node = side_effect_guards.transform(node, ctx)
   node = name_scopes.transform(node, ctx)
 

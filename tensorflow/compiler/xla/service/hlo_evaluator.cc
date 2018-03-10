@@ -51,11 +51,21 @@ namespace xla {
 
 namespace {
 
+using tensorflow::gtl::ArraySlice;
+using tensorflow::gtl::FlatSet;
+using tensorflow::gtl::optional;
+
 template <typename T>
 struct is_complex_t : public std::false_type {};
 
 template <>
 struct is_complex_t<complex64> : public std::true_type {};
+
+template <typename T>
+struct is_complex64_t : public std::false_type {};
+
+template <>
+struct is_complex64_t<complex64> : public std::true_type {};
 
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
@@ -99,11 +109,10 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
   }
 
   auto result = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(result->Populate<bool>(
-      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-        return compare_op(lhs_literal.Get<OperandT>(multi_index),
-                          rhs_literal.Get<OperandT>(multi_index));
-      }));
+  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
+    return compare_op(lhs_literal.Get<OperandT>(multi_index),
+                      rhs_literal.Get<OperandT>(multi_index));
+  }));
 
   return std::move(result);
 }
@@ -130,11 +139,10 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
   }
 
   auto result = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(result->Populate<bool>(
-      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-        return compare_op(lhs_literal.Get<complex64>(multi_index),
-                          rhs_literal.Get<complex64>(multi_index));
-      }));
+  TF_RETURN_IF_ERROR(result->Populate<bool>([&](ArraySlice<int64> multi_index) {
+    return compare_op(lhs_literal.Get<complex64>(multi_index),
+                      rhs_literal.Get<complex64>(multi_index));
+  }));
 
   return std::move(result);
 }
@@ -159,8 +167,8 @@ StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
 
   auto result = Literal::CreateFromShape(shape);
 
-  TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+  TF_RETURN_IF_ERROR(
+      result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
         return unary_op(operand_literal.Get<NativeT>(multi_index));
       }));
   return std::move(result);
@@ -172,7 +180,7 @@ StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
 // with the base index.
 void IterateThroughWindow(
     const Shape& window_shape, const Window& window, const Shape& base_shape,
-    const tensorflow::gtl::ArraySlice<int64>& window_count_index,
+    const ArraySlice<int64>& window_count_index,
     const std::function<void(const std::vector<int64>&)>& f) {
   const int64 rank = ShapeUtil::Rank(base_shape);
   DimensionVector window_index(rank);
@@ -248,17 +256,37 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   template <
       typename NativeT,
-      typename std::enable_if<std::is_signed<NativeT>::value ||
-                              is_complex_t<NativeT>::value>::type* = nullptr>
+      typename std::enable_if<std::is_signed<NativeT>::value>::type* = nullptr>
   Status HandleAbs(HloInstruction* abs) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
-                        ElementWiseUnaryOp(abs, [](ElementwiseT elem_operand) {
+                        ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return std::abs(elem_operand);
                         }));
     return Status::OK();
   }
 
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex64_t<NativeT>::value>::type* = nullptr>
+  Status HandleAbs(HloInstruction* abs) {
+    const Literal& operand_literal =
+        parent_->GetEvaluatedLiteralFor(abs->operand(0));
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[abs],
+        (ElementWiseUnaryOpImpl<float, NativeT>(
+            abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
+            operand_literal)));
+
+    return Status::OK();
+  }
+
   Status HandleAbs(HloInstruction* abs) override {
+    // If the operand is of C64 type, the return type of abs will be F32.
+    // However, ElementwiseT would still be the return type, F32, and thus
+    // specifying the ElementwiseT explicitly as C64 is needed below.
+    if (abs->operand(0)->shape().element_type() == C64) {
+      return HandleAbs<complex64>(abs);
+    }
     return HandleAbs<ElementwiseT>(abs);
   }
 
@@ -306,13 +334,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                    operand_to_broadcast.shape().dimensions(i));
     }
 
-    return output->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
-            broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
-          }
-          return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
-        });
+    return output->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
+      for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
+        broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
+      }
+      return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
+    });
   }
 
   template <
@@ -586,14 +613,25 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleMaximum(HloInstruction* maximum) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[maximum],
         ElementWiseBinaryOp(maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
-          return std::fmax(lhs, rhs);
+          return std::max(lhs, rhs);
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleMaximum(HloInstruction* maximum) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[maximum],
+        ElementWiseBinaryOp(maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
+          return ((lhs >= rhs) || std::isnan(lhs)) ? lhs : rhs;
         }));
     return Status::OK();
   }
@@ -609,15 +647,27 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleMaximum<ElementwiseT>(maximum);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleMinimum(HloInstruction* minimum) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[minimum],
                         ElementWiseBinaryOp(minimum, [](ElementwiseT lhs_el,
                                                         ElementwiseT rhs_el) {
-                          return std::fmin(lhs_el, rhs_el);
+                          return std::min(lhs_el, rhs_el);
                         }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleMinimum(HloInstruction* minimum) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[minimum],
+        ElementWiseBinaryOp(minimum, [](ElementwiseT lhs_el,
+                                        ElementwiseT rhs_el) {
+          return ((lhs_el <= rhs_el) || std::isnan(lhs_el)) ? lhs_el : rhs_el;
+        }));
     return Status::OK();
   }
 
@@ -876,8 +926,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     auto result = Literal::CreateFromShape(result_shape);
 
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> out_index) {
           std::vector<int64> from_index(out_index.begin(), out_index.end());
           for (const int64 dim : reverse_dimensions) {
             from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
@@ -952,7 +1002,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector rhs_index(rhs_rank);
     DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size());
 
-    auto func = [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+    auto func = [&](ArraySlice<int64> out_index) {
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
       std::fill(lhs_index.begin(), lhs_index.end(), 0);
@@ -1074,9 +1124,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     std::vector<int64> rhs_non_batch_non_contracting_dims;
-    tensorflow::gtl::FlatSet<int64> batch_dims_set(
-        dnums.rhs_batch_dimensions().begin(),
-        dnums.rhs_batch_dimensions().end());
+    FlatSet<int64> batch_dims_set(dnums.rhs_batch_dimensions().begin(),
+                                  dnums.rhs_batch_dimensions().end());
     for (int64 i = 0; i < rhs_rank; i++) {
       if (i != rhs_contracting_dimension && batch_dims_set.count(i) == 0) {
         rhs_non_batch_non_contracting_dims.push_back(i);
@@ -1088,8 +1137,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     DimensionVector lhs_index(lhs_rank);
     DimensionVector rhs_index(rhs_rank);
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> result_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
           // Find the corresponding non-contracting indices for lhs and rhs.
@@ -1183,9 +1232,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
     auto result = Literal::CreateFromShape(pad->shape());
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&scalar](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          return scalar;
-        }));
+        [&scalar](ArraySlice<int64> multi_index) { return scalar; }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
@@ -1198,7 +1245,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     // corresponding index of the resulting padded literal.
     const PaddingConfig& pad_config = pad->padding_config();
 
-    auto func = [&](const std::vector<int64>& input_index) {
+    auto func = [&](ArraySlice<int64> input_index) {
       for (auto i = 0; i < input_index.size(); ++i) {
         // Interior padding occurs logically before edge padding, so in the case
         // of negative edge padding elements are removed from the
@@ -1348,9 +1395,9 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(map->shape());
 
-    HloEvaluator embedded_evaluator;
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           std::vector<std::unique_ptr<Literal>> arg_literals;
           arg_literals.reserve(operands.size());
 
@@ -1440,7 +1487,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleReduce(HloInstruction* reduce) override {
     auto arg = reduce->operand(0);
     auto init_value = reduce->operand(1);
-    tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+    ArraySlice<int64> dimensions(reduce->dimensions());
     HloComputation* function = reduce->to_apply();
     TF_RET_CHECK(ShapeUtil::Rank(reduce->shape()) ==
                  ShapeUtil::Rank(arg->shape()) - dimensions.size());
@@ -1483,10 +1530,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     // For each resulting dimension, calculate and assign computed value.
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           ReturnT result_val = init_scalar;
 
           std::vector<int64> base(arg_dimensions.size());
@@ -1494,7 +1541,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             base[result_to_arg_index[i]] = multi_index[i];
           }
 
-          auto func = [&](const std::vector<int64>& input_index) {
+          auto func = [&](ArraySlice<int64> input_index) {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
             // Evaluate computation with specified literal operands.
@@ -1540,9 +1587,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     // Initialize result array with the init value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> output_index) {
-          return init_scalar;
-        }));
+        [&](ArraySlice<int64> output_index) { return init_scalar; }));
 
     std::vector<int64> window_dimension_sizes;
     for (const auto& window_dimension : window.dimensions()) {
@@ -1559,7 +1604,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     int64 rank = ShapeUtil::Rank(operand_literal.shape());
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     DimensionVector source_index(rank);
 
     std::fill(source_index.begin(), source_index.end(), 0);
@@ -1575,8 +1620,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       // 2. Using the selected index, scatter value from `source` to result. We
       // do this by iterating through the window, and compare each index with
       // the selected index.
-      tensorflow::gtl::optional<ReturnT> selected_val;
-      tensorflow::gtl::optional<std::vector<int64>> selected_index;
+      optional<ReturnT> selected_val;
+      optional<std::vector<int64>> selected_index;
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
@@ -1670,10 +1715,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector window_index(window.dimensions_size());
     DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
 
-    HloEvaluator embedded_evaluator;
+    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     // For each resulting dimension, calculate and assign computed value.
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> output_index) {
           ReturnT result_val = init_scalar;
 
           std::fill(window_index.begin(), window_index.end(), 0);
@@ -1723,7 +1768,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     const int64 rank = ShapeUtil::Rank(operand->shape());
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
-    auto func = [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+    auto func = [&](ArraySlice<int64> out_index) {
       DimensionVector operand_index(rank);
       for (int64 i = 0; i < rank; ++i) {
         operand_index[i] =
@@ -1904,8 +1949,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64> operand_indices(start.size());
 
     auto result = Literal::CreateFromShape(result_shape);
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           for (int64 i = 0; i < operand_indices.size(); ++i) {
             CHECK_GE(multi_index[i] + start[i], 0);
             // Mod is only used here to be consistent with the existing
@@ -1925,17 +1970,26 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   StatusOr<std::unique_ptr<Literal>> DynamicUpdateSlice(
       const Literal& operand_literal, const Literal& update_literal,
       const Literal& start_indices_literal) {
-    auto start_indices_typed = start_indices_literal.data<IndexT>();
-    const std::vector<int64> start(start_indices_typed.begin(),
-                                   start_indices_typed.end());
-
     auto result = operand_literal.CloneToUnique();
-    std::vector<int64> result_index(ShapeUtil::Rank(result->shape()), 0);
+    auto start_indices_typed = start_indices_literal.data<IndexT>();
+    const auto rank = ShapeUtil::Rank(result->shape());
+    std::vector<int64> start(rank, 0);
+    for (int64 i = 0; i < rank; ++i) {
+      // All other implementations currently wrap-around the index, so this
+      // should do so as well.
+      start[i] = (start_indices_typed[i] % result->shape().dimensions(i));
+      start[i] += (start[i] < 0) * result->shape().dimensions(i);
+    }
+    std::vector<int64> result_index(rank, 0);
 
-    auto func = [&](const std::vector<int64>& update_index) {
+    auto func = [&](ArraySlice<int64> update_index) {
       std::transform(update_index.begin(), update_index.end(), start.begin(),
                      result_index.begin(), std::plus<int64>());
-
+      // Same as above, wrap-around only to match other implementations'
+      // semantics.
+      std::transform(result_index.begin(), result_index.end(),
+                     result->shape().dimensions().begin(), result_index.begin(),
+                     std::modulus<int64>());
       result->Set<ReturnT>(result_index,
                            update_literal.Get<ReturnT>(update_index));
       return true;
@@ -1988,8 +2042,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           return ConvertBinaryFunction(binary_op)(
               lhs_literal.Get<ReturnT>(multi_index),
               rhs_literal.Get<ReturnT>(multi_index));
@@ -2026,8 +2080,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+    TF_RETURN_IF_ERROR(
+        result->Populate<ReturnT>([&](ArraySlice<int64> multi_index) {
           return ternary_op(lhs_literal.Get<LhsType>(multi_index),
                             rhs_literal.Get<RhsType>(multi_index),
                             ehs_literal.Get<EhsType>(multi_index));
@@ -2047,7 +2101,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   HloEvaluator* parent_;
 };  // class HloEvaluator::TypedVisitor
 
-HloEvaluator::HloEvaluator() {
+HloEvaluator::HloEvaluator(int64 max_loop_iterations)
+    : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
@@ -2081,8 +2136,7 @@ HloEvaluator::HloEvaluator() {
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    const HloModule& module,
-    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
+    const HloModule& module, ArraySlice<LiteralPtr> arg_literals) {
   XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
 
   evaluated_.clear();
@@ -2099,8 +2153,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    const HloComputation& computation,
-    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
+    const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
@@ -2116,8 +2169,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
+    HloInstruction* instruction, ArraySlice<LiteralPtr> arg_literals) {
   TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
@@ -2242,8 +2294,7 @@ Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
 }
 
 Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      concatenate->operands());
+  ArraySlice<HloInstruction*> operands(concatenate->operands());
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
@@ -2415,6 +2466,340 @@ Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
+// Returns an ShapeUtil::IndexIterationSpace that iterates over the output
+// gather dimensions while keeping the rest of the output dimensions clamped to
+// 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputGatherIndices(
+    const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
+  int64 output_rank = output_shape.dimensions_size();
+  std::vector<int64> index_base(output_rank, 0);
+  std::vector<int64> index_count;
+  index_count.reserve(output_rank);
+  for (int64 i = 0; i < output_rank; i++) {
+    bool is_output_gather_dim =
+        !c_binary_search(dim_numbers.output_window_dims(), i);
+    index_count.push_back(is_output_gather_dim ? output_shape.dimensions(i)
+                                               : 1);
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64>(output_rank, 1)};
+}
+
+// Return an ShapeUtil::IndexIterationSpace that iterates over the output window
+// dimensions while keeping the rest of the output dimensions clamped to 0.
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputWindowIndices(
+    int64 output_rank, ArraySlice<int64> window_bounds,
+    const GatherDimensionNumbers& dim_numbers) {
+  std::vector<int64> index_base(output_rank, 0);
+  std::vector<int64> index_count(output_rank, 1);
+  int64 window_bounds_idx = 0;
+  for (int64 i = 0; i < output_rank; i++) {
+    bool is_output_window_dim =
+        c_binary_search(dim_numbers.output_window_dims(), i);
+    if (is_output_window_dim) {
+      while (c_binary_search(dim_numbers.elided_window_dims(),
+                             window_bounds_idx)) {
+        window_bounds_idx++;
+      }
+      index_count[i] = window_bounds[window_bounds_idx++];
+    }
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64>(output_rank, 1)};
+}
+
+// This functor computes the contribution of gather_indices to an input index
+// corresponding to an output index.  That is, given an output index I, it picks
+// out the gather output indices in I and uses them to look up a gather index,
+// G, from the gather indices tensor, and expands G into the input space
+// according to gather_dims_to_operand_dims.
+class OutputGatherIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit OutputGatherIndexToInputIndex(
+      const GatherDimensionNumbers* dim_numbers, const Shape& input_shape,
+      const Shape& output_shape, const Literal* gather_indices)
+      : dim_numbers_(*dim_numbers), gather_indices_(*gather_indices) {
+    for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
+      output_dim_is_gather_dims_.push_back(
+          !c_binary_search(dim_numbers_.output_window_dims(), i));
+    }
+
+    for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
+      int64 index_of_input_dim_in_index_vector =
+          std::distance(dim_numbers_.gather_dims_to_operand_dims().begin(),
+                        c_find(dim_numbers_.gather_dims_to_operand_dims(), i));
+      if (index_of_input_dim_in_index_vector ==
+          dim_numbers_.gather_dims_to_operand_dims_size()) {
+        input_dim_value_to_index_vector_.push_back(-1);
+      } else {
+        input_dim_value_to_index_vector_.push_back(
+            index_of_input_dim_in_index_vector);
+      }
+    }
+
+    index_vector_index_.resize(gather_indices_.shape().dimensions_size());
+    input_index_.resize(input_shape.dimensions_size());
+    int64 index_vector_size =
+        gather_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
+    index_vector_.resize(index_vector_size);
+  }
+
+  // Returns the contribution of gather_indices to the input index corresponding
+  // to output_index.  See gather_inner_loop_body.
+  //
+  // This is conceptually  a stateless transformation from output_index to the
+  // gather input index, but:
+  //
+  //  - Instead of allocating memory to represent the gather input index on
+  //    every invocation we reuse the same storage for the result
+  //    (input_index_), mutating it in place.
+  //  - Instead of allocating buffers for temporary values like
+  //    index_vector_index_ and index_vector on every invocation, we reuse the
+  //    same storage for all invocations.
+  //
+  // This returns an arrayslice into memory owned by the class.
+  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+    PropagateOutputIndexGatherDimsToIndexVectorIndex(output_index);
+    TF_RETURN_IF_ERROR(FetchIndexVector());
+    PropagateIndexVectorToInputIndex();
+    return ArraySlice<int64>(input_index_);
+  }
+
+ private:
+  // Propagates the gather index dimensions from the output index into
+  // index_vector_index_ by mutating index_vector_index_ in place.  Does not
+  // update the dim_numbers.index_vector_dim() dimension -- that's the dimension
+  // we iterate over in FetchIndexVector.
+  void PropagateOutputIndexGatherDimsToIndexVectorIndex(
+      ArraySlice<int64> output_index) {
+    int64 index_vector_index_i = 0;
+    for (int64 i = 0, e = output_index.size(); i < e; i++) {
+      if (!output_dim_is_gather_dims_[i]) {
+        continue;
+      }
+
+      if (index_vector_index_i == dim_numbers_.index_vector_dim()) {
+        index_vector_index_i++;
+      }
+
+      index_vector_index_[index_vector_index_i++] = output_index[i];
+    }
+  }
+
+  // Populates index_vector_ by iterating over gather_indices_ according to
+  // index_vector_index_.
+  Status FetchIndexVector() {
+    int64 index_vector_dim = dim_numbers_.index_vector_dim();
+    for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
+      index_vector_index_[index_vector_dim] = i;
+      TF_ASSIGN_OR_RETURN(index_vector_[i], gather_indices_.GetIntegralAsS64(
+                                                index_vector_index_));
+    }
+    return Status::OK();
+  }
+
+  // Populates input_index_.
+  void PropagateIndexVectorToInputIndex() {
+    for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_index_vector_[i] != -1) {
+        input_index_[i] = index_vector_[input_dim_value_to_index_vector_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
+  // the input index from the index vector.  See
+  // PropagateIndexVectorToInputIndex.
+  std::vector<int64> input_dim_value_to_index_vector_;
+
+  // output_dim_is_gather_dims_[i] is true iff the output index i is a gather
+  // dimension.
+  std::vector<bool> output_dim_is_gather_dims_;
+
+  // The buffer into which we construct an index into gather_indices_ to fetch
+  // the index vector.
+  std::vector<int64> index_vector_index_;
+
+  // The index vector fetched from gather_indices_.
+  std::vector<int64> index_vector_;
+
+  // The result computed by this functor.  operator() returns an ArraySlice into
+  // this vector.
+  std::vector<int64> input_index_;
+
+  const GatherDimensionNumbers& dim_numbers_;
+  const Literal& gather_indices_;
+};
+
+// This functor computes the contribution of the window indices in an output
+// index to an input index.  That is, given an output index I it picks out the
+// output window indices in I and expands it into a window index into the input
+// shape.
+class OutputWindowIndexToInputIndex {
+ public:
+  // The constructor does some setup work that is amortized across all
+  // iterations.
+  explicit OutputWindowIndexToInputIndex(
+      const GatherDimensionNumbers& dim_numbers, const Shape& input_shape,
+      const Shape& output_shape) {
+    std::vector<int64> window_index_to_output_index;
+    int64 output_index_count = 0;
+    for (int64 i = 0; i < output_shape.dimensions_size(); i++) {
+      if (c_binary_search(dim_numbers.output_window_dims(), i)) {
+        window_index_to_output_index.push_back(output_index_count++);
+      } else {
+        output_index_count++;
+      }
+    }
+
+    int64 window_dim_count = 0;
+    for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
+      if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
+        input_dim_value_to_output_index_.push_back(-1);
+      } else {
+        input_dim_value_to_output_index_.push_back(
+            window_index_to_output_index[window_dim_count++]);
+      }
+    }
+
+    input_index_.resize(input_shape.dimensions_size());
+  }
+
+  // Returns the contribution of the window indices to the input index
+  // corresponding to output_index.  See gather_inner_loop_body.
+  //
+  // This is conceptually a stateless transformation from output_index to the
+  // window input index, but instead of allocating memory to represent the
+  // gather input index on every invocation we reuse the same storage for the
+  // result (input_index_), mutating it in place.
+  //
+  // This returns an arrayslice into memory owned by the class.
+  StatusOr<ArraySlice<int64>> operator()(ArraySlice<int64> output_index) {
+    PropagateOutputIndexWindowDimsToInputIndex(output_index);
+    return ArraySlice<int64>(input_index_);
+  }
+
+ private:
+  // Propagates window dimensions from the output index to input_index_ by
+  // mutating input_index_ in place.
+  void PropagateOutputIndexWindowDimsToInputIndex(
+      ArraySlice<int64> output_index) {
+    for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      if (input_dim_value_to_output_index_[i] != -1) {
+        input_index_[i] = output_index[input_dim_value_to_output_index_[i]];
+      }
+
+      // If input_dim_value_to_index_vector_[i] == -1 then input_index_[i]
+      // remains 0, as set by the constructor.
+    }
+  }
+
+  // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
+  // the input index from the output index. See
+  // PropagateOutputIndexToInputIndex.
+  std::vector<int64> input_dim_value_to_output_index_;
+
+  // The result computed by this functor.  operator() returns an ArraySlice into
+  // this vector.
+  std::vector<int64> input_index_;
+};
+
+// Rehapes the gather indices input to have a trailing degenerate `1` dimension
+// if necessary.  Hands over the ownership of the newly created literal (if
+// there is one) to `reshaped_gather_indices`.
+static StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
+    int64 index_vector_dim, const Literal& gather_indices,
+    std::unique_ptr<Literal>* reshaped_gather_indices) {
+  if (gather_indices.shape().dimensions_size() != index_vector_dim) {
+    return std::cref(gather_indices);
+  }
+
+  std::vector<int64> new_shape(gather_indices.shape().dimensions().begin(),
+                               gather_indices.shape().dimensions().end());
+  new_shape.push_back(1);
+  TF_ASSIGN_OR_RETURN(*reshaped_gather_indices,
+                      gather_indices.Reshape(new_shape));
+  return std::cref(**reshaped_gather_indices);
+}
+
+Status HloEvaluator::HandleGather(HloInstruction* gather) {
+  std::unique_ptr<Literal> result = Literal::CreateFromShape(gather->shape());
+  const Shape& shape = gather->shape();
+  const GatherDimensionNumbers& dim_numbers =
+      gather->gather_dimension_numbers();
+  const Literal& operand = GetEvaluatedLiteralFor(gather->operand(0));
+  std::unique_ptr<Literal> reshaped_gather_indices;
+  TF_ASSIGN_OR_RETURN(
+      const Literal& gather_indices,
+      ReshapedGatherIndices(dim_numbers.index_vector_dim(),
+                            GetEvaluatedLiteralFor(gather->operand(1)),
+                            &reshaped_gather_indices));
+
+  // We iterate over the gather dimensions in the output shape in an outer loop
+  // nest, and iterate over the window dimensions in the output shape in an
+  // inner loop nest.
+
+  ShapeUtil::IndexIterationSpace gather_indices_iteration_space =
+      IterationSpaceForOutputGatherIndices(shape, dim_numbers);
+  ShapeUtil::IndexIterationSpace window_indices_iteration_space =
+      IterationSpaceForOutputWindowIndices(
+          shape.dimensions_size(), gather->gather_window_bounds(), dim_numbers);
+
+  // Scratch buffers that hold an index in the output shape and the
+  // corresponding index in the input shape.
+  std::vector<int64> input_index(operand.shape().dimensions_size());
+  std::vector<int64> output_index(gather->shape().dimensions_size());
+
+  OutputGatherIndexToInputIndex output_gather_index_to_input_index(
+      &gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
+      /*output_shape=*/shape, &gather_indices);
+  OutputWindowIndexToInputIndex output_window_index_to_input_index(
+      gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
+      /*output_shape=*/shape);
+
+  auto gather_inner_loop_body =
+      [&](ArraySlice<int64> output_window_index,
+          ArraySlice<int64> input_gather_index,
+          ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        ArraySlice<int64> input_window_index,
+        output_window_index_to_input_index(output_window_index));
+    for (int i = 0, e = output_index.size(); i < e; i++) {
+      output_index[i] = output_gather_index[i] + output_window_index[i];
+    }
+    for (int i = 0, e = input_index.size(); i < e; i++) {
+      input_index[i] = input_gather_index[i] + input_window_index[i];
+    }
+    TF_RETURN_IF_ERROR(
+        result->CopyElementFrom(operand, input_index, output_index));
+    return true;
+  };
+
+  auto gather_outer_loop_body =
+      [&](ArraySlice<int64> output_gather_index) -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(
+        ArraySlice<int64> input_gather_index,
+        output_gather_index_to_input_index(output_gather_index));
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+        shape, window_indices_iteration_space,
+        std::bind(gather_inner_loop_body, std::placeholders::_1,
+                  input_gather_index, output_gather_index)));
+    return true;
+  };
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      shape, gather_indices_iteration_space, gather_outer_loop_body));
+  evaluated_[gather] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   const auto result_shape = get_tuple_element->shape();
   const int64 index = get_tuple_element->tuple_index();
@@ -2445,6 +2830,84 @@ Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleCall(HloInstruction* call) {
+  auto* computation = call->to_apply();
+  auto operands = call->operands();
+
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[call] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
+  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
+  const auto& true_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1));
+  const auto& false_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(2));
+
+  auto* true_computation = conditional->true_computation();
+  auto* false_computation = conditional->false_computation();
+
+  auto result = Literal::CreateFromShape(conditional->shape());
+  HloEvaluator embedded_evaluator;
+  if (pred.Get<bool>({})) {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*true_computation,
+                                           {&true_computation_arg})
+                 .ConsumeValueOrDie();
+  } else {
+    result = embedded_evaluator
+                 .Evaluate<const Literal*>(*false_computation,
+                                           {&false_computation_arg})
+                 .ConsumeValueOrDie();
+  }
+
+  evaluated_[conditional] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
+  HloComputation* cond_comp = while_hlo->while_condition();
+  HloComputation* body_comp = while_hlo->while_body();
+  // Initialize the loop carried valued with the input to the While instruction.
+  auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).CloneToUnique();
+  bool keep_going = true;
+  int64 iteration_count = 0;
+  HloEvaluator cond_evaluator(max_loop_iterations_);
+  HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  while (keep_going) {
+    if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
+      return InvalidArgument("Loop %s exceeded loop iteration limit (%lld).",
+                             while_hlo->name().c_str(), max_loop_iterations_);
+    }
+    TF_ASSIGN_OR_RETURN(auto cond_val, cond_evaluator.Evaluate<Literal*>(
+                                           *cond_comp, {lcv.get()}));
+    keep_going = cond_val->GetFirstElement<bool>();
+    if (keep_going) {
+      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
+                                             *body_comp, {lcv.get()}));
+      VLOG(3) << "Loop iteration result: " << body_val->ToString();
+      lcv = std::move(body_val);
+      cond_evaluator.ResetVisitStates();
+      loop_body_evaluator.ResetVisitStates();
+    }
+  }
+  evaluated_[while_hlo] = std::move(lcv);
+  return Status::OK();
+}
+
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
   return Status::OK();
@@ -2458,28 +2921,27 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
 
 // Explicit instantiation of templatized Evaluate* methods.
 //
-template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
-    const Literal*>(const HloModule& module,
-                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(const HloModule& module,
+                                       ArraySlice<const Literal*> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
-    const HloModule& module,
-    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    const HloModule& module, ArraySlice<std::unique_ptr<Literal>> arg_literals);
 
-template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
-    const Literal*>(const HloComputation& computation,
-                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(const HloComputation& computation,
+                                       ArraySlice<const Literal*> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
     const HloComputation& computation,
-    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    ArraySlice<std::unique_ptr<Literal>> arg_literals);
 
-template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
-    const Literal*>(HloInstruction* instruction,
-                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<const Literal*>(HloInstruction* instruction,
+                                       ArraySlice<const Literal*> arg_literals);
 template StatusOr<std::unique_ptr<Literal>>
 HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
     HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
+    ArraySlice<std::unique_ptr<Literal>> arg_literals);
 
 }  // namespace xla

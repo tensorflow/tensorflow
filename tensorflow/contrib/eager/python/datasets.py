@@ -68,10 +68,10 @@ class Iterator(object):
       RuntimeError: When invoked without eager execution enabled.
     """
 
-    if not context.in_eager_mode():
+    if not context.executing_eagerly():
       raise RuntimeError(
           "{} objects can only be used when eager execution is enabled, use "
-          "tf.data.Dataset.make_iterator or "
+          "tf.data.Dataset.make_initializable_iterator or "
           "tf.data.Dataset.make_one_shot_iterator for graph construction".
           format(type(self)))
     with ops.device("/device:CPU:0"):

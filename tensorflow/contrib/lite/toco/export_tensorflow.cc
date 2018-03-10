@@ -548,6 +548,38 @@ void ConvertDepthwiseConvOperator(const Model& model,
   }
 }
 
+void ConvertTransposeConvOperator(const Model& model,
+                                  const TransposeConvOperator& src_op,
+                                  GraphDef* tensorflow_graph) {
+  auto* conv2d_op = tensorflow_graph->add_node();
+  conv2d_op->set_op("Conv2DBackpropInput");
+  conv2d_op->set_name(src_op.outputs[0]);
+  *conv2d_op->add_input() = src_op.inputs[0];
+  *conv2d_op->add_input() = src_op.inputs[1];
+  *conv2d_op->add_input() = src_op.inputs[2];
+  (*conv2d_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  const string& weights_array_name = WalkUpToConstantArray(
+      model, src_op.inputs[TransposeConvOperator::WEIGHTS]);
+  const auto& weights_array = model.GetArray(weights_array_name);
+  CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
+  ConvertFloatTensorConst(model, weights_array_name, AxesOrder::kOHWI,
+                          AxesOrder::kHWIO, tensorflow_graph);
+  auto& strides = (*conv2d_op->mutable_attr())["strides"];
+  strides.mutable_list()->add_i(1);
+  strides.mutable_list()->add_i(src_op.stride_height);
+  strides.mutable_list()->add_i(src_op.stride_width);
+  strides.mutable_list()->add_i(1);
+  string padding;
+  if (src_op.padding.type == PaddingType::kSame) {
+    padding = "SAME";
+  } else if (src_op.padding.type == PaddingType::kValid) {
+    padding = "VALID";
+  } else {
+    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+  }
+  (*conv2d_op->mutable_attr())["padding"].set_s(padding);
+}
+
 void ConvertDepthToSpaceOperator(const Model& model,
                                  const DepthToSpaceOperator& src_op,
                                  GraphDef* tensorflow_graph) {
@@ -1622,9 +1654,11 @@ void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(params_type);
 
-  auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
-  for (int i : src_op.squeeze_dims) {
-    squeeze_dims.mutable_list()->add_i(i);
+  if (!src_op.squeeze_dims.empty()) {
+    auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
+    for (int i : src_op.squeeze_dims) {
+      squeeze_dims.mutable_list()->add_i(i);
+    }
   }
 }
 
@@ -1859,6 +1893,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertExpandDimsOperator(model,
                               static_cast<const ExpandDimsOperator&>(src_op),
                               tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTransposeConv) {
+    ConvertTransposeConvOperator(
+        model, static_cast<const TransposeConvOperator&>(src_op),
+        tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

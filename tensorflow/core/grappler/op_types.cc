@@ -144,6 +144,9 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
+  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
+    return true;
+  }
   return op == "Identity" || op == "RefIdentity";
 }
 
@@ -300,6 +303,19 @@ bool IsSquaredDifference(const NodeDef& node) {
 
 bool IsSqueeze(const NodeDef& node) { return node.op() == "Squeeze"; }
 
+bool IsStackOp(const NodeDef& node) {
+  return node.op() == "Stack" || node.op() == "StackV2";
+}
+bool IsStackCloseOp(const NodeDef& node) {
+  return node.op() == "StackClose" || node.op() == "StackCloseV2";
+}
+bool IsStackPushOp(const NodeDef& node) {
+  return node.op() == "StackPush" || node.op() == "StackPushV2";
+}
+bool IsStackPopOp(const NodeDef& node) {
+  return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
@@ -354,7 +370,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     return false;
   }
   const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  const string& op_name = node.op();
+  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -368,7 +385,8 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace")) {
+  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
+      StringPiece(op_name).starts_with("Inplace")) {
     return false;
   }
   return true;

@@ -32,6 +32,39 @@ limitations under the License.
 
 namespace tensorflow {
 
+class GcsFileSystem;
+
+/// GcsStatsInterface allows for instrumentation of the GCS file system.
+///
+/// GcsStatsInterface and its subclasses must be safe to use from multiple
+/// threads concurrently.
+///
+/// WARNING! This is an experimental interface that may change or go away at any
+/// time.
+class GcsStatsInterface {
+ public:
+  /// Init is called by the GcsFileSystem immediately after being registered.
+  virtual void Init(GcsFileSystem* fs, GcsThrottle* throttle,
+                    const FileBlockCache* block_cache) = 0;
+
+  /// RecordBlockLoadRequest is called to record a block load request is about
+  /// to be made.
+  virtual void RecordBlockLoadRequest(const string& file, size_t offset) = 0;
+
+  /// RecordBlockRetrieved is called once a block within the file has been
+  /// retrieved.
+  virtual void RecordBlockRetrieved(const string& file, size_t offset,
+                                    size_t bytes_transferred) = 0;
+
+  /// HttpStats is called to optionally provide a RequestStats listener
+  /// to be annotated on every HTTP request made to the GCS API.
+  ///
+  /// HttpStats() may return nullptr.
+  virtual HttpRequest::RequestStats* HttpStats() = 0;
+
+  virtual ~GcsStatsInterface() = default;
+};
+
 /// Google Cloud Storage implementation of a file system.
 ///
 /// The clients should use RetryingGcsFileSystem defined below,
@@ -89,6 +122,9 @@ class GcsFileSystem : public FileSystem {
                            int64* undeleted_dirs) override;
 
   void FlushCaches() override;
+
+  /// Set an object to collect runtime statistics from the GcsFilesystem.
+  void SetStats(GcsStatsInterface* stats);
 
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
@@ -205,6 +241,8 @@ class GcsFileSystem : public FileSystem {
 
   TimeoutConfig timeouts_;
 
+  GcsStatsInterface* stats_ = nullptr;  // Not owned.
+
   /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
 
@@ -217,8 +255,16 @@ class GcsFileSystem : public FileSystem {
 /// Google Cloud Storage implementation of a file system with retry on failures.
 class RetryingGcsFileSystem : public RetryingFileSystem {
  public:
-  RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<FileSystem>(new GcsFileSystem)) {}
+  RetryingGcsFileSystem() : RetryingGcsFileSystem(new GcsFileSystem) {}
+
+  void SetStats(GcsStatsInterface* stats) { underlying_->SetStats(stats); }
+
+ private:
+  explicit RetryingGcsFileSystem(GcsFileSystem* fs)
+      : RetryingFileSystem(std::unique_ptr<FileSystem>(fs)), underlying_(fs) {}
+
+  // TODO(b/74259157): Refactor RetryingFileSystem to avoid holding this ptr.
+  GcsFileSystem* underlying_;
 };
 
 }  // namespace tensorflow

@@ -223,7 +223,7 @@ Status Literal::CopySliceFromInternal(
     Literal::StrideConfig stride_config(src_literal.shape(), shape(),
                                         copy_size);
 
-    auto copy_proc = [&](const std::vector<int64>& indexes) {
+    auto copy_proc = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
       // Map from multi-dimensional index, to source index.
       std::transform(indexes.begin(), indexes.end(), src_base.begin(),
                      src_indexes.begin(), std::plus<int64>());
@@ -244,6 +244,28 @@ Status Literal::CopySliceFromInternal(
     ShapeUtil::ForEachIndex(src_literal.shape(), stride_config.base,
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
+  }
+  return Status::OK();
+}
+
+Status Literal::CopyElementFrom(const Literal& src_literal,
+                                tensorflow::gtl::ArraySlice<int64> src_index,
+                                tensorflow::gtl::ArraySlice<int64> dest_index) {
+  DCHECK_EQ(shape().element_type(), src_literal.shape().element_type());
+  const int64 src_linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      src_literal.shape(), src_index);
+  const int64 dest_linear_index =
+      IndexUtil::MultidimensionalIndexToLinearIndex(shape(), dest_index);
+  const int64 primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+  char* dest_address =
+      static_cast<char*>(untyped_data()) + dest_linear_index * primitive_size;
+  const char* source_address =
+      static_cast<const char*>(src_literal.untyped_data()) +
+      src_linear_index * primitive_size;
+  if (dest_address != source_address) {
+    memcpy(dest_address, source_address, primitive_size);
   }
   return Status::OK();
 }
@@ -343,7 +365,7 @@ Status Literal::Piece::CopyFrom(const Literal::Piece& src) {
 #undef COPY_ELEMENTS
       default:
         return Unimplemented(
-            "Unhandled primitive type %s",
+            "Copying a Literal object with element type %s is not implemented.",
             PrimitiveType_Name(subshape().element_type()).c_str());
     }
   }
@@ -491,7 +513,10 @@ Status Literal::CopySliceFrom(const Literal& src_literal,
     default:
       break;
   }
-  return Unimplemented("Unhandled primitive type %d", shape().element_type());
+  return Unimplemented(
+      "Copying a slice from a Literal object with element type %d is not "
+      "implemented.",
+      shape().element_type());
 }
 
 /* static */ Literal Literal::Zero(PrimitiveType primitive_type) {
@@ -808,9 +833,10 @@ std::unique_ptr<Literal> Literal::Slice(
   DimensionVector result_dimensions;
   for (int64 dnum = 0; dnum < ShapeUtil::Rank(shape()); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
-    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum));
+    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
+        << "dnum = " << dnum;
     int64 dimension = limit_indices[dnum] - start_indices[dnum];
-    CHECK_GT(dimension, 0);
+    CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
   const auto result_shape =
@@ -1394,8 +1420,8 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
       return ConvertToC64<primitive_src_type>(src_literal);
     // Other types are not yet supported.
     default:
-      return InvalidArgument(
-          "Unimplemented: Convert from type %s to type %s",
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
           PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
           PrimitiveType_Name(primitive_dest_type).c_str());
   }
@@ -1424,10 +1450,29 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
-      return InvalidArgument("Unimplemented: Convert from type %s to type %s",
-                             PrimitiveType_Name(shape().element_type()).c_str(),
-                             PrimitiveType_Name(primitive_dest_type).c_str());
+      return Unimplemented(
+          "Converting from type %s to type %s is not implemented.",
+          PrimitiveType_Name(shape().element_type()).c_str(),
+          PrimitiveType_Name(primitive_dest_type).c_str());
   }
+}
+
+StatusOr<std::unique_ptr<Literal>> Literal::ConvertToShape(
+    const Shape& dest_shape) const {
+  if (!ShapeUtil::IsTuple(dest_shape)) {
+    return Convert(dest_shape.element_type());
+  }
+  std::vector<Literal> elements;
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+    auto element = LiteralView::Create(*this, {i});
+    TF_ASSIGN_OR_RETURN(
+        auto new_element,
+        element.ConvertToShape(ShapeUtil::GetSubshape(dest_shape, {i})));
+    elements.push_back(std::move(*new_element));
+  }
+  auto converted = MakeUnique<Literal>();
+  *converted = Literal::MoveIntoTuple(&elements);
+  return std::move(converted);
 }
 
 template <typename NativeT>

@@ -1181,7 +1181,7 @@ Status DirectSession::GetOrCreateExecutors(
   }
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
-      func_info->flib_def.get(), optimizer_opts));
+      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {

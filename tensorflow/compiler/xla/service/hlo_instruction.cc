@@ -182,6 +182,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
+  CHECK(ShapeUtil::IsTuple(operand->shape()));
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kGetTupleElement, shape));
   instruction->tuple_index_ = index;
@@ -1172,7 +1173,8 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ GatherDimensionNumbers HloInstruction::MakeGatherDimNumbers(
     tensorflow::gtl::ArraySlice<int64> output_window_dims,
     tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims) {
+    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+    int64 index_vector_dim) {
   GatherDimensionNumbers gather_dim_numbers;
   for (int64 output_window_dim : output_window_dims) {
     gather_dim_numbers.add_output_window_dims(output_window_dim);
@@ -1184,6 +1186,7 @@ bool HloInstruction::HasSideEffect() const {
     gather_dim_numbers.add_gather_dims_to_operand_dims(gather_dim_to_input_dim);
   }
 
+  gather_dim_numbers.set_index_vector_dim(index_vector_dim);
   return gather_dim_numbers;
 }
 
@@ -2680,8 +2683,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
     case HloOpcode::kTrace:
       break;
   }
-  return Unimplemented("unhandled HloOpcode for DfsHloVisitor: %s",
-                       HloOpcodeString(opcode_).c_str());
+  return InternalError(
+      "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
+      "please file a bug for XLA.",
+      HloOpcodeString(opcode_).c_str());
 }
 
 // Explicit instantiations.
@@ -3369,9 +3374,12 @@ string HloInstruction::GatherDimensionNumbersToString() const {
   string gather_dims_to_operand_dims = StrCat(
       "gather_dims_to_operand_dims={",
       Join(gather_dimension_numbers_->gather_dims_to_operand_dims(), ","), "}");
+  string index_vector_dim = StrCat(
+      "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
 
   return Join<std::initializer_list<string>>(
-      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims},
+      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims,
+       index_vector_dim},
       ", ");
 }
 

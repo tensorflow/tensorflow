@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
 
+// TODO(skyewm): can this be combined with EvaluateConstantTensor?
+
 namespace tensorflow {
 
 // This generator type is used to generate a name for the newly folded node

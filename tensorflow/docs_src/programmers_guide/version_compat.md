@@ -245,6 +245,25 @@ contains a main data version which is treated as either `producer` or
     `TF_CHECKPOINT_VERSION_MIN_CONSUMER`, and
     `TF_CHECKPOINT_VERSION_MIN_PRODUCER`.
 
+### Add a new attribute with default to an existing Op
+
+Following the guidance below gives you forward compatibility only if the set of
+Ops has not changed.
+
+1. If forward compatibility is desired,  set `strip_default_attrs` to `True`
+   while exporting the model using either the
+   @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`add_meta_graph_and_variables`}
+   and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`add_meta_graph`}
+   methods of the `SavedModelBuilder` class, or
+   @{tf.estimator.Estimator.export_savedmodel$`Estimator.export_savedmodel`}
+2. This strips off the default valued attributes at the time of
+   producing/exporting the models; thereby making sure that the exported
+   @{tf.MetaGraphDef} does not contain the new Op-attribute when the default
+   value is used.
+3. Having this control lets potentially old consumers aka serving binaries
+   (lagging behind training binaries) continue loading the models
+   thereby preventing interruptions in model serving.
+
 ### Evolving GraphDef versions
 
 This section explains how to use this versioning mechanism to make different

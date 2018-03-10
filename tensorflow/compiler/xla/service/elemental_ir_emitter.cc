@@ -1722,6 +1722,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(if_data.after_block, ir_builder_);
         return ir_builder_->CreateLoad(ret_value_addr);
       };
+    case HloOpcode::kBitcast:
+      CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
+               ShapeUtil::ElementsIn(hlo->operand(0)->shape()));
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        const HloInstruction* operand = hlo->operand(0);
+        return operand_to_generator.at(operand)(index.SourceIndexOfBitcast(
+            hlo->shape(), operand->shape(), ir_builder_));
+      };
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
                ShapeUtil::ElementsIn(hlo->operand(0)->shape()));

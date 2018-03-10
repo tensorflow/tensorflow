@@ -71,14 +71,14 @@ class XLATestCase(test.TestCase):
 
     self._all_types = set(
         [dtype.as_numpy_dtype for dtype in self._all_tf_types])
-    self.int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
+    self._int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
     self._float_types = set(
         [dtype.as_numpy_dtype for dtype in self._float_tf_types])
     self.complex_types = set([
         dtype.as_numpy_dtype for dtype in self.complex_tf_types
     ])
-    self._numeric_types = set(
-        self.int_types | self._float_types | self.complex_types)
+    self._numeric_types = set(self._int_types | self._float_types
+                              | self.complex_types)
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable
@@ -129,6 +129,11 @@ class XLATestCase(test.TestCase):
   def float_tf_types(self):
     name = '{}.{}'.format(type(self).__name__, self._testMethodName)
     return self._float_tf_types - self._method_types_filter.get(name, set())
+
+  @property
+  def int_types(self):
+    name = '{}.{}'.format(type(self).__name__, self._testMethodName)
+    return self._int_types - self._method_types_filter.get(name, set())
 
   @property
   def numeric_tf_types(self):

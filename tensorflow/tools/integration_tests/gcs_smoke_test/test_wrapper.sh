@@ -1,5 +1,5 @@
-# This is a python2 only test.
 #!/bin/bash
+# This is a python2 only test.
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,4 +18,4 @@
 /usr/local/bin/pip install --user tf-nightly
 
 # Test Tensorflow interaction with GCS.
-python tensorflow/tools/integration_test/gcs_smoke_test/gcs_smoke.py "$@"
+python tensorflow/tools/integration_tests/gcs_smoke_test/gcs_smoke.py "$@"
