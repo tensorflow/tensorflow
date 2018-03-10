@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -49,7 +50,7 @@ void VerifyGraphsMatch(const GraphDef& original_graph,
 }
 }  // namespace
 
-class ArithmeticOptimizerTest : public ::testing::Test {
+class ArithmeticOptimizerTest : public GrapplerTest {
  protected:
   // Optimize a graph using ArithmeticOptimizer and prune all the nodes that no
   // longer have any output consumers.
@@ -63,14 +64,32 @@ class ArithmeticOptimizerTest : public ::testing::Test {
   // TODO(ezhulenev): Make private. After migration to stages each test
   // should explicitly enable required optimization for tests isolation
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
-    ArithmeticOptimizer::ArithmeticOptimizerOptions options{
-        /*enable_add_to_addn_combining*/ false};
+    ArithmeticOptimizer::ArithmeticOptimizerOptions options;
+    options.combine_add_to_addn = false;
+    options.remove_inverse_transpose = false;
+    options.remove_redundant_bitcast = false;
+    options.remove_redundant_cast = false;
     optimizer->options_ = options;
   }
 
-  void EnableAddToAddNCombining(ArithmeticOptimizer* optimizer) {
+  void EnableOnlyAddToAddNCombining(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.enable_add_to_addn_combining = true;
+    optimizer->options_.combine_add_to_addn = true;
+  }
+
+  void EnableOnlyRemoveInverseTranspose(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_inverse_transpose = true;
+  }
+
+  void EnableOnlyRemoveRedundantBitcast(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_redundant_bitcast = true;
+  }
+
+  void EnableOnlyRemoveRedundantCast(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_redundant_cast = true;
   }
 };
 
@@ -658,9 +677,7 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(0, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+  EXPECT_EQ(0, CountOpNodes(output, "Reshape"));
 }
 
 TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
@@ -682,9 +699,7 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(1, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+  EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
 }
 
 TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
@@ -704,9 +719,7 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
   item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(1, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+  EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
@@ -737,9 +750,7 @@ TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
   item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(1, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+  EXPECT_EQ(1, CountOpNodes(output, "Reshape"));
 }
 
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast) {
@@ -826,10 +837,9 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInverseTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
 
   std::set<string> nodes_after_optimization;
   for (const NodeDef& node : output.node()) {
@@ -859,10 +869,9 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInverseTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
 
   for (const NodeDef& node : output.node()) {
     if (node.op() == "Concat") {
@@ -886,10 +895,11 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInverseTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
 
   NodeMap node_map(&output);
   const NodeDef* outputs_node = node_map.GetNode("outputs");
@@ -915,10 +925,9 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveInverseTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(6, output.node_size());
 }
@@ -1133,10 +1142,10 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
 
 TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({2, 3}));
-  Output bc1 = ops::Bitcast(s, inputs, DT_QINT8);
-  Output bc2 = ops::Bitcast(s, bc1, DT_INT8);
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_UINT8,
+                                   ops::Placeholder::Shape({2, 3}));
+  Output bc1 = ops::Bitcast(s.WithOpName("bc1"), inputs, DT_QINT8);
+  Output bc2 = ops::Bitcast(s.WithOpName("bc2"), bc1, DT_INT8);
   Output outputs = ops::Identity(s.WithOpName("outputs"), bc2);
 
   GrapplerItem item;
@@ -1144,18 +1153,22 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantBitcast(&optimizer);
 
-  EXPECT_EQ(1, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Bitcast"; }));
+  OptimizeAndPrune(&optimizer, &item, &output);
+  NodeMap node_map(&output);
+
+  // Bitcasts combined into a single op and inputs redirected to updated Bitcast
+  EXPECT_EQ(3, output.node_size());
+  EXPECT_EQ(1, CountOpNodes(output, "Bitcast"));
+  EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "bc2"));
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs = ops::Placeholder(s, DT_INT8, ops::Placeholder::Shape({2, 3}));
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_INT8,
+                                   ops::Placeholder::Shape({2, 3}));
   Output bc1 = ops::Bitcast(s, inputs, DT_QINT8);
   Output bc2 = ops::Bitcast(s, bc1, DT_INT8);
   Output outputs = ops::Identity(s.WithOpName("outputs"), bc2);
@@ -1163,33 +1176,42 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(0, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Bitcast"; }));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantBitcast(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+  NodeMap node_map(&output);
+
+  // Bitcasts removed and inputs redirected to outputs
+  EXPECT_EQ(2, output.node_size());
+  EXPECT_EQ(0, CountOpNodes(output, "Bitcast"));
+  EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs = ops::Placeholder(s, DT_INT8, ops::Placeholder::Shape({2, 3}));
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_INT8,
+                                   ops::Placeholder::Shape({2, 3}));
   Output cast = ops::Cast(s, inputs, DT_INT8);
   Output outputs = ops::Identity(s.WithOpName("outputs"), cast);
 
   GrapplerItem item;
   item.fetch = {"outputs"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph.Swap(&output);
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(0, std::count_if(
-                   output.node().begin(), output.node().end(),
-                   [](const NodeDef& node) { return node.op() == "Cast"; }));
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveRedundantCast(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+  NodeMap node_map(&output);
+
+  // Cast removed and inputs redirected to outputs
+  EXPECT_EQ(2, output.node_size());
+  EXPECT_EQ(0, CountOpNodes(output, "Cast"));
+  EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
 }
 
 TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
@@ -1211,7 +1233,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableAddToAddNCombining(&optimizer);
+  EnableOnlyAddToAddNCombining(&optimizer);
 
   OptimizeAndPrune(&optimizer, &item, &output);
 
@@ -1266,7 +1288,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableAddToAddNCombining(&optimizer);
+  EnableOnlyAddToAddNCombining(&optimizer);
 
   OptimizeAndPrune(&optimizer, &item, &output);
 
@@ -1329,7 +1351,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableAddToAddNCombining(&optimizer);
+  EnableOnlyAddToAddNCombining(&optimizer);
 
   OptimizeAndPrune(&optimizer, &item, &output);
 

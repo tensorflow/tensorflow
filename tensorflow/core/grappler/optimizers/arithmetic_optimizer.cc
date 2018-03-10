@@ -45,19 +45,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-template <typename T>
-bool AreInversePermutations(const std::vector<T>& a, const std::vector<T>& b) {
-  if (a.size() != b.size()) {
-    return false;
-  }
-  for (int i = 0; i < a.size(); ++i) {
-    if (a[b[i]] != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Extract values from a Const op to `values`. Returns true if succeeds.
 template <typename T>
 bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
@@ -431,9 +418,7 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
 
   Status TrySimplify(const NodeDef* node,
                      string* simplified_node_name) override {
-    CHECK(IsSupported(node))
-        << "Node " << node->name()
-        << " is not supported by add ops group optimizer step";
+    CHECK(IsSupported(node));
     AddOpsGroup group;
     TF_RETURN_IF_ERROR(CreateAddOpsGroup(node, &group));
 
@@ -648,6 +633,130 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
 
   // keep nodes that were added or absorbed as a part of AddOpsGroup rewrite
   std::unordered_set<string> rewritten_nodes_;
+};
+
+// Removes inverse transpose nodes
+class RemoveInverseTranspose : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveInverseTranspose(ArithmeticOptimizerContext ctx)
+      : ArithmeticOptimizerStage(ctx) {}
+  ~RemoveInverseTranspose() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsTranspose(*node) || IsConjugateTranspose(*node);
+  }
+
+  Status TrySimplify(const NodeDef* node,
+                     string* simplified_node_name) override {
+    CHECK(IsSupported(node));
+
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+
+    if (input->op() == node->op()) {
+      NodeDef* node_perm;
+      NodeDef* input_perm;
+
+      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &node_perm));
+      TF_RETURN_IF_ERROR(GetInputNode(input->input(1), &input_perm));
+
+      // Try 32-bit indices.
+      std::vector<int> node_perm_values;
+      std::vector<int> input_perm_values;
+      if (ValuesFromConstNode(*node_perm, &node_perm_values) &&
+          ValuesFromConstNode(*input_perm, &input_perm_values) &&
+          AreInversePermutations(node_perm_values, input_perm_values)) {
+        *simplified_node_name = input->input(0);
+      }
+      // Try 64-bit indices.
+      std::vector<int64> node_perm_values64;
+      std::vector<int64> input_perm_values64;
+      if (ValuesFromConstNode(*node_perm, &node_perm_values64) &&
+          ValuesFromConstNode(*input_perm, &input_perm_values64) &&
+          AreInversePermutations(node_perm_values64, input_perm_values64)) {
+        *simplified_node_name = input->input(0);
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  template <typename T>
+  bool AreInversePermutations(const std::vector<T>& a,
+                              const std::vector<T>& b) {
+    if (a.size() != b.size()) {
+      return false;
+    }
+    for (int i = 0; i < a.size(); ++i) {
+      if (a[b[i]] != i) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+// Remove redundant Bitcasts.
+// 1) Remove Bitcast whose source type and destination type are equal
+// 2) Rewrite Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
+class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveRedundantBitcastStage(ArithmeticOptimizerContext ctx)
+      : ArithmeticOptimizerStage(ctx) {}
+  ~RemoveRedundantBitcastStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsBitcast(*node);
+  }
+
+  Status TrySimplify(const NodeDef* node,
+                     string* simplified_node_name) override {
+    CHECK(IsSupported(node));
+
+    // Bypass Bitcast whose source type and destination type are equal.
+    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+      *simplified_node_name = node->input(0);
+      return Status::OK();
+    }
+
+    NodeDef* bitcast;
+    TF_RETURN_IF_ERROR(GetInputNode(node->name(), &bitcast));
+    NodeDef* operand;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &operand));
+
+    if (IsBitcast(*operand)) {
+      // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
+      bitcast->set_input(0, operand->input(0));
+      SetSourceDataType(GetSourceDataType(*operand), bitcast);
+      ctx_.node_map->UpdateInput(bitcast->name(), bitcast->input(0),
+                                 operand->input(0));
+      AddToOptimizationQueue(bitcast);
+      *simplified_node_name = bitcast->name();
+    }
+
+    return Status::OK();
+  }
+};
+
+// Remove Casts whose source type and destination type are equal.
+class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveRedundantCastStage(ArithmeticOptimizerContext ctx)
+      : ArithmeticOptimizerStage(ctx) {}
+  ~RemoveRedundantCastStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsCast(*node); }
+
+  Status TrySimplify(const NodeDef* node,
+                     string* simplified_node_name) override {
+    CHECK(IsSupported(node));
+    // Bypass Cast whose source type and destination type are equal.
+    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+      *simplified_node_name = node->input(0);
+    }
+    return Status::OK();
+  }
 };
 
 }  // namespace
@@ -903,31 +1012,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
-  // Remove inverse transposes.
-  if (node->op() == "Transpose" || node->op() == "ConjugateTranspose") {
-    NodeDef* input = node_map_->GetNode(node->input(0));
-    if (input->op() == node->op()) {
-      const NodeDef* node_perm = node_map_->GetNode(node->input(1));
-      const NodeDef* input_perm = node_map_->GetNode(input->input(1));
-      // Try 32-bit indices.
-      std::vector<int> node_perm_values;
-      std::vector<int> input_perm_values;
-      if (ValuesFromConstNode(*node_perm, &node_perm_values) &&
-          ValuesFromConstNode(*input_perm, &input_perm_values) &&
-          AreInversePermutations(node_perm_values, input_perm_values)) {
-        return input->input(0);
-      }
-      // Try 64-bit indices.
-      std::vector<int64> node_perm_values64;
-      std::vector<int64> input_perm_values64;
-      if (ValuesFromConstNode(*node_perm, &node_perm_values64) &&
-          ValuesFromConstNode(*input_perm, &input_perm_values64) &&
-          AreInversePermutations(node_perm_values64, input_perm_values64)) {
-        return input->input(0);
-      }
-    }
-  }
-
   if (node->op() == "Reshape") {
     //   Reshape
     //      ^
@@ -1021,32 +1105,6 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           return new_cast->name();
         }
       }
-    }
-  }
-
-  if (node->op() == "Bitcast") {
-    NodeDef* bitcast = node_map_->GetNode(node->name());
-    // Bypass bitcasts whose source type and destination type are equal.
-    if (GetSourceDataType(*bitcast) == GetDestinationDataType(*bitcast)) {
-      return bitcast->input(0);
-    }
-
-    const NodeDef* operand = node_map_->GetNode(bitcast->input(0));
-    if (operand->op() == bitcast->op()) {
-      // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
-      bitcast->set_input(0, operand->input(0));
-      SetSourceDataType(GetSourceDataType(*operand), bitcast);
-      node_map_->UpdateInput(bitcast->name(), bitcast->input(0),
-                             operand->input(0));
-      nodes_to_simplify->PushBack(bitcast);
-      return bitcast->name();
-    }
-  }
-
-  if (node->op() == "Cast") {
-    // Bypass casts whose source type and destination type are equal.
-    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
-      return node->input(0);
     }
   }
 
@@ -1391,10 +1449,21 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
 
   std::vector<std::unique_ptr<ArithmeticOptimizerStage>> stages;
 
-  // Add/AddN tree rewrites
-  if (options_.enable_add_to_addn_combining) {
+  if (options_.combine_add_to_addn) {
     stages.push_back(
         std::unique_ptr<ArithmeticOptimizerStage>(new AddOpsRewriteStage(ctx)));
+  }
+  if (options_.remove_inverse_transpose) {
+    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
+        new RemoveInverseTranspose(ctx)));
+  }
+  if (options_.remove_redundant_bitcast) {
+    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
+        new RemoveRedundantBitcastStage(ctx)));
+  }
+  if (options_.remove_redundant_cast) {
+    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
+        new RemoveRedundantCastStage(ctx)));
   }
 
   VLOG(1) << "Simplify arithmetic ops using " << stages.size()
