@@ -393,6 +393,21 @@ class ShapeTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       unk1 != unk0  # pylint: disable=pointless-statement
 
+    # Test case for GitHub issue 17593
+    v1 = tensor_shape.TensorShape([None])
+    v2 = tensor_shape.TensorShape([None])
+    self.assertFalse(v1 == v2)
+
+    dim = tensor_shape.Dimension(None)
+
+    v3 = tensor_shape.TensorShape([dim])
+    v4 = tensor_shape.TensorShape([tensor_shape.Dimension(None)])
+    self.assertFalse(v3 == v4)
+
+    v5 = tensor_shape.TensorShape([dim])
+    v6 = tensor_shape.TensorShape([dim])
+    self.assertFalse(v5 == v6)
+
   def testAsList(self):
     with self.assertRaisesRegexp(ValueError,
                                  "not defined on an unknown TensorShape"):
