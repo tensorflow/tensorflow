@@ -223,13 +223,6 @@ CreateBiasAddOp(poplar::Graph &graph,
                 TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
-CreateBiasAddBcastOp(poplar::Graph &graph,
-                     CompilerResources& res,
-                     const HloInstruction *inst,
-                     const xla::Shape& output_shape,
-                     TensorMap& tensor_map);
-
-port::StatusOr<poplar::program::Program>
 TruncatedNormalScale(poplar::Graph &graph,
                      CompilerResources& res,
                      const HloInstruction *inst,

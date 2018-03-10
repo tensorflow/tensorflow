@@ -50,13 +50,19 @@ static bool IsPoplibsDepthwiseConv(const HloInstruction* inst) {
 static const std::vector<HloMatcherPattern> patterns = {
 
   // Backprop input convolution
-  {{HloOpcode::kCall, true, IsPoplibsBackpropInputConv, {-1, -2}}},
+  {{HloOpcode::kCall, true, 0, IsPoplibsBackpropInputConv, {1, 2}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Depthwise convolution (forward pass)
-  {{HloOpcode::kCall, true, IsPoplibsDepthwiseConv, {-1, -2}}},
+  {{HloOpcode::kCall, true, 0, IsPoplibsDepthwiseConv, {1, 2}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Stand-alone convolution
-  {{HloOpcode::kConvolution, true, nullptr, {-1, -2}}},
+  {{HloOpcode::kConvolution, true, 0, nullptr, {1, 2}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
 };
 

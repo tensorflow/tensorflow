@@ -45,60 +45,73 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
 
     const HloMatcherNode& node(pattern[node_num]);
 
-    if (node.opcode != inst->opcode()) {
-      return false;
+    if (node.opcode != HloOpcode::kParameter) {
+      if (node.opcode != inst->opcode()) {
+        return false;
+      }
     }
 
     if (node.verification_fn && !node.verification_fn(inst)) {
       return false;
     }
 
-    if ((node.operands.size() > 0) &&
-        (inst->operand_count() != node.operands.size())) {
-      return false;
-    }
+    if (node.include_in_replacement) {
+      if ((node.operands.size() > 0) &&
+          (inst->operand_count() != node.operands.size())) {
+        return false;
+      }
 
-    for (unsigned int i=0; i<node.operands.size(); i++) {
-      HloInstruction* operand = inst->mutable_operand(i);
-      int n = node.operands[i];
-      if (n < 0) {
-        // When n<0, we are verifying an input to the fusion
-        if (input_map_.count(n) > 0) {
-          if (input_map_[n] != operand) {
-            // An input label refers to only one instruction
+      for (unsigned int i=0; i<node.operands.size(); i++) {
+        HloInstruction* operand = inst->mutable_operand(i);
+        int n = node.operands[i];
+
+        if (n >= match.instructions.size()) {
+          LOG(FATAL) << "Invalid matcher reference " << n;
+        }
+
+        if (match.instructions[n] != nullptr) {
+          // Instructions can only match once
+          if (match.instructions[n] != operand) {
             return false;
           }
         } else {
-          if (input_set_.count(operand) > 0) {
-            // An instruction cannot supply more than one input label
-            return false;
+          // Each instruction can match only one entry in the pattern
+          for (auto* op : match.instructions) {
+            if (op == operand) {
+              return false;
+            }
           }
 
-          input_map_[n] = operand;
-          input_set_.insert(operand);
+          match.instructions[n] = operand;
         }
-      } else {
-        // When n>0, we are verifying an instruction operand
-        if (n <= node_num) {
-          // Backward references are not allowed
-          return false;
-        }
-
-        if (match.instructions[n] != nullptr &&
-            match.instructions[n] != operand) {
-          // The operand's opcode must match
-          return false;
-        }
-
-        match.instructions[n] = operand;
       }
     }
   }
 
   ReplacedInstructions replaced;
   for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
-    if (pattern[node_num].include_in_replacement) {
+    const HloMatcherNode& node(pattern[node_num]);
+
+    if (node.include_in_replacement) {
       replaced.push_back(match.instructions[node_num]);
+    } else {
+      if (match.parameters.size() <= node.parameter_index) {
+        match.parameters.resize(node.parameter_index + 1);
+      }
+      HloInstruction* user;
+      for (auto* u : match.instructions[node_num]->users()) {
+        for (auto* r : replaced) {
+          if (r == u) {
+            user = u;
+            break;
+          }
+        }
+      }
+      if (!user) {
+        LOG(FATAL) << "User instruction cannot be found";
+      }
+      int64 index = user->operand_index(match.instructions[node_num]);
+      match.parameters[node.parameter_index] = std::make_pair(user, index);
     }
   }
   match.instructions = std::move(replaced);
@@ -127,9 +140,6 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
       match.ok = true;
       match.computation = computation;
       match.instructions.resize(patterns_[i].size());
-
-      input_map_.clear();
-      input_set_.clear();
 
       if (MatchPattern(instruction, patterns_[i], match)) {
         AddMatch(i, match);
@@ -187,8 +197,6 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   visited_.clear();
   matches_.clear();
   match_map_.clear();
-  input_set_.clear();
-  input_map_.clear();
 
   return replacement_count != 0;
 }
@@ -197,6 +205,8 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         const HloMatcherMatched& matched,
         const std::string& outlined_computation_name,
         const char metadata_index) {
+
+  XLA_VLOG_LINES(1, matched.computation->ToString());
 
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
@@ -207,51 +217,58 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
 
   auto builder = HloComputation::Builder(outlined_computation_name);
 
-  // A map from original instructions to their counterparts in the new outlined
-  // function.
-  std::unordered_map<HloInstruction*, HloInstruction*> outlined_instructions;
+  // A map from original instructions to their new counterparts
+  std::unordered_map<HloInstruction*, HloInstruction*> outlined;
 
-  // A set that contains all instructions to be outlined.
-  std::unordered_set<HloInstruction*> instruction_set_to_outline(
-          to_outline.begin(), to_outline.end());
-
-  std::vector<HloInstruction*> arguments;
-  int64 parameter_count = 0;
+  std::vector<HloInstruction*> arguments(matched.parameters.size());
 
   for (HloInstruction* instruction_to_outline : to_outline) {
 
-    if (outlined_instructions.find(instruction_to_outline) ==
-        outlined_instructions.end()) {
+    if (outlined.find(instruction_to_outline) == outlined.end()) {
 
-      HloInstruction* outlined_instruction =
-              builder.AddInstruction(instruction_to_outline->Clone());
+      auto* new_inst = builder.AddInstruction(instruction_to_outline->Clone());
+      outlined[instruction_to_outline] = new_inst;
 
-      for (int64 operand_num = 0;
-           operand_num < outlined_instruction->operand_count(); ++operand_num) {
-        HloInstruction* old_operand =
-                outlined_instruction->mutable_operand(operand_num);
-
-        HloInstruction** operand_slot = &(outlined_instructions[old_operand]);
+      for (int64 operand = 0; operand < new_inst->operand_count(); ++operand) {
+        HloInstruction* old_operand = new_inst->mutable_operand(operand);
+        HloInstruction** operand_slot = &(outlined[old_operand]);
         if (*operand_slot == nullptr) {
-          arguments.push_back(old_operand);
-          *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-                  parameter_count, old_operand->shape(), "arg"));
-          ++parameter_count;
-        }
-        TF_CHECK_OK(
-                outlined_instruction->ReplaceOperandWith(operand_num,
-                                                         *operand_slot));
-      }
 
-      // Insert the new instruction into the outlined_instructions map.
-      InsertOrDie(&outlined_instructions, instruction_to_outline,
-                  outlined_instruction);
+          int parameter_num = -1;
+          for (auto* old_user : old_operand->users()) {
+            for (int i=0; i<matched.parameters.size(); i++) {
+              auto& param = matched.parameters[i];
+              if (param.first == old_user &&
+                  old_user->operand(param.second) == old_operand) {
+                parameter_num = i;
+                break;
+              }
+            }
+          }
+
+          if (parameter_num != -1) {
+            arguments[parameter_num] = old_operand;
+            *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
+                parameter_num, old_operand->shape(), "arg"));
+          }
+        }
+
+        TF_CHECK_OK(new_inst->ReplaceOperandWith(operand, *operand_slot));
+      }
+    }
+  }
+
+  for (int i=0; i<arguments.size(); i++) {
+    if (arguments[i] == nullptr) {
+      LOG(FATAL) << "Argument " << i << " not found for outline "
+                 << outlined_computation_name;
     }
   }
 
   // Creates a call to the nested computation.
   HloComputation* nested_computation = module->AddEmbeddedComputation(
-          builder.Build(FindOrDie(outlined_instructions, root)));
+          builder.Build(FindOrDie(outlined, root)));
+
   HloInstruction* call = matched.computation->AddInstruction(
           HloInstruction::CreateCall(root->shape(), arguments,
                                      nested_computation));
@@ -261,9 +278,7 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;
-  for (auto i = instruction_set_to_outline.begin();
-       i != instruction_set_to_outline.end(); ++i) {
-    HloInstruction* inst = *i;
+  for (auto inst : instructions_to_outline) {
     if (inst->user_count() == 0) {
       TF_CHECK_OK(matched.computation->RemoveInstruction(inst));
       replaced.push_back(inst);

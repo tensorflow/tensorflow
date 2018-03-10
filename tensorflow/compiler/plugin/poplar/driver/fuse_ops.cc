@@ -33,8 +33,8 @@ static FusedGraphInfo fuse_info[] = {
   {"relugrad", 0},
   {"sigmoidgrad", 0},
   {"sigmoidgrad", 0},
-  {"biasadd_broadcast", 0},
-  {"biasadd_broadcast", 0},
+  {"biasadd", 0},
+  {"biasadd", 0},
   {"biasadd", 0},
   {"biasadd", 0},
   {"zero_pad", 0},
@@ -59,208 +59,232 @@ static FusedGraphInfo fuse_info[] = {
  * there must be no backward references.  All nodes should appear after any
  * other nodes that refer to them.
  *
- * The parameters of the post-fused call are in the reverse order that negative
- * entries appear in the list.  An op marked include_in_replacement=false
- * counts as negative on other instructions on which it appears.
- *
  * NOTE: Highest match priority is nearer the top of the list
  */
 
 static const std::vector<HloMatcherPattern> patterns = {
   // dynamic update slice with constant coordinate
-  {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -2, 1}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kDynamicUpdateSlice, true, 0, nullptr, {2, 3, 1}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // dynamic slice with constant coordinate
-  {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kDynamicSlice, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Relu
-  {{HloOpcode::kMaximum, true, IsFloatType, {-1, 1}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kMaximum, true, 0, IsFloatType, {2, 1}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Relu with broadcast
-  {{HloOpcode::kMaximum, true, IsFloatType, {1, -1}},
-   {HloOpcode::kBroadcast, true, nullptr, {2}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kMaximum, true, 0, IsFloatType, {1, 3}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Sigmoid
-  {{HloOpcode::kAdd, true, IsFloatType, {4, 1}},
-   {HloOpcode::kMultiply, true, nullptr, {4, 2}},
-   {HloOpcode::kTanh, true, nullptr, {3}},
-   {HloOpcode::kMultiply, true, nullptr, {4, -1}},
-   {HloOpcode::kConstant, true, IsConstantHalf, {}}},
+  {{HloOpcode::kAdd, true, 0, IsFloatType, {4, 1}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
+   {HloOpcode::kTanh, true, 0, nullptr, {3}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 5}},
+   {HloOpcode::kConstant, true, 0, IsConstantHalf, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Sigmoid with broadcast
-  {{HloOpcode::kAdd, true, IsFloatType, {4, 1}},
-   {HloOpcode::kMultiply, true, nullptr, {5, 2}},
-   {HloOpcode::kTanh, true, nullptr, {3}},
-   {HloOpcode::kMultiply, true, nullptr, {6, -1}},
-   {HloOpcode::kBroadcast, true, nullptr, {7}},
-   {HloOpcode::kBroadcast, true, nullptr, {7}},
-   {HloOpcode::kBroadcast, true, nullptr, {7}},
-   {HloOpcode::kConstant, true, IsConstantHalf, {}}},
+  {{HloOpcode::kAdd, true, 0, IsFloatType, {4, 1}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
+   {HloOpcode::kTanh, true, 0, nullptr, {3}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 6}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
+   {HloOpcode::kConstant, true, 0, IsConstantHalf, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // ReluGrad
-  {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
-   {HloOpcode::kGt, true, IsTfReluGradOp, {-2, 2}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kSelect, true, 0, IsFloatType, {1, 3, 2}},
+   {HloOpcode::kGt, true, 0, IsTfReluGradOp, {4, 2}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // ReluGrad with broadcast
-  {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
-   {HloOpcode::kGt, true, IsTfReluGradOp, {-2, 2}},
-   {HloOpcode::kBroadcast, true, nullptr, {3}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kSelect, true, 0, IsFloatType, {1, 4, 2}},
+   {HloOpcode::kGt, true, 0, IsTfReluGradOp, {5, 2}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // SigmoidGrad
-  {{HloOpcode::kMultiply, true, IsFloatType, {1, 2}},
-   {HloOpcode::kMultiply, true, nullptr, {-1, -2}},
-   {HloOpcode::kSubtract, true, nullptr, {3, -2}},
-   {HloOpcode::kConstant, true, IsConstantOne, {}}},
+  {{HloOpcode::kMultiply, true, 0, IsFloatType, {1, 2}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 5}},
+   {HloOpcode::kSubtract, true, 0, nullptr, {3, 5}},
+   {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
-    // SigmoidGrad with broadcast
-  {{HloOpcode::kMultiply, true, IsFloatType, {1, 2}},
-   {HloOpcode::kMultiply, true, nullptr, {-1, -2}},
-   {HloOpcode::kSubtract, true, nullptr, {3, -2}},
-   {HloOpcode::kBroadcast, true, nullptr, {4}},
-   {HloOpcode::kConstant, true, IsConstantOne, {}}},
+  // SigmoidGrad with broadcast
+  {{HloOpcode::kMultiply, true, 0, IsFloatType, {1, 2}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {5, 6}},
+   {HloOpcode::kSubtract, true, 0, nullptr, {3, 6}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
+   {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
-  // BiasAdd on convolution (explicit broadcast)
-  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kBroadcast, true, nullptr, {-1}},
-   {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
+  // BiasAdd on convolution (w/ broadcast)
+  {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+   {HloOpcode::kCall, false, 0, IsPoplarConvolution, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-  // BiasAdd on convolution (explicit broadcast)
-  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kBroadcast, true, nullptr, {-1}},
-   {HloOpcode::kConvolution, false, nullptr, {-2, -3}}},
+  // BiasAdd on convolution (w/ broadcast)
+  {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+   {HloOpcode::kConvolution, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-  // BiasAdd on convolution (implicit broadcast)
-  {{HloOpcode::kAdd, true, nullptr, {1, -1}},
-   {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
+  // BiasAdd on convolution
+  {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
+   {HloOpcode::kCall, false, 0, IsPoplarConvolution, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
-  // BiasAdd on convolution (implicit broadcast)
-  {{HloOpcode::kAdd, true, nullptr, {1, -1}},
-   {HloOpcode::kConvolution, false, nullptr, {-2, -3}}},
+  // BiasAdd on convolution
+  {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
+   {HloOpcode::kConvolution, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // External padding with constant zero
-  {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kPad, true, 0, IsExternalPadding, {2, 1}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Random truncated normal with post scale and add
-  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kWhile, true, IsTruncatedNormalWhile, {5}},
-   {HloOpcode::kRng, true, nullptr, {6, 7}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {5}},
+   {HloOpcode::kRng, true, 0, nullptr, {6, 7}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Random truncated normal without post scale and add
-  {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
-   {HloOpcode::kRng, true, nullptr, {2, 3}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {1}},
+   {HloOpcode::kRng, true, 0, nullptr, {2, 3}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Random normal with post scale and add
-  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kRng, true, IsRandomNormal, {5, 6}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kRng, true, 0, IsRandomNormal, {5, 6}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Random uniform with post scale and add
-  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kRng, true, IsRandomUniform, {5, 6}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kRng, true, 0, IsRandomUniform, {5, 6}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Random 2-constant without post scale and add
-  {{HloOpcode::kRng, true, IsRandomNormal, {1, 2}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kRng, true, 0, IsRandomNormal, {1, 2}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Random 2-constant without post scale and add
-  {{HloOpcode::kRng, true, IsRandomUniform, {1, 2}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kRng, true, 0, IsRandomUniform, {1, 2}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
   // Average pool (valid)
-  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
-   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {4, 2}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Average pool (same)
-  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
-   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kBroadcast, true, nullptr, {4}},
-   {HloOpcode::kReduceWindow, true, nullptr, {5, 7}},
-   {HloOpcode::kBroadcast, true, nullptr, {6}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {8, 2}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
+   {HloOpcode::kReduceWindow, true, 0, nullptr, {5, 7}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {6}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Average pool (same) - broadcast converted to reshape
-  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
-   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kReshape, true, nullptr, {4}},
-   {HloOpcode::kReduceWindow, true, nullptr, {5, 7}},
-   {HloOpcode::kBroadcast, true, nullptr, {6}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {8, 2}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kReshape, true, 0, nullptr, {4}},
+   {HloOpcode::kReduceWindow, true, 0, nullptr, {5, 7}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {6}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Depthwise convolution (forward pass)
-  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kSelect, true, nullptr, {6, 4, 2}},
-   {HloOpcode::kBroadcast, true, nullptr, {3}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}},
-   {HloOpcode::kBroadcast, true, nullptr, {5}},
-   {HloOpcode::kReshape, true, nullptr, {-2}},
-   {HloOpcode::kEq, true, nullptr, {9, 7}},
-   {HloOpcode::kBroadcast, true, nullptr, {8}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kBroadcast, true, nullptr, {10}},
-   {HloOpcode::kDivide, true, nullptr, {13, 11}},
-   {HloOpcode::kBroadcast, true, nullptr, {12}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kConvolution, true, 0, nullptr, {14, 1}},
+   {HloOpcode::kSelect, true, 0, nullptr, {6, 4, 2}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
+   {HloOpcode::kReshape, true, 0, nullptr, {15}},
+   {HloOpcode::kEq, true, 0, nullptr, {9, 7}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {8}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {10}},
+   {HloOpcode::kDivide, true, 0, nullptr, {13, 11}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {12}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Depthwise convolution (forward pass, multiplier=1)
-  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kSelect, true, nullptr, {6, 4, 2}},
-   {HloOpcode::kBroadcast, true, nullptr, {3}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}},
-   {HloOpcode::kBroadcast, true, nullptr, {5}},
-   {HloOpcode::kReshape, true, nullptr, {-2}},
-   {HloOpcode::kEq, true, nullptr, {7, 8}},
-   {HloOpcode::kBroadcast, true, nullptr, {9}},
-   {HloOpcode::kBroadcast, true, nullptr, {9}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
+  {{HloOpcode::kConvolution, true, 0, nullptr, {10, 1}},
+   {HloOpcode::kSelect, true, 0, nullptr, {6, 4, 2}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
+   {HloOpcode::kReshape, true, 0, nullptr, {11}},
+   {HloOpcode::kEq, true, 0, nullptr, {7, 8}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Backprop input convolution
-  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kReverse, true, IsConvFilterSpatialReverse, {-2}}},
+  {{HloOpcode::kConvolution, true, 0, nullptr, {2, 1}},
+   {HloOpcode::kReverse, true, 0, IsConvFilterSpatialReverse, {3}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
   // Bias reduction and application
-  {{HloOpcode::kSubtract, true, IsOutputFeed, {1, 2}},
-   {HloOpcode::kParameter, false, nullptr, {}},
-   {HloOpcode::kMultiply, true, nullptr, {3, 5}},
-   {HloOpcode::kBroadcast, true, nullptr, {4}},
-   {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kReduce, true, IsBiasReduce, {-1, 6}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},
+   {HloOpcode::kParameter, false, 0, IsTrueParameter, {}},
+   {HloOpcode::kMultiply, true, 0, nullptr, {3, 5}},
+   {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
+   {HloOpcode::kConstant, true, 0, nullptr, {}},
+   {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
+   {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // Broadcast scalar constant (must be low priority)
-  {{HloOpcode::kBroadcast, true, nullptr, {1}},
-   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
+  {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},
+   {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

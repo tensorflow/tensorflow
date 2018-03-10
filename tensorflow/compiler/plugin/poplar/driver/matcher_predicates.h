@@ -29,6 +29,7 @@ bool IsForwardMatMul(const HloInstruction* inst);
 bool IsGradientMatMul(const HloInstruction* inst);
 bool IsWeightUpdateMatMul(const HloInstruction* inst);
 bool IsTfReluGradOp(const HloInstruction* inst);
+bool IsTrueParameter(const HloInstruction* inst);
 
 }
 }

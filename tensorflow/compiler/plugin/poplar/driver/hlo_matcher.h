@@ -25,16 +25,37 @@ class HloModule;
 namespace poplarplugin {
 
 struct HloMatcherNode {
+  // The opcode of the instruction to match
   HloOpcode opcode;
+
+  // If true then don't include this instruction in the fusion. The fused
+  // subgraph will have a parameter where this instruction would be, and the
+  // index of that parameter is given by the one entry in the parameter_indices
+  // member
   bool include_in_replacement;
+
+  // If this instruction is a parameter to the fusion, this indicates the
+  // parameter number which should be assigned in the fused subgraph
+  int parameter_index;
+
+  // If not null, this function will be called with the instruction. Only if
+  // it returns true does the matching proceed.
   std::function<bool(HloInstruction*)> verification_fn;
-  std::vector<int> operands;
+
+  // A list of operands of this instruction. A positive number refers to one of
+  // the other entries in the match pattern. A negative number indicates that
+  // this operand will be a parameter to the fused subgraph.  If multiple match
+  // nodes have the same negative number, then the same instruction must be
+  // the operand to each match node. The parameter number is given by the value
+  // in the matching position in the parameter_indices list.
+  std::vector<unsigned int> operands;
 };
 
 struct HloMatcherMatched {
   HloComputation* computation;
   bool ok;
   std::vector<HloInstruction*> instructions;
+  std::vector<std::pair<HloInstruction*, int64>> parameters;
 };
 
 struct FusedGraphInfo {
@@ -74,14 +95,22 @@ private:
                     HloMatcherMatched& match);
   void AddMatch(unsigned pattern, const HloMatcherMatched& match);
 
-
   bool root_computation_only_;
+
+  // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;
+
+  // The list of instructions visited while searching for each pattern
   std::set<HloInstruction*> visited_;
+
+  // A vector of lists of matches found. One vector entry per pattern, one list
+  // entry per match in the computation
   std::vector<std::list<HloMatcherMatched>> matches_;
+
+  // A map of instructions in the computation to matches. When replacing
+  // instructions due to one match, other matches which contain the instruction
+  // cannot also be applied
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
-  std::map<int, const HloInstruction*> input_map_;
-  std::set<const HloInstruction*> input_set_;
 };
 
 }

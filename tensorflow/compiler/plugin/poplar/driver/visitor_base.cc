@@ -324,17 +324,6 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
-    else if (name == "biasadd_broadcast") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          CreateBiasAddBcastOp(*graph_,
-                                               resources_,
-                                               inst,
-                                               GetOutputShape(inst),
-                                               tensor_map));
-      sequence.add(prog);
-      return Status::OK();
-    }
     else if (name == "zero_pad") {
       const HloInstruction* root = inst->to_apply()->root_instruction();
       const PaddingConfig& cfg(root->padding_config());

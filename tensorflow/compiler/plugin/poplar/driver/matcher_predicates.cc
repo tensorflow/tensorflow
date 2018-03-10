@@ -172,6 +172,10 @@ bool IsTfReluGradOp(const HloInstruction* inst) {
   return tf_core_op == "ReluGrad";
 }
 
+bool IsTrueParameter(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kParameter;
+}
+
 }
 }
 
