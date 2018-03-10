@@ -576,7 +576,9 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remove redundant control dependencies.
       TF_RETURN_IF_ERROR(TransitiveReduction());
     } else {
-      LOG(ERROR) << topo_sort_status.error_message();
+      LOG(ERROR) << "Iteration = " << iteration
+                 << ", topological sort failed with message: "
+                 << topo_sort_status.error_message();
     }
     // Turn nodes with only control outputs into NoOps, prune NoOp and Identity
     // nodes.

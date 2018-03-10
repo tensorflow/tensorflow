@@ -423,8 +423,9 @@ def get_session():
       A TensorFlow session.
   """
   global _SESSION
-  if ops.get_default_session() is not None:
-    session = ops.get_default_session()
+  default_session = ops.get_default_session()
+  if default_session is not None:
+    session = default_session
   else:
     if _SESSION is None:
       if not os.environ.get('OMP_NUM_THREADS'):
@@ -495,7 +496,7 @@ def _is_current_explicit_device(device_type):
   """
   device_type = device_type.upper()
   if device_type not in ['CPU', 'GPU']:
-    raise ValueError('device_type should be either "CPU" or "GPU".')
+    raise ValueError('`device_type` should be either "CPU" or "GPU".')
   device = _get_current_tf_device()
   return device is not None and device.device_type == device_type.upper()
 
@@ -3514,7 +3515,7 @@ def l2_normalize(x, axis=None):
   Returns:
       A tensor.
   """
-  return nn.l2_normalize(x, dim=axis)
+  return nn.l2_normalize(x, axis=axis)
 
 
 @tf_export('keras.backend.in_top_k')

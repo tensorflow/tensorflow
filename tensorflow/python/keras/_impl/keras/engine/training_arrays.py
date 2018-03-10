@@ -298,20 +298,13 @@ def predict_loop(model, inputs, batch_size=32, verbose=0, steps=None):
   else:
     ins = inputs
 
-  if hasattr(model, 'metrics'):
-    for m in model.metrics:
-      if isinstance(m, Layer):
-        m.reset_states()
-
   num_samples = training_utils.check_num_samples(
       inputs, batch_size, steps, 'steps')
   if verbose == 1:
     if steps is not None:
-      progbar = Progbar(target=steps,
-                        stateful_metrics=model.stateful_metric_names)
+      progbar = Progbar(target=steps)
     else:
-      progbar = Progbar(target=num_samples,
-                        stateful_metrics=model.stateful_metric_names)
+      progbar = Progbar(target=num_samples)
 
   indices_for_conversion_to_dense = []
   for i in range(len(model._feed_inputs)):

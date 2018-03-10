@@ -1844,13 +1844,16 @@ py_library(
         ":control_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":gradients",
         ":image_ops_gen",
         ":math_ops",
+        ":nn",
         ":nn_ops_gen",
         ":random_ops",
         ":string_ops",
         ":util",
         ":variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3077,7 +3080,6 @@ tf_proto_library(
             "framework/cpp_shape_inference.proto",
         ],
     ),
-    go_api_version = 2,
 )
 
 tf_proto_library_py(
@@ -3252,7 +3254,6 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
-    # Use a DEF file to export symbols on Windows
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
@@ -4011,7 +4012,11 @@ py_test(
     srcs = ["training/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_cuda_on_cpu_tap",
+        "no_oss",
+        "no_windows",
+        "notap",
     ],
     deps = [
         ":client",
@@ -4047,6 +4052,25 @@ py_test(
         ":training",
         ":variable_scope",
         ":variables",
+    ],
+)
+
+py_test(
+    name = "warm_starting_util_test",
+    size = "small",
+    srcs = ["training/warm_starting_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":init_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
     ],
 )
 

@@ -98,7 +98,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "binary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
     tags = [
@@ -537,6 +537,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
     shard_count = 3,
+    tags = ["notsan"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

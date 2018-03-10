@@ -88,7 +88,13 @@ class TestCase(test.TestCase):
   def make_fake_mod(self, name, *symbols):
     fake_mod = imp.new_module(name)
     for s in symbols:
-      setattr(fake_mod, s.__name__, s)
+      if hasattr(s, '__name__'):
+        setattr(fake_mod, s.__name__, s)
+      elif hasattr(s, 'name'):
+        # This is a bit of a hack, but works for things like tf.int32
+        setattr(fake_mod, s.name, s)
+      else:
+        raise ValueError('can not attach %s - what should be its name?' % s)
     return fake_mod
 
   def attach_namespace(self, module, **ns):
@@ -112,7 +118,8 @@ class TestCase(test.TestCase):
         arg_values=None,
         arg_types=arg_types,
         owner_type=owner_type,
-        recursive=recursive)
+        recursive=recursive,
+        type_annotation_func=utils.set_element_type)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})

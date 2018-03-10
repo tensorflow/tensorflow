@@ -40,19 +40,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _get_variable_for(v):
-  """Returns the ResourceVariable responsible for v, or v if not necessary."""
-  if context.executing_eagerly():
-    return v
-  if v.op.type == "VarHandleOp":
-    for var in variables.trainable_variables():
-      if (isinstance(var, resource_variable_ops.ResourceVariable)
-          and var.handle.op is v.op):
-        return var
-    raise ValueError("Got %s but could not locate source variable." % (str(v)))
-  return v
-
-
 def _deduplicate_indexed_slices(values, indices):
   """Sums `values` associated with any non-unique `indices`.
 
@@ -549,7 +536,7 @@ class Optimizer(
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.init_scope():
-      self._create_slots([_get_variable_for(v) for v in var_list])
+      self._create_slots(var_list)
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()

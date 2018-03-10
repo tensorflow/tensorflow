@@ -34,13 +34,14 @@ class NodeAnno(NoValue):
   """
 
   # Symbols
-
+  # These flags are boolean.
   IS_LOCAL = 'Symbol is local to the function scope being analized.'
   IS_PARAM = 'Symbol is a parameter to the function being analized.'
   IS_MODIFIED_SINCE_ENTRY = (
       'Symbol has been explicitly replaced in the current function scope.')
 
   # Scopes
+  # Scopes are represented by objects of type activity.Scope.
   ARGS_SCOPE = 'The scope for the argument list of a function call.'
   BODY_SCOPE = (
       'The scope for the main body of a statement (True branch for if '
@@ -48,3 +49,10 @@ class NodeAnno(NoValue):
   ORELSE_SCOPE = (
       'The scope for the orelse body of a statement (False branch for if '
       'statements, orelse body for loops).')
+
+  # Type and Value annotations
+  # Type annotations are represented by objects of type type_info.Type.
+  STATIC_INFO = (
+      'The type or value information that should be asserted about the entity '
+      'referenced by the symbol holding this annotation, irrespective of the '
+      'execution context.')

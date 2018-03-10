@@ -947,6 +947,56 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
   EXPECT_EQ(9, found);
 }
 
+TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN_MultipleOutputs) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output v1 = ops::Variable(scope.WithOpName("v1"), {3, -1}, DT_FLOAT);
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {4, 6}, DT_FLOAT);
+  auto s = ops::ShapeN(scope.WithOpName("s"), {v1, v2});
+  auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {s[0], s[1]});
+  Output ia = ops::Identity(scope.WithOpName("ia"), id_n[0]);
+  Output ib = ops::Identity(scope.WithOpName("ib"), id_n[1]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("ia");
+  item.fetch.push_back("ib");
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found = 0;
+  for (const auto& node : output.node()) {
+    EXPECT_NE(AddPrefixToNodeName("s-matshapes-0", kConstantFoldingConst),
+              node.name());
+    if (node.name() == "s") {
+      ++found;
+      EXPECT_EQ("ShapeN", node.op());
+      EXPECT_EQ("v1", node.input(0));
+      EXPECT_EQ("v2", node.input(1));
+    }
+    if (node.name() == "id_n") {
+      ++found;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ("s", node.input(0));
+      EXPECT_EQ(AddPrefixToNodeName("s-matshapes-1", kConstantFoldingConst),
+                node.input(1));
+    }
+    if (node.name() == "ia") {
+      ++found;
+      EXPECT_EQ("id_n", node.input(0));
+    }
+    if (node.name() == "ib") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ("^s", node.input(0));
+      EXPECT_EQ("^id_n", node.input(1));
+    }
+  }
+  EXPECT_EQ(4, found);
+}
+
 TEST_F(ConstantFoldingTest, SwitchNodesEmptyFetch) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);

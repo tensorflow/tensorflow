@@ -220,7 +220,6 @@ tf_proto_library(
     srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    go_api_version = 2,
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
@@ -1519,6 +1518,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/strings/base64.h",
     "lib/strings/ordered_code.h",
     "lib/strings/proto_text_util.h",
+    "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
     "platform/demangle.h",
@@ -3156,6 +3156,7 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
+        ":lib",
         ":test",
         ":test_main",
         ":testlib",
@@ -3320,6 +3321,10 @@ tf_cc_test(
     size = "small",
     srcs = ["common_runtime/function_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "manual",
+        "no_oss",
+    ],
     deps = [
         ":core",
         ":core_cpu",
@@ -3652,6 +3657,13 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+        # SSIM, PSNR data
+        "lib/ssim/testdata/checkerboard1.png",
+        "lib/ssim/testdata/checkerboard2.png",
+        "lib/ssim/testdata/checkerboard3.png",
+        "lib/psnr/testdata/cat_q20.jpg",
+        "lib/psnr/testdata/cat_q72.jpg",
+        "lib/psnr/testdata/cat_q95.jpg",
     ],
     visibility = ["//visibility:public"],
 )

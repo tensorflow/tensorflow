@@ -574,6 +574,7 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   AddNode("stack1", "StackV2", {}, {}, &graph);
   AddNode("push1", "StackPushV2", {"stack1", "c"}, {}, &graph);
   AddNode("pop1", "StackPopV2", {"stack1"}, {}, &graph);
+  AddNode("id1", "Identity", {"pop1"}, {}, &graph);
   // Stack with corresponding push/pop behind Enter.
   AddNode("stack2", "StackV2", {}, {}, &graph);
   AddNode("push_enter", "Enter", {"stack2"},
@@ -582,6 +583,7 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   AddNode("pop_enter", "Enter", {"stack2"},
           {{"T", type}, {"frame_name", frame_name}}, &graph);
   AddNode("pop2", "StackPopV2", {"pop_enter"}, {}, &graph);
+  AddNode("id2", "Identity", {"pop2"}, {}, &graph);
   // Stack with unexpected op type in fanout of Stack.
   AddNode("stack3", "StackV2", {}, {}, &graph);
   AddNode("push3", "StackPushV2", {"stack3", "c"}, {}, &graph);
@@ -601,17 +603,24 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   AttrValue type;
   type.set_type(DT_RESOURCE);
   AddNode("c", "Const", {}, {}, &graph);
+  // Push without Pop.
   AddNode("stack1", "StackV2", {}, {}, &graph);
   AddNode("push1", "StackPushV2", {"stack1", "c"}, {}, &graph);
+  // Push without Pop behind Enter.
   AddNode("stack2", "StackV2", {}, {}, &graph);
   AddNode("push_enter", "Enter", {"stack2"},
           {{"T", type}, {"frame_name", frame_name}}, &graph);
   AddNode("push2", "StackPushV2", {"push_enter", "c"}, {}, &graph);
+  // Pop without consumer.
+  AddNode("stack3", "StackV2", {}, {}, &graph);
+  AddNode("push3", "StackPushV2", {"stack3", "c"}, {}, &graph);
+  AddNode("pop3", "StackPopV2", {"stack3"}, {}, &graph);
+
   LoopOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ(9, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     if (node.name() == "push1") {
@@ -624,6 +633,11 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("c", node.input(0));
       EXPECT_EQ("^push_enter", node.input(1));
+    } else if (node.name() == "push3") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("c", node.input(0));
+      EXPECT_EQ("^stack3", node.input(1));
     } else {
       const NodeDef& orig_node = item.graph.node(i);
       EXPECT_EQ(orig_node.ShortDebugString(), node.ShortDebugString());

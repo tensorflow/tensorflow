@@ -551,6 +551,55 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
+                           int32 input_offset, const uint8* filter_data,
+                           const Dims<4>& filter_dims, int32 filter_offset,
+                           const int32* bias_data, const Dims<4>& bias_dims,
+                           int32 output_offset, int32 output_multiplier,
+                           int output_shift, int32 output_activation_min,
+                           int32 output_activation_max, int16* output_data,
+                           const Dims<4>& output_dims,
+                           gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_EQ(output_offset, 0);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(filter_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(filter_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum = bias_data[out_c];
+      // Accumulation loop.
+      for (int d = 0; d < accum_depth; ++d) {
+        int16 input_val = input_data[b * accum_depth + d] + input_offset;
+        int16 filter_val = filter_data[out_c * accum_depth + d] + filter_offset;
+        accum += filter_val * input_val;
+      }
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
+                                            -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      accum = std::max(accum, output_activation_min - output_offset);
+      accum = std::min(accum, output_activation_max - output_offset);
+      accum += output_offset;
+      output_data[out_c + output_depth * b] = accum;
+    }
+  }
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
@@ -903,6 +952,36 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 }
 
+template <FusedActivationFunctionType Ac>
+inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16* input2_data,
+                const Dims<4>& input2_dims, int input2_shift,
+                int16* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  TFLITE_DCHECK(input1_shift == 0 || input2_shift == 0);
+  TFLITE_DCHECK_GE(input1_shift, 0);
+  TFLITE_DCHECK_GE(input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_shift = input1_shift == 0 ? input2_shift : input1_shift;
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+    F0 scaled_input =
+        F0::FromRaw(gemmlowp::RoundingDivideByPOT(shift_input[i], input_shift));
+    F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
+    output_data[i] = result.raw();
+  }
+}
+
 // TODO(jiawen): We can implement BroadcastAdd on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -1181,6 +1260,53 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
         }
       }
     }
+  }
+}
+
+inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
+                const int16* input2_data, const Dims<4>& input2_dims,
+                int16* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/Int16");
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 unclamped_result =
+        F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
+    output_data[i] = unclamped_result.raw();
+  }
+}
+
+inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
+                const int16* input2_data, const Dims<4>& input2_dims,
+                int32 output_offset, int32 output_activation_min,
+                int32 output_activation_max, uint8* output_data,
+                const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 unclamped_result =
+        F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
+    int16 rescaled_result =
+        gemmlowp::RoundingDivideByPOT(unclamped_result.raw(), 8);
+    int16 clamped_result =
+        std::min<int16>(output_activation_max - output_offset, rescaled_result);
+    clamped_result =
+        std::max<int16>(output_activation_min - output_offset, clamped_result);
+    output_data[i] = output_offset + clamped_result;
   }
 }
 
@@ -2317,11 +2443,13 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
             const FixedPoint4 input_val_f4 =
                 FixedPoint4::FromRaw(input_val_rescaled);
             const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
+            // Convert from Q0.31 to Q23.8.
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
             if (output_val_s32 == 256) {
               output_val_s32 = 255;
             }
+            // Reinterpret as U0.8.
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);
             output_val = static_cast<uint8>(output_val_s32);
@@ -2330,6 +2458,25 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
+                     int16* output_data, const Dims<4>& output_dims) {
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+    const F3 input = F3::FromRaw(input_data[i]);
+    F0 output = gemmlowp::logistic(input);
+    output_data[i] = output.raw();
   }
 }
 
@@ -2382,13 +2529,14 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
             const FixedPoint4 input_val_f4 =
                 FixedPoint4::FromRaw(input_val_rescaled);
             const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-
+            // Convert from Q0.31 to Q24.7.
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
             output_val_s32 += output_zero_point;
             if (output_val_s32 == 256) {
               output_val_s32 = 255;
             }
+            // Reinterpret as Q0.7, encoded in uint8.
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);
             output_val = static_cast<uint8>(output_val_s32);
@@ -2396,6 +2544,40 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
           output_data[Offset(output_dims, c, x, y, b)] = output_val;
         }
       }
+    }
+  }
+}
+
+inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
+                 int input_left_shift, int16* output_data,
+                 const Dims<4>& output_dims) {
+  // Support for shifts is limited until we have a parameterized version of
+  // SaturatingRoundingMultiplyByPOT().
+  TFLITE_DCHECK_GE(input_left_shift, 0);
+  TFLITE_DCHECK_LE(input_left_shift, 1);
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+
+  // F0 uses 0 integer bits, range [-1, 1].
+  // This is the return type of math functions such as tanh, logistic,
+  // whose range is in [-1, 1].
+  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+  if (input_left_shift == 0) {
+    for (int i = 0; i < flat_size; i++) {
+      F3 input = F3::FromRaw(input_data[i]);
+      F0 output = gemmlowp::tanh(input);
+      output_data[i] = output.raw();
+    }
+  } else {
+    for (int i = 0; i < flat_size; i++) {
+      F3 input = F3::FromRaw(
+          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
+      F0 output = gemmlowp::tanh(input);
+      output_data[i] = output.raw();
     }
   }
 }
