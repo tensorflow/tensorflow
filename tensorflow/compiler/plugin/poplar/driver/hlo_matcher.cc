@@ -206,8 +206,6 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
         const std::string& outlined_computation_name,
         const char metadata_index) {
 
-  XLA_VLOG_LINES(1, matched.computation->ToString());
-
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
   HloInstruction* root = instructions_to_outline[0];
