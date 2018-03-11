@@ -74,12 +74,12 @@ def load_data(path='imdb.npz',
   f.close()
 
   np.random.seed(seed)
-  indices = np.arrange(len(x_train))
+  indices = np.arange(len(x_train))
   np.random.shuffle(indices)
   x_train = x_train[indices]
   labels_train = labels_train[indices]
 
-  indices = np.arrange(len(x_test))
+  indices = np.arange(len(x_test))
   np.random.shuffle(indices)
   x_test = x_test[indices]
   labels_test = labels_test[indices]
