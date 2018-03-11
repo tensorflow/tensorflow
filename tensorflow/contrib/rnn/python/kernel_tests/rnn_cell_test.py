@@ -455,8 +455,8 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
 
   def testAttentionCellWrapperFailures(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 "The parameter cell is not RNNCell."):
+    with self.assertRaisesRegexp(
+        TypeError, rnn_cell_impl.ASSERT_LIKE_RNNCELL_ERROR_REGEXP):
       contrib_rnn_cell.AttentionCellWrapper(None, 0)
 
     num_units = 8
@@ -1203,7 +1203,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = rnn_cell.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)  # pylint: disable=line-too-long
         cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
@@ -1235,7 +1235,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         self.assertAllClose(expected_state1_h, actual_state1_h, 1e-5)
 
       with variable_scope.variable_scope(
-          "other", initializer=init_ops.constant_initializer(0.5)) as vs:
+          "other", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros(
             [1, 3])  # Test BasicLSTMCell with input_size != num_units.
         c = array_ops.zeros([1, 2])

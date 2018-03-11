@@ -195,8 +195,7 @@ class BeamSearchDecoder(decoder.Decoder):
       ValueError: If `start_tokens` is not a vector or
         `end_token` is not a scalar.
     """
-    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
-      raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
+    rnn_cell_impl.assert_like_rnncell("cell", cell)  # pylint: disable=protected-access
     if (output_layer is not None and
         not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
