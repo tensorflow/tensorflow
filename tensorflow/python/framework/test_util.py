@@ -434,6 +434,32 @@ def with_c_api(cls):
   return cls
 
 
+def assert_no_new_pyobjects_executing_eagerly(f):
+  """Decorator for asserting that no new Python objects persist after a test.
+
+  Runs the test multiple times executing eagerly, first as a warmup and then
+  several times to let objects accumulate. The warmup helps ignore caches which
+  do not grow as the test is run repeatedly.
+
+  Useful for checking that there are no missing Py_DECREFs in the C exercised by
+  a bit of Python.
+  """
+  def decorator(self, **kwargs):
+    """Warms up, gets an object count, runs the test, checks for new objects."""
+    with context.eager_mode():
+      gc.disable()
+      f(self, **kwargs)
+      gc.collect()
+      previous_count = len(gc.get_objects())
+      for _ in range(3):
+        f(self, **kwargs)
+      gc.collect()
+      # There should be no new Python objects hanging around.
+      new_count = len(gc.get_objects())
+      self.assertEqual(previous_count, new_count)
+      gc.enable()
+  return decorator
+
 def assert_no_new_tensors(f):
   """Decorator for asserting that no new Tensors persist after a test.
 
