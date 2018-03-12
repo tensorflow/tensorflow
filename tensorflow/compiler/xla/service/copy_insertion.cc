@@ -960,7 +960,7 @@ Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module) {
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
-  std::unordered_map<HloInstruction*, ShapeTree<bool>> instructions_to_copy;
+  HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
   auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
                                                    const ShapeIndex& index) {
     auto it = instructions_to_copy.find(instruction);
