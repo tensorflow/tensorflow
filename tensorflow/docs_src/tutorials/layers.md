@@ -446,7 +446,7 @@ tf.nn.softmax(logits, name="softmax_tensor")
 
 > Note: We use the `name` argument to explicitly name this operation
 > `softmax_tensor`, so we can reference it later. (We'll set up logging for the
-> softmax values in ["Set Up a Logging Hook"](#set_up_a_logging_hook)).
+> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook)).
 
 We compile our predictions in a dict, and return an `EstimatorSpec` object:
 
@@ -534,9 +534,8 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$get_started/custom_estimators#defining_the_training_op_for_the_model$"Defining
-> the training op for the model"} in the @{$get_started/custom_estimators$"Creating Estimations in
-> tf.estimator"} tutorial.
+> functions, see @{$get_started/custom_estimators#defining_the_training_op_for_the_model$"Defining the training op for the model"} 
+> in the @{$get_started/custom_estimators$"Creating Estimators in tf.estimator."} tutorial.
 
 ### Add evaluation metrics
 
@@ -593,7 +592,7 @@ mnist_classifier = tf.estimator.Estimator(
 
 The `model_fn` argument specifies the model function to use for training,
 evaluation, and prediction; we pass it the `cnn_model_fn` we created in
-["Building the CNN MNIST Classifier."](#building_the_cnn_mnist_classifier) The
+["Building the CNN MNIST Classifier."](#building-the-cnn-mnist-classifier) The
 `model_dir` argument specifies the directory where model data (checkpoints) will
 be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
