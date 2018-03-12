@@ -185,7 +185,8 @@ class KernelAndDevice {
 
   Device* device() const { return device_; }
 
-  DataTypeVector* output_dtypes() { return &output_dtypes_; }
+  DataTypeVector* mutable_output_dtypes() { return &output_dtypes_; }
+  const DataTypeVector& output_dtypes() { return output_dtypes_; }
 
  private:
   std::unique_ptr<OpKernel> kernel_;
