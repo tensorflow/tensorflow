@@ -352,7 +352,14 @@ def dropout(inputs,
 
 class Flatten(base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
-
+  
+  Arguments:
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
+  
   Examples:
 
   ```
@@ -366,11 +373,14 @@ class Flatten(base.Layer):
   ```
   """
 
-  def __init__(self, **kwargs):
+  def __init__(self, data_format='channels_last', **kwargs):
     super(Flatten, self).__init__(**kwargs)
     self.input_spec = base.InputSpec(min_ndim=2)
+    self.data_format = utils.normalize_data_format(data_format)
 
   def call(self, inputs):
+    if self.data_format == 'channels_first':
+      inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if context.in_graph_mode():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
@@ -386,12 +396,18 @@ class Flatten(base.Layer):
     return tensor_shape.TensorShape(output_shape)
 
 
-def flatten(inputs, name=None):
+def flatten(inputs, data_format='channels_last', name=None):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
   Arguments:
     inputs: Tensor input.
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     name: The name of the layer (string).
+    
 
   Returns:
     Reshaped tensor.
@@ -408,7 +424,7 @@ def flatten(inputs, name=None):
     # now `y` has shape `(None, None)`
   ```
   """
-  layer = Flatten(name=name)
+  layer = Flatten(data_format=data_format, name=name)
   return layer.apply(inputs)
 
 
