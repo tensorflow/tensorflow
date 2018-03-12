@@ -44,8 +44,29 @@ class IteratorTest(test.TestCase):
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
 
+  def testBasicOneShotIterator(self):
+    got = []
+    for t in Dataset.range(4).make_one_shot_iterator():
+      got.append(t.numpy())
+    self.assertAllEqual([0, 1, 2, 3], got)
+
+  def testBasicImplicitIterator(self):
+    got = []
+    for t in Dataset.range(4):
+      got.append(t.numpy())
+    self.assertAllEqual([0, 1, 2, 3], got)
+
   def testGetNext(self):
     iterator = datasets.Iterator(Dataset.range(4))
+    self.assertEqual(0, iterator.get_next().numpy())
+    self.assertEqual(1, iterator.get_next().numpy())
+    self.assertEqual(2, iterator.get_next().numpy())
+    self.assertEqual(3, iterator.get_next().numpy())
+    with self.assertRaises(errors.OutOfRangeError):
+      iterator.get_next()
+
+  def testGetNextOneShotIterator(self):
+    iterator = Dataset.range(4).make_one_shot_iterator()
     self.assertEqual(0, iterator.get_next().numpy())
     self.assertEqual(1, iterator.get_next().numpy())
     self.assertEqual(2, iterator.get_next().numpy())
