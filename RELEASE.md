@@ -4,7 +4,7 @@
 * Eager mode is moving out of contrib, try `tf.enable_eager_execution()`.
 * Graph rewrites emulating fixed-point quantization compatible with TensorFlow Lite, supported by new `tf.contrib.quantize` package.
 * Easily customize gradient computation with `tf.custom_gradient`.
-* TensorBoard Debugger Plugin, tfdbg: TensorFlow Debugger's graphical user interface (GUI), is now in alpha.
+* [TensorBoard Debugger Plugin](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md), The graphical user interface (GUI) of TensorFlow Debugger (tfdbg), is now in alpha.
 * Experimental support for reading a sqlite database as a `Dataset` with new `tf.contrib.data.SqlDataset`.
 * Distributed Mutex / CriticalSection added to `tf.contrib.framework.CriticalSection`.
 * Better text processing with `tf.regex_replace`.
