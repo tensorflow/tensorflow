@@ -1127,7 +1127,8 @@ class _ClassPageInfo(object):
       # Remove builtin members that we never want to document.
       if short_name in ['__class__', '__base__', '__weakref__', '__doc__',
                         '__module__', '__dict__', '__abstractmethods__',
-                        '__slots__', '__getnewargs__']:
+                        '__slots__', '__getnewargs__', '__str__',
+                        '__repr__', '__hash__']:
         continue
 
       child_name = '.'.join([self.full_name, short_name])
@@ -1172,7 +1173,7 @@ class _ClassPageInfo(object):
         # obvious what they do, don't include them in the docs if there's no
         # docstring.
         if not child_doc.brief.strip() and short_name in [
-            '__str__', '__repr__', '__hash__', '__del__', '__copy__']:
+            '__del__', '__copy__']:
           print('Skipping %s, defined in %s, no docstring.' % (child_name,
                                                                defining_class))
           continue
