@@ -330,6 +330,8 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSqueeze:
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kPad:
+    case OperatorType::kGather:
+    case OperatorType::kTranspose:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
 
