@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
@@ -431,7 +433,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "nomac",
-        "noasan"  # b/73741358
+        "noasan",  # b/73741358
     ],
     deps = [
         ":learn",
