@@ -292,7 +292,8 @@ class TypesTest(test_util.TensorFlowTestCase):
       self.assertEquals(dtype, dtype2)
 
   def testEqWithNonTFTypes(self):
-    self.assertNotEqual(dtypes.int32, int)
+    self.assertNotEqual(dtypes.int32, long)
+    self.assertNotEqual(dtypes.int64, int)
     self.assertNotEqual(dtypes.float64, 2.1)
 
   def testPythonTypesConversion(self):
