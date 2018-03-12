@@ -408,7 +408,6 @@ def flatten(inputs, data_format='channels_last', name=None):
       inputs with shape `(batch, channels, height, width)`.
     name: The name of the layer (string).
     
-
   Returns:
     Reshaped tensor.
 
