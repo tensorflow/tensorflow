@@ -1529,6 +1529,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       if (replaceable) {
         ReplaceOperationWithIdentity(0, node, output);
+        continue;
       }
     }
 
@@ -1569,11 +1570,12 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         }
         if (replaceable) {
           ReplaceOperationWithIdentity(0, node, output);
+          continue;
         }
       }
     }
 
-    if (IsTile(*node) &&
+    if (use_shape_info && IsTile(*node) &&
         properties->GetInputProperties(node->name()).size() == 2) {
       const auto& m = properties->GetInputProperties(node->name())[1];
       if (TensorShape::IsValid(m.shape()) && m.has_value()) {
@@ -1597,11 +1599,12 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         }
         if (replaceable) {
           ReplaceOperationWithIdentity(0, node, output);
+          continue;
         }
       }
     }
 
-    if (IsPad(*node) &&
+    if (use_shape_info && IsPad(*node) &&
         properties->GetInputProperties(node->name()).size() >= 2) {
       const auto& p = properties->GetInputProperties(node->name())[1];
       if (TensorShape::IsValid(p.shape()) && p.has_value()) {
@@ -1620,6 +1623,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         }
         if (replaceable) {
           ReplaceOperationWithIdentity(0, node, output);
+          continue;
         }
       }
     }
@@ -1639,6 +1643,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       if (replaceable) {
         ReplaceOperationWithIdentity(0, node, output);
+        continue;
       }
     }
 
