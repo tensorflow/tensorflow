@@ -117,7 +117,7 @@ output from one layer-creation method and supply it as input to another.
 
 Open `cnn_mnist.py` and add the following `cnn_model_fn` function, which
 conforms to the interface expected by TensorFlow's Estimator API (more on this
-later in [Create the Estimator](#create_the_estimator)). `cnn_mnist.py` takes
+later in [Create the Estimator](#create-the-estimator)). `cnn_mnist.py` takes
 MNIST feature data, labels, and
 @{tf.estimator.ModeKeys$model mode} (`TRAIN`, `EVAL`, `PREDICT`) as arguments;
 configures the CNN; and returns predictions, loss, and a training operation:
