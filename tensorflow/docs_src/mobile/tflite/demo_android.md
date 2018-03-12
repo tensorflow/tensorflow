@@ -8,6 +8,9 @@ You'll need an Android device running Android 5.0 or higher to run the demo.
 To get you started working with TensorFlow Lite on Android, we'll walk you
 through building and deploying our TensorFlow demo app in Android Studio.
 
+Note: For a more detailed guide see the
+[TFLite Codelab](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2-tflite/index.html#0)
+
 It's also possible to build the demo app with Bazel, but we only recommend
 this for advanced users who are very familiar with the Bazel build
 environment. For more information on that, see our page [on Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite#building-tensorflow-lite-and-the-demo-app-from-source).

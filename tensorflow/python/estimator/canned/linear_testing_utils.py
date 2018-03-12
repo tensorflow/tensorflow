@@ -31,7 +31,6 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export
@@ -1342,7 +1341,7 @@ class BaseLinearClassifierEvaluationTest(object):
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
           metric_keys.MetricKeys.AUC: 0.,
-          metric_keys.MetricKeys.AUC_PR: 0.5,
+          metric_keys.MetricKeys.AUC_PR: 1.,
       }
     else:
       # Multi classes: loss = 1 * -log ( soft_max(logits)[label] )
@@ -1968,7 +1967,7 @@ class BaseLinearWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The provided regular expression will only warm-start the age variable
         # and not the bias.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             vars_to_warm_start='.*(age).*'))
 
@@ -2016,7 +2015,7 @@ class BaseLinearWarmStartingTest(object):
         vocabulary_size=len(new_vocab_list))
     # We can create our VocabInfo object from the new and old occupation
     # FeatureColumn's.
-    occupation_vocab_info = warm_starting_util.VocabInfo(
+    occupation_vocab_info = estimator.VocabInfo(
         new_vocab=new_occupation.vocabulary_file,
         new_vocab_size=new_occupation.vocabulary_size,
         num_oov_buckets=new_occupation.num_oov_buckets,
@@ -2030,7 +2029,7 @@ class BaseLinearWarmStartingTest(object):
         feature_columns=[occupation],
         n_classes=4,
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             var_name_to_vocab_info={
                 OCCUPATION_WEIGHT_NAME: occupation_vocab_info
@@ -2082,7 +2081,7 @@ class BaseLinearWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The 'age' variable correspond to the 'age_in_years' variable in the
         # previous model.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             var_name_to_prev_var_name={
                 AGE_WEIGHT_NAME: AGE_WEIGHT_NAME.replace('age', 'age_in_years')

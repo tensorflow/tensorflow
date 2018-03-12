@@ -692,6 +692,7 @@ filegroup(
         "//tensorflow/tools/docs:all_files",
         "//tensorflow/tools/git:all_files",
         "//tensorflow/tools/graph_transforms:all_files",
+        "//tensorflow/tools/integration_tests/gcs_smoke_test:all_files",
         "//tensorflow/tools/mlpbtxt:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/quantization:all_files",
@@ -797,6 +798,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",

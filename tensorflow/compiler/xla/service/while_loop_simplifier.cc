@@ -212,7 +212,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   // Now that we know the index of the induction variable, we can we can try to
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
-  HloEvaluator evaluator;
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->mutable_operand(0);
   auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =

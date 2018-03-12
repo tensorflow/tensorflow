@@ -104,6 +104,8 @@ enum class ComputationType {
 // Converts a ComputationType to a string.
 string ComputationTypeString(ComputationType ty);
 
+std::ostream &operator<<(std::ostream &os, ComputationType ty);
+
 // Opaque identifier for an "algorithm" used by a blas routine.  This functions
 // as a hint to the blas library.
 typedef int64 AlgorithmType;

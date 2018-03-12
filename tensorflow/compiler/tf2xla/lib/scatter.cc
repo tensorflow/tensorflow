@@ -141,6 +141,8 @@ xla::StatusOr<xla::ComputationDataHandle> XlaScatter(
                                 body_builder->ConstantR0<bool>(true),
                                 xla::CreateScalarAndComputation(body_builder));
 
+    // Make the index in bounds to prevent implementation defined behavior.
+    index = body_builder->Max(index, zero_index);
     index = body_builder->Pad(
         index, zero_index,
         xla::MakeEdgePaddingConfig({{0, buffer_shape_post_axes.size()}}));
@@ -157,8 +159,8 @@ xla::StatusOr<xla::ComputationDataHandle> XlaScatter(
     auto update = body_builder->DynamicSlice(updates, updates_offset,
                                              flat_updates_slice_shape);
 
-    // Unflatten the major (iteration) dimensions of the slice to their original
-    // shape.
+    // Unflatten the major (iteration) dimensions of the slice to their
+    // original shape.
     std::vector<int64> updates_slice_shape(num_index_dims, 1);
     updates_slice_shape.insert(updates_slice_shape.end(),
                                buffer_shape_post_axes.begin(),
@@ -167,15 +169,16 @@ xla::StatusOr<xla::ComputationDataHandle> XlaScatter(
 
     // Apply the update to the buffer. If there is a combiner, use it to merge
     // the current values with the update.
+    auto current_value =
+        body_builder->DynamicSlice(buffer, index, updates_slice_shape);
     if (combiner) {
-      auto current_value =
-          body_builder->DynamicSlice(buffer, index, updates_slice_shape);
       update = combiner(current_value, update, body_builder);
     }
-    // Apply the update if it is in range.
-    buffer = body_builder->Select(
-        index_in_range, body_builder->DynamicUpdateSlice(buffer, update, index),
-        buffer);
+    // Use the current value instead of the update if the index is out of
+    // bounds.
+    update = body_builder->Select(index_in_range, update, current_value);
+    // Apply the update.
+    buffer = body_builder->DynamicUpdateSlice(buffer, update, index);
 
     return std::vector<xla::ComputationDataHandle>{indices, updates, buffer};
   };

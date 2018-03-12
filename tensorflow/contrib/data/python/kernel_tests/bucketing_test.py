@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
@@ -377,6 +379,94 @@ class BucketTest(test.TestCase):
           batches += 1
 
       self.assertEqual(batches, 15)
+
+
+class BucketBySequenceLength(test.TestCase):
+
+  def testBucket(self):
+
+    boundaries = [10, 20, 30]
+    batch_sizes = [10, 8, 4, 2]
+    lengths = [8, 13, 25, 35]
+
+    def element_gen():
+      # Produce 1 batch for each bucket
+      elements = []
+      for batch_size, length in zip(batch_sizes, lengths):
+        for _ in range(batch_size):
+          elements.append([1] * length)
+      random.shuffle(elements)
+      for el in elements:
+        yield (el,)
+
+    element_len = lambda el: array_ops.shape(el)[0]
+    dataset = dataset_ops.Dataset.from_generator(
+        element_gen, (dtypes.int64,), ([None],)).apply(
+            grouping.bucket_by_sequence_length(
+                element_len, boundaries, batch_sizes))
+    batch, = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      batches = []
+      for _ in range(4):
+        batches.append(sess.run(batch))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(batch)
+    batch_sizes_val = []
+    lengths_val = []
+    for batch in batches:
+      batch_size = batch.shape[0]
+      length = batch.shape[1]
+      batch_sizes_val.append(batch_size)
+      lengths_val.append(length)
+    self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
+    self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
+    self.assertEqual(sorted(lengths), sorted(lengths_val))
+
+  def testPadToBoundary(self):
+
+    boundaries = [10, 20, 30]
+    batch_sizes = [10, 8, 4, 2]
+    lengths = [8, 13, 25]
+
+    def element_gen():
+      # Produce 1 batch for each bucket
+      elements = []
+      for batch_size, length in zip(batch_sizes[:-1], lengths):
+        for _ in range(batch_size):
+          elements.append([1] * length)
+      random.shuffle(elements)
+      for el in elements:
+        yield (el,)
+      for _ in range(batch_sizes[-1]):
+        el = [1] * (boundaries[-1] + 5)
+        yield (el,)
+
+    element_len = lambda el: array_ops.shape(el)[0]
+    dataset = dataset_ops.Dataset.from_generator(
+        element_gen, (dtypes.int64,), ([None],)).apply(
+            grouping.bucket_by_sequence_length(
+                element_len, boundaries, batch_sizes,
+                pad_to_bucket_boundary=True))
+    batch, = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      batches = []
+      for _ in range(3):
+        batches.append(sess.run(batch))
+      with self.assertRaisesOpError("bucket_boundaries"):
+        sess.run(batch)
+    batch_sizes_val = []
+    lengths_val = []
+    for batch in batches:
+      batch_size = batch.shape[0]
+      length = batch.shape[1]
+      batch_sizes_val.append(batch_size)
+      lengths_val.append(length)
+    batch_sizes = batch_sizes[:-1]
+    self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
+    self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
+    self.assertEqual(sorted(boundaries), sorted(lengths_val))
 
 
 if __name__ == "__main__":

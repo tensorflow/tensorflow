@@ -41,7 +41,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
+// TODO(b/74260408): This test is timing out if bfloat16 is enabled on
+// GPU. Last timed out on 2018-03-06.
+#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16) && !defined(XLA_TEST_BACKEND_GPU)
 // Tests both F32 and BF16.
 static std::array<bool, 2> use_bfloat16_params{false, true};
 #else

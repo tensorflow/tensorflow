@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 # The maximum input rank to test.
@@ -212,7 +213,8 @@ class SumReductionTest(BaseReductionTest):
     arr = np.ones([68000], dtype=np.float16)
 
     with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
-      tf_arr = array_ops.constant(arr)
+      tf_arr = variables.Variable(arr)
+      variables.global_variables_initializer().run()
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = sess.run(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
@@ -887,11 +889,7 @@ class AnyReductionTest(test.TestCase):
 
 class CountNonzeroReductionTest(test.TestCase):
 
-  def _compare(self,
-               x,
-               reduction_axes,
-               keepdims,
-               use_gpu=False,
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False,
                feed_dict=None):
     np_ans = (x != 0).astype(np.int32)
     if reduction_axes is None:

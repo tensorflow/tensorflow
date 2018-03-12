@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
@@ -315,10 +314,9 @@ class LossWeightingTest(test.TestCase):
   def test_class_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
     weighted_class = 3
-    train_samples = 3000
-    test_samples = 3000
+    train_samples = 300
+    test_samples = 300
     input_dim = 5
 
     model = keras.models.Sequential()
@@ -343,16 +341,16 @@ class LossWeightingTest(test.TestCase):
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
-    class_weight[weighted_class] = 2.
+    class_weight[weighted_class] = 4.
 
     sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
+    sample_weight[int_y_train == weighted_class] = 4.
 
     model.fit(
         x_train,
         y_train,
         batch_size=batch_size,
-        epochs=epochs // 3,
+        epochs=2,
         verbose=0,
         class_weight=class_weight,
         validation_data=(x_train, y_train, sample_weight))
@@ -360,14 +358,14 @@ class LossWeightingTest(test.TestCase):
         x_train,
         y_train,
         batch_size=batch_size,
-        epochs=epochs // 2,
+        epochs=2,
         verbose=0,
         class_weight=class_weight)
     model.fit(
         x_train,
         y_train,
         batch_size=batch_size,
-        epochs=epochs // 2,
+        epochs=2,
         verbose=0,
         class_weight=class_weight,
         validation_split=0.1)
@@ -382,10 +380,9 @@ class LossWeightingTest(test.TestCase):
   def test_sample_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
     weighted_class = 3
-    train_samples = 3000
-    test_samples = 3000
+    train_samples = 300
+    test_samples = 300
     input_dim = 5
 
     model = keras.models.Sequential()
@@ -397,36 +394,32 @@ class LossWeightingTest(test.TestCase):
                   optimizer=RMSPropOptimizer(learning_rate=0.001))
 
     np.random.seed(43)
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+    (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=train_samples,
         test_samples=test_samples,
         input_shape=(input_dim,),
         num_classes=num_classes)
-    int_y_test = y_test.copy()
     int_y_train = y_train.copy()
-    # convert class vectors to binary class matrices
     y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
-    test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
-    class_weight[weighted_class] = 2.
+    class_weight[weighted_class] = 4.
 
     sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
+    sample_weight[int_y_train == weighted_class] = 4.
 
     model.fit(
         x_train,
         y_train,
         batch_size=batch_size,
-        epochs=epochs // 3,
+        epochs=2,
         verbose=0,
         sample_weight=sample_weight)
     model.fit(
         x_train,
         y_train,
         batch_size=batch_size,
-        epochs=epochs // 3,
+        epochs=2,
         verbose=0,
         sample_weight=sample_weight,
         validation_split=0.1)
@@ -537,209 +530,6 @@ class LossWeightingTest(test.TestCase):
     with self.assertRaises(ValueError):
       bad_w_np = np.random.random((10, 2, 2))
       model.fit(x_np, [y_np, y_np], epochs=1, sample_weight={'1': bad_w_np})
-
-
-class TestDynamicTrainability(test.TestCase):
-
-  def test_trainable_warning(self):
-    x = np.random.random((5, 3))
-    y = np.random.random((5, 2))
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_dim=3))
-    model.trainable = False
-    model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
-    model.trainable = True
-    with self.assertRaises(ValueError):
-      model.train_on_batch(x, y)
-
-  def test_trainable_argument(self):
-    x = np.random.random((5, 3))
-    y = np.random.random((5, 2))
-
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_dim=3, trainable=False))
-    model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
-    out = model.predict(x)
-    with self.assertRaises(ValueError):
-      model.train_on_batch(x, y)
-    out_2 = model.predict(x)
-    self.assertAllClose(out, out_2)
-
-    # test with nesting
-    inputs = keras.layers.Input(shape=(3,))
-    output = model(inputs)
-    model = keras.models.Model(inputs, output)
-    model.compile(RMSPropOptimizer(learning_rate=0.001), 'mse')
-    out = model.predict(x)
-    with self.assertRaises(ValueError):
-      model.train_on_batch(x, y)
-    out_2 = model.predict(x)
-    self.assertAllClose(out, out_2)
-
-  def test_layer_trainability_switch(self):
-    # with constructor argument, in Sequential
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, trainable=False, input_dim=1))
-    self.assertListEqual(model.trainable_weights, [])
-
-    # by setting the `trainable` argument, in Sequential
-    model = keras.models.Sequential()
-    layer = keras.layers.Dense(2, input_dim=1)
-    model.add(layer)
-    self.assertListEqual(model.trainable_weights, layer.trainable_weights)
-    layer.trainable = False
-    self.assertListEqual(model.trainable_weights, [])
-
-    # with constructor argument, in Model
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2, trainable=False)(x)
-    model = keras.models.Model(x, y)
-    self.assertListEqual(model.trainable_weights, [])
-
-    # by setting the `trainable` argument, in Model
-    x = keras.layers.Input(shape=(1,))
-    layer = keras.layers.Dense(2)
-    y = layer(x)
-    model = keras.models.Model(x, y)
-    self.assertListEqual(model.trainable_weights, layer.trainable_weights)
-    layer.trainable = False
-    self.assertListEqual(model.trainable_weights, [])
-
-  def test_model_trainability_switch(self):
-    # a non-trainable model has no trainable weights
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    model = keras.models.Model(x, y)
-    model.trainable = False
-    self.assertListEqual(model.trainable_weights, [])
-
-    # same for Sequential
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_dim=1))
-    model.trainable = False
-    self.assertListEqual(model.trainable_weights, [])
-
-  def test_nested_model_trainability(self):
-
-    # a Sequential inside a Model
-    inner_model = keras.models.Sequential()
-    inner_model.add(keras.layers.Dense(2, input_dim=1))
-
-    x = keras.layers.Input(shape=(1,))
-    y = inner_model(x)
-    outer_model = keras.models.Model(x, y)
-    self.assertListEqual(outer_model.trainable_weights,
-                         inner_model.trainable_weights)
-    inner_model.trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-    inner_model.trainable = True
-    inner_model.layers[-1].trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-
-    # a Sequential inside a Sequential
-    inner_model = keras.models.Sequential()
-    inner_model.add(keras.layers.Dense(2, input_dim=1))
-    outer_model = keras.models.Sequential()
-    outer_model.add(inner_model)
-    self.assertListEqual(outer_model.trainable_weights,
-                         inner_model.trainable_weights)
-    inner_model.trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-    inner_model.trainable = True
-    inner_model.layers[-1].trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-
-    # a Model inside a Model
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    inner_model = keras.models.Model(x, y)
-    x = keras.layers.Input(shape=(1,))
-    y = inner_model(x)
-    outer_model = keras.models.Model(x, y)
-    self.assertListEqual(outer_model.trainable_weights,
-                         inner_model.trainable_weights)
-    inner_model.trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-    inner_model.trainable = True
-    inner_model.layers[-1].trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-
-    # a Model inside a Sequential
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    inner_model = keras.models.Model(x, y)
-    outer_model = keras.models.Sequential()
-    outer_model.add(inner_model)
-    self.assertListEqual(outer_model.trainable_weights,
-                         inner_model.trainable_weights)
-    inner_model.trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-    inner_model.trainable = True
-    inner_model.layers[-1].trainable = False
-    self.assertListEqual(outer_model.trainable_weights, [])
-
-
-class TestTrainingUtils(test.TestCase):
-
-  def test_check_array_lengths(self):
-    keras.engine.training._check_array_lengths(None, None, None)
-    a_np = np.random.random((4, 3, 3))
-    keras.engine.training._check_array_lengths(a_np, a_np, a_np)
-    keras.engine.training._check_array_lengths(
-        [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    keras.engine.training._check_array_lengths([None], [None], [None])
-
-    b_np = np.random.random((3, 4))
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, None, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths(a_np, a_np, None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [None], None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [b_np], None)
-    with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], None, [b_np])
-
-  def test_slice_arrays(self):
-    input_a = np.random.random((10, 3))
-    slice_arrays(None)
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = [None, [1, 1], None, [1, 1]]
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = [None]
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = None
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-
-  def test_fit_with_BatchNorm(self):
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, input_dim=4))
-    model.add(keras.layers.BatchNormalization())
-    model.add(keras.layers.Activation('tanh'))
-    model.add(keras.layers.Dropout(0.2))
-
-    input_a_np = np.random.random((10, 4))
-    output_b_np = np.random.random((10, 10))
-
-    model.compile(loss='binary_crossentropy', optimizer=RMSPropOptimizer(0.001))
-    model.fit(input_a_np, output_b_np, epochs=1, batch_size=5, verbose=0)
-
-  def test_fit_with_regularization(self):
-    model = keras.models.Sequential()
-    with self.assertRaises(ValueError):
-      model.add(
-          keras.layers.Dense(4, input_dim=3,
-                             kernel_regularizer=keras.regularizers.l2(0.01),
-                             activity_regularizer=keras.regularizers.l1(0.01)))
 
 
 if __name__ == '__main__':

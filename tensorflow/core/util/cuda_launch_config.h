@@ -169,6 +169,30 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   return config;
 }
 
+// Calculate the Cuda launch config we should use for a kernel launch. This
+// variant takes the resource limits of func into account to maximize occupancy.
+// The returned launch config has thread_per_block set to fixed_block_size.
+// REQUIRES: work_element_count > 0.
+template <typename DeviceFunc>
+inline CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
+    int work_element_count, const Eigen::GpuDevice& d, DeviceFunc func,
+    size_t dynamic_shared_memory_size, int fixed_block_size) {
+  CHECK_GT(work_element_count, 0);
+  CudaLaunchConfig config;
+  int block_count = 0;
+
+  cudaError_t err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+      &block_count, func, fixed_block_size, dynamic_shared_memory_size);
+  CHECK_EQ(err, cudaSuccess);
+  block_count = std::min(block_count * d.getNumCudaMultiProcessors(),
+                         DivUp(work_element_count, fixed_block_size));
+
+  config.virtual_thread_count = work_element_count;
+  config.thread_per_block = fixed_block_size;
+  config.block_count = block_count;
+  return config;
+}
+
 struct Cuda2DLaunchConfig {
   dim3 virtual_thread_count = dim3(0, 0, 0);
   dim3 thread_per_block = dim3(0, 0, 0);
@@ -236,20 +260,18 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 
-  auto min3 = [](int a, int b, int c) { return std::min(a, std::min(b, c)); };
-
-  int threadsx = min3(xdim, thread_per_block, xthreadlimit);
+  int threadsx = std::min({xdim, thread_per_block, xthreadlimit});
   int threadsy =
-      min3(ydim, std::max(thread_per_block / threadsx, 1), ythreadlimit);
+      std::min({ydim, std::max(thread_per_block / threadsx, 1), ythreadlimit});
   int threadsz =
-      min3(zdim, std::max(thread_per_block / (threadsx * threadsy), 1),
-           zthreadlimit);
+      std::min({zdim, std::max(thread_per_block / (threadsx * threadsy), 1),
+                zthreadlimit});
 
-  int blocksx = min3(block_count, DivUp(xdim, threadsx), xgridlimit);
-  int blocksy =
-      min3(DivUp(block_count, blocksx), DivUp(ydim, threadsy), ygridlimit);
-  int blocksz = min3(DivUp(block_count, (blocksx * blocksy)),
-                     DivUp(zdim, threadsz), zgridlimit);
+  int blocksx = std::min({block_count, DivUp(xdim, threadsx), xgridlimit});
+  int blocksy = std::min(
+      {DivUp(block_count, blocksx), DivUp(ydim, threadsy), ygridlimit});
+  int blocksz = std::min({DivUp(block_count, (blocksx * blocksy)),
+                          DivUp(zdim, threadsz), zgridlimit});
 
   config.virtual_thread_count = dim3(xdim, ydim, zdim);
   config.thread_per_block = dim3(threadsx, threadsy, threadsz);

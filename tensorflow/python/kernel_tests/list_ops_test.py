@@ -123,6 +123,16 @@ class ListOpsTest(test_util.TensorFlowTestCase):
             l_cpu, element_dtype=dtypes.float32)[1],
         2.0)
 
+  def testGraphStack(self):
+    with context.graph_mode(), self.test_session():
+      tl = list_ops.empty_tensor_list(
+          element_shape=constant_op.constant([1], dtype=dtypes.int32),
+          element_dtype=dtypes.int32)
+      tl = list_ops.tensor_list_push_back(tl, [1])
+      self.assertAllEqual(
+          list_ops.tensor_list_stack(tl, element_dtype=dtypes.int32).eval(),
+          [[1]])
+
   def testSerialize(self):
     # pylint: disable=g-import-not-at-top
     try:

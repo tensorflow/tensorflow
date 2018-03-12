@@ -22,12 +22,12 @@ from tensorflow.python.framework import tensor_util
 
 
 def is_tensor(*args):
-  """Check if all arguments are tensors.
+  """Check if any arguments are tensors.
 
   Args:
     *args: Python objects that may or may not be tensors.
 
   Returns:
-    True if all *args are TensorFlow types, False if one or more are not.
+    True if any *args are TensorFlow types, False if none are.
   """
   return any([tensor_util.is_tensor(a) for a in args])

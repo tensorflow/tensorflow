@@ -33,23 +33,13 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 
 
-class LinearModel(tfe.Network):
-  """A TensorFlow linear regression model.
-
-  Uses TensorFlow's eager execution.
-
-  For those familiar with TensorFlow graphs, notice the absence of
-  `tf.Session`. The `forward()` method here immediately executes and
-  returns output values. The `loss()` method immediately compares the
-  output of `forward()` with the target and returns the MSE loss value.
-  The `fit()` performs gradient-descent training on the model's weights
-  and bias.
-  """
+class LinearModel(tf.keras.Model):
+  """A TensorFlow linear regression model."""
 
   def __init__(self):
     """Constructs a LinearModel object."""
     super(LinearModel, self).__init__()
-    self._hidden_layer = self.track_layer(tf.layers.Dense(1))
+    self._hidden_layer = tf.layers.Dense(1)
 
   def call(self, xs):
     """Invoke the linear model.
@@ -64,7 +54,7 @@ class LinearModel(tfe.Network):
 
 
 def mean_square_loss(model, xs, ys):
-  return tf.reduce_mean(tf.square(model(xs) - ys))
+  return tf.reduce_mean(tf.square(tf.subtract(model(xs), ys)))
 
 
 def fit(model, dataset, optimizer, verbose=False, logdir=None):

@@ -74,7 +74,7 @@ def add_check_numerics_ops():
   the checked operations.
   @enc_compatibility
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError(
         "add_check_numerics_ops() is not compatible with eager execution. "
         "To check for Inf's and NaN's under eager execution, call "

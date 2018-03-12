@@ -220,7 +220,6 @@ tf_proto_library(
     srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    go_api_version = 2,
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
@@ -339,6 +338,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/abi.h",
+        "platform/context.h",
         "platform/cpu_feature_guard.h",
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
@@ -480,6 +480,7 @@ tf_cuda_library(
         "framework/type_index.h",
         "framework/type_traits.h",
         "framework/types.h",
+        "framework/visitable_allocator.h",
         "public/version.h",
         "util/activation_mode.h",
         "util/bcast.h",
@@ -991,22 +992,15 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/util/ctc:android_srcs",
-        "//tensorflow/core/util/tensor_bundle:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",
-            "common_runtime/**/*.h",
-            "common_runtime/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
-            "graph/**/*.h",
-            "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
             "platform/**/*.h",
@@ -1022,7 +1016,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
@@ -1039,10 +1032,49 @@ filegroup(
             "platform/stream_executor.*",
             "platform/windows/**/*",
             "user_ops/**/*.cu.cc",
+            "util/ctc/*.h",
+            "util/ctc/*.cc",
+            "util/tensor_bundle/*.h",
+            "util/tensor_bundle/*.cc",
             "common_runtime/gpu/**/*",
             "common_runtime/gpu_device_factory.*",
         ],
     ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
+    ] + glob(
+        [
+            "common_runtime/**/*.h",
+            "common_runtime/**/*.cc",
+            "graph/**/*.h",
+            "graph/**/*.cc",
+        ],
+        exclude = [
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+            "common_runtime/gpu/**/*",
+            "common_runtime/gpu_device_factory.*",
+            "graph/dot.*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        ":mobile_srcs_no_runtime",
+        ":mobile_srcs_only_runtime",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1489,6 +1521,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/strings/base64.h",
     "lib/strings/ordered_code.h",
     "lib/strings/proto_text_util.h",
+    "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
     "platform/demangle.h",
@@ -1631,6 +1664,25 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
+    ],
+)
+
+cc_library(
+    name = "tflite_portable_logging",
+    srcs = [],
+    hdrs = [
+        "lib/bfloat16/bfloat16.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:logging",
     ],
 )
 
@@ -1784,6 +1836,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
     "framework/variant.h",
+    "framework/visitable_allocator.h",
     "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
@@ -1821,6 +1874,13 @@ cc_header_only_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
+    ],
+)
+
+cc_header_only_library(
+    name = "core_cpu_headers_lib",
+    deps = [
+        ":core_cpu_lib",
     ],
 )
 
@@ -1889,7 +1949,7 @@ tf_cuda_library(
     ) + if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn//:mkl_dnn",
+            "@mkl_dnn",
         ],
     ),
     alwayslink = 1,
@@ -2008,6 +2068,7 @@ tf_cuda_library(
 
 CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "common_runtime/device.h",
+    "common_runtime/eval_const_tensor.h",
     "common_runtime/graph_runner.h",
     "common_runtime/shape_refiner.h",
     "framework/versions.h",
@@ -2016,6 +2077,7 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 tf_cuda_library(
     name = "core_cpu_base",
     srcs = [
+        "common_runtime/eval_const_tensor.cc",
         "common_runtime/shape_refiner.cc",
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
@@ -2079,7 +2141,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
-    "common_runtime/visitable_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
@@ -2105,6 +2166,7 @@ tf_cuda_library(
         "common_runtime/graph_runner.cc",
         "common_runtime/local_device.cc",
         "common_runtime/memory_types.cc",
+        "common_runtime/mkl_cpu_allocator.cc",
         "common_runtime/optimization_registry.cc",
         "common_runtime/parallel_concat_optimizer.cc",
         "common_runtime/placer.cc",
@@ -2144,6 +2206,7 @@ tf_cuda_library(
     ] + if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn",
         ],
     ),
     alwayslink = 1,
@@ -2188,14 +2251,12 @@ tf_cuda_library(
     ] + if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
-            "@mkl_dnn//:mkl_dnn",
+            "@mkl_dnn",
         ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
 
-# This library is deprecated and no longer publicly available.
-# Do not add more uses of it.
 cc_library(
     name = "regexp_internal",
     hdrs = [
@@ -3098,6 +3159,7 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
+        ":lib",
         ":test",
         ":test_main",
         ":testlib",
@@ -3262,6 +3324,10 @@ tf_cc_test(
     size = "small",
     srcs = ["common_runtime/function_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "manual",
+        "no_oss",
+    ],
     deps = [
         ":core",
         ":core_cpu",
@@ -3487,6 +3553,7 @@ tf_cc_tests(
         "ops/parsing_ops_test.cc",
         "ops/random_ops_test.cc",
         "ops/set_ops_test.cc",
+        "ops/shape_function_test.cc",
         "ops/sparse_ops_test.cc",
         "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",
@@ -3593,6 +3660,13 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+        # SSIM, PSNR data
+        "lib/ssim/testdata/checkerboard1.png",
+        "lib/ssim/testdata/checkerboard2.png",
+        "lib/ssim/testdata/checkerboard3.png",
+        "lib/psnr/testdata/cat_q20.jpg",
+        "lib/psnr/testdata/cat_q72.jpg",
+        "lib/psnr/testdata/cat_q95.jpg",
     ],
     visibility = ["//visibility:public"],
 )
@@ -3643,6 +3717,18 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs_no_runtime",
+    actual = ":mobile_srcs_no_runtime",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_srcs_only_runtime",
+    actual = ":mobile_srcs_only_runtime",
+    visibility = ["//visibility:public"],
 )
 
 alias(

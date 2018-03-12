@@ -23,12 +23,15 @@ removing existing functionality.
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Counter
+@@SqlDataset
 
 @@batch_and_drop_remainder
+@@bucket_by_sequence_length
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
 @@ignore_errors
+@@make_batched_features_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
 @@padded_batch_and_drop_remainder
@@ -37,6 +40,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@rejection_resample
 @@scan
 @@shuffle_and_repeat
+@@sliding_window_batch
 @@sloppy_interleave
 @@unbatch
 
@@ -58,15 +62,20 @@ from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.get_single_element import get_single_element
+from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
+from tensorflow.python.data.ops.iterator_ops import Iterator
+from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_single_example
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -442,12 +442,11 @@ class MklInputConversionOp : public OpKernel {
       auto input_tf_md = mkl_output_mkl_shape.GetTfLayout();
       tf_input.SetUsrMem(input_tf_md, tf_tensor);
 
-      // Create reorder between tensorflow layout and Mkl layout.
+      // Create reorder between tensorflow layout and Mkl layout if necessary
       std::vector<primitive> net;
-      CHECK_EQ(tf_input.CheckReorderToOpMem(
+      tf_input.CheckReorderToOpMem(
                    memory::primitive_desc(output_mkl_md, cpu_engine),
-                   tensor_out, &net),
-               true);
+                   tensor_out, &net);
       stream(stream::kind::eager).submit(net).wait();
 
       // -- The tensor in MKL format passes through --

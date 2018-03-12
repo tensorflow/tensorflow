@@ -159,8 +159,7 @@ available. These operations allow you to build sophisticated
 @{$reading_data$input pipelines}, at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using
-`QueueRunner` objects to drive queues and readers}
+@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using `QueueRunner` objects to drive queues and readers}
 for more information on how to use them.
 
 ## Variables

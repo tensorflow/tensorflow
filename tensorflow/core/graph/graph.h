@@ -422,7 +422,7 @@ class Graph {
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
-  Node* CopyNode(Node* node);
+  Node* CopyNode(const Node* node);
 
   // Removes a node from this graph, including all edges from or to it.
   // *node should not be accessed after calling this function.
