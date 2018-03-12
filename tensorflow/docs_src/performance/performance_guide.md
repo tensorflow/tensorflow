@@ -7,7 +7,9 @@ code. The guide is divided into a few sections:
     common across a variety of model types and hardware.
 *   [Optimizing for GPU](#optimizing_for_gpu) details tips specifically relevant
     to GPUs.
-*   [Optimizing for CPU](#optimizing_for_cpu) details CPU specific information.
+*   [Optimizing for CPU](#optimizing-for-cpu) details performance optimizations 
+    for both inference and training that can be gained when running TensorFlow 
+    models on CPUs.
 
 ## General best practices
 
@@ -432,19 +434,20 @@ scenarios.
 
 ## Optimizing for CPU
 
-CPUs, which includes Intel® Xeon Phi™, achieve optimal performance when
-TensorFlow is @{$install_sources$built from source} with all of the instructions
-supported by the target CPU.
+To optimize TensorFlow performance on CPUs, including Intel® Xeon and Xeon Phi™, 
+the best approach is to compile from sources in order to take advantage of all 
+the instructions supported by the target CPU. For details, see the 
+[boosting deep learning training article] from Intel. 
+[TensorFlow with Intel® MKL-DNN](#tensorflow-with-intel-mkl-dnn) contains details 
+on optimizing with MKL optimizations.
 
-Beyond using the latest instruction sets, Intel® has added support for the
-Intel® Math Kernel Library for Deep Neural Networks (Intel® MKL-DNN) to
-TensorFlow. While the name is not completely accurate, these optimizations are
-often simply referred to as 'MKL' or 'TensorFlow with MKL'. [TensorFlow
-with Intel® MKL-DNN](#tensorflow_with_intel_mkl_dnn) contains details on the
-MKL optimizations.
+TensorFlow can also make use of intra-op and inter-op parallelism when running 
+on CPU. Intra-op controls the size of the thread pool to parallelize kernels in 
+a given operation and inter-op controls the size of thread pool to run operations 
+in parallel. 
 
-The two configurations listed below are used to optimize CPU performance by
-adjusting the thread pools.
+The two configuration parameters listed below can be used to optimize CPU performance 
+by adjusting the thread pools:
 
 *   `intra_op_parallelism_threads`: Nodes that can use multiple threads to
     parallelize their execution will schedule the individual pieces into this
@@ -452,12 +455,13 @@ adjusting the thread pools.
 *   `inter_op_parallelism_threads`: All ready nodes are scheduled in this pool.
 
 These configurations are set via the `tf.ConfigProto` and passed to `tf.Session`
-in the `config` attribute as shown in the snippet below.  For both configuration
-options, if they are unset or set to 0, will default to the number of logical
-CPU cores. Testing has shown that the default is effective for systems ranging
-from one CPU with 4 cores to multiple CPUs with 70+ combined logical cores.
-A common alternative optimization is to set the number of threads in both pools
-equal to the number of physical cores rather than logical cores.
+in the `config` attribute as shown in the snippet below.  Both configuration
+options, if they are unset or set to `0`, will default to the number of logical
+CPU cores. **This setting does not apply to TensorFlow with MKL-DNN**. Testing has 
+shown that the default is effective for systems ranging from one CPU with 4 cores 
+to multiple CPUs with 70+ combined logical cores. A common alternative optimization 
+is to set the number of threads in both pools equal to the number of physical 
+cores, rather than the number of logical cores.
 
 ```python
 
@@ -468,22 +472,29 @@ equal to the number of physical cores rather than logical cores.
 
 ```
 
-The [Comparing compiler optimizations](#comparing-compiler-optimizations)
+The [comparing compiler optimizations](#comparing-compiler-optimizations)
 section contains the results of tests that used different compiler
 optimizations.
 
-### TensorFlow with Intel® MKL DNN
 
+### Deep Learning Inference: Partitioning Multi-Socket Intel® Xeon® Processor-based Systems
+
+Still more performance gains can be had from the underlying NUMA configuration 
+in multi-socket Intel Xeon processor-based platforms. These are especially 
+useful for [inference models], where sub-socket partitioning can be useful 
+for multiple inference streams.  
+
+### TensorFlow with Intel® MKL-DNN
+ 
 Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
 Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
 (Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
 for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
-published paper
-[TensorFlow* Optimizations on Modern Intel® Architecture](https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture)
+published paper [TensorFlow* Optimizations on Modern Intel® Architecture](https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture)
 contains additional details on the implementation.
 
-> Note: MKL was added as of TensorFlow 1.2 and currently only works on Linux. It
-> also does not work when also using `--config=cuda`.
+Note: MKL was added as of TensorFlow 1.2 and currently only works on Linux. It
+also does not work when also using `--config=cuda`.
 
 In addition to providing significant performance improvements for training CNN
 based models, compiling with the MKL creates a binary that is optimized for AVX
@@ -514,6 +525,7 @@ bazel build --config=mkl --copt="-DEIGEN_USE_VML" -c opt //tensorflow/tools/pip_
 
 ```
 
+
 #### Tuning MKL for the best performance
 
 This section details the different configurations and environment variables that
@@ -532,15 +544,18 @@ MKL uses the following environment variables to tune performance:
     run-time library environment variables during program execution.
 *   OMP_NUM_THREADS - Specifies the number of threads to use.
 
-More details on the KMP variables are on
-[Intel's](https://software.intel.com/en-us/node/522775) site and the OMP
-variables on
-[gnu.org](https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html)
+More details on the KMP variables are on [this IDZ article] and the more 
+details on the OMP variables can be found on the [gnu.org site].
 
 While there can be substantial gains from adjusting the environment variables,
 which is discussed below, the simplified advice is to set the
 `inter_op_parallelism_threads` equal to the number of physical CPUs and to set
 the following environment variables:
+
+
+```bash
+ bazel build --config=mkl -c opt //tensorflow/tools/pip_package:build_pip_package
+```
 
 *   KMP_BLOCKTIME=0
 *   KMP_AFFINITY=granularity=fine,verbose,compact,1,0
@@ -577,8 +592,7 @@ Each variable that impacts performance is discussed below.
 *   **OMP_NUM_THREADS**: This defaults to the number of physical cores.
     Adjusting this parameter beyond matching the number of cores can have an
     impact when using Intel® Xeon Phi™ (Knights Landing) for some models. See
-    [TensorFlow* Optimizations on Modern Intel® Architecture](https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture)
-    for optimal settings.
+    [TensorFlow* Optimizations on Modern Intel® Architecture] for optimal settings.
 
 *   **intra_op_parallelism_threads**: Setting this equal to the number of
     physical cores is recommended. Setting the value to 0, which is the default
@@ -595,8 +609,7 @@ Each variable that impacts performance is discussed below.
 Collected below are performance results running training and inference on
 different types of CPUs on different platforms with various compiler
 optimizations.  The models used were ResNet-50
-([arXiv:1512.03385](https://arxiv.org/abs/1512.03385)) and
-InceptionV3 ([arXiv:1512.00567](https://arxiv.org/abs/1512.00567)).
+([arXiv:1512.03385]) and InceptionV3 ([arXiv:1512.00567]).
 
 For each test, when the MKL optimization was used the environment variable
 KMP_BLOCKTIME was set to 0 (0ms) and KMP_AFFINITY to
@@ -610,7 +623,7 @@ KMP_BLOCKTIME was set to 0 (0ms) and KMP_AFFINITY to
 *   CPU: Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz (Broadwell)
 *   Dataset: ImageNet
 *   TensorFlow Version: 1.2.0 RC2
-*   Test Script: [tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/blob/mkl_experiment/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
+*   Test Script: [tf_cnn_benchmarks.py]
 
 **Batch Size: 1**
 
@@ -623,13 +636,12 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 --data_dir=<path to ImageNet TFRecords>
 ```
 
-| Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
-:              :             : (step time)  :               :               :
-| ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 7.0 (142ms)  | 4             | 0             |
-| MKL          | NCHW        | 6.6 (152ms)  | 4             | 1             |
-| AVX          | NHWC        | 5.0 (202ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (361ms)  | 4             | 0             |
+Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads 
+------------ | ----------- | ------------ | ------------- | ------------- 
+AVX2         | NHWC        | 7.0 (142ms)  | 4             | 0             
+MKL          | NCHW        | 6.6 (152ms)  | 4             | 1             
+AVX          | NHWC        | 5.0 (202ms)  | 4             | 0             
+SSE3         | NHWC        | 2.8 (361ms)  | 4             | 0             
 
 **Batch Size: 32**
 
@@ -642,14 +654,12 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 --data_dir=<path to ImageNet TFRecords>
 ```
 
-| Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
-:              :             : (step time)   :               :               :
-| ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 10.3          | 4             | 1             |
-:              :             : (3,104ms)     :               :               :
-| AVX2         | NHWC        | 7.5 (4,255ms) | 4             | 0             |
-| AVX          | NHWC        | 5.1 (6,275ms) | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (11,428ms)| 4             | 0             |
+Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads
+------------ | ----------- | ------------- | ------------- | -------------
+MKL          | NCHW        | 10.3 (3,104ms)| 4             | 1                           
+AVX2         | NHWC        | 7.5 (4,255ms) | 4             | 0            
+AVX          | NHWC        | 5.1 (6,275ms) | 4             | 0            
+SE3          | NHWC        | 2.8 (11,428ms)| 4             | 0            
 
 #### Inference ResNet-50
 
@@ -659,7 +669,7 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 *   CPU: Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz (Broadwell)
 *   Dataset: ImageNet
 *   TensorFlow Version: 1.2.0 RC2
-*   Test Script: [tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/blob/mkl_experiment/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
+*   Test Script: [tf_cnn_benchmarks.py]
 
 **Batch Size: 1**
 
@@ -672,13 +682,12 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 --data_dir=<path to ImageNet TFRecords>
 ```
 
-| Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
-:              :             : (step time)  :               :               :
-| ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 8.8 (113ms)  | 4             | 0             |
-| MKL          | NCHW        | 8.5 (120ms)  | 4             | 1             |
-| AVX          | NHWC        | 6.4 (157ms)  | 4             | 0             |
-| SSE3         | NHWC        | 3.7 (270ms)  | 4             | 0             |
+Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads 
+------------ | ----------- | ------------ | ------------- | ------------- 
+AVX2         | NHWC        | 8.8 (113ms)  | 4             | 0             
+MKL          | NCHW        | 8.5 (120ms)  | 4             | 1             
+AVX          | NHWC        | 6.4 (157ms)  | 4             | 0             
+SSE3         | NHWC        | 3.7 (270ms)  | 4             | 0             
 
 **Batch Size: 32**
 
@@ -691,14 +700,12 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 --data_dir=<path to ImageNet TFRecords>
 ```
 
-| Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
-:              :             : (step time)   :               :               :
-| ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 12.4          | 4             | 1             |
-:              :             : (2,590ms)     :               :               :
-| AVX2         | NHWC        | 10.4 (3,079ms)| 4             | 0             |
-| AVX          | NHWC        | 7.3 (4,4416ms)| 4             | 0             |
-| SSE3         | NHWC        | 4.0 (8,054ms) | 4             | 0             |
+Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads 
+------------ | ----------- | ------------- | ------------- | ------------- 
+MKL          | NCHW        | 12.4 (2,590ms)| 4             | 1             
+AVX2         | NHWC        | 10.4 (3,079ms)| 4             | 0             
+AVX          | NHWC        | 7.3 (4,4416ms)| 4             | 0             
+SSE3         | NHWC        | 4.0 (8,054ms) | 4             | 0             
 
 #### Training InceptionV3
 
@@ -708,7 +715,7 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 *   CPU: Intel Xeon E5-2686 v4 (Broadwell) Processors
 *   Dataset: ImageNet
 *   TensorFlow Version: 1.2.0 RC2
-*   Test Script: [tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/blob/mkl_experiment/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
+*   Test Script: [tf_cnn_benchmarks.py]
 
 Command executed for MKL test:
 
@@ -719,6 +726,7 @@ python tf_cnn_benchmarks.py --device=cpu --mkl=True --kmp_blocktime=0 \
 --data_dir=<path to ImageNet TFRecords>
 ```
 
+
 Optimization | Data Format | Images/Sec | Intra threads | Inter Threads
 ------------ | ----------- | ---------- | ------------- | -------------
 MKL          | NCHW        | 20.8       | 36            | 2
@@ -726,8 +734,20 @@ AVX2         | NHWC        | 6.2        | 36            | 0
 AVX          | NHWC        | 5.7        | 36            | 0
 SSE3         | NHWC        | 4.3        | 36            | 0
 
-ResNet and [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)
-were also run on this configuration but in an ad hoc manner. There were not
-enough runs executed to publish a coherent table of results. The incomplete
-results strongly indicated the final result would be similar to the table above
-with MKL providing significant 3x+ gains over AVX2.
+
+[ResNet and AlexNet] were also run on this configuration but in an ad-hoc manner. 
+There were not enough runs executed to publish a coherent table of results. The 
+incomplete results strongly indicated the final result would be similar to the 
+table above with MKL providing significant 3x+ gains over AVX2.
+
+
+[boosting deep learning training article]:https://software.intel.com/en-us/articles/boosting-deep-learning-training-inference-performance-on-xeon-and-xeon-phi
+[inference models]:https://software.intel.com/en-us/articles/boosting-deep-learning-training-inference-performance-on-xeon-and-xeon-phi#inpage-nav-5
+[arXiv:1512.03385]:https://arxiv.org/abs/1512.03385
+[arXiv:1512.00567]:https://arxiv.org/abs/1512.00567
+[TensorFlow* Optimizations on Modern Intel® Architecture]:https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture
+[gnu.org site]:https://gcc.gnu.org/onlinedocs/libgomp/Environment-Variables.html
+[tf_cnn_benchmarks.py]:https://github.com/tensorflow/benchmarks/blob/mkl_experiment/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py
+[ResNet and AlexNet]:http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf
+[this IDZ article]:https://software.intel.com/en-us/node/522775
+
