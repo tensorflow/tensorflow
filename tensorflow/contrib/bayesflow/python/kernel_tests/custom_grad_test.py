@@ -83,7 +83,7 @@ class CustomGradientTest(test.TestCase):
       g = lambda z: z[0]**2 * z[1]**2 / 2
 
       z = array_ops.stack([x, y])
-      fz = cg.custom_gradient(f(z), g(z), z, axis=0)
+      fz = cg.custom_gradient(f(z), g(z), z)
       gz = gradients_impl.gradients(fz, variables.trainable_variables())
       [z_, fz_, gx_, gy_] = sess.run([z, fz, gz[0], gz[1]])
 
