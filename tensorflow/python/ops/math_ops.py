@@ -775,7 +775,7 @@ def cast(x, dtype, name=None):
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and dtype.is_floating:
+    if x.dtype.is_complex and base_type.is_floating:
       logging.warn("Casting complex to real discards imaginary part.")
     return x
 
