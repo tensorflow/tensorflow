@@ -575,9 +575,9 @@ TfLiteStatus Interpreter::GetNodeAndRegistration(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name,
-    const std::vector<int>& dims, TfLiteQuantizationParams quantization,
-    const char* buffer, size_t bytes, const Allocation* allocation) {
+    int tensor_index, TfLiteType type, const char* name, const int rank,
+    const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
+    size_t bytes, const Allocation* allocation) {
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
   // For most tensors we know exactly how much memory is necessary so we can
@@ -585,23 +585,24 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
   // because their sizes change with the contents of the individual strings.
   if (type != kTfLiteString) {
     size_t required_bytes;
-    TF_LITE_ENSURE_OK(&context_, BytesRequired(type, dims.data(), dims.size(),
-                                               &required_bytes));
+    TF_LITE_ENSURE_OK(&context_,
+                      BytesRequired(type, dims, rank, &required_bytes));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
   TfLiteTensor& tensor = context_.tensors[tensor_index];
-  if (type == tensor.type && EqualVectorAndTfLiteIntArray(tensor.dims, dims)) {
+  if (type == tensor.type &&
+      EqualArrayAndTfLiteIntArray(tensor.dims, rank, dims)) {
     // Fast path which does not invalidate the invokable property.
     TfLiteTensorDataFree(&tensor);
     tensor.data.raw = const_cast<char*>(buffer);
-    if (!tensor.dims) tensor.dims = ConvertVectorToTfLiteIntArray(dims);
+    if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
     tensor.params = quantization;
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
     invokable_ = false;
-    TfLiteTensorReset(type, name, ConvertVectorToTfLiteIntArray(dims),
+    TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                       quantization, const_cast<char*>(buffer), bytes,
                       kTfLiteMmapRo, allocation, &tensor);
   }
@@ -613,8 +614,8 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 // bytes. The lifetime of buffer must be ensured to be greater or equal
 // to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name,
-    const std::vector<int>& dims, TfLiteQuantizationParams quantization) {
+    int tensor_index, TfLiteType type, const char* name, const int rank,
+    const int* dims, TfLiteQuantizationParams quantization) {
   invokable_ = false;
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
@@ -624,10 +625,10 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     // many bytes we will need based on the dimensions. String tensors are
     // allocated dynamically and we can't know ahead of time how much space
     // they will require.
-    TF_LITE_ENSURE_OK(&context_, BytesRequired(type, dims.data(), dims.size(),
-                                               &required_bytes));
+    TF_LITE_ENSURE_OK(&context_,
+                      BytesRequired(type, dims, rank, &required_bytes));
   }
-  TfLiteTensorReset(type, name, ConvertVectorToTfLiteIntArray(dims),
+  TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                     quantization,
                     /*buffer=*/nullptr, required_bytes,
                     type == kTfLiteString ? kTfLiteDynamic : kTfLiteArenaRw,

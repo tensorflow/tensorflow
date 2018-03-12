@@ -29,9 +29,11 @@ namespace tflite {
 // Converts a `std::vector` to a `TfLiteIntArray`.
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 
-// Checks whether a `TfLiteIntArray` and `std::vector` have matching elements.
-bool EqualVectorAndTfLiteIntArray(const TfLiteIntArray* a,
-                                  const std::vector<int>& b);
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
+
+// Checks whether a `TfLiteIntArray` and an int array have matching elements.
+bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
+                                 const int* b);
 
 }  // namespace tflite
 
