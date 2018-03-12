@@ -82,7 +82,7 @@ class.
 > University's <a href="https://cs231n.github.io/convolutional-networks/">
 > Convolutional Neural Networks for Visual Recognition course materials</a>.</p>
 
-## Building the CNN MNIST Classifier {#building_the_cnn_mnist_classifier}
+## Building the CNN MNIST Classifier
 
 Let's build a model to classify the images in the MNIST dataset using the
 following CNN architecture:
@@ -117,7 +117,7 @@ output from one layer-creation method and supply it as input to another.
 
 Open `cnn_mnist.py` and add the following `cnn_model_fn` function, which
 conforms to the interface expected by TensorFlow's Estimator API (more on this
-later in [Create the Estimator](#create-the-estimator)). `cnn_mnist.py` takes
+later in [Create the Estimator](#create_the_estimator)). `cnn_mnist.py` takes
 MNIST feature data, labels, and
 @{tf.estimator.ModeKeys$model mode} (`TRAIN`, `EVAL`, `PREDICT`) as arguments;
 configures the CNN; and returns predictions, loss, and a training operation:
@@ -193,7 +193,7 @@ to calculate loss, configure the training op, and generate predictions. If
 you're already experienced with CNNs and @{$get_started/custom_estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
 skip ahead to ["Training and Evaluating the CNN MNIST
-Classifier"](#training-and-evaluating-the-cnn-mnist-classifier).
+Classifier"](#training_and_evaluating_the_cnn_mnist_classifier).
 
 ### Input Layer
 
@@ -411,7 +411,7 @@ logits = tf.layers.dense(inputs=dropout, units=10)
 Our final output tensor of the CNN, `logits`, has shape
 <code>[<em>batch_size</em>, 10]</code>.
 
-### Generate Predictions {#generate_predictions}
+### Generate Predictions
 
 The logits layer of our model returns our predictions as raw values in a
 <code>[<em>batch_size</em>, 10]</code>-dimensional tensor. Let's convert these
@@ -446,7 +446,7 @@ tf.nn.softmax(logits, name="softmax_tensor")
 
 > Note: We use the `name` argument to explicitly name this operation
 > `softmax_tensor`, so we can reference it later. (We'll set up logging for the
-> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook).
+> softmax values in ["Set Up a Logging Hook"](#set_up_a_logging_hook)).
 
 We compile our predictions in a dict, and return an `EstimatorSpec` object:
 
@@ -459,7 +459,7 @@ if mode == tf.estimator.ModeKeys.PREDICT:
   return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 ```
 
-### Calculate Loss {#calculating-loss}
+### Calculate Loss
 
 For both training and evaluation, we need to define a
 [loss function](https://en.wikipedia.org/wiki/Loss_function)
@@ -534,7 +534,7 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$get_started/custom_estimators#defining-the-training-op-for-the-model$"Defining
+> functions, see @{$get_started/custom_estimators#defining_the_training_op_for_the_model$"Defining
 > the training op for the model"} in the @{$get_started/custom_estimators$"Creating Estimations in
 > tf.estimator"} tutorial.
 
@@ -551,7 +551,7 @@ return tf.estimator.EstimatorSpec(
     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
 
-## Training and Evaluating the CNN MNIST Classifier {#training_and_evaluating_the_cnn_mnist_classifier}
+## Training and Evaluating the CNN MNIST Classifier
 
 We've coded our MNIST CNN model function; now we're ready to train and evaluate
 it.
@@ -579,7 +579,7 @@ in `train_data` and `train_labels`, respectively. Similarly, we store the
 evaluation feature data (10,000 images) and evaluation labels in `eval_data`
 and `eval_labels`, respectively.
 
-### Create the Estimator {#create-the-estimator}
+### Create the Estimator
 
 Next, let's create an `Estimator` (a TensorFlow class for performing high-level
 model training, evaluation, and inference) for our model. Add the following code
@@ -593,7 +593,7 @@ mnist_classifier = tf.estimator.Estimator(
 
 The `model_fn` argument specifies the model function to use for training,
 evaluation, and prediction; we pass it the `cnn_model_fn` we created in
-["Building the CNN MNIST Classifier."](#building-the-cnn-mnist-classifier) The
+["Building the CNN MNIST Classifier."](#building_the_cnn_mnist_classifier) The
 `model_dir` argument specifies the directory where model data (checkpoints) will
 be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
@@ -601,7 +601,7 @@ feel free to change to another directory of your choice).
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
 > tutorial @{$get_started/custom_estimators$"Creating Estimators in tf.estimator."}
 
-### Set Up a Logging Hook {#set_up_a_logging_hook}
+### Set Up a Logging Hook
 
 Since CNNs can take a while to train, let's set up some logging so we can track
 progress during training. We can use TensorFlow's @{tf.train.SessionRunHook} to create a
