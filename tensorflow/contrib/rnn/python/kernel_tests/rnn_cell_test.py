@@ -878,7 +878,6 @@ class RNNCellTest(test.TestCase):
       shape = [2, 1]
       filter_size = [3]
       num_features = 1
-      batch_size = 2
       expected_state_c = np.array(
           [[[1.4375670191], [1.4375670191]], [[2.7542609292], [2.7542609292]]],
           dtype=np.float32)
@@ -912,7 +911,6 @@ class RNNCellTest(test.TestCase):
       shape = [2, 2, 1]
       filter_size = [3, 3]
       num_features = 1
-      batch_size = 2
       expected_state_c = np.array(
           [[[[1.4375670191], [1.4375670191]], [[1.4375670191], [1.4375670191]]],
            [[[2.7542609292], [2.7542609292]], [[2.7542609292], [2.7542609292]]
@@ -954,7 +952,6 @@ class RNNCellTest(test.TestCase):
       shape = [2, 2, 2, 1]
       filter_size = [3, 3, 3]
       num_features = 1
-      batch_size = 2
       expected_state_c = np.array(
           [[[[[1.4375670191], [1.4375670191]], [[1.4375670191], [1.4375670191]]
             ], [[[1.4375670191], [1.4375670191]], [[1.4375670191],
@@ -1584,7 +1581,7 @@ class WeightNormLSTMCellTest(test.TestCase):
   """Compared cell output with pre-calculated values."""
 
   def _cell_output(self, cell):
-    """Calculate cell output"""
+    """Calculates cell output."""
 
     with self.test_session() as sess:
       init = init_ops.constant_initializer(0.5)
@@ -1611,7 +1608,7 @@ class WeightNormLSTMCellTest(test.TestCase):
     return actual_state_c, actual_state_h
 
   def testBasicCell(self):
-    """Tests cell w/o peepholes and w/o normalisation"""
+    """Tests cell w/o peepholes and w/o normalisation."""
 
     def cell():
       return contrib_rnn_cell.WeightNormLSTMCell(
@@ -1626,7 +1623,7 @@ class WeightNormLSTMCellTest(test.TestCase):
     self.assertAllClose(expected_h, actual_h, 1e-5)
 
   def testNonbasicCell(self):
-    """Tests cell with peepholes and w/o normalisation"""
+    """Tests cell with peepholes and w/o normalisation."""
 
     def cell():
       return contrib_rnn_cell.WeightNormLSTMCell(
@@ -1640,9 +1637,8 @@ class WeightNormLSTMCellTest(test.TestCase):
     self.assertAllClose(expected_c, actual_c, 1e-5)
     self.assertAllClose(expected_h, actual_h, 1e-5)
 
-
   def testBasicCellWithNorm(self):
-    """Tests cell w/o peepholes and with normalisation"""
+    """Tests cell w/o peepholes and with normalisation."""
 
     def cell():
       return contrib_rnn_cell.WeightNormLSTMCell(
@@ -1657,7 +1653,7 @@ class WeightNormLSTMCellTest(test.TestCase):
     self.assertAllClose(expected_h, actual_h, 1e-5)
 
   def testNonBasicCellWithNorm(self):
-    """Tests cell with peepholes and with normalisation"""
+    """Tests cell with peepholes and with normalisation."""
 
     def cell():
       return contrib_rnn_cell.WeightNormLSTMCell(

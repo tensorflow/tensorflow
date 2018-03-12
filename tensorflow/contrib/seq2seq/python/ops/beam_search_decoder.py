@@ -569,7 +569,6 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
 
   time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
-  scores_shape = array_ops.shape(scores)
   scores_flat = array_ops.reshape(scores, [batch_size, -1])
 
   # Pick the next beams according to the specified successors function
