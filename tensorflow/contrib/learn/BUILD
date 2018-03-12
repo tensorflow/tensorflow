@@ -432,8 +432,8 @@ py_test(
     srcs = ["python/learn/estimators/kmeans_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "nomac",
         "noasan",  # b/73741358
+        "nomac",
     ],
     deps = [
         ":learn",
