@@ -1930,6 +1930,48 @@ TEST_F(ConstantFoldingTest, IdenticalN) {
   EXPECT_EQ("^id_n", output.node(7).input(2));
 }
 
+TEST_F(ConstantFoldingTest, TrivialPack) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x =
+      ops::RandomNormal(scope.WithOpName("x"), {2, 2}, DataType::DT_FLOAT);
+  Output y = ops::Const(scope.WithOpName("y"), {2.0f}, {});
+  auto stack =
+      ops::Stack(scope.WithOpName("stack").WithControlDependencies({y}), {x},
+                 ops::Stack::Axis(1));
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("stack");
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+  EXPECT_EQ(5, output.node_size());
+  for (const auto& node : output.node()) {
+    if (node.name() == "stack") {
+      EXPECT_EQ("stack", node.name());
+      EXPECT_EQ("ExpandDims", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("ConstantFolding/stack_const_axis", node.input(1));
+      EXPECT_EQ("^y", node.input(2));
+    } else if (node.name() == "ConstantFolding/stack_const_axis") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^x", node.input(0));
+    }
+  }
+
+  std::vector<string> fetch = {"stack"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
