@@ -143,12 +143,14 @@ class MklCPUAllocator : public VisitableAllocator {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return NULL;
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
     Status s = Status(error::Code::UNIMPLEMENTED,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
+    return NULL;
   }
 
   /// Do we allow growth in BFC Allocator
