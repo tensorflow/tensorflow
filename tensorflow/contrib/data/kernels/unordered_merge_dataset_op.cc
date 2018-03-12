@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 
@@ -156,7 +157,7 @@ class UnorderedMergeDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("input_impls_empty"))) {
