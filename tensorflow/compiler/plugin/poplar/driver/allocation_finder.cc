@@ -179,8 +179,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           } else {
             auto end = comp->name().find('.');
             std::string name = comp->name().substr(8, end - 8);
-            if (name == "conv_with_reverse" ||
-                name == "depthwise_conv") {
+            if (name == "depthwise_conv") {
               auto t = TensorTarget(user, op_index, path);
               auto i = tensor_allocation_map.find(src);
               if (i != tensor_allocation_map.end()) {

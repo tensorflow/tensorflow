@@ -319,48 +319,23 @@ AddTensor(poplar::Graph& graph,
         if (comp->name().substr(0, 8) == "_pop_op_") {
           auto end = comp->name().find('.');
           std::string name = comp->name().substr(8, end - 8);
-          if (name == "conv_with_reverse") {
+          if (name == "depthwise_conv") {
             const HloInstruction* conv_inst = comp->root_instruction();
             switch (target->second.input_index) {
               case 0:
-              {
-                TF_ASSIGN_OR_RETURN(out,
-                                    AddConvolutionWeights(graph, src.first,
-                                                          conv_inst,
-                                                          resources, false));
-                break;
-              }
-              case 1:
-              {
-                TF_ASSIGN_OR_RETURN(out,
-                                    AddConvolutionInput(graph, src.first,
-                                                        conv_inst,
-                                                        resources, false));
-                break;
-              }
-              default:
-                return tensorflow::errors::FailedPrecondition(
-                    port::StrCat("invalid operand for tensor allocation on ",
-                                 src.first->name()));
-            }
-
-          } else if (name == "depthwise_conv") {
-            const HloInstruction* conv_inst = comp->root_instruction();
-            switch (target->second.input_index) {
-              case 0:
-              {
-                TF_ASSIGN_OR_RETURN(out,
-                                    AddConvolutionWeights(graph, src.first,
-                                                          conv_inst,
-                                                          resources, true));
-                break;
-              }
-              case 1:
               {
                 TF_ASSIGN_OR_RETURN(out,
                                     AddConvolutionInput(graph, src.first,
                                                         conv_inst,
                                                         resources, true));
+                break;
+              }
+              case 1:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionWeights(graph, src.first,
+                                                          conv_inst,
+                                                          resources, true));
                 break;
               }
               default:

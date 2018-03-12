@@ -356,11 +356,11 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
@@ -399,11 +399,11 @@ Create2DConvWithReverse(poplar::Graph &graph,
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;

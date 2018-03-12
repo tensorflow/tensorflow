@@ -249,8 +249,8 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kBroadcast, true, 0, nullptr, {12}},
    {HloOpcode::kConstant, true, 0, nullptr, {}},
    {HloOpcode::kConstant, true, 0, nullptr, {}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // Depthwise convolution (forward pass, multiplier=1)
   {{HloOpcode::kConvolution, true, 0, nullptr, {10, 1}},
@@ -263,14 +263,14 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
    {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
    {HloOpcode::kConstant, true, 0, nullptr, {}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // Backprop input convolution
   {{HloOpcode::kConvolution, true, 0, nullptr, {2, 1}},
    {HloOpcode::kReverse, true, 0, IsConvFilterSpatialReverse, {3}},
-   {HloOpcode::kParameter, false, 1, nullptr, {}},
-   {HloOpcode::kParameter, false, 0, nullptr, {}}},
+   {HloOpcode::kParameter, false, 0, nullptr, {}},
+   {HloOpcode::kParameter, false, 1, nullptr, {}}},
 
   // Bias reduction and application
   {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},
