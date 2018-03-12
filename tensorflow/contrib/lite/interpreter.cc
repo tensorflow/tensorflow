@@ -94,7 +94,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.tensors_size = 0;
   context_.eigen_context = nullptr;
   context_.gemm_context = nullptr;
-  context_.recommended_num_threads = 0;
+  context_.recommended_num_threads = -1;
 
   // Invalid to call these these except from TfLiteDelegate
   SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
