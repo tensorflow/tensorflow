@@ -303,7 +303,7 @@ class Latencies {
 };
 
 bool TimeMultipleRuns(Interpreter* interpreter, double sleep_seconds,
-                      int num_runs, int64* total_time_us) {
+                      int num_runs, int64_t* total_time_us) {
   // Convert the run_delay string into a timespec.
   timespec req;
   req.tv_sec = static_cast<time_t>(sleep_seconds);
@@ -422,7 +422,7 @@ int Main(int argc, char** argv) {
     return -1;
   }
 
-  int64 initialization_start_us = Env::Default()->NowMicros();
+  int64_t initialization_start_us = Env::Default()->NowMicros();
 
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
@@ -433,7 +433,7 @@ int Main(int argc, char** argv) {
     return -1;
   }
 
-  int64 initialization_end_us = Env::Default()->NowMicros();
+  int64_t initialization_end_us = Env::Default()->NowMicros();
 
   const double initialization_time_s =
       (initialization_end_us - initialization_start_us) / 1000000.0f;
@@ -444,7 +444,7 @@ int Main(int argc, char** argv) {
 
   // If requested, run through the graph first to preinitialize everything
   // before the benchmarking runs.
-  int64 warmup_time_us = 0;
+  int64_t warmup_time_us = 0;
   if (warmup_runs > 0) {
     if (!TimeMultipleRuns(interpreter.get(), sleep_seconds, warmup_runs,
                           &warmup_time_us)) {
@@ -455,7 +455,7 @@ int Main(int argc, char** argv) {
 
   // Capture overall inference time without stat logging overhead. This is the
   // timing data that can be compared to other libaries.
-  int64 no_stat_time_us = 0;
+  int64_t no_stat_time_us = 0;
   if (!TimeMultipleRuns(interpreter.get(), sleep_seconds, num_runs,
                         &no_stat_time_us)) {
     std::cerr << "Timing failed." << std::endl;
