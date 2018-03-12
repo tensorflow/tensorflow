@@ -362,7 +362,7 @@ operations that are needed to compute the result.
 
 @{tf.Session.run} requires you to specify a list of **fetches**, which determine
 the return values, and may be a @{tf.Operation}, a @{tf.Tensor}, or
-a [tensor-like type](#tensor-like-objects) such as @{tf.Variable}. These fetches
+a [tensor-like type](#tensor-like_objects) such as @{tf.Variable}. These fetches
 determine what **subgraph** of the overall @{tf.Graph} must be executed to
 produce the result: this is the subgraph that contains all operations named in
 the fetch list, plus all operations whose outputs are used to compute the value
