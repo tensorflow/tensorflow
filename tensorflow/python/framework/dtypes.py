@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import types
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -650,11 +649,10 @@ QUANTIZED_DTYPES = frozenset([
 tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
-    types.IntType: int32,
-    types.LongType: int64,
-    types.FloatType: float64,
-    types.ComplexType: complex128,
-    types.BooleanType: bool,
+    int: int64,
+    float: float64,
+    complex: complex128,
+    bool: bool,
 }
 
 @tf_export("as_dtype")
