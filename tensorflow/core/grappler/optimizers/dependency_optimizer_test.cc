@@ -595,6 +595,57 @@ TEST_F(DependencyOptimizerTest, IdentityN) {
   EXPECT_EQ("id_b:1", output.node(8).input(0));
 }
 
+TEST_F(DependencyOptimizerTest,
+       Identity_DeviceCrossing_ConsumerOnDifferentDevice) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x_on_1 =
+      ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
+  Output one_on_3 =
+      ops::Const(s.WithOpName("one_on_3").WithDevice("/gpu:3"), {1.0f}, {});
+  Output x_on_2 =
+      ops::Identity(s.WithOpName("x_on_2").WithDevice("/gpu:2"), x_on_1);
+  Output result =
+      ops::Add(s.WithOpName("result").WithDevice("/gpu:3"), x_on_2, one_on_3);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"result"};
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
+TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x_on_1 =
+      ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
+  Output one_on_2 =
+      ops::Const(s.WithOpName("one_on_2").WithDevice("/gpu:2"), {1.0f}, {});
+  Output x_on_2 =
+      ops::Identity(s.WithOpName("x_on_2").WithDevice("/gpu:2"), x_on_1);
+  Output result =
+      ops::Add(s.WithOpName("result").WithDevice("/gpu:2"), x_on_2, one_on_2);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"result"};
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
+  EXPECT_EQ(3, output.node_size());
+  for (const auto& node : output.node()) {
+    EXPECT_NE("x_on_2", node.name());
+    if (node.name() == "result") {
+      EXPECT_EQ("x_on_1", node.input(0));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
