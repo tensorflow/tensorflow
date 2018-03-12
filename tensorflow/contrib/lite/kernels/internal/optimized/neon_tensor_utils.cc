@@ -27,6 +27,10 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
+float32x4_t* AlignedAlloc(unsigned count) {
+  return (float32x4_t*)memalign(sizeof(float32x4_t), count * sizeof(float32x4_t));
+}
+
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
                                              int n_batch, float* result,
@@ -39,8 +43,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 
   // The arrays used to cache the vector.
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(m_cols / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      AlignedAlloc(m_cols / kFloatWeightsPerNeonLane);
   const int kUnrollSize = 2;
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
@@ -110,7 +113,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       result_in_batch += result_stride;
     }
   }
-  delete[] vector_cache_float32x4;
+  free(vector_cache_float32x4);
 }
 
 void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
@@ -169,8 +172,7 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
 
   // The arrays used to cache the vector.
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(v_size / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      AlignedAlloc(v_size / kFloatWeightsPerNeonLane);
   for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
     vector_cache_float32x4[v >> 2] = vld1q_f32(vector + v);
   }
@@ -196,7 +198,7 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
     result_ptr += v_size;
     batch_vector_ptr += v_size;
   }
-  delete[] vector_cache_float32x4;
+  free(vector_cache_float32x4);
 }
 
 void NeonSub1Vector(const float* vector, int v_size, float* result) {
