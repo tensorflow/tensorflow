@@ -138,7 +138,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   // The default values of attributes might have been stripped by the optimizer.
   // Add them back.
   return AddDefaultAttrsToGraphDef(output_graph_def, *graphptr->op_registry(),
-                                   0);
+                                   0, true);
 }
 
 // Applies the same graph pruning logic to the graph as Session.Run in TF.
@@ -514,7 +514,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       &new_item->graph,
       FunctionLibraryDefinition(OpRegistry::Global(),
                                 new_item->graph.library()),
-      0);
+      0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
                << attr_status.error_message();

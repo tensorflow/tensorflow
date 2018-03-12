@@ -195,8 +195,7 @@ class BeamSearchDecoder(decoder.Decoder):
       ValueError: If `start_tokens` is not a vector or
         `end_token` is not a scalar.
     """
-    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
-      raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
+    rnn_cell_impl.assert_like_rnncell("cell", cell)  # pylint: disable=protected-access
     if (output_layer is not None and
         not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
@@ -570,7 +569,6 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
 
   time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
-  scores_shape = array_ops.shape(scores)
   scores_flat = array_ops.reshape(scores, [batch_size, -1])
 
   # Pick the next beams according to the specified successors function

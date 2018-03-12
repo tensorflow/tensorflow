@@ -586,6 +586,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_update(v, [1], [3])
       self.assertAllEqual([1.0, 3.0], v.numpy())
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testScatterUpdateInvalidArgs(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3], name="update")
+    # The exact error and message differ between graph construction (where the
+    # error is realized during shape inference at graph construction time) and
+    # eager execution (where the error is realized during kernel execution).
+    with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
+      state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
 
 if __name__ == "__main__":
   test.main()
