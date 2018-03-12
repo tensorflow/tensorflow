@@ -16,6 +16,7 @@
 
 #include <poplar/Program.hpp>
 #include <popconv/Convolution.hpp>
+#include <popops/Expr.hpp>
 
 namespace poplar {
   class Graph;
@@ -39,24 +40,19 @@ using OutVector = std::vector<poplar::Tensor>;
 using ArgVector = std::vector<poplar::Tensor>;
 using ArgVectors = std::vector<ArgVector>;
 
-typedef poplar::Tensor (*popops_unary_fn)(poplar::Graph &graph,
-                                          poplar::Tensor A,
-                                          poplar::program::Sequence &prog,
-                                          const std::string &debugPrefix);
-
-typedef poplar::Tensor (*popops_binary_fn)(poplar::Graph &graph,
-                                           poplar::Tensor A, poplar::Tensor B,
-                                           poplar::program::Sequence &prog,
-                                           const std::string &debugPrefix);
-
 typedef void (*popops_inplace_fn)(poplar::Graph &graph,
                                   poplar::Tensor A, poplar::Tensor B,
                                   poplar::program::Sequence &prog,
                                   const std::string &debugPrefix);
 
-port::StatusOr<popops_unary_fn>  LookupUnaryFn(const HloInstruction*);
-port::StatusOr<popops_binary_fn> LookupBinaryFn(const HloInstruction*);
-port::StatusOr<popops_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
+port::StatusOr<popops::expr::UnaryOpType>
+LookupUnaryFn(const HloInstruction*);
+
+port::StatusOr<popops::expr::BinaryOpType>
+LookupBinaryFn(const HloInstruction*);
+
+port::StatusOr<popops_inplace_fn>
+LookupBinaryInPlaceFn(const HloInstruction*);
 
 port::Status SetVertexField(poplar::Graph &graph,
                             const poplar::FieldRef &field,

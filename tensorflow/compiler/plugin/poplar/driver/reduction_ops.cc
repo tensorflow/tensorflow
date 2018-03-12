@@ -20,6 +20,7 @@
 #include <popnn/PoolingDef.hpp>
 #include <popnn/Pooling.hpp>
 #include <popops/Reduce.hpp>
+#include <popops/ElementWise.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -262,10 +263,11 @@ CreateSimpleReduction(poplar::Graph &graph,
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popops_binary_fn fn;
-      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
+      popops::expr::BinaryOpType op;
+      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
-      out = fn(graph, out, init_val, seq, inst->name() + "_initval");
+      out = popops::map(graph, op, out, init_val, seq,
+                        inst->name() + "_initval");
     }
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
@@ -370,10 +372,11 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popops_binary_fn fn;
-      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
+      popops::expr::BinaryOpType op;
+      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
-      out = fn(graph, out, init_val, seq, inst->name() + "_initval");
+      out = popops::map(graph, op, out, init_val, seq,
+                        inst->name() + "_initval");
     }
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   }
@@ -655,10 +658,11 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     // Create a binary op with the scatter_root opcode
     TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-    popops_binary_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root));
+    popops::expr::BinaryOpType op;
+    TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(scatter_root));
 
-    out = fn(graph, out, init_val, program_seq, inst->name() + "_initval");
+    out = popops::map(graph, op, out, init_val, program_seq,
+                      inst->name() + "_initval");
   }
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
