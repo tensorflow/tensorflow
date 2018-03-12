@@ -184,11 +184,11 @@ bool SetOpAttrList(
   const int num_values = PySequence_Size(py_list);
   if (attr_list_sizes != nullptr) (*attr_list_sizes)[key] = num_values;
 
-#define PARSE_LIST(c_type, parse_fn)                                \
-  std::unique_ptr<c_type[]> values(new c_type[num_values]);         \
-  for (int i = 0; i < num_values; ++i) {                            \
-    auto py_value = PySequence_ITEM(py_list, i);                    \
-    if (!parse_fn(key, py_value, status, &values[i])) return false; \
+#define PARSE_LIST(c_type, parse_fn)                                      \
+  std::unique_ptr<c_type[]> values(new c_type[num_values]);               \
+  for (int i = 0; i < num_values; ++i) {                                  \
+    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));   \
+    if (!parse_fn(key, py_value.get(), status, &values[i])) return false; \
   }
 
   if (type == TF_ATTR_STRING) {
@@ -213,9 +213,9 @@ bool SetOpAttrList(
     // dims across all the input lists.
     int total_dims = 0;
     for (int i = 0; i < num_values; ++i) {
-      auto py_value = PySequence_ITEM(py_list, i);
-      if (py_value != Py_None) {
-        if (!PySequence_Check(py_value)) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (py_value.get() != Py_None) {
+        if (!PySequence_Check(py_value.get())) {
           TF_SetStatus(
               status, TF_INVALID_ARGUMENT,
               tensorflow::strings::StrCat(
@@ -224,7 +224,7 @@ bool SetOpAttrList(
                   .c_str());
           return false;
         }
-        const auto size = TensorShapeNumDims(py_value);
+        const auto size = TensorShapeNumDims(py_value.get());
         if (size >= 0) {
           total_dims += size;
         }
@@ -238,12 +238,12 @@ bool SetOpAttrList(
     std::unique_ptr<int[]> num_dims(new int[num_values]);
     int64_t* offset = buffer.get();
     for (int i = 0; i < num_values; ++i) {
-      auto py_value = PySequence_ITEM(py_list, i);
-      if (py_value == Py_None) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (py_value.get() == Py_None) {
         dims[i] = nullptr;
         num_dims[i] = -1;
       } else {
-        const auto size = TensorShapeNumDims(py_value);
+        const auto size = TensorShapeNumDims(py_value.get());
         if (size == -1) {
           dims[i] = nullptr;
           num_dims[i] = -1;
@@ -252,10 +252,11 @@ bool SetOpAttrList(
         dims[i] = offset;
         num_dims[i] = size;
         for (int j = 0; j < size; ++j) {
-          auto inner_py_value = PySequence_ITEM(py_value, j);
-          if (inner_py_value == Py_None) {
+          tensorflow::Safe_PyObjectPtr inner_py_value(
+              PySequence_ITEM(py_value.get(), j));
+          if (inner_py_value.get() == Py_None) {
             *offset = -1;
-          } else if (!ParseDimensionValue(key, inner_py_value, status,
+          } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
                                           offset)) {
             return false;
           }
@@ -428,14 +429,14 @@ bool SetOpAttrScalar(
       }
       std::unique_ptr<int64_t[]> dims(new int64_t[num_dims]);
       for (int i = 0; i < num_dims; ++i) {
-        auto inner_py_value = PySequence_ITEM(py_value, i);
-        if (inner_py_value == Py_None) {
+        tensorflow::Safe_PyObjectPtr inner_py_value(
+            PySequence_ITEM(py_value, i));
+        if (inner_py_value.get() == Py_None) {
           dims[i] = -1;
-        } else if (!ParseDimensionValue(key, inner_py_value, status,
+        } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
                                         &dims[i])) {
           return false;
         }
-        Py_DECREF(inner_py_value);
       }
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }
@@ -2033,13 +2034,13 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  PyObject* flat_result = PyList_New(num_retvals);
+  tensorflow::Safe_PyObjectPtr flat_result(PyList_New(num_retvals));
   for (int i = 0; i < num_retvals; ++i) {
-    PyList_SET_ITEM(flat_result, i, EagerTensorFromHandle(retvals[i]));
+    PyList_SET_ITEM(flat_result.get(), i, EagerTensorFromHandle(retvals[i]));
   }
 
   if (!RunCallbacks(op_exec_info, args, *flattened_inputs, *flattened_attrs,
-                    flat_result)) {
+                    flat_result.get())) {
     return nullptr;
   }
 
@@ -2051,11 +2052,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   if (op_def->output_arg_size() == 1) {
     if (!op_def->output_arg(0).number_attr().empty() ||
         !op_def->output_arg(0).type_list_attr().empty()) {
-      return flat_result;
+      return flat_result.release();
     } else {
-      auto* result = PyList_GET_ITEM(flat_result, 0);
+      auto* result = PyList_GET_ITEM(flat_result.get(), 0);
       Py_INCREF(result);
-      Py_DECREF(flat_result);
       return result;
     }
   }
@@ -2068,7 +2068,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       int list_length = attr_list_sizes[op_def->output_arg(i).number_attr()];
       PyObject* inner_list = PyList_New(list_length);
       for (int j = 0; j < list_length; j++) {
-        PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+        PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
         Py_INCREF(obj);
         PyList_SET_ITEM(inner_list, j, obj);
       }
@@ -2077,18 +2077,17 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       int list_length = attr_list_sizes[op_def->output_arg(i).type_list_attr()];
       PyObject* inner_list = PyList_New(list_length);
       for (int j = 0; j < list_length; j++) {
-        PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+        PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
         Py_INCREF(obj);
         PyList_SET_ITEM(inner_list, j, obj);
       }
       PyList_SET_ITEM(result, i, inner_list);
     } else {
-      PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+      PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
       Py_INCREF(obj);
       PyList_SET_ITEM(result, i, obj);
     }
   }
-  Py_DECREF(flat_result);
   return result;
 }
 
