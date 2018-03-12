@@ -41,9 +41,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// TODO(b/74260408): This test is timing out if bfloat16 is enabled on
-// GPU. Last timed out on 2018-03-06.
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16) && !defined(XLA_TEST_BACKEND_GPU)
+#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
 // Tests both F32 and BF16.
 static std::array<bool, 2> use_bfloat16_params{false, true};
 #else
@@ -978,9 +976,13 @@ struct R2ReduceWindowTestData {
     {/*base_bounds=*/{3, 129}, /*window_bounds=*/{1, 100},
      /*strides=*/{2, 99}, /*layout=*/{0, 1},
      /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+// TODO(b/74260408): This test last failed on GPU on 2018-03-08, likely due to a
+// ptxas bug.
+#ifndef XLA_TEST_BACKEND_GPU
     {/*base_bounds=*/{6, 152}, /*window_bounds=*/{2, 25},
      /*strides=*/{5, 4}, /*layout=*/{0, 1},
      /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+#endif
     {/*base_bounds=*/{6, 4}, /*window_bounds=*/{4, 2},
      /*strides=*/{3, 3}, /*layout=*/{0, 1},
      /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},

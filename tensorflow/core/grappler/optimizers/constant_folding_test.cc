@@ -1261,6 +1261,187 @@ TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
   CompareGraphs(want, got);
 }
 
+TEST_F(ConstantFoldingTest, SliceWithSameDimensionRemoval) {
+  {  // size = {3, 5}
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
+    auto size = ops::Const(scope.WithOpName("size"), {3, 5}, {2});
+    Output in2 = ops::Variable(scope.WithOpName("in2"), {4, 6}, DT_FLOAT);
+    ops::Slice s1(scope.WithOpName("s1"), in1, begin, size);
+    ops::Slice s2(scope.WithOpName("s2"), in2, begin, size);
+
+    ops::Add out(scope.WithOpName("out"), s1, s2);
+
+    GrapplerItem item;
+    item.fetch = {"out"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+    ConstantFolding fold(nullptr /* cpu_device */);
+    GraphDef got;
+    Status status = fold.Optimize(nullptr, item, &got);
+    TF_EXPECT_OK(status);
+
+    GraphDef want;
+    AddNode("in1", "VariableV2", {}, &want);
+    AddNode("in2", "VariableV2", {}, &want);
+    AddNode("begin", "Const", {}, &want);
+    AddNode("size", "Const", {}, &want);
+    AddNode("s1", "Identity",
+            {"in1", AsControlDependency("begin"), AsControlDependency("size")},
+            &want);
+    AddNode("s2", "Slice", {"in2", "begin", "size"}, &want);
+    AddNode("out", "Add", {"s1", "s2"}, &want);
+
+    CompareGraphs(want, got);
+  }
+  {  // size = {-1, -1}
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+    auto in1 =
+        ops::Variable(scope.WithOpName("in1"), {3, 5}, DataType::DT_FLOAT);
+    auto begin1 = ops::Const(scope.WithOpName("begin1"), {0, 0}, {2});
+    auto begin2 = ops::Const(scope.WithOpName("begin2"), {1, 1}, {2});
+    auto size = ops::Const(scope.WithOpName("size"), {-1, -1}, {2});
+    Output in2 =
+        ops::Variable(scope.WithOpName("in2"), {4, 6}, DataType::DT_FLOAT);
+    ops::Slice s1(scope.WithOpName("s1"), in1, begin1, size);
+    ops::Slice s2(scope.WithOpName("s2"), in2, begin2, size);
+
+    ops::Add out(scope.WithOpName("out"), s1, s2);
+
+    GrapplerItem item;
+    item.fetch = {"out"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+    ConstantFolding fold(nullptr /* cpu_device */);
+    GraphDef got;
+    Status status = fold.Optimize(nullptr, item, &got);
+    TF_EXPECT_OK(status);
+
+    GraphDef want;
+    AddNode("in1", "VariableV2", {}, &want);
+    AddNode("in2", "VariableV2", {}, &want);
+    AddNode("begin1", "Const", {}, &want);
+    AddNode("begin2", "Const", {}, &want);
+    AddNode("size", "Const", {}, &want);
+    AddNode("s1", "Identity",
+            {"in1", AsControlDependency("begin1"), AsControlDependency("size")},
+            &want);
+    AddNode("s2", "Slice", {"in2", "begin2", "size"}, &want);
+    AddNode("out", "Add", {"s1", "s2"}, &want);
+
+    CompareGraphs(want, got);
+  }
+}
+
+TEST_F(ConstantFoldingTest, TileWithMultipliesBeingOne) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  auto in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_FLOAT);
+  auto in2 = ops::Variable(scope.WithOpName("in2"), {4, 3}, DT_FLOAT);
+  auto multiplies1 = ops::Const(scope.WithOpName("multiplies1"), {1, 1}, {2});
+  auto multiplies2 = ops::Const(scope.WithOpName("multiplies2"), {1, 2}, {2});
+
+  ops::Tile t1(scope.WithOpName("t1"), in1, multiplies1);
+  ops::Tile t2(scope.WithOpName("t2"), in2, multiplies2);
+
+  ops::Add out(scope.WithOpName("out"), t1, t2);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = fold.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, &want);
+  AddNode("in2", "VariableV2", {}, &want);
+  AddNode("multiplies1", "Const", {}, &want);
+  AddNode("multiplies2", "Const", {}, &want);
+  AddNode("t1", "Identity", {"in1", AsControlDependency("multiplies1")}, &want);
+  AddNode("t2", "Tile", {"in2", "multiplies2"}, &want);
+  AddNode("out", "Add", {"t1", "t2"}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  auto in1 = ops::Variable(scope.WithOpName("in1"), {4, 6}, DT_INT32);
+  auto in2 = ops::Variable(scope.WithOpName("in2"), {2, 2}, DT_INT32);
+  auto paddings1 =
+      ops::Const(scope.WithOpName("paddings1"), {0, 0, 0, 0}, {2, 2});
+  auto paddings2 =
+      ops::Const(scope.WithOpName("paddings2"), {1, 1, 2, 2}, {2, 2});
+  auto c1 = ops::Const(scope.WithOpName("c1"), 1);
+  auto c2 = ops::Const(scope.WithOpName("c2"), 1);
+
+  ops::PadV2 p1(scope.WithOpName("p1"), in1, paddings1, c1);
+  ops::PadV2 p2(scope.WithOpName("p2"), in2, paddings2, c2);
+
+  ops::Add out(scope.WithOpName("out"), p1, p2);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = fold.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, &want);
+  AddNode("in2", "VariableV2", {}, &want);
+  AddNode("paddings1", "Const", {}, &want);
+  AddNode("paddings2", "Const", {}, &want);
+  AddNode("c1", "Const", {}, &want);
+  AddNode("c2", "Const", {}, &want);
+  AddNode("p1", "Identity",
+          {"in1", AsControlDependency("paddings1"), AsControlDependency("c1")},
+          &want);
+  AddNode("p2", "PadV2", {"in2", "paddings2", "c2"}, &want);
+  AddNode("out", "Add", {"p1", "p2"}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, SqueezeWithAllDimesionsGreaterThanOne) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  auto in1 = ops::Variable(scope.WithOpName("in1"), {2, 3}, DT_INT32);
+  auto in2 = ops::Variable(scope.WithOpName("in2"), {1, 2, 3, 1}, DT_INT32);
+
+  ops::Squeeze s1(scope.WithOpName("s1"), in1);
+  ops::Squeeze s2(scope.WithOpName("s2"), in2);
+
+  ops::Add out(scope.WithOpName("out"), s1, s2);
+
+  GrapplerItem item;
+  item.fetch = {"out"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef got;
+  Status status = fold.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("in1", "VariableV2", {}, &want);
+  AddNode("in2", "VariableV2", {}, &want);
+  AddNode("s1", "Identity", {"in1"}, &want);
+  AddNode("s2", "Squeeze", {"in2"}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, &want);
+
+  CompareGraphs(want, got);
+}
+
 TEST_F(ConstantFoldingTest, NoOpReduction) {
   // Build a simple graph with a reduction that can be reduced to the
   // identity.
