@@ -426,6 +426,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
