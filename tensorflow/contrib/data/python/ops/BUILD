@@ -109,6 +109,7 @@ py_library(
         "stats_ops.py",
         "threadpool.py",
         "unique.py",
+        "unordered_merge.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

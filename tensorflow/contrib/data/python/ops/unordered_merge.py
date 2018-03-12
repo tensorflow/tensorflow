@@ -71,7 +71,7 @@ class UnorderedMergeDataset(dataset_ops.Dataset):
     """See `Dataset.unordered_merge()` for details."""
     super(UnorderedMergeDataset, self).__init__()
     for ds in nest.flatten(datasets):
-      if not isinstance(ds, Dataset):
+      if not isinstance(ds, dataset_ops.Dataset):
         if isinstance(ds, list):
           message = ("The argument to `Dataset.unordered_merge()` must be a nested "
                      "structure of `Dataset` objects. Nested structures do not "
