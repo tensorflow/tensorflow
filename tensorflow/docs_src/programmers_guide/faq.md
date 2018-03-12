@@ -159,7 +159,7 @@ available. These operations allow you to build sophisticated
 @{$reading_data$input pipelines}, at the cost of making the
 TensorFlow computation somewhat more complicated. See the how-to documentation
 for
-@{$reading_data#creating-threads-to-prefetch-using-queuerunner-objects$using `QueueRunner` objects to drive queues and readers}
+@{$reading_data#creating_threads_to_prefetch_using_queuerunner_objects$using `QueueRunner` objects to drive queues and readers}
 for more information on how to use them.
 
 ## Variables
@@ -272,7 +272,7 @@ Prefer predefined TensorFlow operations such as @{tf.decode_raw},
 
 If your data is not easily parsable with the built-in TensorFlow operations,
 consider converting it, offline, to a format that is easily parsable, such
-as ${tf.python_io.TFRecordWriter$`TFRecord`} format.
+as @{tf.python_io.TFRecordWriter$`TFRecord`} format.
 
 The more efficient method to customize the parsing behavior is to
 @{$adding_an_op$add a new op written in C++} that parses your
@@ -285,14 +285,14 @@ more information about the steps for doing this.
 #### What is TensorFlow's coding style convention?
 
 The TensorFlow Python API adheres to the
-[PEP8](https://www.python.org/dev/peps/pep-0008/) conventions.<sup>*</sup> In
-particular, we use `CamelCase` names for classes, and `snake_case` names for
+[PEP8](https://www.python.org/dev/peps/pep-0008/) conventions.*In
+particular*, we use `CamelCase` names for classes, and `snake_case` names for
 functions, methods, and properties. We also adhere to the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html).
 
 The TensorFlow C++ code base adheres to the
 [Google C++ style guide](https://google.github.io/styleguide/cppguide.html).
 
-(<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
+(*With one exception*: we use 2-space indentation instead of 4-space
 indentation.)
 
