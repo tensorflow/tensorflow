@@ -61,7 +61,8 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
 // Controls how to act when we try to run an operation on a given device but
 // some input tensors are not on that device.
 typedef enum TFE_ContextDevicePlacementPolicy {
-  // Running operations with input tensors on the wrong device will fail.
+  // Running operations with input tensors on the wrong device will fail. When
+  // soft placement is enabled acts like TFE_DEVICE_PLACEMENT_SILENT.
   TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
   // Copy the tensor to the right device but log a warning.
   TFE_DEVICE_PLACEMENT_WARN = 1,
@@ -69,7 +70,8 @@ typedef enum TFE_ContextDevicePlacementPolicy {
   // operation will be blocked till the copy completes.
   TFE_DEVICE_PLACEMENT_SILENT = 2,
   // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.
+  // dtypes.  When soft placement is enabled acts like
+  // TFE_DEVICE_PLACEMENT_SILENT.
   TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 } TFE_ContextDevicePlacementPolicy;
 
@@ -119,11 +121,13 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t,
                                                             TF_Status* status);
 TF_CAPI_EXPORT extern void TFE_DeleteTensorHandle(TFE_TensorHandle* h);
 TF_CAPI_EXPORT extern TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h);
-TF_CAPI_EXPORT extern int TFE_TensorHandleNumDims(TFE_TensorHandle* h);
+TF_CAPI_EXPORT extern int TFE_TensorHandleNumDims(TFE_TensorHandle* h,
+                                                  TF_Status* status);
 TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
-                                                  int dim_index);
+                                                  int dim_index,
+                                                  TF_Status* status);
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceName(
-    TFE_TensorHandle* h);
+    TFE_TensorHandle* h, TF_Status* status);
 TF_CAPI_EXPORT extern TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h,
                                                          TF_Status* status);
 

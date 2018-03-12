@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -64,16 +65,26 @@ class HloRunner {
       const std::string& filename, const DebugOptions& debug_options);
 
   // Executes the given module with given literals as input and returns the
-  // result as a Literal. The LiteralPtr type accepts Literal* or
-  // std::unique_ptr<Literal>.
+  // result as a Literal.
   //
   // If run_hlo_passes is false, the module will be executed without Hlo
   // optimization.
-  template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
       bool run_hlo_passes = true);
+
+  StatusOr<std::unique_ptr<Literal>> Execute(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
+      bool run_hlo_passes = true) {
+    // Construct a vector of plain pointers for the arguments.
+    std::vector<Literal*> argument_pointers;
+    c_transform(
+        arguments, std::back_inserter(argument_pointers),
+        [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+    return Execute(std::move(module), argument_pointers, run_hlo_passes);
+  }
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
@@ -83,30 +94,12 @@ class HloRunner {
   Backend& backend();
 
  private:
-  StatusOr<std::unique_ptr<Literal>> ExecuteInternal(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      bool run_hlo_passes = true);
-
   struct EigenThreadPoolWrapper;
 
   std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 
   std::unique_ptr<Backend> backend_;
 };
-
-template <typename LiteralPtr>
-StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
-    std::unique_ptr<HloModule> module,
-    const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
-    bool run_hlo_passes) {
-  // Construct a vector of plain pointers for the arguments.
-  std::vector<Literal*> argument_pointers;
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&*argument);
-  }
-  return ExecuteInternal(std::move(module), argument_pointers, run_hlo_passes);
-}
 
 }  // namespace xla
 

@@ -23,6 +23,7 @@ import re
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -101,7 +102,7 @@ def CreateOrGetQuantizationStep():
     Quantization step Tensor.
   """
   quantization_step_name = 'fake_quantization_step'
-  quantization_step_tensor_name = quantization_step_name + '/AssignAdd:0'
+  quantization_step_tensor_name = quantization_step_name + '/Identity:0'
   g = ops.get_default_graph()
   try:
     return g.get_tensor_by_name(quantization_step_tensor_name)
@@ -118,5 +119,7 @@ def CreateOrGetQuantizationStep():
       with g.name_scope(quantization_step_tensor.op.name + '/'):
         # We return the incremented variable tensor. Since this is used in conds
         # for quant_delay and freeze_bn_delay, it will run once per graph
-        # execution.
-        return state_ops.assign_add(quantization_step_tensor, 1)
+        # execution. We return an identity to force resource variables and
+        # normal variables to return a tensor of the same name.
+        return array_ops.identity(
+            state_ops.assign_add(quantization_step_tensor, 1))

@@ -52,20 +52,20 @@ def get_seed(op_seed):
     A tuple of two integers that should be used for the local seed of this
     operation.
   """
-  is_graph_mode = context.in_graph_mode()
+  eager = context.executing_eagerly()
 
-  if is_graph_mode:
-    global_seed = ops.get_default_graph().seed
-  else:
+  if eager:
     global_seed = context.global_seed()
+  else:
+    global_seed = ops.get_default_graph().seed
 
   if global_seed is not None:
     if op_seed is None:
       # pylint: disable=protected-access
-      if is_graph_mode:
-        op_seed = ops.get_default_graph()._last_id
-      else:
+      if eager:
         op_seed = context.internal_operation_seed()
+      else:
+        op_seed = ops.get_default_graph()._last_id
 
     seeds = _truncate_seed(global_seed), _truncate_seed(op_seed)
   else:
@@ -176,7 +176,7 @@ def set_random_seed(seed):
   Args:
     seed: integer.
   """
-  if context.in_graph_mode():
-    ops.get_default_graph().seed = seed
-  else:
+  if context.executing_eagerly():
     context.set_global_seed(seed)
+  else:
+    ops.get_default_graph().seed = seed

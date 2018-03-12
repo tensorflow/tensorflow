@@ -399,6 +399,7 @@ HloComputationProto HloComputation::ToProto() const {
     proto.add_instructions()->Swap(&instruction_proto);
   }
   proto.set_root_name(root_instruction()->name());
+  *proto.mutable_program_shape() = ComputeProgramShape();
   return proto;
 }
 
@@ -509,13 +510,14 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
         "Can't deep copy instruction %s: instruction is not in computation %s",
         instruction->name().c_str(), name().c_str());
   }
-
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
-        "has incompatible shape",
-        instruction->name().c_str());
+        "has incompatible shapes: %s vs. %s",
+        instruction->name().c_str(),
+        ShapeUtil::HumanString(instruction->shape()).c_str(),
+        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
   }
 
   ShapeIndex index;
@@ -531,7 +533,6 @@ ProgramShape HloComputation::ComputeProgramShape() const {
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
-  LayoutUtil::ClearLayout(&program_shape);
   return program_shape;
 }
 

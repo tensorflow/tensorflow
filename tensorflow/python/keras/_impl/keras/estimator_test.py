@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 from math import log10
 import os
 import tempfile
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import test_util
@@ -32,6 +34,7 @@ from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import rmsprop
 
 
 try:
@@ -62,12 +65,42 @@ def simple_functional_model():
   return model
 
 
-def get_resource_for_simple_model(is_sequential, is_evaluate):
-  model = simple_sequential_model(
-  ) if is_sequential else simple_functional_model()
-  if is_sequential:
+def simple_subclassed_model():
+
+  class SimpleModel(keras.Model):
+
+    def __init__(self):
+      super(SimpleModel, self).__init__()
+      self.dense1 = keras.layers.Dense(16, activation='relu')
+      self.dp = keras.layers.Dropout(0.1)
+      self.dense2 = keras.layers.Dense(_NUM_CLASS, activation='softmax')
+
+    def call(self, inputs):
+      x = self.dense1(inputs)
+      x = self.dp(x)
+      return self.dense2(x)
+
+  return SimpleModel()
+
+
+def get_resource_for_simple_model(model_type='sequential',
+                                  is_evaluate=False,):
+  if model_type == 'sequential':
+    model = simple_sequential_model()
     model.build()
-  input_name = model.input_names[0]
+  elif model_type == 'subclass':
+    model = simple_subclassed_model()
+  else:
+    assert model_type == 'functional'
+    model = simple_functional_model()
+
+  if model_type == 'subclass':
+    input_name = 'input_1'
+    output_name = 'output_1'
+  else:
+    input_name = model.input_names[0]
+    output_name = model.output_names[0]
+
   np.random.seed(_RANDOM_SEED)
   (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
       train_samples=_TRAIN_SIZE,
@@ -78,22 +111,32 @@ def get_resource_for_simple_model(is_sequential, is_evaluate):
   y_test = keras.utils.to_categorical(y_test)
 
   train_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: x_train},
-      y=y_train,
+      x=randomize_io_type(x_train, input_name),
+      y=randomize_io_type(y_train, output_name),
       shuffle=False,
       num_epochs=None,
       batch_size=16)
 
   evaluate_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: x_test}, y=y_test, num_epochs=1, shuffle=False)
+      x=randomize_io_type(x_test, input_name),
+      y=randomize_io_type(y_test, output_name),
+      num_epochs=1, shuffle=False)
 
   predict_input_fn = numpy_io.numpy_input_fn(
-      x={input_name: x_test}, num_epochs=1, shuffle=False)
+      x=randomize_io_type(x_test, input_name), num_epochs=1, shuffle=False)
 
   inference_input_fn = evaluate_input_fn if is_evaluate else predict_input_fn
 
   return model, (x_train, y_train), (x_test,
                                      y_test), train_input_fn, inference_input_fn
+
+
+def randomize_io_type(array, name):
+  switch = np.random.random()
+  if switch > 0.5:
+    return array
+  else:
+    return {name: array}
 
 
 def multi_inputs_multi_outputs_model():
@@ -132,10 +175,10 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       gfile.DeleteRecursively(self._base_dir)
 
   def test_train(self):
-    for is_sequential in [True, False]:
+    for model_type in ['sequential', 'functional']:
       keras_model, (_, _), (
           _, _), train_input_fn, eval_input_fn = get_resource_for_simple_model(
-              is_sequential=is_sequential, is_evaluate=True)
+              model_type=model_type, is_evaluate=True)
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
@@ -153,10 +196,87 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
+  def test_train_with_tf_optimizer(self):
+    for model_type in ['sequential', 'functional']:
+      keras_model, (_, _), (
+          _, _), train_input_fn, eval_input_fn = get_resource_for_simple_model(
+              model_type=model_type, is_evaluate=True)
+      keras_model.compile(
+          loss='categorical_crossentropy',
+          optimizer=rmsprop.RMSPropOptimizer(1e-3),
+          metrics=['mse', keras.metrics.categorical_accuracy])
+
+      with self.test_session():
+        est_keras = keras.estimator.model_to_estimator(
+            keras_model=keras_model,
+            # Also use dict config argument to get test coverage for that line.
+            config={
+                'tf_random_seed': _RANDOM_SEED,
+                'model_dir': self._base_dir,
+            })
+        before_eval_results = est_keras.evaluate(
+            input_fn=eval_input_fn, steps=1)
+        est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
+        after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
+        self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+      writer_cache.FileWriterCache.clear()
+      gfile.DeleteRecursively(self._config.model_dir)
+
+  def test_train_with_subclassed_model(self):
+    keras_model, (_, _), (
+        _, _), train_input_fn, eval_input_fn = get_resource_for_simple_model(
+            model_type='subclass', is_evaluate=True)
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    with self.test_session():
+      est_keras = keras.estimator.model_to_estimator(
+          keras_model=keras_model, config=self._config)
+      est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
+      before_eval_results = est_keras.evaluate(
+          input_fn=eval_input_fn, steps=1)
+      est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
+      after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
+      self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+  def test_train_with_subclassed_model_with_existing_state(self):
+    keras_model, (_, _), (
+        _, _), train_input_fn, eval_input_fn = get_resource_for_simple_model(
+            model_type='subclass', is_evaluate=True)
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    with self.test_session():
+      # Create state
+      keras_model.train_on_batch(np.random.random((10,) + _INPUT_SIZE),
+                                 np.random.random((10, _NUM_CLASS)))
+      original_preds = keras_model.predict(np.ones((10,) + _INPUT_SIZE))
+
+      est_keras = keras.estimator.model_to_estimator(
+          keras_model=keras_model, config=self._config)
+      est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
+      before_eval_results = est_keras.evaluate(
+          input_fn=eval_input_fn, steps=1)
+      est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
+      after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
+      self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+
+      # Check that original model state was not altered
+      preds = keras_model.predict(np.ones((10,) + _INPUT_SIZE))
+      self.assertAllClose(original_preds, preds, atol=1e-5)
+      # Check that the original model compilation did not break
+      keras_model.train_on_batch(np.random.random((10,) + _INPUT_SIZE),
+                                 np.random.random((10, _NUM_CLASS)))
+
   def test_evaluate(self):
     keras_model, (x_train, y_train), (
         x_test, y_test), _, eval_input_fn = get_resource_for_simple_model(
-            is_sequential=False, is_evaluate=True)
+            model_type='functional', is_evaluate=True)
 
     with self.test_session():
       metrics = [
@@ -198,7 +318,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     # Check that predict on a pretrained model yield the same result.
     keras_model, (x_train, y_train), (
         x_test, _), _, pred_input_fn = get_resource_for_simple_model(
-            is_sequential=True, is_evaluate=False)
+            model_type='sequential', is_evaluate=False)
 
     with self.test_session():
       keras_model.compile(
@@ -260,7 +380,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
 
     keras_model, (x_train, y_train), (
         x_test, _), _, pred_input_fn = get_resource_for_simple_model(
-            is_sequential=False, is_evaluate=False)
+            model_type='functional', is_evaluate=False)
 
     with self.test_session():
       keras_model.compile(
@@ -351,6 +471,46 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
           keras_model=keras_mobile,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
           custom_objects=custom_objects)
+
+  def test_tf_config(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    tf_config = json.dumps({
+        'cluster': {
+            run_config_lib.TaskType.PS: ['localhost:1234'],
+            run_config_lib.TaskType.WORKER: ['localhost:1236'],
+            run_config_lib.TaskType.MASTER: ['localhost:1238']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      with self.test_session():
+        keras.estimator.model_to_estimator(
+            keras_model=keras_model,
+            model_dir=tempfile.mkdtemp(dir=self._base_dir))
+
+  def test_gpu_config(self):
+    keras_model, (_, _), (_, _), _, _ = get_resource_for_simple_model()
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['mse', keras.metrics.categorical_accuracy])
+
+    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
+    sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
+    self._config._session_config = sess_config
+    keras.estimator.model_to_estimator(
+        keras_model=keras_model, config=self._config)
+    self.assertEqual(keras.backend.get_session()
+                     ._config.gpu_options.per_process_gpu_memory_fraction,
+                     gpu_options.per_process_gpu_memory_fraction)
 
 
 if __name__ == '__main__':

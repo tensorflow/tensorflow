@@ -104,7 +104,7 @@ def tflite_jni_binary(name,
   """Builds a jni binary for TFLite."""
   linkopts = linkopts + [
       "-Wl,--version-script",  # Export only jni functions & classes.
-      linkscript,
+      "$(location {})".format(linkscript),
   ]
   native.cc_binary(
       name=name,

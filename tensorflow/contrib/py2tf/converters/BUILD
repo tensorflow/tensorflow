@@ -25,9 +25,13 @@ py_library(
         "control_flow.py",
         "decorators.py",
         "for_loops.py",
+        "ifexp.py",
         "list_comprehension.py",
+        "lists.py",
         "logical_expressions.py",
+        "name_scopes.py",
         "side_effect_guards.py",
+        "single_return.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -45,6 +49,7 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":converters",
+        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
@@ -58,7 +63,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -69,7 +73,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -78,9 +81,9 @@ py_test(
     name = "builtin_functions_test",
     srcs = ["builtin_functions_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -89,9 +92,10 @@ py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/impl",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -102,7 +106,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -113,7 +116,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -124,7 +126,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -132,6 +133,16 @@ py_test(
 py_test(
     name = "for_loops_test",
     srcs = ["for_loops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "name_scopes_test",
+    srcs = ["name_scopes_test.py"],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -145,7 +156,16 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "lists_test",
+    srcs = ["lists_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -156,7 +176,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -164,6 +183,32 @@ py_test(
 py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        # TODO(mdan): Fix.
+        "flaky",
+        "notap",
+    ],
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "single_return_test",
+    srcs = ["single_return_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "ifexp_test",
+    srcs = ["ifexp_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",

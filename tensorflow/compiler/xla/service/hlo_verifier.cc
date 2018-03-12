@@ -125,6 +125,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   return CheckShape(outfeed, ShapeUtil::MakeNil());
 }
 
+Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
+  return tensorflow::Status::OK();
+}
+
 Status ShapeVerifier::HandleRng(HloInstruction*) {
   return tensorflow::Status::OK();
 }
@@ -419,6 +423,14 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
 }
 
 }  // namespace
+
+Status ShapeVerifier::HandleGather(HloInstruction* gather) {
+  return CheckShape(
+      gather,
+      ShapeInference::InferGatherShape(
+          gather->operand(0)->shape(), gather->operand(1)->shape(),
+          gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {
@@ -750,11 +762,14 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
         // between the HLO broadcast op, and the UserComputation broadcast
-        // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
+        // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
         // or ComputationLowerer::Visit()
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
-            << "Broadcast HLO has invalid number of dimensions.";
+            << "Broadcast HLO (" << instruction->ToShortString()
+            << ") has invalid number of dimensions: "
+            << instruction->dimensions().size()
+            << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         auto* while_cond = instruction->while_condition();
         auto* while_body = instruction->while_body();

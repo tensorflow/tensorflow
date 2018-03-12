@@ -75,7 +75,7 @@ enum BuiltinOperator : byte {
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
   // DEPTH_TO_SPACE = 5,
-  // DEQUANTIZE = 6,
+  DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   // FLOOR = 8,
   FULLY_CONNECTED = 9,
@@ -123,6 +123,13 @@ enum BuiltinOperator : byte {
   EXP = 47,
   TOPK_V2 = 48,
   SPLIT = 49,
+  LOG_SOFTMAX = 50,
+  // DELEGATE is a special op type for the operations which are delegated to
+  // other backends.
+  // WARNING: Experimental interface, subject to change
+  DELEGATE = 51,
+  BIDIRECTIONAL_SEQUENCE_LSTM = 52,
+  CAST = 53,
 }
 
 // Options for the builtin operators.
@@ -162,6 +169,9 @@ union BuiltinOptions {
   ExpOptions,
   TopKV2Options,
   SplitOptions,
+  LogSoftmaxOptions,
+  CastOptions,
+  DequantizeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -362,6 +372,15 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+}
+
+table LogSoftmaxOptions {
+}
+
+table CastOptions {
+}
+
+table DequantizeOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

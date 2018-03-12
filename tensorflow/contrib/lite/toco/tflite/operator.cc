@@ -859,6 +859,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<TanhOperator>("TANH", OperatorType::kTanh));
   ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
+  ops.emplace_back(new SimpleOperator<LogSoftmaxOperator>(
+      "LOG_SOFTMAX", OperatorType::kLogSoftmax));
 
   return ops;
 }

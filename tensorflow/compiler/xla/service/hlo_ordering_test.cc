@@ -262,8 +262,8 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
       scalar_shape, HloOpcode::kAdd, constant, xla_while));
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto dataflow, HloDataflowAnalysis::Run(module.get(), /*ssa_form=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
 
   // Init value is defined before the while, but live range is not before the

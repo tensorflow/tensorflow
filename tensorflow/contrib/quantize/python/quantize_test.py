@@ -113,6 +113,28 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                                             quantization_node_name)
     self.assertEqual(add_quant.type, quantization_node_name)
 
+  def testFinalLayerQuantized(self):
+    self._RunTestOverParameters(self._TestFinalLayerQuantized)
+
+  def _TestFinalLayerQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      _ = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test')
+      # Ensure that the a FakeQuant operation is in the outputs of the BiasAdd.
+      bias_add_op = graph.get_operation_by_name('test/BiasAdd')
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [op.type for op in bias_add_op.outputs[0].consumers()])
+
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
 

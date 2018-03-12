@@ -125,6 +125,27 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
   return changed;
 }
 
+bool HardcodeMinMaxForSplit(Model* model, Operator* op) {
+  for (const auto& output : op->outputs) {
+    if (model->GetArray(output).minmax) {
+      LOG(WARNING) << "Skipping min-max setting for " << LogName(*op)
+                   << " because output " << output << " already has min-max.";
+      return false;
+    }
+  }
+  // Data is in second input.
+  auto& input_array = model->GetArray(op->inputs[1]);
+  if (!input_array.minmax) {
+    return false;
+  } else {
+    for (const auto& output : op->outputs) {
+      auto& array = model->GetArray(output);
+      array.GetOrCreateMinMax() = *input_array.minmax;
+    }
+    return true;
+  }
+}
+
 // The output of average or max pooling is within the same range as its input.
 bool HardcodeMinMaxForAverageOrMaxPool(Model* model, Operator* op) {
   auto& output_array = model->GetArray(op->outputs[0]);
@@ -294,6 +315,10 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
 
     case OperatorType::kConcatenation:
       changed = HardcodeMinMaxForConcatenation(model, op);
+      break;
+
+    case OperatorType::kTensorFlowSplit:
+      changed = HardcodeMinMaxForSplit(model, op);
       break;
 
     case OperatorType::kAveragePool:

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.gradients_impl import AggregationMethod
 from tensorflow.python.ops.gradients_impl import gradients
 from tensorflow.python.ops.gradients_impl import hessians
@@ -28,6 +29,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = [
     # TODO(drpng): find a good place to reference this.
     "AggregationMethod",
+    "custom_gradient",
     "gradients",  # tf.gradients.gradients.
     "hessians",  # tf.gradients.hessians
 ]
