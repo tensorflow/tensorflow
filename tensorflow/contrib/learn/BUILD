@@ -431,8 +431,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "nomac",
-        "noasan"
-    ],  # b/73741358
+        "noasan"  # b/73741358
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
