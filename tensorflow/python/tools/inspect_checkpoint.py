@@ -29,7 +29,7 @@ from tensorflow.python.platform import flags
 FLAGS = None
 
 
-def print_tensors_in_checkpoint_file(file_name, tensor_name="", all_tensors=False,
+def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
                                      all_tensor_names=False):
   """Prints tensors in a checkpoint file.
 
