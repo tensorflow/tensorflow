@@ -34,7 +34,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 #endif
-
+ 
 namespace tensorflow {
 
 static void *run_task(void *args) {
