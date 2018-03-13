@@ -796,7 +796,7 @@ sess.run(b)
        tensor `b` is effectively also a constant tensor. TensorFlow's graph
        optimization folds the graph that contains `a` and `b` into a single
        node to speed up future runs of the graph, which is why `tfdbg` does
-       not generate any intermediate tensor dumps. However, if `a` was a
+       not generate any intermediate tensor dumps. However, if `a` were a
        @{tf.Variable}, as in the following example:
 
 ``` python
