@@ -177,6 +177,17 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
       progress = true;
     }
 
+    if (str_util::ConsumePrefix(&fullname, "/numa:") ||
+        str_util::ConsumePrefix(&fullname, "/NUMA:")) {
+      p->has_type = true;
+      p->type = "NUMA";  // Treat '/numa:..' as uppercase '/device:NUMA:...'
+      p->has_id = !str_util::ConsumePrefix(&fullname, "*");
+      if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
+        return false;
+      }
+      progress = true;
+    }
+
     if (!progress) {
       return false;
     }

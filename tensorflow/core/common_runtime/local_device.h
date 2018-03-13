@@ -35,6 +35,9 @@ class LocalDevice : public Device {
  public:
   LocalDevice(const SessionOptions& options,
               const DeviceAttributes& attributes);
+  LocalDevice(const SessionOptions& options,
+                    std::vector<int> &proc_set,
+              const DeviceAttributes& attributes);
   ~LocalDevice() override;
 
  private:
