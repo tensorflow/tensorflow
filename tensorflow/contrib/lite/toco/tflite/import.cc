@@ -170,8 +170,8 @@ std::unique_ptr<Model> Import(const ModelFlags& model_flags,
   // Full list of all known operators.
   const auto ops_by_name = BuildOperatorByNameMap();
 
-  if (input_model->subgraphs()->size() != 1) {
-    LOG(FATAL) << "# of subgraphs in tflite should be exactly 1 for now.";
+  if (!input_model->subgraphs() || input_model->subgraphs()->size() != 1) {
+    LOG(FATAL) << "Number of subgraphs in tflite should be exactly 1.";
   }
   std::unique_ptr<Model> model;
   model.reset(new Model);
