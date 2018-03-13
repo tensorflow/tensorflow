@@ -82,7 +82,7 @@ class.
 > University's <a href="https://cs231n.github.io/convolutional-networks/">
 > Convolutional Neural Networks for Visual Recognition course materials</a>.</p>
 
-## Building the CNN MNIST Classifier
+## Building the CNN MNIST Classifier {#building_the_cnn_mnist_classifier}
 
 Let's build a model to classify the images in the MNIST dataset using the
 following CNN architecture:
@@ -411,7 +411,7 @@ logits = tf.layers.dense(inputs=dropout, units=10)
 Our final output tensor of the CNN, `logits`, has shape
 <code>[<em>batch_size</em>, 10]</code>.
 
-### Generate Predictions
+### Generate Predictions {#generate_predictions}
 
 The logits layer of our model returns our predictions as raw values in a
 <code>[<em>batch_size</em>, 10]</code>-dimensional tensor. Let's convert these
@@ -459,7 +459,7 @@ if mode == tf.estimator.ModeKeys.PREDICT:
   return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 ```
 
-### Calculate Loss
+### Calculate Loss {#calculating-loss}
 
 For both training and evaluation, we need to define a
 [loss function](https://en.wikipedia.org/wiki/Loss_function)
@@ -550,7 +550,7 @@ return tf.estimator.EstimatorSpec(
     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
 
-## Training and Evaluating the CNN MNIST Classifier
+## Training and Evaluating the CNN MNIST Classifier {#training_and_evaluating_the_cnn_mnist_classifier}
 
 We've coded our MNIST CNN model function; now we're ready to train and evaluate
 it.
@@ -578,7 +578,7 @@ in `train_data` and `train_labels`, respectively. Similarly, we store the
 evaluation feature data (10,000 images) and evaluation labels in `eval_data`
 and `eval_labels`, respectively.
 
-### Create the Estimator
+### Create the Estimator {#create-the-estimator}
 
 Next, let's create an `Estimator` (a TensorFlow class for performing high-level
 model training, evaluation, and inference) for our model. Add the following code
@@ -600,7 +600,7 @@ feel free to change to another directory of your choice).
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
 > tutorial @{$get_started/custom_estimators$"Creating Estimators in tf.estimator."}
 
-### Set Up a Logging Hook
+### Set Up a Logging Hook {#set_up_a_logging_hook}
 
 Since CNNs can take a while to train, let's set up some logging so we can track
 progress during training. We can use TensorFlow's @{tf.train.SessionRunHook} to create a
