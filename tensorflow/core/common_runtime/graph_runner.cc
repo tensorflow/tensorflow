@@ -39,6 +39,7 @@ namespace {
 std::unique_ptr<Device> GetCPUDevice(Env* env) {
   std::vector<Device*> devices;
   SessionOptions session_options;
+  session_options.config.set_intra_op_parallelism_threads(1);
   session_options.env = env;
   Status s = DeviceFactory::GetFactory(DEVICE_CPU)
                  ->CreateDevices(session_options, "", &devices);

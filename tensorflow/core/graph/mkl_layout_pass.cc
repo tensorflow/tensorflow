@@ -2683,6 +2683,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // Op can run on CPU with MKL if the runtime assigned device or the
   // user requested device contains device CPU, or both are empty.
   bool CanOpRunOnCPUDevice(const Node* n) {
+    return true;
     bool result = true;
     string reason;
 
