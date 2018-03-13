@@ -45,7 +45,7 @@ REGISTER_OP("UnorderedMergeDataset")
     .Attr("N: int >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Creates a dataset that merges together `input_datasets` with unordered.
+Creates a dataset that contains all elements of datasets in `input_datasets` without garantee of data order.
 )doc");
 
 REGISTER_OP("FunctionBufferingResource")
