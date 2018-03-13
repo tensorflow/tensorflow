@@ -2455,6 +2455,7 @@ def _all_dimensions(x):
   return range(0, rank(x))
 
 
+@tf_export("multi_one_hot")
 def multi_one_hot(indices, depth_list, on_values_list=None,
                   off_values_list=None, name=None):
   """Creates one-hot-encodings for multiple features (columns in a matrix)
@@ -2519,13 +2520,13 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
   else:
     off_values_list = [None] * n_features
 
-  multi_tensor = tf.one_hot(indices[:,0], depth_list[0], on_values_list[0],
-                            off_values_list[0], dtype=tf.float32)
+  multi_tensor = one_hot(indices[:,0], depth_list[0], on_values_list[0],
+                         off_values_list[0], dtype=tf.float32)
 
   for col in range(1, n_features):
-    add = tf.one_hot(indices[:,col], depth_list[col], on_values_list[col],
-                     off_values_list[col], dtype=tf.float32)
-    multi_tensor = tf.concat([multi_tensor, add], axis=-1, name=name)
+    add = one_hot(indices[:,col], depth_list[col], on_values_list[col],
+                  off_values_list[col], dtype=tf.float32)
+    multi_tensor = concat([multi_tensor, add], axis=-1, name=name)
 
   return multi_tensor
 
