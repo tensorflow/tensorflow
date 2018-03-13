@@ -2492,10 +2492,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
@@ -2861,6 +2861,28 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         GetTensorDim(strides, data_format, 'C') == 1) {
       return true;
     }
+
+    return false;
+  }
+
+  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized 
+  // path. The unoptimized path is slow. Thus we dont rewrite the node 
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized 
+  // path is taken, i.e., eigen node is rewritten by MKl DNN node.
+  static bool LrnRewrite(const Node* n) {
+    CHECK_NOTNULL(n);
+
+    int depth_radius;
+    CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
+
+    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
+    // and use eigen node instead 
+    if (depth_radius == 2) {
+      return true;
+    }
+    VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
+            << "case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LRN " ; 
 
     return false;
   }
