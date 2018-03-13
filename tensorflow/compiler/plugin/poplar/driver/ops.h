@@ -59,7 +59,8 @@ port::Status SetVertexField(poplar::Graph &graph,
                             const Literal &literal);
 
 port::StatusOr<popconv::ConvParams>
-GetConvolutionParameters(const HloInstruction* inst, bool depthwise);
+GetConvolutionParameters(const HloInstruction* operand_op,
+                         const HloInstruction* conv_op);
 
 port::StatusOr<poplar::Tensor>
 ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,
@@ -69,9 +70,11 @@ port::StatusOr<poplar::Tensor>
 ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
                                       const poplar::Tensor& tensor);
 
-poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t, bool);
+poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
+                                                const poplar::Tensor& t);
 
-poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t, bool);
+poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
+                                           const poplar::Tensor& t);
 
 port::Status
 AddOutputTensor(TensorMap& map,
@@ -322,13 +325,6 @@ CreateSigmoidGradOp(poplar::Graph &graph,
                     const HloInstruction *inst,
                     const xla::Shape& output_shape,
                     TensorMap& tensor_map);
-
-port::StatusOr<poplar::program::Program>
-CreateDepthwiseConvolutionOp(poplar::Graph &graph,
-                             CompilerResources& res,
-                             const HloInstruction *inst,
-                             const xla::Shape& output_shape,
-                             TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
 Create2DConvWithReverse(poplar::Graph &graph,

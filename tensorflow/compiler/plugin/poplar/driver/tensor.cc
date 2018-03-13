@@ -165,28 +165,28 @@ AddRnnSequence(poplar::Graph& graph,
 static port::StatusOr<poplar::Tensor>
 AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* inst,
-                    const HloInstruction* target,
-                    CompilerResources& resources,
-                    bool depthwise) {
+                    const HloInstruction* op_target,
+                    const HloInstruction* conv_target,
+                    CompilerResources& resources) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
 
   auto name = port::StrCat(inst->name(), "_input");
   poplar::Tensor out = popconv::createInput(graph, params, name, opts);
-  return ShuffleConvolutionInputToTensorflow(target, out);
+  return ShuffleConvolutionInputToTensorflow(conv_target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
 AddConvolutionWeights(poplar::Graph& graph,
                       const HloInstruction* inst,
-                      const HloInstruction* target,
-                      CompilerResources& resources,
-                      bool depthwise) {
+                      const HloInstruction* op_target,
+                      const HloInstruction* conv_target,
+                      CompilerResources& resources) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -194,8 +194,9 @@ AddConvolutionWeights(poplar::Graph& graph,
   auto name = port::StrCat(inst->name(), "_weights");
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
 
-  out = RemoveGroupsDimensionFromWeights(out, depthwise);
-  return ShuffleConvolutionWeightsToTensorflow(target, out);
+  out = RemoveGroupsDimensionFromWeights(params, out);
+
+  return ShuffleConvolutionWeightsToTensorflow(conv_target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -246,14 +247,16 @@ AddTensor(poplar::Graph& graph,
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first,
                                                          target->second.tgt,
-                                                         resources, false));
+                                                         target->second.tgt,
+                                                         resources));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, src.first,
                                                            target->second.tgt,
-                                                           resources, false));
+                                                           target->second.tgt,
+                                                           resources));
             break;
           }
           default:
@@ -326,16 +329,18 @@ AddTensor(poplar::Graph& graph,
               {
                 TF_ASSIGN_OR_RETURN(out,
                                     AddConvolutionInput(graph, src.first,
+                                                        target->second.tgt,
                                                         conv_inst,
-                                                        resources, true));
+                                                        resources));
                 break;
               }
               case 1:
               {
                 TF_ASSIGN_OR_RETURN(out,
                                     AddConvolutionWeights(graph, src.first,
+                                                          target->second.tgt,
                                                           conv_inst,
-                                                          resources, true));
+                                                          resources));
                 break;
               }
               default:

@@ -24,24 +24,32 @@ namespace xla {
 namespace poplarplugin {
 
 port::StatusOr<popconv::ConvParams>
-GetConvolutionParameters(const HloInstruction* inst, bool depthwise) {
+GetConvolutionParameters(const HloInstruction* operands_inst,
+                         const HloInstruction* parameters_inst) {
 
-  const Shape& input = inst->operand(0)->shape();
-  const Shape& kernel = inst->operand(1)->shape();
+  const Shape& input = operands_inst->operand(0)->shape();
+  const Shape& kernel = operands_inst->operand(1)->shape();
+  const Shape& output = operands_inst->shape();
 
-  const Window& window(inst->window());
+  const Window& window(parameters_inst->window());
 
   poplar::Type dtype;
   TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
   std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
   std::vector<size_t> kernel_dims = PoplarShapeFromXlaShape(kernel);
+  std::vector<size_t> output_dims = PoplarShapeFromXlaShape(output);
 
-  const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
+  const auto& dims(parameters_inst->convolution_dimension_numbers());
   unsigned int n_b = input_dims[dims.input_batch_dimension()];
   unsigned int n_i = input_dims[dims.input_feature_dimension()];
-  unsigned int n_o = kernel_dims[dims.kernel_output_feature_dimension()];
-  unsigned int n_g = 1;
+  unsigned int n_j = kernel_dims[dims.kernel_input_feature_dimension()];
+  unsigned int n_o = output_dims[dims.output_feature_dimension()];
+  unsigned int n_p = kernel_dims[dims.kernel_output_feature_dimension()];
+  unsigned int n_g = (n_i / n_j) * (n_o / n_p);
+
+  n_i = n_i / n_g;
+  n_o = n_o / n_g;
 
   std::vector<std::size_t> n_s;
   std::vector<std::size_t> f_s;
@@ -85,12 +93,6 @@ GetConvolutionParameters(const HloInstruction* inst, bool depthwise) {
     d_w.push_back(window.dimensions(i).window_dilation());
     falses.push_back(false);
     zeros.push_back(0);
-  }
-
-  if (depthwise) {
-    n_g = n_i;
-    n_o = n_o / n_i;
-    n_i = 1;
   }
 
   popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, n_g,
@@ -190,7 +192,7 @@ ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
 port::StatusOr<poplar::Tensor>
 ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
                                      const poplar::Tensor& tensor) {
-  const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
+  const auto& d(inst->convolution_dimension_numbers());
 
   std::vector<unsigned int> shuffle(2 + d.output_spatial_dimensions_size());
   shuffle[d.output_batch_dimension()] = 0;
@@ -202,56 +204,108 @@ ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t,
-                                                bool depthwise) {
+// This function operates on the popconv format weights (GOI...)
+poplar::Tensor RemoveGroupsDimensionFromWeights(const popconv::ConvParams& p,
+                                                const poplar::Tensor& t) {
   poplar::Tensor out = t;
 
-  if (depthwise) {
-    // Swap in channels and groups
-    std::vector<unsigned int> shuffle(out.rank());
-    std::iota(shuffle.begin(), shuffle.end(), 0);
-    shuffle[0] = 2;
-    shuffle[2] = 0;
-    out = out.dimShuffle(shuffle);
-  }
+  // GOI... -> OGI...
+  std::vector<unsigned int> shuffle(out.rank());
+  std::iota(shuffle.begin(), shuffle.end(), 0);
+  shuffle[0] = 1;
+  shuffle[1] = 0;
+  out = out.dimShuffle(shuffle);
 
+  // OGI... -> O(GI)...
   std::vector<std::size_t> shape;
-  for (int64 i = 1; i < out.rank(); i++) {
+  shape.push_back(out.dim(0));
+  shape.push_back(out.dim(1)*out.dim(2));
+
+  for (int64 i = 3; i < out.rank(); i++) {
     shape.push_back(out.dim(i));
   }
 
   return out.reshape(shape);
 }
 
-poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t,
-                                           bool depthwise) {
+// This function operates on the popconv format weights (GOI...)
+poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
+                                           const poplar::Tensor& t) {
   poplar::Tensor out = t;
 
+  // OI... ->O(GI)...
   std::vector<std::size_t> shape;
-  shape.push_back(1);
-  for (int64 i = 0; i < out.rank(); i++) {
+  shape.push_back(out.dim(0));
+  shape.push_back(p.getNumConvGroups());
+  shape.push_back(out.dim(1)/ p.getNumConvGroups());
+  for (int64 i = 2; i < out.rank(); i++) {
     shape.push_back(out.dim(i));
   }
   out = out.reshape(shape);
 
-  if (depthwise) {
-    // Swap in channels and groups
-    std::vector<unsigned int> shuffle(out.rank());
-    std::iota(shuffle.begin(), shuffle.end(), 0);
-    shuffle[0] = 2;
-    shuffle[2] = 0;
-    out = out.dimShuffle(shuffle);
-  }
+  // O(GI)... -> GOI...
+  std::vector<unsigned int> shuffle(out.rank());
+  std::iota(shuffle.begin(), shuffle.end(), 0);
+  shuffle[0] = 1;
+  shuffle[1] = 0;
+  out = out.dimShuffle(shuffle);
 
   return out;
 }
 
-port::StatusOr <poplar::program::Program>
+port::StatusOr<poplar::program::Program>
 CreateConv2D(poplar::Graph &graph,
              CompilerResources& res,
              const HloInstruction *inst,
-             const xla::Shape &output_shape,
-             TensorMap &tensor_map) {
+             const xla::Shape& output_shape,
+             TensorMap& tensor_map) {
+  const HloInstruction* conv = inst;
+  if (conv->opcode() == HloOpcode::kCall) {
+    conv = inst->to_apply()->root_instruction();
+  }
+
+  // Find the input tensor
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+
+  // Find the kernel tensor
+  poplar::Tensor kernel;
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
+
+  popconv::ConvOptions opts;
+  opts.cache = &res.convolution_cache;
+  opts.pass = GetConvolutionPass(conv);
+
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
+
+  poplar::program::Sequence prog;
+
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
+
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
+                                                                false));
+
+  kernel = AddGroupsDimensionToWeights(params, kernel);
+
+  auto out = popconv::convolution(graph, in, kernel, params, false, prog,
+                                  inst->name(), opts);
+
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return prog;
+}
+
+port::StatusOr<poplar::program::Program>
+Create2DConvWithReverse(poplar::Graph &graph,
+                        CompilerResources& res,
+                        const HloInstruction *inst,
+                        const xla::Shape& output_shape,
+                        TensorMap& tensor_map) {
+  const HloInstruction* conv =
+          inst->to_apply()->root_instruction();
 
   // Find the input tensor
   poplar::Tensor in;
@@ -266,22 +320,21 @@ CreateConv2D(poplar::Graph &graph,
   opts.pass = GetConvolutionPass(inst);
 
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, false));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
 
   poplar::program::Sequence prog;
 
-  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(inst, in));
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
 
-  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(inst, kernel,
-                                                                false));
+  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
+                                                                true));
 
-  kernel = AddGroupsDimensionToWeights(kernel, false);
+  kernel = AddGroupsDimensionToWeights(params, kernel);
 
-  // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            false, prog, inst->name(), opts);
+                                            true, prog, conv->name(), opts);
 
-  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(inst, out));
+  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -318,7 +371,7 @@ ConvBiasApply(poplar::Graph &graph,
               TensorMap& tensor_map) {
 
   const HloInstruction* root =
-          inst->to_apply()->root_instruction();
+      inst->to_apply()->root_instruction();
 
   // Find the deltas
   poplar::Tensor deltas;
@@ -341,92 +394,6 @@ ConvBiasApply(poplar::Graph &graph,
                                  poplar::FLOAT, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
-
-  return prog;
-}
-
-port::StatusOr<poplar::program::Program>
-CreateDepthwiseConvolutionOp(poplar::Graph &graph,
-                             CompilerResources& res,
-                             const HloInstruction *inst,
-                             const xla::Shape& output_shape,
-                             TensorMap& tensor_map) {
-  const HloInstruction* root =
-          inst->to_apply()->root_instruction();
-
-  // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
-
-  // Find the kernel tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
-
-  popconv::ConvOptions opts;
-  opts.cache = &res.convolution_cache;
-  opts.pass = GetConvolutionPass(root);
-
-  popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(root, true));
-
-  poplar::program::Sequence prog;
-
-  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(root, in));
-
-  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(root, kernel,
-                                                                false));
-
-  kernel = AddGroupsDimensionToWeights(kernel, true);
-
-  auto out = popconv::convolution(graph, in, kernel, params, false, prog,
-                                  inst->name(), opts);
-
-  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(root, out));
-
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  return prog;
-}
-
-port::StatusOr<poplar::program::Program>
-Create2DConvWithReverse(poplar::Graph &graph,
-                        CompilerResources& res,
-                        const HloInstruction *inst,
-                        const xla::Shape& output_shape,
-                        TensorMap& tensor_map) {
-  const HloInstruction* conv =
-          inst->to_apply()->root_instruction();
-
-  // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
-
-  // Find the kernel tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
-
-  popconv::ConvOptions opts;
-  opts.cache = &res.convolution_cache;
-  opts.pass = GetConvolutionPass(inst);
-
-  popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(conv, false));
-
-  poplar::program::Sequence prog;
-
-  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
-
-  TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
-                                                                true));
-
-  kernel = AddGroupsDimensionToWeights(kernel, false);
-
-  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            true, prog, conv->name(), opts);
-
-  TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
-
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return prog;
 }

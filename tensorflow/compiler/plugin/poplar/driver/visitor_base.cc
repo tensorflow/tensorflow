@@ -393,11 +393,11 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
     else if (name == "depthwise_conv") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
-                          CreateDepthwiseConvolutionOp(*graph_,
-                                                       resources_,
-                                                       inst,
-                                                       GetOutputShape(inst),
-                                                       tensor_map));
+                          CreateConv2D(*graph_,
+                                       resources_,
+                                       inst,
+                                       GetOutputShape(inst),
+                                       tensor_map));
       sequence.add(prog);
       return Status::OK();
     }
