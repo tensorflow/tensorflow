@@ -63,13 +63,10 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
-package(
-    default_hdrs_check = "loose",
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
-)
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
