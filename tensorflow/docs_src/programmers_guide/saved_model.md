@@ -400,7 +400,7 @@ defined in:
 
 After training an `Estimator` model, you may want to create a service
 from that model that takes requests and returns a result.  You can run such a
-service locally on your machine or deploy it scalable in the cloud.
+service locally on your machine or deploy it in the cloud.
 
 To prepare a trained Estimator for serving, you must export it in the standard
 SavedModel format. This section explains how to:
@@ -582,7 +582,7 @@ dependencies like these (using Python for example):
   ]
 ```
 
-Python client code can then import the libraries thru:
+Python client code can then import the libraries thus:
 
 ```py
 from tensorflow_serving.apis import classification_pb2
