@@ -72,15 +72,15 @@ class UnorderedMergeDataset(dataset_ops.Dataset):
     """See `unordered_merge()` for details."""
     super(UnorderedMergeDataset, self).__init__()
     self._datasets = list(datasets)
-    for ds in self._datasets
+    for ds in self._datasets:
       if not isinstance(ds, dataset_ops.Dataset):
-        message = ("The argument to `unordered_merge()` must be an iterable of datasets."
+        message = ("The argument to `unordered_merge()` must be an iterable of datasets.")
         raise TypeError(message)
       if self._datasets[0].output_shapes != ds.output_shapes:
-        message = ("The shapes of `datasets` must be same."
+        message = ("The shapes of `datasets` must be same.")
         raise TypeError(message)
       if self._datasets[0].output_types != ds.output_types:
-        message = ("The types of `datasets` must be same."
+        message = ("The types of `datasets` must be same.")
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
