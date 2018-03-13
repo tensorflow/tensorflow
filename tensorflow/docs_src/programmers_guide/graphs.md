@@ -508,7 +508,7 @@ is sufficient. However, TensorFlow also provides methods for manipulating
 the default graph, which can be useful in more advanced use cases. For example:
 
 * A @{tf.Graph} defines the namespace for @{tf.Operation} objects: each
-  operation in a single graph must have an unique name. TensorFlow will
+  operation in a single graph must have a unique name. TensorFlow will
   "uniquify" the names of operations by appending `"_1"`, `"_2"`, and so on to
   their names if the requested name is already taken. Using multiple explicitly
   created graphs gives you more control over what name is given to each
