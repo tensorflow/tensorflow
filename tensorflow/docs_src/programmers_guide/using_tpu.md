@@ -129,10 +129,9 @@ my_tpu_estimator = tf.contrib.tpu.TPUEstimator(
 Typically the `FLAGS` would be set by command line arguments. To switch from
 training locally to training on a cloud TPU you would need to:
 
-  1) Set `FLAGS.use_tpu` to `True`
-  1) Set `FLAGS.tpu_name` so the
-     `tf.contrib.cluster_resolver.TPUClusterResolver` can find it
-  1) Set `FLAGS.model_dir` to a Google Cloud Storage bucket url (`gs://`).
+* Set `FLAGS.use_tpu` to `True`
+* Set `FLAGS.tpu_name` so the `tf.contrib.cluster_resolver.TPUClusterResolver` can find it
+* Set `FLAGS.model_dir` to a Google Cloud Storage bucket url (`gs://`).
 
 
 ## Optimizer
