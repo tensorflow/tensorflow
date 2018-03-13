@@ -34,7 +34,17 @@ class ExtractGlimpseOp : public OpKernel {
   explicit ExtractGlimpseOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("normalized", &normalized_));
     OP_REQUIRES_OK(context, context->GetAttr("centered", &centered_));
-    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise_));
+    bool uniform_noise = false;
+    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
+    OP_REQUIRES_OK(context, context->GetAttr("noise", &noise_));
+    OP_REQUIRES(context, !uniform_noise || noise_ == "",
+                errors::InvalidArgument("The uniform_noise and noise could not be specified at the same time"));
+    if (noise_ == "") {
+      noise_ = uniform_noise ? "uniform" : "gaussian";
+    } else {
+      OP_REQUIRES(context, noise_ == "uniform" || noise_ == "gaussian" | noise_ == "zero",
+                  errors::InvalidArgument("The noise could only be uniform, gaussian, or zero, got", noise_));
+    }
   }
 
   // Expect input tensor of rank 4 with dimensions (batch_size, height, width,
@@ -98,13 +108,13 @@ class ExtractGlimpseOp : public OpKernel {
         context->eigen_cpu_device()) =
         Eigen::ExtractGlimpses(input.tensor<float, 4>().swap_layout(),
                                output_width, output_height, offset_vec,
-                               normalized_, centered_, uniform_noise_);
+                               normalized_, centered_, noise_);
   }
 
  private:
   bool normalized_;
   bool centered_;
-  bool uniform_noise_;
+  string noise_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExtractGlimpse").Device(DEVICE_CPU),
