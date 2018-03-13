@@ -285,14 +285,14 @@ more information about the steps for doing this.
 #### What is TensorFlow's coding style convention?
 
 The TensorFlow Python API adheres to the
-[PEP8](https://www.python.org/dev/peps/pep-0008/) conventions.*In
-particular*, we use `CamelCase` names for classes, and `snake_case` names for
+[PEP8](https://www.python.org/dev/peps/pep-0008/) conventions.<sup>*</sup> In
+particular, we use `CamelCase` names for classes, and `snake_case` names for
 functions, methods, and properties. We also adhere to the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html).
 
 The TensorFlow C++ code base adheres to the
 [Google C++ style guide](https://google.github.io/styleguide/cppguide.html).
 
-(*With one exception*: we use 2-space indentation instead of 4-space
+(<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
 indentation.)
 
