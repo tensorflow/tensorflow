@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -429,6 +430,127 @@ def batch_execute(global_step, thunks, batch_size, name=None):
              false_fn) in zip(conditions, true_fns, false_fns)
     ]
     return result
+
+
+def extract_convolution_patches(inputs,
+                                filter_shape,
+                                padding,
+                                strides=None,
+                                dilation_rate=None,
+                                name=None,
+                                data_format=None):
+  """Extracts inputs to each output coordinate in tf.nn.convolution.
+
+  This is a generalization of tf.extract_image_patches() to tf.nn.convolution(),
+  where the number of spatial dimensions may be something other than 2.
+
+  Assumes,
+  - First dimension of inputs is batch_size
+  - Convolution filter is applied to all input channels.
+
+  Args:
+    inputs: Tensor of shape [batch_size, ..spatial_image_shape..,
+      ..spatial_filter_shape.., in_channels]. Inputs to tf.nn.convolution().
+    filter_shape: List of ints. Shape of filter passed to tf.nn.convolution().
+    padding: string. Padding method. One of "VALID", "SAME".
+    strides: None or list of ints. Strides along spatial dimensions.
+    dilation_rate: None or list of ints. Dilation along spatial dimensions.
+    name: None or str. Name of Op.
+    data_format: None or str. Format of data.
+
+  Returns:
+    Tensor of shape [batch_size, ..spatial_image_shape..,
+      ..spatial_filter_shape.., in_channels]
+
+  Raises:
+    ValueError: If data_format does not put channel last.
+    ValueError: If inputs and filter disagree on in_channels.
+  """
+  if not is_data_format_channel_last(data_format):
+    raise ValueError("Channel must be last dimension.")
+  with ops.name_scope(name, "extract_convolution_patches",
+                      [inputs, filter_shape, padding, strides, dilation_rate]):
+    batch_size = inputs.shape.as_list()[0]
+    in_channels = inputs.shape.as_list()[-1]
+
+    # filter_shape = spatial_filter_shape + [in_channels, out_channels]
+    spatial_filter_shape = filter_shape[:-2]
+    if in_channels != filter_shape[-2]:
+      raise ValueError("inputs and filter_shape must agree on in_channels.")
+
+    # Map each input feature to a location in the output.
+    out_channels = np.prod(spatial_filter_shape) * in_channels
+    filters = linalg_ops.eye(out_channels)
+    filters = array_ops.reshape(
+        filters,
+        list(spatial_filter_shape) + [in_channels, out_channels])
+
+    result = nn_ops.convolution(
+        inputs,
+        filters,
+        padding=padding,
+        strides=strides,
+        dilation_rate=dilation_rate)
+    spatial_output_shape = result.shape.as_list()[1:-1]
+    result = array_ops.reshape(result,
+                               [batch_size or -1] + spatial_output_shape +
+                               list(spatial_filter_shape) + [in_channels])
+
+    return result
+
+
+def extract_pointwise_conv2d_patches(inputs,
+                                     filter_shape,
+                                     name=None,
+                                     data_format=None):
+  """Extract patches for a 1x1 conv2d.
+
+  Args:
+    inputs: 4-D Tensor of shape [batch_size, height, width, in_channels].
+    filter_shape: List of 4 ints. Shape of filter to apply with conv2d()
+    name: None or str. Name for Op.
+    data_format: None or str. Format for data. See 'data_format' in
+      tf.nn.conv2d() for details.
+
+  Returns:
+    Tensor of shape [batch_size, ..spatial_input_shape..,
+    ..spatial_filter_shape.., in_channels]
+
+  Raises:
+    ValueError: if inputs is not 4-D.
+    ValueError: if filter_shape is not [1, 1, ?, ?]
+    ValueError: if data_format is not channels-last.
+  """
+  if inputs.shape.ndims != 4:
+    raise ValueError("inputs must have 4 dims.")
+  if len(filter_shape) != 4:
+    raise ValueError("filter_shape must have 4 dims.")
+  if filter_shape[0] != 1 or filter_shape[1] != 1:
+    raise ValueError("filter_shape must have shape 1 along spatial dimensions.")
+  if not is_data_format_channel_last(data_format):
+    raise ValueError("data_format must be channels last.")
+  with ops.name_scope(name, "extract_pointwise_conv2d_patches",
+                      [inputs, filter_shape]):
+    ksizes = [1, 1, 1, 1]  # Spatial shape is 1x1.
+    strides = [1, 1, 1, 1]  # Operate on all pixels.
+    rates = [1, 1, 1, 1]  # Dilation has no meaning with spatial shape = 1.
+    padding = "VALID"  # Doesn't matter.
+    result = array_ops.extract_image_patches(inputs, ksizes, strides, rates,
+                                             padding)
+
+    batch_size, input_height, input_width, in_channels = inputs.shape.as_list()
+    filter_height, filter_width, in_channels, _ = filter_shape
+    return array_ops.reshape(result, [
+        batch_size, input_height, input_width, filter_height, filter_width,
+        in_channels
+    ])
+
+
+def is_data_format_channel_last(data_format):
+  """True if data_format puts channel last."""
+  if data_format is None:
+    return True
+  return data_format.endswith("C")
 
 
 def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name

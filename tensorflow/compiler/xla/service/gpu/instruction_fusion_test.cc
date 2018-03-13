@@ -228,5 +228,30 @@ TEST_F(InstructionFusionTest, DontFuseGTE) {
                    .ValueOrDie());
 }
 
+TEST_F(InstructionFusionTest, DotOutputFusion) {
+  auto module = tools::Parse(R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    constant = f32[] constant(3)
+    p0 = f32[4,3]{1,0} parameter(0)
+    p1 = f32[4,3]{1,0} parameter(1)
+    transpose = f32[3,4]{1,0} transpose(p1), dimensions={1, 0}
+    dot = f32[4,4]{1,0} dot(p0, transpose)
+    ROOT mul = f32[4,4] multiply(constant, dot)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      op::Multiply(op::Parameter(),
+                   op::Dot(op::Parameter(), op::Transpose(op::Parameter()))));
+}
+
 }  // namespace gpu
 }  // namespace xla

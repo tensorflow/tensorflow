@@ -92,7 +92,7 @@ class ConstantFolding : public GraphOptimizer {
   bool IsSimplifiableReduction(const NodeDef& node) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties,
+  Status SimplifyGraph(GraphDef* output, GraphProperties* properties,
                        bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,

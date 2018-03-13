@@ -1083,19 +1083,8 @@ Status DirectSession::CreateExecutors(
     std::unique_ptr<FunctionInfo>* out_func_info,
     RunStateArgs* run_state_args) {
   BuildGraphOptions options;
-  options.feed_endpoints = std::vector<string>(callable_options.feed().begin(),
-                                               callable_options.feed().end());
-  options.fetch_endpoints = std::vector<string>(
-      callable_options.fetch().begin(), callable_options.fetch().end());
-  options.target_nodes = std::vector<string>(callable_options.target().begin(),
-                                             callable_options.target().end());
+  options.callable_options = callable_options;
   options.use_function_convention = !run_state_args->is_partial_run;
-  if (!callable_options.run_options()
-           .debug_options()
-           .debug_tensor_watch_opts()
-           .empty()) {
-    options.debug_options = callable_options.run_options().debug_options();
-  }
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1191,9 +1180,11 @@ Status DirectSession::CreateExecutors(
                        /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
-    if (!options.debug_options.debug_tensor_watch_opts().empty()) {
+    const DebugOptions& debug_options =
+        options.callable_options.run_options().debug_options();
+    if (!debug_options.debug_tensor_watch_opts().empty()) {
       TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
-          options.debug_options, partition_graph.get(), params.device));
+          debug_options, partition_graph.get(), params.device));
     }
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -1384,19 +1375,19 @@ Status DirectSession::CreateGraphs(
         execution_state->BuildGraph(subgraph_options, &client_graph));
   }
 
-  if (subgraph_options.feed_endpoints.size() !=
+  if (subgraph_options.callable_options.feed_size() !=
       client_graph->feed_types.size()) {
     return errors::Internal(
         "Graph pruning failed: requested number of feed endpoints = ",
-        subgraph_options.feed_endpoints.size(),
+        subgraph_options.callable_options.feed_size(),
         " versus number of pruned feed endpoints = ",
         client_graph->feed_types.size());
   }
-  if (subgraph_options.fetch_endpoints.size() !=
+  if (subgraph_options.callable_options.fetch_size() !=
       client_graph->fetch_types.size()) {
     return errors::Internal(
         "Graph pruning failed: requested number of fetch endpoints = ",
-        subgraph_options.fetch_endpoints.size(),
+        subgraph_options.callable_options.fetch_size(),
         " versus number of pruned fetch endpoints = ",
         client_graph->fetch_types.size());
   }

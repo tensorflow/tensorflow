@@ -331,7 +331,7 @@ def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Mul", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes

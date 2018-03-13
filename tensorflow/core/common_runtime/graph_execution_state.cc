@@ -252,8 +252,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
     // Rewrite the graph before placement.
     rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
+        new_graph.get(), options.callable_options,
+        device_set_->client_device()->attributes(),
         options.use_function_convention, rewrite_metadata_.get()));
   }
 
@@ -299,13 +299,16 @@ Status GraphExecutionState::OptimizeGraph(
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
 
-    item.fetch = options.fetch_endpoints;
-    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
-                      options.target_nodes.end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.fetch().begin(),
+                      options.callable_options.fetch().end());
+    item.fetch.insert(item.fetch.end(),
+                      options.callable_options.target().begin(),
+                      options.callable_options.target().end());
 
-    if (!options.feed_endpoints.empty()) {
+    if (!options.callable_options.feed().empty()) {
       std::unordered_set<string> feeds;
-      for (const string& feed : options.feed_endpoints) {
+      for (const string& feed : options.callable_options.feed()) {
         TensorId id = ParseTensorName(feed);
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
@@ -404,8 +407,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     // Extract the subset of the graph that needs to be run, adding feed/fetch
     // ops as needed.
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes(),
+        ng.get(), options.callable_options,
+        device_set_->client_device()->attributes(),
         options.use_function_convention, &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
@@ -415,8 +418,10 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     rewrite_metadata = *rewrite_metadata_;
   }
 
-  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
-  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
+  CHECK_EQ(options.callable_options.feed_size(),
+           rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.callable_options.fetch_size(),
+           rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(
