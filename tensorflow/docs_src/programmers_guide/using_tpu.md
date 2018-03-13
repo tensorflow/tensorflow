@@ -130,8 +130,7 @@ Typically the `FLAGS` would be set by command line arguments. To switch from
 training locally to training on a cloud TPU you would need to:
 
 * Set `FLAGS.use_tpu` to `True`
-* Set `FLAGS.tpu_name` so the
-     `tf.contrib.cluster_resolver.TPUClusterResolver` can find it
+* Set `FLAGS.tpu_name` so the `tf.contrib.cluster_resolver.TPUClusterResolver` can find it
 * Set `FLAGS.model_dir` to a Google Cloud Storage bucket url (`gs://`).
 
 
