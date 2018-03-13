@@ -115,7 +115,7 @@ operation that produces them followed by an output index, as in
 
 ### TensorBoard
 
-TensorFlow provides an utility called TensorBoard. One of TensorBoard's many
+TensorFlow provides a utility called TensorBoard. One of TensorBoard's many
 capabilities is visualizing a computation graph. You can easily do this with
 a few simple commands.
 
