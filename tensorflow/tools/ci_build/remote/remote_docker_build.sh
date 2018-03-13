@@ -27,7 +27,7 @@ function main {
   publish=true
 
   script_dir=$(dirname "$(readlink -f "$0")")
-  cd $script_dir
+  cd $script_dir || exit 1
 
   trap cleanup_on_finish EXIT
 
@@ -131,7 +131,7 @@ function publish_tf_image {
 
 
 function cleanup_on_finish {
-  cd $script_dir
+  cd $script_dir || exit 1
   rm -rf $llvm_docker_src
   docker rmi -f ${base_image}-clang ${base_image}-clang-build
 }

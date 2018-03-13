@@ -15,11 +15,11 @@
 # ==============================================================================
 
 (
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 mkdir -p _build
 
 (
-cd _build
+cd _build || exit 1
 rm -rf -- *
 cmake ..
 )

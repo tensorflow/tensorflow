@@ -30,7 +30,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 rm -f ${TEST_LOG}
 
 TEST_DIR=$(dirname ${TEST_PATH})
-cd ${TEST_DIR}
+cd ${TEST_DIR} || exit 1
 
 START_TIME=$(date +'%s%N')
 
