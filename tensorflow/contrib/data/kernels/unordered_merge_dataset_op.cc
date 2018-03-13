@@ -23,16 +23,45 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-// This is based from zip_dataset_op.cc
+// This is based on zip_dataset_op.cc
 class UnorderedMergeDatasetOp : public DatasetOpKernel {
  public:
   explicit UnorderedMergeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::vector<DatasetBase*> inputs;
-    for (size_t i = 0; i < ctx->num_inputs(); ++i) {
+    DatasetBase* input0;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &input0));
+    inputs.push_back(input0);
+    for (size_t i = 1; i < ctx->num_inputs(); ++i) {
       DatasetBase* input;
       OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(i), &input));
+      // from VerifyTypesMatch()
+      OP_REQUIRES(ctx, input0->output_dtypes().size() == input->output_dtypes().size(),
+                  errors::InvalidArgument(
+                    "Number of components does not match: expected ", input0->output_dtypes().size(),
+                    " types but got ", input->output_dtypes().size(), "."));
+      for (size_t i = 0; i < input0->output_dtypes().size(); ++i) {
+        OP_REQUIRES(ctx, input0->output_dtypes()[i] == input->output_dtypes()[i],
+                    errors::InvalidArgument(
+                      "Data type mismatch at component ", i,
+                      ": expected ", DataTypeString(input0->output_dtypes()[i]),
+                      " but got ", DataTypeString(input->output_dtypes()[i]),
+                      "."));
+      }
+      // from VerifyShapesCompatible()
+      OP_REQUIRES(ctx, input0->output_shapes().size() == input->output_shapes().size(),
+                  errors::InvalidArgument(
+                    "Number of components does not match: expected ", input0->output_shapes().size(),
+                    " types but got ", input->output_shapes().size(), "."));
+      for (size_t i = 0; i < input0->output_shapes().size(); ++i) {
+        OP_REQUIRES(ctx, input0->output_shapes()[i].IsCompatibleWith(input->output_shapes()[i]),
+                    errors::InvalidArgument(
+                      "Incompatible shapes at component ", i,
+                      ": expected ", input0->output_shapes()[i].DebugString(),
+                      " but got ", input->output_shapes()[i].DebugString(),
+                      "."));
+      }
       inputs.push_back(input);
     }
     *output = new Dataset(ctx, inputs);
@@ -44,7 +73,6 @@ class UnorderedMergeDatasetOp : public DatasetOpKernel {
     explicit Dataset(OpKernelContext* ctx,
                      const std::vector<DatasetBase*>& inputs)
         : GraphDatasetBase(ctx), inputs_(inputs) {
-      // --- start
       const auto& input = inputs_[0];
       for (DataType dt : input->output_dtypes()) {
         output_dtypes_.push_back(dt);
@@ -55,7 +83,6 @@ class UnorderedMergeDatasetOp : public DatasetOpKernel {
       for (const auto& input : inputs_) {
         input->Ref();
       }
-      // --- end
     }
 
     ~Dataset() override {
@@ -118,7 +145,6 @@ class UnorderedMergeDatasetOp : public DatasetOpKernel {
         }
         out_tensors->clear();
         out_tensors->reserve(1);
-        // --- start
         int orig_input_start = input_start;
         do{
           const auto& input_impl = input_impls_[input_start];
@@ -134,7 +160,6 @@ class UnorderedMergeDatasetOp : public DatasetOpKernel {
         if(orig_input_start == input_start){
           *end_of_sequence = true;
         }
-        // --- end
         if (*end_of_sequence) {
           out_tensors->clear();
           input_impls_.clear();
