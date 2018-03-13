@@ -57,7 +57,8 @@ JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 #    ld: -bind_at_load and -bitcode_bundle (Xcode setting ENABLE_BITCODE=YES) cannot be used together
 #
 if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
-    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    export MACOSX_DEPLOYMENT_TARGET
 fi
 
 PRNT_SLCTV_BIN="${TOP_SRCDIR}bazel-bin/tensorflow/python/tools/print_selective_registration_header"

@@ -26,7 +26,8 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
-export PYTHON_BIN_PATH=$(which python2)
+PYTHON_BIN_PATH=$(which python2)
+export PYTHON_BIN_PATH
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.

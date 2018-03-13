@@ -32,7 +32,8 @@ function less_than_required_version() {
 }
 
 if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
-    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    export MACOSX_DEPLOYMENT_TARGET
 fi
 
 ACTUAL_XCODE_VERSION=$(xcodebuild -version | head -n 1 | sed 's/Xcode //')

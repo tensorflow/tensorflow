@@ -200,8 +200,10 @@ deploy_profile() {
   else
     rtype='repository'
   fi
-  local url=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.url")
-  local repositoryId=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.id")
+  local url
+  url=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.url")
+  local repositoryId
+  repositoryId=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.id")
   mvn gpg:sign-and-deploy-file \
     -Dfile="${DIR}/tensorflow-android/target/tensorflow.aar" \
     -DpomFile="${DIR}/tensorflow-android/target/pom-android.xml" \

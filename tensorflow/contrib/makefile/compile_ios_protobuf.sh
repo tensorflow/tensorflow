@@ -18,7 +18,8 @@
 set -e
 
 if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
-    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    export MACOSX_DEPLOYMENT_TARGET
 fi
 
 usage() {

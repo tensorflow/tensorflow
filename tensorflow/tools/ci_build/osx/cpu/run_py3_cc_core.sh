@@ -27,7 +27,8 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
-export PYTHON_BIN_PATH=$(which python3)
+PYTHON_BIN_PATH=$(which python3)
+export PYTHON_BIN_PATH
 yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac \

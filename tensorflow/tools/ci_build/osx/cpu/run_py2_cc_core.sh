@@ -28,7 +28,8 @@ echo ""
 # Run configure.
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python2)
+PYTHON_BIN_PATH=$(which python2)
+export PYTHON_BIN_PATH
 yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac \

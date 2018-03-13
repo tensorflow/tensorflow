@@ -27,7 +27,8 @@ echo ""
 # Run configure.
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3)
+PYTHON_BIN_PATH=$(which python3)
+export PYTHON_BIN_PATH
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
