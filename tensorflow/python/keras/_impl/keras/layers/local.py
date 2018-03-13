@@ -25,10 +25,12 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.LocallyConnected1D')
 class LocallyConnected1D(Layer):
   """Locally-connected layer for 1D inputs.
 
@@ -51,7 +53,7 @@ class LocallyConnected1D(Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of a single integer,
           specifying the length of the 1D convolution window.
       strides: An integer or tuple/list of a single integer,
@@ -193,6 +195,7 @@ class LocallyConnected1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.LocallyConnected2D')
 class LocallyConnected2D(Layer):
   """Locally-connected layer for 2D inputs.
 
@@ -219,7 +222,7 @@ class LocallyConnected2D(Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for

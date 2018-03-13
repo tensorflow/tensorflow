@@ -89,12 +89,12 @@ std::map<string, string> kBrokenTests = {
 
     // ResizeBilinear looks completely incompatible with Tensorflow
     {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
-    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[2,2\])", "72401483"},
-    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[4,3\])", "72401483"},
-    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
 
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
+
+    // Lstm kernel gets different results on tsan, asan, msan.
+    {R"(^\/lstmdtype=tf.float32.*)", "73830845"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -245,6 +245,7 @@ INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)
 INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)
+INSTANTIATE_TESTS(exp)
 INSTANTIATE_TESTS(fully_connected)
 INSTANTIATE_TESTS(fused_batch_norm)
 INSTANTIATE_TESTS(gather)
@@ -252,6 +253,7 @@ INSTANTIATE_TESTS(global_batch_norm)
 INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(local_response_norm)
+INSTANTIATE_TESTS(log_softmax)
 INSTANTIATE_TESTS(max_pool)
 INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
@@ -264,8 +266,10 @@ INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_depth)
 INSTANTIATE_TESTS(sub)
+INSTANTIATE_TESTS(split)
 INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(lstm)
 INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)

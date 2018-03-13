@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -71,11 +72,11 @@ class FunctionTest : public ::testing::Test {
     arg_types_ = result.arg_types;
     ret_types_ = result.ret_types;
 
-    Graph* g = new Graph(OpRegistry::Global());
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -89,7 +90,7 @@ class FunctionTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, g, &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);
   }
 
@@ -135,7 +136,8 @@ TEST_F(FunctionTest, WXPlusB) {
 
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
-  void Init(const std::vector<FunctionDef>& flib) {
+  void Init(const std::vector<FunctionDef>& flib,
+            thread::ThreadPool* default_thread_pool = nullptr) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -149,7 +151,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_.reset(new DeviceMgr(devices_));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, nullptr /* cluster_flr */));
+        opts, default_thread_pool, nullptr /* cluster_flr */));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -158,16 +160,20 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
              FunctionLibraryRuntime::Options opts,
-             const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
+             const std::vector<Tensor>& args, std::vector<Tensor*> rets,
+             bool add_runner = true) {
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
         [&call_count](std::function<void()> fn) {
           ++call_count;
           test::function::FunctionTestSchedClosure(fn);
         };
-
+    if (add_runner) {
+      opts.runner = &runner;
+    } else {
+      opts.runner = nullptr;
+    }
     Notification done;
-    opts.runner = &runner;
     std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
@@ -183,7 +189,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       *rets[i] = out[i];
     }
 
-    EXPECT_GE(call_count, 1);  // Test runner is used.
+    if (add_runner) {
+      EXPECT_GE(call_count, 1);  // Test runner is used.
+    }
 
     return Status::OK();
   }
@@ -204,24 +212,25 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
                            test::function::Attrs attrs,
                            const std::vector<Tensor>& args,
-                           std::vector<Tensor*> rets) {
+                           std::vector<Tensor*> rets, bool add_runner = true) {
     return InstantiateAndRun(flr, name, attrs,
                              FunctionLibraryRuntime::InstantiateOptions(), args,
-                             std::move(rets));
+                             std::move(rets), add_runner);
   }
 
   Status InstantiateAndRun(
       FunctionLibraryRuntime* flr, const string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
-      const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
+      const std::vector<Tensor>& args, std::vector<Tensor*> rets,
+      bool add_runner = true) {
     FunctionLibraryRuntime::Handle handle;
     Status status = flr->Instantiate(name, attrs, options, &handle);
     if (!status.ok()) {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    status = Run(flr, handle, opts, args, rets);
+    status = Run(flr, handle, opts, args, rets, add_runner);
     if (!status.ok()) return status;
 
     // Release the handle and try running again. It should not succeed.
@@ -237,16 +246,20 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
-             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame) {
+             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame,
+             bool add_runner = true) {
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
         [&call_count](std::function<void()> fn) {
           ++call_count;
           test::function::FunctionTestSchedClosure(fn);
         };
-
+    if (add_runner) {
+      opts.runner = &runner;
+    } else {
+      opts.runner = nullptr;
+    }
     Notification done;
-    opts.runner = &runner;
     std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
@@ -258,7 +271,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
 
-    EXPECT_GE(call_count, 1);  // Test runner is used.
+    if (add_runner) {
+      EXPECT_GE(call_count, 1);  // Test runner is used.
+    }
 
     return Status::OK();
   }
@@ -447,7 +462,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   {
     // Simple case: instantiating with no state_handle.
     for (int32 expected : {6, 4}) {
-      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
+      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}, true));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -460,7 +475,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
         Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
     EXPECT_EQ(handle, handle_non_isolated);
     for (int32 expected : {0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
+      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}, true));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -475,7 +490,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
     for (int32 expected : {6, 4, 0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -490,7 +505,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
     for (int32 expected : {6, 4, 0, 1}) {
-      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
   }
@@ -507,7 +522,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
                               &handle_isolated));
       EXPECT_NE(handle, handle_isolated);
       for (int32 expected : {6, 4, 0, 1}) {
-        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
         test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
       }
       TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
@@ -787,7 +802,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_15__cf__9")
+        s.WithOpName("x4/x2/scale/_12__cf__6")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -993,13 +1008,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_5__cf__10")
+        s.WithOpName("scale/_6__cf__11")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_6__cf__11")
+        s.WithOpName("Func/_1/sy/_5__cf__10")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
@@ -1247,14 +1262,14 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
-  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}));
+  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
   test::ExpectTensorEqual<string>(
       y,
       test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                              TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
-  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}));
+  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
   test::ExpectTensorEqual<string>(
       y,
       test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},

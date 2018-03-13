@@ -625,8 +625,7 @@ operation earlier when we generated the probabilities in `cnn_model_fn`.
 > Note: If you don't explicitly assign a name to an operation via the `name`
 > argument, TensorFlow will assign a default name. A couple easy ways to
 > discover the names applied to operations are to visualize your graph on
-> @{$graph_viz$TensorBoard}) or to enable the @{$debugger$TensorFlow Debugger
-> (tfdbg)}.
+> @{$graph_viz$TensorBoard}) or to enable the @{$debugger$TensorFlow Debugger (tfdbg)}.
 
 Next, we create the `LoggingTensorHook`, passing `tensors_to_log` to the
 `tensors` argument. We set `every_n_iter=50`, which specifies that probabilities
@@ -635,7 +634,7 @@ should be logged after every 50 steps of training.
 ### Train the Model
 
 Now we're ready to train our model, which we can do by creating `train_input_fn`
-ans calling `train()` on `mnist_classifier`. Add the following to `main()`:
+and calling `train()` on `mnist_classifier`. Add the following to `main()`:
 
 ```python
 # Train the model

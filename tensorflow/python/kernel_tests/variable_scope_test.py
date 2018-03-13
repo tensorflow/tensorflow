@@ -166,12 +166,10 @@ class VariableScopeTest(test.TestCase):
     self.evaluate(variables_lib.variables_initializer([w]))
     self.assertAllClose(self.evaluate(w.value()), [1, 2, 3])
 
-    if context.in_graph_mode():
-      with self.assertRaises(TypeError):
-        variable_scope.get_variable("x4", initializer={})
-    else:
-      with self.assertRaises(ValueError):
-        variable_scope.get_variable("x4", initializer={})
+    # A quirk to be revisited?
+    error = ValueError if context.executing_eagerly() else TypeError
+    with self.assertRaises(error):
+      variable_scope.get_variable("x4", initializer={})
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonInitializer(self):
@@ -267,7 +265,7 @@ class VariableScopeTest(test.TestCase):
         self.assertAllClose(self.evaluate(losses[2]), 0.5)
       with variable_scope.variable_scope("foo", reuse=True):
         # reuse=True is for now only supported when eager execution is disabled.
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           v = variable_scope.get_variable("v",
                                           [])  # "v" is alredy there, reused
           losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
@@ -374,7 +372,7 @@ class VariableScopeTest(test.TestCase):
       v = variable_scope.get_variable("v", [])
       self.evaluate(variables_lib.variables_initializer([v]))
       self.assertAllClose(self.evaluate(v.value()), 0.3)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         # Check that we can set reuse.
         variable_scope.get_variable_scope().reuse_variables()
         with self.assertRaises(ValueError):  # Fail, w does not exist yet.
@@ -408,7 +406,7 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("tower") as tower:
         with ops.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "testVarScopeNameScope1/tower/scope2/")
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with variable_scope.variable_scope(
             tower):  # Re-entering acts like another "tower".
           with ops.name_scope("scope2") as sc2:
@@ -422,7 +420,7 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("tower"):
         with ops.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "testVarScopeNameScope2/tower/scope2/")
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with variable_scope.variable_scope(tower):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "testVarScopeNameScope2/tower_1/scope2/")
@@ -903,17 +901,15 @@ class VariableScopeTest(test.TestCase):
             "w", [], collections=["foo"])
         self.assertEqual(local_var.name, "outer/w:0")
 
-    # Since variable is local, it should be in the local variable collection
-    # but not the trainable collection.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
+      # Since variable is local, it should be in the local variable collection
+      # but not the trainable collection.
       self.assertIn(local_var,
                     ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
       self.assertIn(local_var, ops.get_collection("foo"))
       self.assertNotIn(local_var,
                        ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
-    # Check that local variable respects `reuse`.
-    if context.in_graph_mode():
+      # Check that local variable respects `reuse`.
       with variable_scope.variable_scope(outer, "default", reuse=True):
         self.assertEqual(
             variable_scope.get_local_variable("w", []).name, "outer/w:0")

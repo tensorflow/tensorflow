@@ -40,20 +40,20 @@ Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
   return Status::OK();
 }
 
-Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
-                           Tensor* host_tensor) {
+Status CopyLiteralToHostTensor(const xla::Literal& literal,
+                               Tensor* host_tensor) {
+  TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&
+               xla::ShapeUtil::ElementsIn(literal.shape()) ==
+                   host_tensor->NumElements());
   xla::PrimitiveType primitive_type;
-  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(target_type, &primitive_type));
+  TF_RETURN_IF_ERROR(
+      DataTypeToPrimitiveType(host_tensor->dtype(), &primitive_type));
   if (literal.shape().element_type() != primitive_type) {
     return errors::InvalidArgument(
         "Cannot convert literal of type ",
         xla::PrimitiveType_Name(literal.shape().element_type()),
-        " to tensor of type ", DataTypeString(target_type));
+        " to tensor of type ", DataTypeString(host_tensor->dtype()));
   }
-
-  TensorShape shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
-  *host_tensor = Tensor(target_type, shape);
   size_t total_bytes = host_tensor->TotalBytes();
   if (total_bytes > 0) {
     const void* src_ptr = literal.untyped_data();
@@ -61,6 +61,14 @@ Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
     memcpy(dst_ptr, src_ptr, total_bytes);
   }
   return Status::OK();
+}
+
+Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
+                           Tensor* host_tensor) {
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
+  *host_tensor = Tensor(target_type, shape);
+  return CopyLiteralToHostTensor(literal, host_tensor);
 }
 
 }  // namespace tensorflow

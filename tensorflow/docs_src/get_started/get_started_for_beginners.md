@@ -91,11 +91,10 @@ a number.  Here's the representation scheme:
 
 A **model** is the relationship between features
 and the label.  For the Iris problem, the model defines the relationship
-between the sepal and petal measurements and the Iris species.
-Some simple models can be described with a few lines of algebra;
-more complex machine learning models
-contain such a large number of interlacing mathematical functions and
-parameters that they become hard to summarize mathematically.
+between the sepal and petal measurements and the predicted Iris species. Some
+simple models can be described with a few lines of algebra, but complex machine
+learning models have a large number of parameters that are difficult to
+summarize.
 
 Could you determine the relationship between the four features and the
 Iris species *without* using machine learning?  That is, could you use
@@ -359,7 +358,7 @@ my_feature_columns = [
 
 ### Select the type of model
 
-We need the select the kind of model that will be trained.
+We need to select the kind of model that will be trained.
 Lots of model types exist; picking the ideal type takes experience.
 We've selected a neural network to solve the Iris problem.  [**Neural
 networks**](https://developers.google.com/machine-learning/glossary/#neural_network)
@@ -659,7 +658,9 @@ calls as follows:
 
 ```python
 predictions = classifier.predict(
-    input_fn=lambda:eval_input_fn(predict_x, batch_size=args.batch_size))
+    input_fn=lambda:eval_input_fn(predict_x,
+                                  labels=None,
+                                  batch_size=args.batch_size))
 ```
 
 As with the `evaluate` method, our `predict` method also gathers examples
@@ -704,7 +705,7 @@ for pred_dict, expec in zip(predictions, expected):
 
     class_id = pred_dict['class_ids'][0]
     probability = pred_dict['probabilities'][class_id]
-    print(template.format(SPECIES[class_id], 100 * probability, expec))
+    print(template.format(iris_data.SPECIES[class_id], 100 * probability, expec))
 ```
 
 Running the program yields the following output:

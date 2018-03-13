@@ -111,6 +111,26 @@ java_test(
     ],
 )
 
+# TODO: generate large models at runtime, instead of storing them.
+java_test(
+    name = "InterpreterTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
+    data = [
+        "src/testdata/add.bin",
+        "src/testdata/mobilenet.tflite.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.InterpreterTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":libtensorflowlite_jni.so",
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
 java_test(
     name = "TensorTest",
     size = "small",

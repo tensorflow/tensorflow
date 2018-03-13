@@ -29,6 +29,7 @@ namespace builtin {
 TfLiteRegistration* Register_CONVOLUTION_REF();
 TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT();
 TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT();
+TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT();
 
 }  // namespace builtin
 }  // namespace ops
@@ -105,6 +106,7 @@ const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"GenericOptimized", ops::builtin::Register_CONVOLUTION_GENERIC_OPT()},
     {"MultithreadedOptimized",
      ops::builtin::Register_CONVOLUTION_MULTITHREADED_OPT()},
+    {"CblasOptimized", ops::builtin::Register_CONVOLUTION_CBLAS_OPT()},
 });
 
 class ConvolutionOpTest : public SingleOpTest {

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import colorsys
 import functools
+import itertools
 import math
 import os
 import time
@@ -37,7 +38,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -934,8 +937,18 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
-  def testIdempotentLeftRight(self):
+  def testInvolutionLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, x_np)
+
+  def testInvolutionLeftRightWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
@@ -953,9 +966,24 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testLeftRightWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
+    y_np = np.array(
+        [[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.flip_left_right(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
   def testRandomFlipLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -964,7 +992,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(50):
+      for _ in range(100):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -972,11 +1000,27 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
 
-  def testIdempotentUpDown(self):
+      # 100 trials
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
+
+  def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, x_np)
+
+  def testInvolutionUpDownWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -995,17 +1039,31 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testUpDownWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
+    y_np = np.array(
+        [[[4, 5, 6], [1, 2, 3]], [[10, 11, 12], [7, 8, 9]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.flip_up_down(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
   def testRandomFlipUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf)
+      y = image_ops.random_flip_up_down(x_tf, seed=42)
       self.assertTrue(y.op.name.startswith("random_flip_up_down"))
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(50):
+      for _ in range(100):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -1013,11 +1071,27 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      self.assertGreaterEqual(count_flipped, 1)
-      self.assertGreaterEqual(count_unflipped, 1)
 
-  def testIdempotentTranspose(self):
+      # 100 trials
+      # Mean: 50
+      # Std Dev: ~5
+      # Six Sigma: 50 - (5 * 6) = 20
+      self.assertGreaterEqual(count_flipped, 20)
+      self.assertGreaterEqual(count_unflipped, 20)
+
+  def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, x_np)
+
+  def testInvolutionTransposeWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -1036,15 +1110,34 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testTransposeWithBatch(self):
+    x_np = np.array(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        dtype=np.uint8).reshape([2, 2, 3, 1])
+
+    y_np = np.array(
+        [[[1, 4], [2, 5], [3, 6]], [[7, 10], [8, 11], [9, 12]]],
+        dtype=np.uint8).reshape([2, 3, 2, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.transpose_image(x_tf)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
   def testPartialShapes(self):
     p_unknown_rank = array_ops.placeholder(dtypes.uint8)
-    p_unknown_dims = array_ops.placeholder(
+    p_unknown_dims_3 = array_ops.placeholder(
         dtypes.uint8, shape=[None, None, None])
+    p_unknown_dims_4 = array_ops.placeholder(
+        dtypes.uint8, shape=[None, None, None, None])
     p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-
+    p_unknown_batch = array_ops.placeholder(
+        dtypes.uint8, shape=[None, 64, 64, 3])
     p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
     p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
 
+    #Ops that support 3D input
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
@@ -1052,18 +1145,45 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
-      transformed_unknown_dims = op(p_unknown_dims)
-      self.assertEqual(3, transformed_unknown_dims.get_shape().ndims)
+      transformed_unknown_dims_3 = op(p_unknown_dims_3)
+      self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
       transformed_unknown_width = op(p_unknown_width)
       self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
 
-      with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
-        op(p_wrong_rank)
       with self.assertRaisesRegexp(ValueError, "must be > 0"):
         op(p_zero_dim)
 
+    #Ops that support 4D input
+    for op in [
+        image_ops.flip_left_right, image_ops.flip_up_down,
+        image_ops.transpose_image, image_ops.rot90
+    ]:
+      transformed_unknown_dims_4 = op(p_unknown_dims_4)
+      self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
+      transformed_unknown_batch = op(p_unknown_batch)
+      self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
+      with self.assertRaisesRegexp(ValueError,
+                                   "must be at least three-dimensional"):
+        op(p_wrong_rank)
+
+    for op in [
+        image_ops.random_flip_left_right,
+        image_ops.random_flip_up_down,
+    ]:
+      with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
+        op(p_wrong_rank)
+
+
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
+    with self.test_session(use_gpu=True):
+      rotated = image
+      for _ in xrange(4):
+        rotated = image_ops.rot90(rotated)
+      self.assertAllEqual(image, rotated.eval())
+
+  def testRot90GroupOrderWithBatch(self):
+    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.test_session(use_gpu=True):
       rotated = image
       for _ in xrange(4):
@@ -1079,6 +1199,14 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         y_np = np.rot90(image, k=k)
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
+  def testRot90NumpyEquivalenceWithBatch(self):
+    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
+    with self.test_session(use_gpu=True):
+      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
+      y_tf = image_ops.rot90(image, k_placeholder)
+      for k in xrange(4):
+        y_np = np.rot90(image, k=k, axes=(1, 2))
+        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
 
@@ -1869,8 +1997,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,
       )
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
@@ -1884,6 +2012,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -1903,9 +2035,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
-          dtype=dtypes.float32,)
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
+          dtype=dtypes.float32,
+      )
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
           bounding_boxes=bounding_box,
@@ -1915,6 +2048,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
@@ -2821,20 +2958,9 @@ class PngTest(test_util.TensorFlowTestCase):
 
 class GifTest(test_util.TensorFlowTestCase):
 
-  def testOptimizedGifErrorString(self):
-    filename = "tensorflow/core/lib/gif/testdata/optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif = io_ops.read_file(filename)
-      image = image_ops.decode_gif(gif)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "can't process optimized gif"):
-        gif, image = sess.run([gif, image])
-
-  def testValid(self):
+  def _testValid(self, filename):
     # Read some real GIFs
     prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "scan.gif"
     WIDTH = 20
     HEIGHT = 40
     STRIDE = 5
@@ -2861,16 +2987,9 @@ class GifTest(test_util.TensorFlowTestCase):
 
         self.assertAllClose(frame, gt)
 
-  def testInValid(self):
-    # Read some real GIFs
-    prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif0 = io_ops.read_file(prefix + filename)
-      image0 = image_ops.decode_gif(gif0)
-      with self.assertRaises(errors.InvalidArgumentError):
-        gif0, image0 = sess.run([gif0, image0])
+  def testValid(self):
+    self._testValid("scan.gif")
+    self._testValid("optimized.gif")
 
   def testShape(self):
     with self.test_session(use_gpu=True) as sess:
@@ -3171,43 +3290,460 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
   def testInvalidShape(self):
     # The boxes should be 2D of shape [num_boxes, 4].
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 2 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 2 but is rank 1"):
       boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, 0.5)
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Dimension must be 4 but is 3'):
+    with self.assertRaisesRegexp(ValueError, "Dimension must be 4 but is 3"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0]])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, 0.5)
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
+
+    # The boxes is of shape [num_boxes, 4], and the scores is
+    # of shape [num_boxes]. So an error will thrown.
+    with self.assertRaisesRegexp(ValueError,
+                                 "Dimensions must be equal, but are 1 and 2"):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9, 0.75])
+      selected_indices = image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The scores should be 1D of shape [num_boxes].
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 1 but is rank 2'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 1 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([[0.9]])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, 0.5)
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The max_output_size should be a scaler (0-D).
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 0 but is rank 1"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, [3], 0.5)
+      image_ops.non_max_suppression(boxes, scores, [3], 0.5)
 
     # The iou_threshold should be a scaler (0-D).
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 2'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 0 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, [[0.5]])
+      image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
+
+
+class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
+  """Tests utility function used by ssim() and psnr()."""
+
+  def testWrongDims(self):
+    img = array_ops.placeholder(dtype=dtypes.float32)
+    img_np = np.array((2, 2))
+
+    with self.test_session(use_gpu=True) as sess:
+      _, _, checks = image_ops_impl._verify_compatible_image_shapes(img, img)
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(checks, {img: img_np})
+
+  def testShapeMismatch(self):
+    img1 = array_ops.placeholder(dtype=dtypes.float32)
+    img2 = array_ops.placeholder(dtype=dtypes.float32)
+
+    img1_np = np.array([1, 2, 2, 1])
+    img2_np = np.array([1, 3, 3, 1])
+
+    with self.test_session(use_gpu=True) as sess:
+      _, _, checks = image_ops_impl._verify_compatible_image_shapes(img1, img2)
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(checks, {img1: img1_np, img2: img2_np})
+
+
+class PSNRTest(test_util.TensorFlowTestCase):
+  """Tests for PSNR."""
+
+  def _LoadTestImage(self, sess, filename):
+    content = io_ops.read_file(os.path.join(
+        "tensorflow/core/lib/psnr/testdata", filename))
+    im = image_ops.decode_jpeg(content, dct_method="INTEGER_ACCURATE")
+    im = image_ops.convert_image_dtype(im, dtypes.float32)
+    im, = sess.run([im])
+    return np.expand_dims(im, axis=0)
+
+  def _LoadTestImages(self):
+    with self.test_session(use_gpu=True) as sess:
+      q20 = self._LoadTestImage(sess, "cat_q20.jpg")
+      q72 = self._LoadTestImage(sess, "cat_q72.jpg")
+      q95 = self._LoadTestImage(sess, "cat_q95.jpg")
+      return q20, q72, q95
+
+  def _PSNR_NumPy(self, orig, target, max_value):
+    """Numpy implementation of PSNR."""
+    mse = ((orig - target) ** 2).mean(axis=(-3, -2, -1))
+    return 20 * np.log10(max_value) - 10 * np.log10(mse)
+
+  def _RandomImage(self, shape, max_val):
+    """Returns an image or image batch with given shape."""
+    return np.random.rand(*shape).astype(np.float32) * max_val
+
+  def testPSNRSingleImage(self):
+    image1 = self._RandomImage((8, 8, 1), 1)
+    image2 = self._RandomImage((8, 8, 1), 1)
+    psnr = self._PSNR_NumPy(image1, image2, 1)
+
+    with self.test_session(use_gpu=True):
+      tf_image1 = constant_op.constant(image1, shape=image1.shape,
+                                       dtype=dtypes.float32)
+      tf_image2 = constant_op.constant(image2, shape=image2.shape,
+                                       dtype=dtypes.float32)
+      tf_psnr = image_ops.psnr(tf_image1, tf_image2, 1.0, "psnr").eval()
+      self.assertAllClose(psnr, tf_psnr, atol=0.001)
+
+  def testPSNRMultiImage(self):
+    image1 = self._RandomImage((10, 8, 8, 1), 1)
+    image2 = self._RandomImage((10, 8, 8, 1), 1)
+    psnr = self._PSNR_NumPy(image1, image2, 1)
+
+    with self.test_session(use_gpu=True):
+      tf_image1 = constant_op.constant(image1, shape=image1.shape,
+                                       dtype=dtypes.float32)
+      tf_image2 = constant_op.constant(image2, shape=image2.shape,
+                                       dtype=dtypes.float32)
+      tf_psnr = image_ops.psnr(tf_image1, tf_image2, 1, "psnr").eval()
+      self.assertAllClose(psnr, tf_psnr, atol=0.001)
+
+  def testGoldenPSNR(self):
+    q20, q72, q95 = self._LoadTestImages()
+
+    # Verify NumPy implementation first.
+    # Golden values are generated using GNU Octave's psnr() function.
+    psnr1 = self._PSNR_NumPy(q20, q72, 1)
+    self.assertNear(30.321, psnr1, 0.001, msg="q20.dtype=" + str(q20.dtype))
+    psnr2 = self._PSNR_NumPy(q20, q95, 1)
+    self.assertNear(29.994, psnr2, 0.001)
+    psnr3 = self._PSNR_NumPy(q72, q95, 1)
+    self.assertNear(35.302, psnr3, 0.001)
+
+    # Test TensorFlow implementation.
+    with self.test_session(use_gpu=True):
+      tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
+      tf_q72 = constant_op.constant(q72, shape=q72.shape, dtype=dtypes.float32)
+      tf_q95 = constant_op.constant(q95, shape=q95.shape, dtype=dtypes.float32)
+      tf_psnr1 = image_ops.psnr(tf_q20, tf_q72, 1, "psnr1").eval()
+      tf_psnr2 = image_ops.psnr(tf_q20, tf_q95, 1, "psnr2").eval()
+      tf_psnr3 = image_ops.psnr(tf_q72, tf_q95, 1, "psnr3").eval()
+      self.assertAllClose(psnr1, tf_psnr1, atol=0.001)
+      self.assertAllClose(psnr2, tf_psnr2, atol=0.001)
+      self.assertAllClose(psnr3, tf_psnr3, atol=0.001)
+
+  def testInfinity(self):
+    q20, _, _ = self._LoadTestImages()
+    psnr = self._PSNR_NumPy(q20, q20, 1)
+    with self.test_session(use_gpu=True):
+      tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
+      tf_psnr = image_ops.psnr(tf_q20, tf_q20, 1, "psnr").eval()
+      self.assertAllClose(psnr, tf_psnr, atol=0.001)
+
+  def testInt(self):
+    img1 = self._RandomImage((10, 8, 8, 1), 255)
+    img2 = self._RandomImage((10, 8, 8, 1), 255)
+    img1 = constant_op.constant(img1, dtypes.uint8)
+    img2 = constant_op.constant(img2, dtypes.uint8)
+    psnr_uint8 = image_ops.psnr(img1, img2, 255)
+    img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
+    img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
+    psnr_float32 = image_ops.psnr(img1, img2, 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(psnr_uint8.eval(), psnr_float32.eval(), atol=0.001)
+
+
+class SSIMTest(test_util.TensorFlowTestCase):
+  """Tests for SSIM."""
+
+  _filenames = ["checkerboard1.png",
+                "checkerboard2.png",
+                "checkerboard3.png",]
+
+  _ssim = np.asarray([[1.000000, 0.230880, 0.231153],
+                      [0.230880, 1.000000, 0.996828],
+                      [0.231153, 0.996828, 1.000000]])
+
+  def _LoadTestImage(self, sess, filename):
+    content = io_ops.read_file(os.path.join(
+        "tensorflow/core/lib/ssim/testdata", filename))
+    im = image_ops.decode_png(content)
+    im = image_ops.convert_image_dtype(im, dtypes.float32)
+    im, = sess.run([im])
+    return np.expand_dims(im, axis=0)
+
+  def _LoadTestImages(self):
+    with self.test_session(use_gpu=True) as sess:
+      return [self._LoadTestImage(sess, f) for f in self._filenames]
+
+  def _RandomImage(self, shape, max_val):
+    """Returns an image or image batch with given shape."""
+    return np.random.rand(*shape).astype(np.float32) * max_val
+
+  def testAgainstMatlab(self):
+    """Tests against values produced by Matlab."""
+    img = self._LoadTestImages()
+    expected = self._ssim[np.triu_indices(3)]
+
+    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
+    ssim = image_ops.ssim(*ph, max_val=1.0)
+    with self.test_session(use_gpu=True):
+      scores = [ssim.eval(dict(zip(ph, t)))
+                for t in itertools.combinations_with_replacement(img, 2)]
+    self.assertAllClose(expected, np.squeeze(scores), atol=1e-4)
+
+  def testBatch(self):
+    img = self._LoadTestImages()
+    expected = self._ssim[np.triu_indices(3, k=1)]
+
+    img1, img2 = zip(*itertools.combinations(img, 2))
+    img1 = np.concatenate(img1)
+    img2 = np.concatenate(img2)
+
+    ssim = image_ops.ssim(constant_op.constant(img1),
+                          constant_op.constant(img2), 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(expected, ssim.eval(), atol=1e-4)
+
+  def testBroadcast(self):
+    img = self._LoadTestImages()[:2]
+    expected = self._ssim[:2, :2]
+
+    img = constant_op.constant(np.concatenate(img))
+    img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
+    img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
+
+    ssim = image_ops.ssim(img1, img2, 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(expected, ssim.eval(), atol=1e-4)
+
+  def testNegative(self):
+    """Tests against negative SSIM index."""
+    step = np.expand_dims(np.arange(0, 256, 16, dtype=np.uint8), axis=0)
+    img1 = np.tile(step, (16, 1))
+    img2 = np.fliplr(img1)
+
+    img1 = img1.reshape((1, 16, 16, 1))
+    img2 = img2.reshape((1, 16, 16, 1))
+
+    ssim = image_ops.ssim(constant_op.constant(img1),
+                          constant_op.constant(img2), 255)
+    with self.test_session(use_gpu=True):
+      self.assertLess(ssim.eval(), 0)
+
+  def testInt(self):
+    img1 = self._RandomImage((1, 16, 16, 3), 255)
+    img2 = self._RandomImage((1, 16, 16, 3), 255)
+    img1 = constant_op.constant(img1, dtypes.uint8)
+    img2 = constant_op.constant(img2, dtypes.uint8)
+    ssim_uint8 = image_ops.ssim(img1, img2, 255)
+    img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
+    img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
+    ssim_float32 = image_ops.ssim(img1, img2, 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(ssim_uint8.eval(), ssim_float32.eval(), atol=0.001)
+
+
+class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
+  """Tests for MS-SSIM."""
+
+  _filenames = ["checkerboard1.png",
+                "checkerboard2.png",
+                "checkerboard3.png",]
+
+  _msssim = np.asarray([[1.000000, 0.091016, 0.091025],
+                        [0.091016, 1.000000, 0.999567],
+                        [0.091025, 0.999567, 1.000000]])
+
+  def _LoadTestImage(self, sess, filename):
+    content = io_ops.read_file(os.path.join(
+        "tensorflow/core/lib/ssim/testdata", filename))
+    im = image_ops.decode_png(content)
+    im = image_ops.convert_image_dtype(im, dtypes.float32)
+    im, = sess.run([im])
+    return np.expand_dims(im, axis=0)
+
+  def _LoadTestImages(self):
+    with self.test_session(use_gpu=True) as sess:
+      return [self._LoadTestImage(sess, f) for f in self._filenames]
+
+  def _RandomImage(self, shape, max_val):
+    """Returns an image or image batch with given shape."""
+    return np.random.rand(*shape).astype(np.float32) * max_val
+
+  def testAgainstMatlab(self):
+    """Tests against MS-SSIM computed with Matlab implementation.
+
+    For color images, MS-SSIM scores are averaged over color channels.
+    """
+    img = self._LoadTestImages()
+    expected = self._msssim[np.triu_indices(3)]
+
+    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
+    msssim = image_ops.ssim_multiscale(*ph, max_val=1.0)
+    with self.test_session(use_gpu=True):
+      scores = [msssim.eval(dict(zip(ph, t)))
+                for t in itertools.combinations_with_replacement(img, 2)]
+
+    self.assertAllClose(expected, np.squeeze(scores), atol=1e-4)
+
+  def testUnweightedIsDifferentiable(self):
+    img = self._LoadTestImages()
+    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
+    scalar = constant_op.constant(1.0, dtype=dtypes.float32)
+    scaled_ph = [x * scalar for x in ph]
+    msssim = image_ops.ssim_multiscale(*scaled_ph, max_val=1.0,
+                                       power_factors=(1, 1, 1, 1, 1))
+    grads = gradients.gradients(msssim, scalar)
+    with self.test_session(use_gpu=True) as sess:
+      np_grads = sess.run(grads, feed_dict={ph[0]: img[0], ph[1]: img[1]})
+    self.assertTrue(np.isfinite(np_grads).all())
+
+  def testBatch(self):
+    """Tests MS-SSIM computed in batch."""
+    img = self._LoadTestImages()
+    expected = self._msssim[np.triu_indices(3, k=1)]
+
+    img1, img2 = zip(*itertools.combinations(img, 2))
+    img1 = np.concatenate(img1)
+    img2 = np.concatenate(img2)
+
+    msssim = image_ops.ssim_multiscale(constant_op.constant(img1),
+                                       constant_op.constant(img2), 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(expected, msssim.eval(), 1e-4)
+
+  def testBroadcast(self):
+    """Tests MS-SSIM broadcasting."""
+    img = self._LoadTestImages()[:2]
+    expected = self._msssim[:2, :2]
+
+    img = constant_op.constant(np.concatenate(img))
+    img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
+    img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
+
+    score_tensor = image_ops.ssim_multiscale(img1, img2, 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(expected, score_tensor.eval(), 1e-4)
+
+  def testRange(self):
+    """Tests against low MS-SSIM score.
+
+    MS-SSIM is a geometric mean of SSIM and CS scores of various scales.
+    If any of the value is negative so that the geometric mean is not
+    well-defined, then treat the MS-SSIM score as zero.
+    """
+    with self.test_session(use_gpu=True) as sess:
+      img1 = self._LoadTestImage(sess, "checkerboard1.png")
+      img2 = self._LoadTestImage(sess, "checkerboard3.png")
+      images = [img1, img2, np.zeros_like(img1),
+                np.full_like(img1, fill_value=255)]
+
+      images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
+      msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
+                    for x, y in itertools.combinations(images, 2)]
+      msssim = sess.run(msssim_ops)
+      msssim = np.squeeze(msssim)
+
+    self.assertTrue(np.all(msssim >= 0.0))
+    self.assertTrue(np.all(msssim <= 1.0))
+
+  def testInt(self):
+    img1 = self._RandomImage((1, 180, 240, 3), 255)
+    img2 = self._RandomImage((1, 180, 240, 3), 255)
+    img1 = constant_op.constant(img1, dtypes.uint8)
+    img2 = constant_op.constant(img2, dtypes.uint8)
+    ssim_uint8 = image_ops.ssim_multiscale(img1, img2, 255)
+    img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
+    img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
+    ssim_float32 = image_ops.ssim_multiscale(img1, img2, 1.0)
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(ssim_uint8.eval(), ssim_float32.eval(), atol=0.001)
+
+
+class ImageGradientsTest(test_util.TensorFlowTestCase):
+
+  def testImageGradients(self):
+    shape = [1, 2, 4, 1]
+    img = constant_op.constant([[1, 3, 4, 2], [8, 7, 5, 6]])
+    img = array_ops.reshape(img, shape)
+
+    expected_dy = np.reshape([[7, 4, 1, 4], [0, 0, 0, 0]], shape)
+    expected_dx = np.reshape([[2, 1, -2, 0], [-1, -2, 1, 0]], shape)
+
+    dy, dx = image_ops.image_gradients(img)
+    with self.test_session():
+      actual_dy = dy.eval()
+      actual_dx = dx.eval()
+      self.assertAllClose(expected_dy, actual_dy)
+      self.assertAllClose(expected_dx, actual_dx)
+
+  def testImageGradientsMultiChannelBatch(self):
+    batch = [[[[1, 2], [2, 5], [3, 3]],
+              [[8, 4], [5, 1], [9, 8]]],
+             [[[5, 3], [7, 9], [1, 6]],
+              [[1, 2], [6, 3], [6, 3]]]]
+
+    expected_dy = [[[[7, 2], [3, -4], [6, 5]],
+                    [[0, 0], [0, 0], [0, 0]]],
+                   [[[-4, -1], [-1, -6], [5, -3]],
+                    [[0, 0], [0, 0], [0, 0]]]]
+
+    expected_dx = [[[[1, 3], [1, -2], [0, 0]],
+                    [[-3, -3], [4, 7], [0, 0]]],
+                   [[[2, 6], [-6, -3], [0, 0]],
+                    [[5, 1], [0, 0], [0, 0]]]]
+
+    batch = constant_op.constant(batch)
+    assert batch.get_shape().as_list() == [2, 2, 3, 2]
+    dy, dx = image_ops.image_gradients(batch)
+    with self.test_session(use_gpu=True):
+      actual_dy = dy.eval()
+      actual_dx = dx.eval()
+      self.assertAllClose(expected_dy, actual_dy)
+      self.assertAllClose(expected_dx, actual_dx)
+
+  def testImageGradientsBadShape(self):
+    # [2 x 4] image but missing batch and depth dimensions.
+    img = constant_op.constant([[1, 3, 4, 2], [8, 7, 5, 6]])
+    with self.assertRaises(ValueError):
+      image_ops.image_gradients(img)
+
+
+class SobelEdgesTest(test_util.TensorFlowTestCase):
+
+  def testSobelEdges1x2x3x1(self):
+    img = constant_op.constant([[1, 3, 6], [4, 1, 5]],
+                               dtype=dtypes.float32, shape=[1, 2, 3, 1])
+    expected = np.reshape([[[0, 0], [0, 12], [0, 0]],
+                           [[0, 0], [0, 12], [0, 0]]], [1, 2, 3, 1, 2])
+    sobel = image_ops.sobel_edges(img)
+    with self.test_session(use_gpu=True):
+      actual_sobel = sobel.eval()
+      self.assertAllClose(expected, actual_sobel)
+
+  def testSobelEdges5x3x4x2(self):
+    batch_size = 5
+    plane = np.reshape([[1, 3, 6, 2], [4, 1, 5, 7], [2, 5, 1, 4]],
+                       [1, 3, 4, 1])
+    two_channel = np.concatenate([plane, plane], axis=3)
+    batch = np.concatenate([two_channel] * batch_size, axis=0)
+    img = constant_op.constant(batch, dtype=dtypes.float32,
+                               shape=[batch_size, 3, 4, 2])
+
+    expected_plane = np.reshape([[[0, 0], [0, 12], [0, 10], [0, 0]],
+                                 [[6, 0], [0, 6], [-6, 10], [-6, 0]],
+                                 [[0, 0], [0, 0], [0, 10], [0, 0]]],
+                                [1, 3, 4, 1, 2])
+    expected_two_channel = np.concatenate(
+        [expected_plane, expected_plane], axis=3)
+    expected_batch = np.concatenate([expected_two_channel] * batch_size, axis=0)
+
+    sobel = image_ops.sobel_edges(img)
+    with self.test_session(use_gpu=True):
+      actual_sobel = sobel.eval()
+      self.assertAllClose(expected_batch, actual_sobel)
 
 
 if __name__ == "__main__":

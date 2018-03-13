@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
+from tensorflow.python.util import compat
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
@@ -31,6 +33,9 @@ try:
   from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
+
+
+_GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 
 
 class TPUClusterResolver(ClusterResolver):
@@ -46,13 +51,30 @@ class TPUClusterResolver(ClusterResolver):
     req = Request('http://metadata/computeMetadata/v1/%s' % path,
                   headers={'Metadata-Flavor': 'Google'})
     resp = urlopen(req)
-    return resp.read()
+    return compat.as_bytes(resp.read())
+
+  def _shouldResolve(self):
+    if (self._tpu == compat.as_bytes('') or
+        self._tpu == compat.as_bytes('local') or
+        self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('grpc://'))):
+      return False
+    return True
+
+  def _inGke(self):
+    """When running in GKE, the environment variable will be set."""
+    return _GKE_ENV_VARIABLE in os.environ
+
+  def _gkeMaster(self):
+    return os.environ[_GKE_ENV_VARIABLE].split(',')[0]
 
   def __init__(self,
-               tpu_names,
+               tpu=None,
                zone=None,
                project=None,
-               job_name='tpu_worker',
+               job_name='worker',
+               coordinator_name='coordinator',
+               coordinator_address=None,
                credentials='default',
                service=None):
     """Creates a new TPUClusterResolver object.
@@ -61,7 +83,11 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu_names: A list of names of the target Cloud TPUs.
+      tpu: Either a string, or a list of strings corresponding to the TPUs to
+        use. If the single string is the empty string, the string 'local', or a
+        string that begins with 'grpc://' or '/bns', then it is assumed to not
+        correspond with a Cloud TPU and will instead be passed as the session
+        master and no ClusterSpec propagation will be done.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -69,6 +95,12 @@ class TPUClusterResolver(ClusterResolver):
         empty, we will try to discover the project name of the GCE VM from the
         GCE metadata service.
       job_name: Name of the TensorFlow job the TPUs belong to.
+      coordinator_name: The name to use for the coordinator. Set to None if the
+        coordinator should not be included in the computed ClusterSpec.
+      coordinator_address: The address of the coordinator (typically an ip:port
+        pair). If set to None, a TF server will be started. If coordinator_name
+        is None, a TF server will not be started even if coordinator_address is
+        None.
       credentials: GCE Credentials. If None, then we use default credentials
         from the oauth2client
       service: The GCE API object returned by the googleapiclient.discovery
@@ -77,29 +109,47 @@ class TPUClusterResolver(ClusterResolver):
 
     Raises:
       ImportError: If the googleapiclient is not installed.
+      ValueError: If no TPUs are specified.
     """
+    if isinstance(tpu, list):
+      if not tpu:
+        raise ValueError('At least one TPU must be specified.')
+      if len(tpu) != 1:
+        raise NotImplementedError(
+            'Using multiple TPUs in a single session is not yet implemented')
+      tpu = tpu[0]
 
-    if not project:
-      project = self._requestComputeMetadata('/project/project-id')
+    # When using GKE with Cloud TPUs, the env variable will be set.
+    if tpu is None and self._inGke():
+      tpu = self._gkeMaster()
 
-    if not zone:
-      zone_path = self._requestComputeMetadata('/instance/zone')
+    self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
+    self._job_name = job_name
+    self._credentials = credentials
+
+    should_resolve = self._shouldResolve()
+
+    if not project and should_resolve:
+      project = compat.as_str(
+          self._requestComputeMetadata('project/project-id'))
+
+    if not zone and should_resolve:
+      zone_path = compat.as_str(self._requestComputeMetadata('instance/zone'))
       zone = zone_path.split('/')[-1]
 
     self._project = project
     self._zone = zone
-    self._tpu_names = tpu_names
-    self._job_name = job_name
-    self._credentials = credentials
 
-    if credentials == 'default':
+    if credentials == 'default' and should_resolve:
       if _GOOGLE_API_CLIENT_INSTALLED:
         self._credentials = GoogleCredentials.get_application_default()
 
-    if service is None:
+    if service is None and should_resolve:
       if not _GOOGLE_API_CLIENT_INSTALLED:
         raise ImportError('googleapiclient must be installed before using the '
-                          'TPU cluster resolver')
+                          'TPU cluster resolver. Execute: `pip install '
+                          '--upgrade google-api-python-client` to install with '
+                          'pip.')
 
       self._service = discovery.build(
           'tpu', 'v1alpha1',
@@ -107,24 +157,40 @@ class TPUClusterResolver(ClusterResolver):
     else:
       self._service = service
 
-  def get_master(self):
-    """Get the ClusterSpec grpc master path.
+    self._coordinator_name = coordinator_name
+    if coordinator_name and not coordinator_address and should_resolve:
+      self._start_local_server()
+    else:
+      self._coordinator_address = coordinator_address
 
-    This returns the grpc path (grpc://1.2.3.4:8470) of first instance in the
-    ClusterSpec returned by the cluster_spec function. This is suitable for use
-    for the `master` argument in tf.Session() when you are using one TPU.
+  def master(self):
+    """Get the Master string to be used for the session.
+
+    In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
+    first instance in the ClusterSpec returned by the cluster_spec function.
+
+    If a non-TPU name is used when constructing a TPUClusterResolver, that will
+    be returned instead (e.g. If the tpus argument's value when constructing
+    this TPUClusterResolver was 'grpc://10.240.1.2:8470',
+    'grpc://10.240.1.2:8470' will be returned).
 
     Returns:
-      string, the grpc path of the first instance in the ClusterSpec.
+      string, the connection string to use when creating a session.
 
     Raises:
       ValueError: If none of the TPUs specified exists.
     """
+    if not self._shouldResolve():
+      return self._tpu
+
     job_tasks = self.cluster_spec().job_tasks(self._job_name)
     if not job_tasks:
       raise ValueError('No TPUs exists with the specified names exist.')
 
     return 'grpc://' + job_tasks[0]
+
+  def get_master(self):
+    return self.master()
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
@@ -134,16 +200,54 @@ class TPUClusterResolver(ClusterResolver):
 
     Returns:
       A ClusterSpec containing host information returned from Cloud TPUs.
+
+    Raises:
+      RuntimeError: If the provided TPU is not healthy.
     """
-    worker_list = []
+    if not self._shouldResolve():
+      return server_lib.ClusterSpec({})
 
-    for tpu_name in self._tpu_names:
-      full_name = 'projects/%s/locations/%s/nodes/%s' % (
-          self._project, self._zone, tpu_name)
-      request = self._service.projects().locations().nodes().get(name=full_name)
-      response = request.execute()
+    full_name = 'projects/%s/locations/%s/nodes/%s' % (
+        self._project, self._zone, compat.as_text(self._tpu))
+    request = self._service.projects().locations().nodes().get(name=full_name)
+    response = request.execute()
 
+    if 'health' in response and response['health'] != 'HEALTHY':
+      raise RuntimeError('TPU "%s" is unhealthy: "%s"' % (self._tpu,
+                                                          response['health']))
+
+    if 'networkEndpoints' in response:
+      worker_list = [
+          '%s:%s' % (endpoint['ipAddress'], endpoint['port'])
+          for endpoint in response['networkEndpoints']
+      ]
+    else:
+      # Fall back to the deprecated response format
       instance_url = '%s:%s' % (response['ipAddress'], response['port'])
-      worker_list.append(instance_url)
+      worker_list = [instance_url]
 
-    return ClusterSpec({self._job_name: worker_list})
+    cluster_spec = {self._job_name: worker_list}
+
+    if self._coordinator_address:
+      cluster_spec[self._coordinator_name] = [self._coordinator_address]
+
+    return server_lib.ClusterSpec(cluster_spec)
+
+  def _start_local_server(self):
+    address = self._requestComputeMetadata('instance/network-interfaces/0/ip')
+    self._server = server_lib.Server(
+        {
+            'local': ['0.0.0.0:0']
+        }, protocol='grpc', config=None, start=True)
+    # self._server.target is of the form: grpc://ipaddress:port
+    target = compat.as_bytes(self._server.target)
+    splits = target.split(compat.as_bytes(':'))
+    assert len(splits) == 3, self._server.target
+    assert splits[0] == compat.as_bytes('grpc'), self._server.target
+    self._coordinator_port = compat.as_text(splits[2])
+    self._coordinator_address = '%s:%s' % (
+        address, compat.as_text(self._coordinator_port))
+
+  def __deepcopy__(self, memo):
+    # TODO(b/73668574): Remove this once RunConfig avoids performing deepcopy.
+    return self

@@ -35,6 +35,7 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
@@ -159,10 +160,11 @@ class CallbackList(object):
     return iter(self.callbacks)
 
 
+@tf_export('keras.callbacks.Callback')
 class Callback(object):
   """Abstract base class used to build new callbacks.
 
-  # Properties
+  Attributes:
       params: dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
@@ -215,11 +217,22 @@ class Callback(object):
     pass
 
 
+@tf_export('keras.callbacks.BaseLogger')
 class BaseLogger(Callback):
   """Callback that accumulates epoch averages of metrics.
 
   This callback is automatically applied to every Keras model.
+
+  Arguments:
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is in `on_epoch_end`.
+          All others will be averaged in `on_epoch_end`.
   """
+
+  def __init__(self, stateful_metrics=None):
+    super(BaseLogger, self).__init__()
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_epoch_begin(self, epoch, logs=None):
     self.seen = 0
@@ -231,19 +244,26 @@ class BaseLogger(Callback):
     self.seen += batch_size
 
     for k, v in logs.items():
-      if k in self.totals:
-        self.totals[k] += v * batch_size
+      if k in self.stateful_metrics:
+        self.totals[k] = v
       else:
-        self.totals[k] = v * batch_size
+        if k in self.totals:
+          self.totals[k] += v * batch_size
+        else:
+          self.totals[k] = v * batch_size
 
   def on_epoch_end(self, epoch, logs=None):
     if logs is not None:
       for k in self.params['metrics']:
         if k in self.totals:
           # Make value available to next callbacks.
-          logs[k] = self.totals[k] / self.seen
+          if k in self.stateful_metrics:
+            logs[k] = self.totals[k]
+          else:
+            logs[k] = self.totals[k] / self.seen
 
 
+@tf_export('keras.callbacks.TerminateOnNaN')
 class TerminateOnNaN(Callback):
   """Callback that terminates training when a NaN loss is encountered.
   """
@@ -260,6 +280,7 @@ class TerminateOnNaN(Callback):
         self.model.stop_training = True
 
 
+@tf_export('keras.callbacks.ProgbarLogger')
 class ProgbarLogger(Callback):
   """Callback that prints metrics to stdout.
 
@@ -267,12 +288,16 @@ class ProgbarLogger(Callback):
       count_mode: One of "steps" or "samples".
           Whether the progress bar should
           count samples seen or steps (batches) seen.
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is.
+          All others will be averaged over time (e.g. loss, etc).
 
   Raises:
       ValueError: In case of invalid `count_mode`.
   """
 
-  def __init__(self, count_mode='samples'):
+  def __init__(self, count_mode='samples', stateful_metrics=None):
     super(ProgbarLogger, self).__init__()
     if count_mode == 'samples':
       self.use_steps = False
@@ -280,6 +305,7 @@ class ProgbarLogger(Callback):
       self.use_steps = True
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
@@ -293,7 +319,10 @@ class ProgbarLogger(Callback):
       else:
         target = self.params['samples']
       self.target = target
-      self.progbar = Progbar(target=self.target, verbose=self.verbose)
+      self.progbar = Progbar(
+          target=self.target,
+          verbose=self.verbose,
+          stateful_metrics=self.stateful_metrics)
     self.seen = 0
 
   def on_batch_begin(self, batch, logs=None):
@@ -323,9 +352,10 @@ class ProgbarLogger(Callback):
       if k in logs:
         self.log_values.append((k, logs[k]))
     if self.verbose:
-      self.progbar.update(self.seen, self.log_values, force=True)
+      self.progbar.update(self.seen, self.log_values)
 
 
+@tf_export('keras.callbacks.History')
 class History(Callback):
   """Callback that records events into a `History` object.
 
@@ -345,6 +375,7 @@ class History(Callback):
       self.history.setdefault(k, []).append(v)
 
 
+@tf_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
   """Save the model after every epoch.
 
@@ -448,6 +479,7 @@ class ModelCheckpoint(Callback):
           self.model.save(filepath, overwrite=True)
 
 
+@tf_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
   """Stop training when a monitored quantity has stopped improving.
 
@@ -531,6 +563,7 @@ class EarlyStopping(Callback):
       print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
 
 
+@tf_export('keras.callbacks.RemoteMonitor')
 class RemoteMonitor(Callback):
   """Callback used to stream events to a server.
 
@@ -575,6 +608,7 @@ class RemoteMonitor(Callback):
                       'root server at ' + str(self.root))
 
 
+@tf_export('keras.callbacks.LearningRateScheduler')
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
 
@@ -603,6 +637,7 @@ class LearningRateScheduler(Callback):
             'rate to %s.' % (epoch + 1, lr))
 
 
+@tf_export('keras.callbacks.TensorBoard')
 class TensorBoard(Callback):
   # pylint: disable=line-too-long
   """Tensorboard basic visualizations.
@@ -743,16 +778,24 @@ class TensorBoard(Callback):
         while i < val_size:
           step = min(self.batch_size, val_size - i)
           batch_val = []
-          batch_val.append(val_data[0][i:i + step])
-          batch_val.append(val_data[1][i:i + step])
-          batch_val.append(val_data[2][i:i + step])
+          batch_val.append(val_data[0][i:i + step]
+                           if val_data[0] is not None else None)
+          batch_val.append(val_data[1][i:i + step]
+                           if val_data[1] is not None else None)
+          batch_val.append(val_data[2][i:i + step]
+                           if val_data[2] is not None else None)
           if self.model.uses_learning_phase:
             # do not slice the learning phase
-            batch_val = [x[i:i + step] for x in val_data[:-1]]
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data[:-1]]
             batch_val.append(val_data[-1])
           else:
-            batch_val = [x[i:i + step] for x in val_data]
-          feed_dict = dict(zip(tensors, batch_val))
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data]
+          feed_dict = {}
+          for key, val in zip(tensors, batch_val):
+            if val is not None:
+              feed_dict[key] = val
           result = self.sess.run([self.merged], feed_dict=feed_dict)
           summary_str = result[0]
           self.writer.add_summary(summary_str, epoch)
@@ -772,6 +815,7 @@ class TensorBoard(Callback):
     self.writer.close()
 
 
+@tf_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
   """Reduce learning rate when a metric has stopped improving.
 
@@ -891,6 +935,7 @@ class ReduceLROnPlateau(Callback):
     return self.cooldown_counter > 0
 
 
+@tf_export('keras.callbacks.CSVLogger')
 class CSVLogger(Callback):
   """Callback that streams epoch results to a csv file.
 
@@ -971,6 +1016,7 @@ class CSVLogger(Callback):
     self.writer = None
 
 
+@tf_export('keras.callbacks.LambdaCallback')
 class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 

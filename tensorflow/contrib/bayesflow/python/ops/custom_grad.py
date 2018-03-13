@@ -14,7 +14,7 @@
 # ==============================================================================
 """Functions for specifying custom gradients.
 
-See ${python/contrib.bayesflow.custom_gradient}.
+See @{tf.contrib.bayesflow.custom_grad.custom_gradient}.
 """
 
 from __future__ import absolute_import

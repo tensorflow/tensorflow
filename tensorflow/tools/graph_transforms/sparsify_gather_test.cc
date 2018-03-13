@@ -106,11 +106,15 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* save_const_node =
           CreateNode("save/Const", "Const", {}, &graph_def);
 
+      Tensor tensor_names_values(DT_STRING, TensorShape({1}));
+      test::FillValues<string>(&tensor_names_values, {"w"});
       NodeDef* tensor_names_node =
           CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
+      SetNodeTensorAttr<string>("value", tensor_names_values,
+                                tensor_names_node);
+
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
-
       Tensor shapes_slices_val(DT_STRING, TensorShape({1}));
       shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
@@ -310,6 +314,29 @@ class SparsifyGatherTest : public ::testing::Test {
       SetNodeTensorAttr<float>("value", weights, w_node1);
       SetNodeTensorAttr<float>("value", weights, w_node2);
     } else {
+      NodeDef* save_const_node =
+          CreateNode("save/Const", "Const", {}, &graph_def);
+
+      NodeDef* tensor_names_node =
+          CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
+      Tensor tensor_names_values(DT_STRING, TensorShape({2}));
+      test::FillValues<string>(&tensor_names_values, {"w1", "w2"});
+      SetNodeTensorAttr<string>("value", tensor_names_values,
+                                tensor_names_node);
+
+      NodeDef* tensor_shapes_slices_node = CreateNode(
+          "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
+      Tensor shapes_slices_val(DT_STRING, TensorShape({2}));
+      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<string>()(1) = "4 1 0,4:0,1";
+      SetNodeTensorAttr<string>("value", shapes_slices_val,
+                                tensor_shapes_slices_node);
+
+      NodeDef* restore_node = CreateNode(
+          "save/RestoreV2", "RestoreV2",
+          {save_const_node, tensor_names_node, tensor_shapes_slices_node},
+          &graph_def);
+
       w_node1 = CreateNode("w1/part_1", "VariableV2", {}, &graph_def);
 
       zeros_shape1 = CreateNode("w1/part_1/Initializer/zeros/shape_as_tensor",
@@ -321,23 +348,7 @@ class SparsifyGatherTest : public ::testing::Test {
       assign_node1 = CreateNode("w1/part_1/Assign", "Assign",
                                 {w_node1, zeros_node1}, &graph_def);
 
-      NodeDef* save_const_node =
-          CreateNode("save/Const", "Const", {}, &graph_def);
-      NodeDef* tensor_names_node1 =
-          CreateNode("save/RestoreV2/tensor_names", "Const", {}, &graph_def);
-      NodeDef* tensor_shapes_slices_node1 = CreateNode(
-          "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
-
-      Tensor shapes_slices_val1(DT_STRING, TensorShape({1}));
-      shapes_slices_val1.flat<string>()(0) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val1,
-                                tensor_shapes_slices_node1);
-
-      NodeDef* restore_node1 = CreateNode(
-          "save/RestoreV2", "RestoreV2",
-          {save_const_node, tensor_names_node1, tensor_shapes_slices_node1},
-          &graph_def);
-      CreateNode("save/Assign", "Assign", {w_node1, restore_node1}, &graph_def);
+      CreateNode("save/Assign", "Assign", {w_node1, restore_node}, &graph_def);
 
       w_node2 = CreateNode("w2/part_1", "VariableV2", {}, &graph_def);
       zeros_shape2 = CreateNode("w2/part_1/Initializer/zeros/shape_as_tensor",
@@ -349,21 +360,7 @@ class SparsifyGatherTest : public ::testing::Test {
       assign_node2 = CreateNode("w2/part_1/Assign", "Assign",
                                 {w_node2, zeros_node2}, &graph_def);
 
-      NodeDef* tensor_names_node2 =
-          CreateNode("save/RestoreV2_1/tensor_names", "Const", {}, &graph_def);
-      NodeDef* tensor_shapes_slices_node2 = CreateNode(
-          "save/RestoreV2_1/shape_and_slices", "Const", {}, &graph_def);
-
-      Tensor shapes_slices_val2(DT_STRING, TensorShape({1}));
-      shapes_slices_val2.flat<string>()(0) = "4 1 0,4:0,1";
-      SetNodeTensorAttr<string>("value", shapes_slices_val2,
-                                tensor_shapes_slices_node2);
-
-      NodeDef* restore_node2 = CreateNode(
-          "save/RestoreV2_1", "RestoreV2",
-          {save_const_node, tensor_names_node2, tensor_shapes_slices_node2},
-          &graph_def);
-      CreateNode("save/Assign_1", "Assign", {w_node2, restore_node2},
+      CreateNode("save/Assign_1", "Assign", {w_node2, restore_node},
                  &graph_def);
 
       BundleWriter writer(Env::Default(), checkpoint_path);

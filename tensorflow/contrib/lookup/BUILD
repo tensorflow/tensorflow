@@ -46,6 +46,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 filegroup(

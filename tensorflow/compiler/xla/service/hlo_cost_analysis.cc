@@ -229,6 +229,10 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleHostCompute(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
@@ -469,7 +473,13 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
-  return Unimplemented("Custom-call is not implemented for HLO cost analysis.");
+  // We can't do anything sane with CustomCalls, since we don't know what they
+  // do, and returning an error status will stop iteration over this
+  // computation, which is probably also not what we want.  So just punt and
+  // return OK.  This will cause all of the properties to be reported as 0,
+  // which is fine.
+  current_should_compute_bottleneck_time_ = false;
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
@@ -520,6 +530,11 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
   }
   current_should_compute_bottleneck_time_ = false;
 
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather does not issue any flops.
   return Status::OK();
 }
 

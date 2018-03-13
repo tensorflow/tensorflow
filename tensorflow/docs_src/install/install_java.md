@@ -18,7 +18,7 @@ instructions might also work on other variants, we have only tested
 following requirements:
 
   * Ubuntu 16.04 or higher; 64-bit, x86
-  * macOS X 10.11 (El Capitan) or higher
+  * macOS 10.12.6 (Sierra) or higher
   * Windows 7 or higher; 64-bit, x86
 
 The installation instructions for Android are in a separate

@@ -141,8 +141,8 @@ void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
 
 void SingleOpModel::SetCustomOp(
     const string& name, const std::vector<uint8_t>& custom_option,
-    const std::function<TfLiteRegistration*()>& registeration) {
-  custom_registrations_[name] = registeration;
+    const std::function<TfLiteRegistration*()>& registration) {
+  custom_registrations_[name] = registration;
   opcodes_.push_back(
       CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, name.data()));
   operators_.push_back(CreateOperator(
@@ -187,6 +187,7 @@ void SingleOpModel::BuildInterpreter(
   for (const auto& shape : input_shapes) {
     int input_idx = interpreter_->inputs()[i++];
     if (input_idx == kOptionalTensor) continue;
+    if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)

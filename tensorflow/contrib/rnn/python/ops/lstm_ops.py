@@ -34,7 +34,7 @@ from tensorflow.python.platform import resource_loader
 _lstm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_lstm_ops.so"))
 
-LayerRNNCell = rnn_cell_impl._LayerRNNCell  # pylint: disable=invalid-name,protected-access
+LayerRNNCell = rnn_cell_impl.LayerRNNCell  # pylint: disable=invalid-name
 
 
 # pylint: disable=invalid-name
@@ -572,9 +572,8 @@ class LSTMBlockWrapper(base_layer.Layer):
 
   def _gather_states(self, data, indices, batch_size):
     """Produce `out`, s.t. out(i, j) = data(indices(i), i, j)."""
-    mod_indices = indices * batch_size + math_ops.range(batch_size)
-    return array_ops.gather(
-        array_ops.reshape(data, [-1, self.num_units]), mod_indices)
+    return array_ops.gather_nd(
+        data, array_ops.stack([indices, math_ops.range(batch_size)], axis=1))
 
 
 class LSTMBlockFusedCell(LSTMBlockWrapper):

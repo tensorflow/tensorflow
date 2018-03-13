@@ -24,6 +24,7 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -144,7 +145,9 @@ def layer_params_to_mat2d(vector):
                                         [-1, w_part.shape.as_list()[-1]])
     return array_ops.concat(
         (w_part_reshaped, array_ops.reshape(b_part, [1, -1])), axis=0)
-  else:
+  elif isinstance(vector, ops.IndexedSlices):
+    return vector
+  else:  # Tensor or Tensor-like.
     return array_ops.reshape(vector, [-1, vector.shape.as_list()[-1]])
 
 
@@ -163,6 +166,11 @@ def mat2d_to_layer_params(vector_template, mat2d):
   if isinstance(vector_template, (tuple, list)):
     w_part, b_part = mat2d[:-1], mat2d[-1]
     return array_ops.reshape(w_part, vector_template[0].shape), b_part
+  elif isinstance(vector_template, ops.IndexedSlices):
+    if not isinstance(mat2d, ops.IndexedSlices):
+      raise TypeError(
+          "If vector_template is an IndexedSlices, so should mat2d.")
+    return mat2d
   else:
     return array_ops.reshape(mat2d, vector_template.shape)
 
@@ -234,19 +242,22 @@ class SubGraph(object):
     # Set of all ancestor Tensors, Ops to 'outputs'.
     self._members = set()
 
-    self._recurse_add(outputs)
+    self._iter_add(outputs)
 
-  def _recurse_add(self, nodes):
-    """Recursively adds all of nodes' ancestors."""
-    for node in nodes:
-      if node in self._members:
-        continue
-      self._members.add(node)
+  def _iter_add(self, root):
+    """Iteratively adds all of nodes' ancestors using depth first search."""
+    stack = [root]
+    while stack:
+      nodes = stack.pop()
+      for node in nodes:
+        if node in self._members:
+          continue
+        self._members.add(node)
 
-      if isinstance(node, ops.Tensor):
-        self._recurse_add((node.op,))
-      elif isinstance(node, ops.Operation):
-        self._recurse_add(node.inputs)
+        if isinstance(node, ops.Tensor):
+          stack.append((node.op,))
+        elif isinstance(node, ops.Operation):
+          stack.append(node.inputs)
 
   def is_member(self, node):
     """Check if 'node' is in this subgraph."""
@@ -418,6 +429,129 @@ def batch_execute(global_step, thunks, batch_size, name=None):
              false_fn) in zip(conditions, true_fns, false_fns)
     ]
     return result
+
+
+def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is sparse, B is dense.
+
+  Args:
+    A: tf.IndexedSlices with dense shape [m, n].
+    B: tf.Tensor with shape [n, k].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A doesn't represent a matrix.
+    ValueError: If B is not rank-2.
+  """
+  with ops.name_scope(name, "matmul_sparse_dense", [A, B]):
+    if A.indices.shape.ndims != 1 or A.values.shape.ndims != 2:
+      raise ValueError("A must represent a matrix. Found: %s." % A)
+    if B.shape.ndims != 2:
+      raise ValueError("B must be a matrix.")
+    new_values = math_ops.matmul(A.values, B)
+    return ops.IndexedSlices(
+        new_values,
+        A.indices,
+        dense_shape=array_ops.stack([A.dense_shape[0], new_values.shape[1]]))
+
+
+def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is a diagonal matrix, B is sparse.
+
+  Args:
+    A_diag: diagonal entries of matrix A of shape [m, m].
+    B: tf.IndexedSlices. Represents matrix of shape [m, n].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A_diag is not rank-1.
+    ValueError: If B doesn't represent a matrix.
+  """
+  with ops.name_scope(name, "matmul_diag_sparse", [A_diag, B]):
+    A_diag = ops.convert_to_tensor(A_diag)
+    if A_diag.shape.ndims != 1:
+      raise ValueError("A_diag must be a rank-1 Tensor.")
+    if B.indices.shape.ndims != 1 or B.values.shape.ndims != 2:
+      raise ValueError("B must represent a matrix. Found: %s." % B)
+    a = array_ops.gather(A_diag, B.indices)
+    a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
+    return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
+
+
+class PartitionedTensor(object):
+  """A Tensor partitioned across its 0-th dimension."""
+
+  def __init__(self, tensors):
+    """Initializes PartitionedTensor.
+
+    Args:
+      tensors: List of Tensors. All Tensors must agree on shape (excepting
+        batch dimension) and dtype.
+
+    Raises:
+      ValueError: If 'tensors' has length zero.
+      ValueError: if contents of 'tensors' don't agree on shape or dtype.
+    """
+    if not tensors:
+      raise ValueError("tensors must be a list of 1+ Tensors.")
+
+    dtype = tensors[0].dtype
+    if not all(tensor.dtype == dtype for tensor in tensors):
+      raise ValueError("all tensors must have dtype = %s." % dtype)
+
+    shape = tensors[0].shape[1:]
+    if not all(tensor.shape[1:] == shape for tensor in tensors):
+      raise ValueError("All tensors must have shape = %s (excluding batch "
+                       "dimension)." % shape)
+
+    self.tensors = tensors
+    self._concats = {}  # {device: Tensor}
+
+  @property
+  def shape(self):
+    feature_shape = self.tensors[0].shape[1:]
+    batch_size = sum([tensor.shape[0] for tensor in self.tensors],
+                     tensor_shape.Dimension(0))
+    return tensor_shape.TensorShape([batch_size]).concatenate(feature_shape)
+
+  def get_shape(self):
+    return self.shape
+
+  @property
+  def dtype(self):
+    return self.tensors[0].dtype
+
+  def devices(self):
+    return set(tensor.device for tensor in self.tensors)
+
+  def __str__(self):
+    return "PartitionedTensor([%s, ...], dtype=%s, shape=%s)" % (
+        self.tensors[0].name, self.dtype.name, tuple(self.shape.as_list()))
+
+  def __hash__(self):
+    return hash(tuple(self.tensors))
+
+  def as_tensor(self, dtype=None, name=None, as_ref=False):
+    with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
+      assert not as_ref
+      assert dtype in [None, self.dtype]
+      result = array_ops.concat(self.tensors, axis=0)
+
+      # Cache 'result' if we haven't already cached a value for this device.
+      if result.device not in self._concats:
+        self._concats[result.device] = result
+      return self._concats[result.device]
+
+
+ops.register_tensor_conversion_function(
+    PartitionedTensor,
+    lambda val, dtype, name, as_ref: val.as_tensor(dtype, name, as_ref))
 
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients

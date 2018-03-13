@@ -5,12 +5,15 @@ load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
+
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
+     "def_file_filter_configure")
 
 def _extract_version_number(bazel_version):
   """Extracts the semantic version number from a version string
@@ -66,13 +69,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  check_bazel_version_at_least("0.5.4")
+  check_bazel_version_at_least("0.10.0")
   clang6_configure(name="local_config_clang6")
   cuda_configure(name="local_config_cuda")
   tensorrt_configure(name="local_config_tensorrt")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  # For windows bazel build
+  # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
+  def_file_filter_configure(name = "local_config_def_file_filter")
 
   # Point //external/local_config_arm_compiler to //external/arm_compiler
   arm_compiler_configure(
@@ -120,12 +127,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
       ],
-      sha256 = "2b526c6888639025323fd4f2600533c0f982d304ea48e4f1663e8066bd9f6368",
-      strip_prefix = "eigen-eigen-14e1418fcf12",
+      sha256 = "0cadb31a35b514bf2dfd6b5d38205da94ef326ec6908fc3fd7c269948467214f",
+      strip_prefix = "eigen-eigen-2355b229ea4c",
       build_file = str(Label("//third_party:eigen.BUILD")),
+      patch_file = str(Label("//third_party:eigen_fix_cuda_compilation.patch"))
   )
 
   tf_http_archive(
@@ -179,11 +187,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "gemmlowp",
       urls = [
-          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.zip",
-          "https://github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.zip",
+          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
+          "https://github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
       ],
-      sha256 = "dd2557072bde12141419cb8320a9c25e6ec41a8ae53c2ac78c076a347bb46d9d",
-      strip_prefix = "gemmlowp-010bb3e71a26ca1d0884a167081d092b43563996",
+      sha256 = "b852cc90259a7357c8a323f108f2cec6e85979fc3b18b5590b99e0130044b2cf",
+      strip_prefix = "gemmlowp-7c7c744640ddc3d0af18fb245b4d23228813a71b",
   )
 
   tf_http_archive(
@@ -473,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/f135378ec6365e852f7d5a3cfcdce342f08cb5f3.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/f135378ec6365e852f7d5a3cfcdce342f08cb5f3.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/636e2230de961637b059b9cd15799daef32544f8.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/636e2230de961637b059b9cd15799daef32544f8.tar.gz",
       ],
-      sha256 = "296ab832167e6c46eb65ef1f9a2b5fc31c77fcd2248799b306aa2d5d2e4edbfe",
-      strip_prefix = "llvm-f135378ec6365e852f7d5a3cfcdce342f08cb5f3",
+      sha256 = "44f08a32ac48eca545fd6eac4d5ef3a9cea4382f805b87dce38340255e7d2138",
+      strip_prefix = "llvm-636e2230de961637b059b9cd15799daef32544f8",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -687,12 +695,22 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "bazel_toolchains",
       urls = [
-          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
+          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
       ],
-      sha256 = "ed829b5eea8af1f405f4cc3d6ecfc3b1365bb7843171036030a31b5127002311",
-      strip_prefix = "bazel-toolchains-f3b09700fae5d7b6e659d7cefe0dcc6e8498504c",
+      strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
+      sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
   )
+
+  tf_http_archive(
+      name = "rbe_integration_test",
+      urls = [
+          "http://mirror.bazel.build/github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
+          "https://github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
+      ],
+      sha256 = "66d93b3919a165d486c31f5290d312abe9fda2685242f812c110653c124e1db4",
+      strip_prefix = "rbe-integration-test-78a6194c7dda200b9522cf07707e3bc695804d1e",
+   )
 
   tf_http_archive(
       name = "arm_neon_2_x86_sse",

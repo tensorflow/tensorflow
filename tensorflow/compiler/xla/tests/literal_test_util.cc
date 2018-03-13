@@ -209,6 +209,11 @@ template <>
   return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
 }
 template <>
+::testing::AssertionResult CompareEqual<Eigen::half>(Eigen::half lhs,
+                                                     Eigen::half rhs) {
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs);
+}
+template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
 }
@@ -449,8 +454,12 @@ class NearComparator {
 
  private:
   template <typename NativeT>
-  bool NanMismatch(NativeT lhs, NativeT rhs) {
-    return std::isnan(lhs) != std::isnan(rhs);
+  bool NanMismatch(NativeT expected, NativeT actual, bool relaxed_nans) {
+    if (relaxed_nans) {
+      return !std::isnan(expected) && std::isnan(actual);
+    } else {
+      return std::isnan(expected) != std::isnan(actual);
+    }
   }
 
   template <typename NativeT>
@@ -472,7 +481,8 @@ class NearComparator {
 
     const float abs_diff = std::abs(actual - expected);
     const float rel_err = abs_diff / std::abs(expected);
-    const bool nan_mismatch = NanMismatch<NativeT>(expected, actual);
+    const bool nan_mismatch =
+        NanMismatch<NativeT>(expected, actual, error_.relaxed_nans);
     const bool mismatch =
         (nan_mismatch || (abs_diff >= error_.abs && rel_err >= error_.rel));
     return !mismatch;
@@ -630,9 +640,11 @@ class NearComparator {
 };
 
 template <>
-bool NearComparator::NanMismatch<complex64>(complex64 lhs, complex64 rhs) {
-  return std::isnan(lhs.real()) != std::isnan(rhs.real()) ||
-         std::isnan(lhs.imag()) != std::isnan(rhs.imag());
+bool NearComparator::NanMismatch<complex64>(complex64 expected,
+                                            complex64 actual,
+                                            bool relaxed_nans) {
+  return NanMismatch(expected.real(), actual.real(), relaxed_nans) ||
+         NanMismatch(expected.imag(), actual.imag(), relaxed_nans);
 }
 
 template <>

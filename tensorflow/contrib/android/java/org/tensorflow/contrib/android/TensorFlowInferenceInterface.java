@@ -197,9 +197,7 @@ public class TensorFlowInferenceInterface {
     run(outputNames, enableStats, new String[] {});
   }
 
-  /**
-   * An overloaded version of runInference that allows supplying targetNodeNames as well
-   */
+  /** An overloaded version of runInference that allows supplying targetNodeNames as well */
   public void run(String[] outputNames, boolean enableStats, String[] targetNodeNames) {
     // Release any Tensors from the previous run calls.
     closeFetches();
@@ -211,7 +209,7 @@ public class TensorFlowInferenceInterface {
       runner.fetch(tid.name, tid.outputIndex);
     }
 
-	// Add targets.
+    // Add targets.
     for (String t : targetNodeNames) {
       runner.addTarget(t);
     }

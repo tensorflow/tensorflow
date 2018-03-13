@@ -214,6 +214,9 @@ class Env {
   /// replaced.
   Status RenameFile(const string& src, const string& target);
 
+  /// \brief Copy the src to target.
+  Status CopyFile(const string& src, const string& target);
+
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
   string GetExecutablePath();
@@ -380,6 +383,11 @@ struct ThreadOptions {
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
 };
+
+/// A utility routine: copy contents of `src` in file system `src_fs`
+/// to `target` in file system `target_fs`.
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target);
 
 /// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);

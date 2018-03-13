@@ -22,7 +22,6 @@ def tf_gen_op_wrapper_private_py(name, out=None, deps=[],
   bare_op_name = name[:-4] # Strip off the _gen
   tf_gen_op_wrapper_py(name=bare_op_name,
     out=out,
-    hidden_file="ops/hidden_ops.txt",
     visibility=visibility,
     deps=deps,
     require_shape_functions=require_shape_functions,

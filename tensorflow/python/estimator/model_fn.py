@@ -31,8 +31,10 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('estimator.ModeKeys')
 class ModeKeys(object):
   """Standard names for model modes.
 
@@ -52,6 +54,7 @@ LOSS_METRIC_KEY = 'loss'
 AVERAGE_LOSS_METRIC_KEY = 'average_loss'
 
 
+@tf_export('estimator.EstimatorSpec')
 class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
         'mode', 'predictions', 'loss', 'train_op', 'eval_metric_ops',

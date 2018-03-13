@@ -8,7 +8,6 @@
 * New Optimizer internal API for non-slot variables. Descendants of AdamOptimizer that access _beta[12]_power will need to be updated.
 * `tf.estimator.{FinalExporter,LatestExporter}` now export stripped SavedModels. This improves forward compatibility of the SavedModel.
 * FFT support added to XLA CPU/GPU.
-* Android TF can now be built with CUDA acceleration on compatible Tegra devices (see [contrib/makefile/README.md](contrib/makefile/README.md) for more information)
 
 ## Bug Fixes and Other Changes
 * Documentation updates:
@@ -22,7 +21,7 @@ newcomers.
 * Other:
   * Add `tf.contrib.distributions.Kumaraswamy`.
   * `RetryingFileSystem::FlushCaches()` calls the base FileSystem's `FlushCaches()`.
-  * Add auto_correlation to distributions.
+  * Add `auto_correlation` to distributions.
   * Add `tf.contrib.distributions.Autoregressive`.
   * Add SeparableConv1D layer.
   * Add convolutional Flipout layers.
@@ -32,12 +31,12 @@ newcomers.
   * Output variance over trees predictions for classifications tasks.
   * For `pt` and `eval` commands, allow writing tensor values to filesystem as numpy files.
   * gRPC: Propagate truncated errors (instead of returning gRPC internal error).
-  * Augment parallel_interleave to support 2 kinds of prefetching.
+  * Augment `parallel_interleave` to support 2 kinds of prefetching.
   * Improved XLA support for C64-related ops log, pow, atan2, tanh.
   * Add probabilistic convolutional layers.
 
 ## API Changes
-* Introducing prepare_variance boolean with default setting to False for backward compatibility.
+* Introducing `prepare_variance` boolean with default setting to False for backward compatibility.
 * Move `layers_dense_variational_impl.py` to `layers_dense_variational.py`.
 
 ## Known Bugs
@@ -60,10 +59,6 @@ newcomers.
 
   TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
   CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
-* The `tensorboard` command or module may appear to be missing after certain
-  upgrade flows. This is due to pip package conflicts as a result of changing
-  the TensorBoard package name.  See the [TensorBoard 1.6.0 release notes](
-  https://github.com/tensorflow/tensorboard/releases/tag/1.6.0) for a fix.
 
 ## Thanks to our Contributors
 
@@ -638,7 +633,7 @@ answered questions, and were part of inspiring discussions.
 * Fixed LIBXSMM integration.
 * Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
 * Improve implicit broadcasting lowering.
-* Improving stability of GCS/Bigquery clients by a faster retrying of stale transmissions.
+* Improving stability of GCS/BigQuery clients by a faster retrying of stale transmissions.
 * Remove OpKernelConstruction::op_def() as part of minimizing proto dependencies.
 * VectorLaplaceDiag distribution added.
 * Android demo no longer requires libtensorflow_demo.so to run (libtensorflow_inference.so still required)

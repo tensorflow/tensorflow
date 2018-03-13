@@ -45,16 +45,16 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(
   const float quant_max_float = static_cast<float>(quant_max);
   *scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / *scale;
-  const uint8 nudged_zero_point = [zero_point_from_min, quant_min,
-                                   quant_min_float, quant_max,
-                                   quant_max_float] {
+  const uint16 nudged_zero_point = [zero_point_from_min, quant_min,
+                                    quant_min_float, quant_max,
+                                    quant_max_float] {
     if (zero_point_from_min < quant_min_float) {
-      return static_cast<uint8>(quant_min);
+      return static_cast<uint16>(quant_min);
     }
     if (zero_point_from_min > quant_max_float) {
-      return static_cast<uint8>(quant_max);
+      return static_cast<uint16>(quant_max);
     }
-    return static_cast<uint8>(StdRound(zero_point_from_min));
+    return static_cast<uint16>(StdRound(zero_point_from_min));
   }();
   *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);

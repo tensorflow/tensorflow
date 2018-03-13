@@ -357,24 +357,23 @@ where:
     to 6006.
   * <tt><i>TensorFlowCPUImage</i></tt> is required. It identifies the Docker
     container. Specify one of the following values:
-    * <tt>gcr.io/tensorflow/tensorflow</tt>, which is the TensorFlow CPU binary image.
-    * <tt>gcr.io/tensorflow/tensorflow:latest-devel</tt>, which is the latest
+    * <tt>tensorflow/tensorflow</tt>, which is the TensorFlow CPU binary image.
+    * <tt>tensorflow/tensorflow:latest-devel</tt>, which is the latest
       TensorFlow CPU Binary image plus source code.
-    * <tt>gcr.io/tensorflow/tensorflow:<i>version</i></tt>, which is the
+    * <tt>tensorflow/tensorflow:<i>version</i></tt>, which is the
       specified version (for example, 1.1.0rc1) of TensorFlow CPU binary image.
-    * <tt>gcr.io/tensorflow/tensorflow:<i>version</i>-devel</tt>, which is
+    * <tt>tensorflow/tensorflow:<i>version</i>-devel</tt>, which is
       the specified version (for example, 1.1.0rc1) of the TensorFlow GPU
       binary image plus source code.
 
-    <tt>gcr.io</tt> is the Google Container Registry. Note that some
-    TensorFlow images are also available at
+    TensorFlow images are available at
     [dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/).
 
 For example, the following command launches the latest TensorFlow CPU binary image
 in a Docker container from which you can run TensorFlow programs in a shell:
 
 <pre>
-$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b>
+$ <b>docker run -it tensorflow/tensorflow bash</b>
 </pre>
 
 The following command also launches the latest TensorFlow CPU binary image in a
@@ -382,7 +381,7 @@ Docker container. However, in this Docker container, you can run TensorFlow
 programs in a Jupyter notebook:
 
 <pre>
-$ <b>docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow</b>
+$ <b>docker run -it -p 8888:8888 tensorflow/tensorflow</b>
 </pre>
 
 Docker will download the TensorFlow binary image the first time you launch it.
@@ -406,14 +405,14 @@ where:
     <tt><i>hostPort</i></tt> and <code><em>containerPort</em></code> to `8888`.
   * <i>TensorFlowGPUImage</i> specifies the Docker container. You must
     specify one of the following values:
-    * <tt>gcr.io/tensorflow/tensorflow:latest-gpu</tt>, which is the latest
+    * <tt>tensorflow/tensorflow:latest-gpu</tt>, which is the latest
       TensorFlow GPU binary image.
-    * <tt>gcr.io/tensorflow/tensorflow:latest-devel-gpu</tt>, which is
+    * <tt>tensorflow/tensorflow:latest-devel-gpu</tt>, which is
       the latest TensorFlow GPU Binary image plus source code.
-    * <tt>gcr.io/tensorflow/tensorflow:<i>version</i>-gpu</tt>, which is the
+    * <tt>tensorflow/tensorflow:<i>version</i>-gpu</tt>, which is the
       specified version (for example, 0.12.1) of the TensorFlow GPU
       binary image.
-    * <tt>gcr.io/tensorflow/tensorflow:<i>version</i>-devel-gpu</tt>, which is
+    * <tt>tensorflow/tensorflow:<i>version</i>-devel-gpu</tt>, which is
       the specified version (for example, 0.12.1) of the TensorFlow GPU
       binary image plus source code.
 
@@ -422,7 +421,7 @@ following command launches the latest TensorFlow GPU binary image in a
 Docker container from which you can run TensorFlow programs in a shell:
 
 <pre>
-$ <b>nvidia-docker run -it gcr.io/tensorflow/tensorflow:latest-gpu bash</b>
+$ <b>nvidia-docker run -it tensorflow/tensorflow:latest-gpu bash</b>
 </pre>
 
 The following command also launches the latest TensorFlow GPU binary image
@@ -430,13 +429,13 @@ in a Docker container. In this Docker container, you can run TensorFlow
 programs in a Jupyter notebook:
 
 <pre>
-$ <b>nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu</b>
+$ <b>nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:latest-gpu</b>
 </pre>
 
 The following command installs an older TensorFlow version (0.12.1):
 
 <pre>
-$ <b>nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:0.12.1-gpu</b>
+$ <b>nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:0.12.1-gpu</b>
 </pre>
 
 Docker will download the TensorFlow binary image the first time you launch it.
@@ -483,7 +482,6 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
      https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.6.0-cp34-cp34m-linux_x86_64.whl</b></pre>
 
-
 <a name="ValidateYourInstallation"></a>
 ## Validate your installation
 
@@ -507,7 +505,7 @@ If you installed through Docker, start a Docker container
 from which you can run bash. For example:
 
 <pre>
-$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b>
+$ <b>docker run -it tensorflow/tensorflow bash</b>
 </pre>
 
 

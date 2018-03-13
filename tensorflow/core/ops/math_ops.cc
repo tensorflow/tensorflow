@@ -1065,6 +1065,26 @@ REGISTER_OP("UnsortedSegmentMax")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn);
 
+REGISTER_OP("UnsortedSegmentMin")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+
+REGISTER_OP("UnsortedSegmentProd")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(UnsortedSegmentReductionShapeFn);
+
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
     .Input("indices: Tidx")

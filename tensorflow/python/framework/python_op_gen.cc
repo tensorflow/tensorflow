@@ -75,6 +75,36 @@ bool IsPythonReserved(const string& s) {
   return kPythonReserved->count(s) > 0;
 }
 
+bool IsOpWithUnderscorePrefix(const string& s) {
+  static const std::set<string>* const kUnderscoreOps = new std::set<string>(
+      {// Lowercase built-in functions and types in Python, from:
+       // [x for x in dir(__builtins__) if x[0].islower()]
+       // These need to be excluded so they don't conflict with actual built-in
+       // functions since we use '*' imports.
+       "abs", "all", "any", "apply", "bin", "bool", "buffer", "bytearray",
+       "bytes", "callable", "chr", "classmethod", "cmp", "coerce", "compile",
+       "complex", "copyright", "credits", "delattr", "dict", "dir", "divmod",
+       "enumerate", "eval", "execfile", "exit", "file", "filter", "float",
+       "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help",
+       "hex", "id", "input", "int", "intern", "isinstance", "issubclass",
+       "iter", "len", "license", "list", "locals", "long", "map", "max",
+       "memoryview", "min", "next", "object", "oct", "open", "ord", "pow",
+       "print", "property", "quit", "range", "raw_input", "reduce", "reload",
+       "repr", "reversed", "round", "set", "setattr", "slice", "sorted",
+       "staticmethod", "str", "sum", "super", "tuple", "type", "unichr",
+       "unicode", "vars", "xrange", "zip",
+       // These have the same name as ops defined in Python and might be used
+       // incorrectly depending on order of '*' imports.
+       // TODO(annarev): reduce usage of '*' imports and remove these from the
+       // list.
+       "fused_batch_norm", "histogram_fixed_width", "stack",
+       "batch_norm_with_global_normalization",
+       // TODO(annarev): replace these ops in the next change.
+       "broadcast_gradient_args", "concat", "enter", "histogram_summary",
+       "ref_enter", "ref_identity", "scalar_summary"});
+  return kUnderscoreOps->count(s) > 0;
+}
+
 string AvoidPythonReserved(const string& s) {
   if (IsPythonReserved(s)) return strings::StrCat(s, "_");
   return s;
@@ -476,9 +506,6 @@ GenPythonOp::GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
 GenPythonOp::~GenPythonOp() {}
 
 string GenPythonOp::Code() {
-  if (api_def_.visibility() == ApiDef::SKIP) {
-    return "";
-  }
   // This has all the input args followed by those attrs that don't have
   // defaults.
   std::vector<ParamNames> params_no_default;
@@ -583,8 +610,13 @@ void GenPythonOp::AddExport() {
   strings::StrAppend(&result_, ")\n");
 }
 
+void GenPythonOp::AddDefLine(const string& function_name,
+                             const string& parameters) {
+  strings::StrAppend(&result_, "def ", function_name, "(", parameters, "):\n");
+}
+
 void GenPythonOp::AddDefLine(const string& parameters) {
-  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
+  AddDefLine(function_name_, parameters);
 }
 
 void GenPythonOp::AddDocStringDescription() {
@@ -805,28 +837,47 @@ from tensorflow.python.util.tf_export import tf_export
   auto out = cleaned_ops.mutable_op();
   out->Reserve(ops.op_size());
   for (const auto& op_def : ops.op()) {
-    bool is_hidden = false;
-    for (const string& hidden : hidden_ops) {
-      if (op_def.name() == hidden) {
-        is_hidden = true;
-        break;
+    const auto* api_def = api_defs.GetApiDef(op_def.name());
+
+    if (api_def->visibility() == ApiDef::SKIP) {
+      continue;
+    }
+
+    // An op is hidden if either its ApiDef visibility is HIDDEN
+    // or it is in the hidden_ops list.
+    bool is_hidden = api_def->visibility() == ApiDef::HIDDEN;
+    bool hidden_by_api_def = is_hidden;
+    if (!is_hidden) {
+      for (const string& hidden : hidden_ops) {
+        if (op_def.name() == hidden) {
+          is_hidden = true;
+          break;
+        }
       }
     }
 
     string function_name;
     python_op_gen_internal::GenerateLowerCaseOpName(op_def.name(),
                                                     &function_name);
-    if (is_hidden) function_name = strings::StrCat("_", function_name);
+    bool is_reserved = python_op_gen_internal::IsPythonReserved(function_name);
 
-    // When users create custom python wrappers, they may link in the
-    // default op registry by accident, and because they can't
-    // enumerate all 'hidden' symbols, this guard is to prevent
-    // instantiating a python reserved word in their wrapper.
-    if (python_op_gen_internal::IsPythonReserved(function_name)) {
+    // Prefix an op with underscore if the op is listed in hidden_ops or
+    // name is reserved or it is of the exceptions in IsOpWithUnderscorePrefix.
+    // Do not add underscores to ops set to HIDDEN in ApiDef otherwise.
+    // TODO(annarev): don't prefix with underscores even if op is in hidden_ops.
+    if (is_hidden) {
+      if (!hidden_by_api_def || is_reserved ||
+          python_op_gen_internal::IsOpWithUnderscorePrefix(function_name)) {
+        function_name = strings::StrCat("_", function_name);
+      }
+    } else if (is_reserved) {
+      // When users create custom python wrappers, they may link in the
+      // default op registry by accident, and because they can't
+      // enumerate all 'hidden' symbols, this guard is to prevent
+      // instantiating a python reserved word in their wrapper.
       continue;
     }
 
-    const auto* api_def = api_defs.GetApiDef(op_def.name());
     strings::StrAppend(&result, GetPythonOp(op_def, *api_def, function_name));
 
     if (!require_shapes) {

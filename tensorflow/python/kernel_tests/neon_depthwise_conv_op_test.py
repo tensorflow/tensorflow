@@ -148,7 +148,7 @@ class DepthwiseConv2DTest(test.TestCase):
     print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
           ", stride:", stride, ", padding: ", padding, ", max diff: ",
           np.amax(np.absolute(native_result - interface_result)))
-    self.assertArrayNear(
+    self.assertAllClose(
         np.ravel(native_result), np.ravel(interface_result), 1e-5)
     self.assertShapeEqual(native_result, conv_native)
     self.assertShapeEqual(native_result, conv_interface)
@@ -213,7 +213,7 @@ class DepthwiseConv2DTest(test.TestCase):
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
         value = sess.run(conv)
     print("value = ", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-5)
+    self.assertAllClose(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
   def testConv2D2x2Filter(self):

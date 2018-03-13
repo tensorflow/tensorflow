@@ -240,6 +240,13 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     labels = np.array([[1.0], [2.0]])
 
     with self.test_session() as session:
+      # Add another trainable variable that doesn't produce a gradient to
+      # verify that None gradients are supported.
+      _ = variable_scope.get_variable(
+          'another_variable',
+          initializer=constant_op.constant(1, dtype=dtypes.float64),
+          dtype=dtypes.float64)
+
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, losses.Reduction.MEAN, devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
@@ -450,6 +457,34 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
                                  '.+none.+reduction.+is.+specified.+'):
       _ = replicate_model_fn.replicate_model_fn(self.model_fn,
                                                 losses.Reduction.NONE)
+
+  def test_places_on_gpu_with_upper_case_spelling(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session():
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/GPU:0'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', c.device)
+
+  def test_places_on_gpu_with_lower_case_spelling(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session():
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/gpu:0'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual('/device:GPU:0', c.device)
 
 
 class ReplicateAcrossASingleDeviceWithoutTowerOptimizer(
@@ -1091,8 +1126,6 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       feature_shards, label_shards = replicate_model_fn._split_batch(
           features, labels, 2, device='/gpu:0')
 
-      print(feature_shards[0]['x'].eval())
-      print(feature_shards[1]['x'].eval())
       self.assertSparseValuesEqual(
           sparse_tensor.SparseTensorValue(
               indices=[[0, 0], [1, 0], [1, 1]],

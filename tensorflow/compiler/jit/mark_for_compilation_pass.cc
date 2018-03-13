@@ -174,7 +174,9 @@ bool HasResourceInputOrOutput(const Node& node) {
 }
 
 struct NodeCompare {
-  bool operator()(const Node* a, const Node* b) { return a->id() < b->id(); }
+  bool operator()(const Node* a, const Node* b) const {
+    return a->id() < b->id();
+  }
 };
 using OrderedNodeSet = std::set<Node*, NodeCompare>;
 
@@ -190,6 +192,9 @@ Status FindCompilationCandidates(
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
   for (Node* node : graph.op_nodes()) {
+    VLOG(2) << "FindCompilationCandidates(): Processing "
+            << node->DebugString();
+
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(node->assigned_device_name(), &device_type));
@@ -214,6 +219,13 @@ Status FindCompilationCandidates(
     }
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
+      continue;
+    }
+    // _Arg nodes in a top-level function represent feeds.
+    // Do not compile them.
+    if (node->type_string() == "_Arg") {
+      VLOG(2) << "Skipping jit compilation for '_Arg'-typed node "
+              << node->DebugString();
       continue;
     }
     // _Retval nodes in a top-level function represent fetches.
@@ -304,6 +316,7 @@ Status MarkForCompilationPass::Run(
         static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
   }
   bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+  VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
   auto is_compilable = [global_jit_level, cpu_global_jit, fld](

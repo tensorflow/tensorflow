@@ -35,7 +35,15 @@ separable_conv2d = layers.separable_conv2d
 
 class QuantizeTest(test_util.TensorFlowTestCase):
 
+  def _RunTestOverParameters(self, test_fn):
+    params = [True, False]
+    for is_training in params:
+      test_fn(is_training)
+
   def testInsertQuantOpFailsWhenOpsNotConnected(self):
+    pass
+
+  def _TestInsertQuantOpFailsWhenOpsNotConnected(self, is_training):
     graph = ops.Graph()
     with graph.as_default():
       batch_size, height, width, depth = 5, 128, 128, 3
@@ -45,17 +53,18 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                     activation_fn=None, scope='test')
       relu = nn_ops.relu6(inputs)
 
-    context = quantize._QuantizeContext(graph=graph, weight_bits=8,
-                                        weight_narrow_range=True,
-                                        activation_bits=8)
     # Inserting a quantization op between two unconnected ops should fail with
     # ValueError.
     with self.assertRaises(ValueError) as err:
-      context._InsertQuantOp('test', conv.op, [relu.op], 'FailingQuantOp')
+      quantize._InsertQuantOp('test', is_training, conv.op, [relu.op],
+                              'FailingQuantOp')
     self.assertEqual(
         str(err.exception), 'Some inputs not quantized for ops: [Relu6]')
 
   def testInsertQuantOpForAddAfterConv2d(self):
+    self._RunTestOverParameters(self._TestInsertQuantOpForAddAfterConv2d)
+
+  def _TestInsertQuantOpForAddAfterConv2d(self, is_training):
     graph = ops.Graph()
     with graph.as_default():
       batch_size, height, width, depth = 5, 128, 128, 3
@@ -70,8 +79,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
-                      activation_bits=8)
+    quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     add_quant = graph.get_operation_by_name('test/add_quant/' +
@@ -79,6 +87,10 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(add_quant.type, quantization_node_name)
 
   def testInsertQuantOpForAddAfterSeparableConv2d(self):
+    self._RunTestOverParameters(
+        self._TestInsertQuantOpForAddAfterSeparableConv2d)
+
+  def _TestInsertQuantOpForAddAfterSeparableConv2d(self, is_training):
     graph = ops.Graph()
     with graph.as_default():
       batch_size, height, width, depth = 5, 128, 128, 3
@@ -94,13 +106,34 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
-                      activation_bits=8)
+    quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     add_quant = graph.get_operation_by_name('test/add_quant/' +
                                             quantization_node_name)
     self.assertEqual(add_quant.type, quantization_node_name)
+
+  def testFinalLayerQuantized(self):
+    self._RunTestOverParameters(self._TestFinalLayerQuantized)
+
+  def _TestFinalLayerQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      _ = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test')
+      # Ensure that the a FakeQuant operation is in the outputs of the BiasAdd.
+      bias_add_op = graph.get_operation_by_name('test/BiasAdd')
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [op.type for op in bias_add_op.outputs[0].consumers()])
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.
@@ -111,7 +144,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       stddev: Standard deviation of normal variable.
 
     Returns:
-      An initialized that initialzes with a truncated normal variable.
+      An initialized that initializes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 

@@ -35,10 +35,14 @@ from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.Dense')
 class Dense(base.Layer):
   """Densely-connected layer class.
 
@@ -152,11 +156,11 @@ class Dense(base.Layer):
       outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
                                                              [0]])
       # Reshape the output back to the original ndim of the input.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      outputs = standard_ops.matmul(inputs, self.kernel)
+      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:
@@ -173,6 +177,7 @@ class Dense(base.Layer):
     return input_shape[:-1].concatenate(self.units)
 
 
+@tf_export('layers.dense')
 def dense(
     inputs, units,
     activation=None,
@@ -248,6 +253,7 @@ def dense(
   return layer.apply(inputs)
 
 
+@tf_export('layers.Dropout')
 class Dropout(base.Layer):
   """Applies Dropout to the input.
 
@@ -287,13 +293,7 @@ class Dropout(base.Layer):
     # shapes with dynamically sized inputs.
     if self.noise_shape is None:
       return self.noise_shape
-
-    symbolic_shape = array_ops.shape(inputs)
-    noise_shape = [
-        symbolic_shape[axis] if shape is None else shape
-        for axis, shape in enumerate(self.noise_shape)
-    ]
-    return noise_shape
+    return nn_ops._get_noise_shape(inputs, self.noise_shape)
 
   def call(self, inputs, training=False):
 
@@ -309,6 +309,7 @@ class Dropout(base.Layer):
     return input_shape
 
 
+@tf_export('layers.dropout')
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -350,6 +351,7 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
+@tf_export('layers.Flatten')
 class Flatten(base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
   
@@ -382,7 +384,7 @@ class Flatten(base.Layer):
     if self.data_format == 'channels_first':
       inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
@@ -396,6 +398,7 @@ class Flatten(base.Layer):
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.flatten')
 def flatten(inputs, data_format='channels_last', name=None):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 

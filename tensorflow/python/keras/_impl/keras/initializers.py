@@ -32,8 +32,10 @@ from tensorflow.python.ops.init_ops import RandomUniform
 from tensorflow.python.ops.init_ops import TruncatedNormal
 from tensorflow.python.ops.init_ops import VarianceScaling
 from tensorflow.python.ops.init_ops import Zeros
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.initializers.lecun_normal')
 def lecun_normal(seed=None):
   """LeCun normal initializer.
 
@@ -56,6 +58,7 @@ def lecun_normal(seed=None):
       scale=1., mode='fan_in', distribution='normal', seed=seed)
 
 
+@tf_export('keras.initializers.lecun_uniform')
 def lecun_uniform(seed=None):
   """LeCun uniform initializer.
 
@@ -77,6 +80,7 @@ def lecun_uniform(seed=None):
       scale=1., mode='fan_in', distribution='uniform', seed=seed)
 
 
+@tf_export('keras.initializers.glorot_normal')
 def glorot_normal(seed=None):
   """Glorot normal initializer, also called Xavier normal initializer.
 
@@ -99,6 +103,7 @@ def glorot_normal(seed=None):
       scale=1., mode='fan_avg', distribution='normal', seed=seed)
 
 
+@tf_export('keras.initializers.glorot_uniform')
 def glorot_uniform(seed=None):
   """Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -121,6 +126,7 @@ def glorot_uniform(seed=None):
       scale=1., mode='fan_avg', distribution='uniform', seed=seed)
 
 
+@tf_export('keras.initializers.he_normal')
 def he_normal(seed=None):
   """He normal initializer.
 
@@ -141,6 +147,7 @@ def he_normal(seed=None):
       scale=2., mode='fan_in', distribution='normal', seed=seed)
 
 
+@tf_export('keras.initializers.he_uniform')
 def he_uniform(seed=None):
   """He uniform variance scaling initializer.
 
@@ -178,10 +185,12 @@ orthogonal = Orthogonal
 # Utility functions
 
 
+@tf_export('keras.initializers.serialize')
 def serialize(initializer):
   return serialize_keras_object(initializer)
 
 
+@tf_export('keras.initializers.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -190,6 +199,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='initializer')
 
 
+@tf_export('keras.initializers.get')
 def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)
@@ -199,4 +209,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret initializer identifier:', identifier)
+    raise ValueError('Could not interpret initializer identifier: ' +
+                     str(identifier))

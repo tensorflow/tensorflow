@@ -24,24 +24,23 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 # Linear algebra ops.
 band_part = array_ops.matrix_band_part
 cholesky = linalg_ops.cholesky
 cholesky_solve = linalg_ops.cholesky_solve
 det = linalg_ops.matrix_determinant
-# pylint: disable=protected-access
-slogdet = gen_linalg_ops._log_matrix_determinant
-# pylint: disable=protected-access
+slogdet = gen_linalg_ops.log_matrix_determinant
 diag = array_ops.matrix_diag
 diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
 eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
-expm = gen_linalg_ops._matrix_exponential
+expm = gen_linalg_ops.matrix_exponential
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
-logm = gen_linalg_ops._matrix_logarithm
+logm = gen_linalg_ops.matrix_logarithm
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
@@ -54,6 +53,7 @@ transpose = array_ops.matrix_transpose
 triangular_solve = linalg_ops.matrix_triangular_solve
 
 
+@tf_export('linalg.logdet')
 def logdet(matrix, name=None):
   """Computes log of the determinant of a hermitian positive definite matrix.
 
@@ -65,8 +65,8 @@ def logdet(matrix, name=None):
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
@@ -86,6 +86,7 @@ def logdet(matrix, name=None):
         reduction_indices=[-1])
 
 
+@tf_export('linalg.adjoint')
 def adjoint(matrix, name=None):
   """Transposes the last two dimensions of and conjugates tensor `matrix`.
 
@@ -99,8 +100,8 @@ def adjoint(matrix, name=None):
                         #  [3 - 3j, 6 - 6j]]
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
   Returns:
