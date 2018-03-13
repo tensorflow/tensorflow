@@ -196,15 +196,47 @@ class ExtractGlimpseTest(test.TestCase):
         expected_rows=[None, None, None, 1, 2, 3, 4],
         expected_cols=[56, 57, 58, 59, 60])
 
-  def testGlimpseNoOverlapZero(self):
+  def testGlimpseNoiseZero(self):
+    # Image:
+    # [  0.   1.   2.   3.   4.]
+    # [  5.   6.   7.   8.   9.]
+    # [ 10.  11.  12.  13.  14.]
+    # [ 15.  16.  17.  18.  19.]
+    # [ 20.  21.  22.  23.  24.]
     img = constant_op.constant(np.arange(25).reshape((1, 5, 5, 1)),
                                dtype=dtypes.float32)
     with self.test_session():
-      result = image_ops.extract_glimpse(img, [3, 3], [[-2, 2]],
-                                         centered=False, normalized=False,
-                                         uniform_noise=False, noise="zero")
-      self.assertAllEqual(np.asarray([[0, 0, 0], [0, 0, 0], [0, 0, 0]]),
-                          result.eval()[0, :, :, 0])
+      # Result 1:
+      # [ 0.  0.  0.]
+      # [ 0.  0.  0.]
+      # [ 0.  0.  0.]
+      result1 = image_ops.extract_glimpse(img, [3, 3], [[-2, 2]],
+                                          centered=False, normalized=False,
+                                          uniform_noise=False, noise="zero")
+      self.assertAllEqual(np.asarray([[0, 0, 0],
+                                      [0, 0, 0],
+                                      [0, 0, 0]]),
+                          result1.eval()[0, :, :, 0])
+
+      # Result 2:
+      # [  0.   0.   0.   0.   0.   0.   0.]
+      # [  0.   0.   1.   2.   3.   4.   0.]
+      # [  0.   5.   6.   7.   8.   9.   0.]
+      # [  0.  10.  11.  12.  13.  14.   0.]
+      # [  0.  15.  16.  17.  18.  19.   0.]
+      # [  0.  20.  21.  22.  23.  24.   0.]
+      # [  0.   0.   0.   0.   0.   0.   0.]]
+      result2 = image_ops.extract_glimpse(img, [7, 7], [[0, 0]],
+                                          normalized=False,
+                                          uniform_noise=False, noise="zero")
+      self.assertAllEqual(np.asarray([[0, 0, 0, 0, 0, 0, 0],
+                                      [0, 0, 1, 2, 3, 4, 0],
+                                      [0, 5, 6, 7, 8, 9, 0],
+                                      [0, 10, 11, 12, 13, 14, 0],
+                                      [0, 15, 16, 17, 18, 19, 0],
+                                      [0, 20, 21, 22, 23, 24, 0],
+                                      [0, 0, 0, 0, 0, 0, 0]]),
+                          result2.eval()[0, :, :, 0])
 
 if __name__ == '__main__':
   test.main()
