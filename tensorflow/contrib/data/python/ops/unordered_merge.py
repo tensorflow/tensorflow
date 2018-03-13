@@ -26,9 +26,8 @@ from tensorflow.python.data.util import nest
 def unordered_merge(datasets):
   """Creates a `Dataset` by merging the given datasets without garantee of data order.
 
-  This method has similar semantics to the built-in `zip()` function
-  in Python, with the main difference being that the `datasets`
-  argument can be an arbitrary nested structure of `Dataset` objects.
+  The input `datasets` must be an iterable of same types and shapes of datasets.
+  This method merges input datasets without garantee of the data order.
   For example:
 
   ```python
@@ -36,27 +35,29 @@ def unordered_merge(datasets):
   # contents of a dataset.
   a = { 1, 2, 3 }
   b = { 4, 5, 6 }
-  c = { (7, 8), (9, 10), (11, 12) }
-  d = { 13, 14 }
-
-  # The nested structure of the `datasets` argument determines the
-  # structure of elements in the resulting dataset.
-  Dataset.zip((a, b)) == { (1, 4), (2, 5), (3, 6) }
-  Dataset.zip((b, a)) == { (4, 1), (5, 2), (6, 3) }
+  c = { 13, 14 }
+  d = { (7, 8), (9, 10), (11, 12) }
 
   # The `datasets` argument may contain an arbitrary number of
-  # datasets.
-  Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
-                              (2, 5, (9, 10)),
-                              (3, 6, (11, 12)) }
+  # datasets having same type and shape.
+  unorderd_merge([a, b]) == { 1, 4, 2, 5, 3, 6 }
+  unorderd_merge([a, b, c]) == { 1, 4, 13, 2, 5, 3, 6, 14 }
 
-  # The number of elements in the resulting dataset is the same as
-  # the size of the smallest dataset in `datasets`.
-  Dataset.zip((a, d)) == { (1, 13), (2, 14) }
+  # NOTE: the output order might be different
+
+  # The shapes and types in `datasets` argument must be the same.
+  unorderd_merge([a, b, c]) ==> TypeError
+  
+  # sample usage:
+  dataset = tf.data.Dataset.from_tensor_slices(tensors)
+  datasets = [dataset.shard(10, i) for i in range(10)]
+  datasets = [dataset.apply(group_by_window(key_func, reduce_func, window_size)
+              for dataset in datasets]
+  dataset = tf.contrib.data.unorderd_merge(datasets)
   ```
 
   Args:
-    datasets: A nested structure of datasets.
+    datasets: An iterable(such as list or tuple) of datasets.
 
   Returns:
     A `Dataset`.
@@ -65,27 +66,26 @@ def unordered_merge(datasets):
 
 
 class UnorderedMergeDataset(dataset_ops.Dataset):
-  """A `Dataset` that merges its inputs together with unordered."""
+  """A merged `Dataset` of its input datasets without garantee of data order."""
 
   def __init__(self, datasets):
-    """See `Dataset.unordered_merge()` for details."""
+    """See `unordered_merge()` for details."""
     super(UnorderedMergeDataset, self).__init__()
-    for ds in nest.flatten(datasets):
+    self._datasets = list(datasets)
+    for ds in self._datasets
       if not isinstance(ds, dataset_ops.Dataset):
-        if isinstance(ds, list):
-          message = ("The argument to `Dataset.unordered_merge()` must be a nested "
-                     "structure of `Dataset` objects. Nested structures do not "
-                     "support Python lists; please use a tuple instead.")
-        else:
-          message = ("The argument to `Dataset.unordered_merge()` must be a nested "
-                     "structure of `Dataset` objects.")
+        message = ("The argument to `unordered_merge()` must be an iterable of datasets."
         raise TypeError(message)
-    self._datasets = datasets
+      if self._datasets[0].output_shapes != ds.output_shapes:
+        message = ("The shapes of `datasets` must be same."
+        raise TypeError(message)
+      if self._datasets[0].output_types != ds.output_types:
+        message = ("The types of `datasets` must be same."
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
     return gen_dataset_ops.unordered_merge_dataset(
-        [ds._as_variant_tensor() for ds in nest.flatten(self._datasets)],
+        [ds._as_variant_tensor() for ds in self._datasets],
         output_shapes=nest.flatten(self._datasets[0].output_shapes),
         output_types=nest.flatten(self._datasets[0].output_types))
     # pylint: enable=protected-access
