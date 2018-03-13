@@ -273,8 +273,10 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
       // We only look for the first stream mapping to have the number of the
       // frames.
       // Once processed we will not further process stream mapping section.
-      if (line.find("frame=  ") == 0) {
-        string number = line.substr(8, line.find(" ", 8));
+      if (line.find("frame=") == 0) {
+        // The format might be `frame=  166 ` or `frame=12488 `
+        string number = line.substr(6);
+        number = number.substr(number.find_first_not_of(" "));
         number = number.substr(0, number.find(" "));
         if (strings::safe_strtou32(number, &frames_value)) {
           in_mapping = false;
