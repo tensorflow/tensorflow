@@ -301,7 +301,7 @@ class ConcatOffsetTest(XLATestCase):
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
         s2 = constant_op.constant([2, 20, 5], dtypes.int32)
-        off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+        off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
         ans = sess.run(off)
         self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 

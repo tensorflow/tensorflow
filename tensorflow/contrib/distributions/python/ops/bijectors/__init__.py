@@ -18,6 +18,7 @@
 @@Affine
 @@AffineLinearOperator
 @@Bijector
+@@BatchNormalization
 @@Chain
 @@CholeskyOuterProduct
 @@ConditionalBijector
@@ -26,9 +27,11 @@
 @@Identity
 @@Inline
 @@Invert
+@@Kumaraswamy
 @@MaskedAutoregressiveFlow
 @@Permute
 @@PowerTransform
+@@RealNVP
 @@Reshape
 @@Sigmoid
 @@SigmoidCentered
@@ -39,6 +42,7 @@
 
 @@masked_autoregressive_default_template
 @@masked_dense
+@@real_nvp_default_template
 """
 
 from __future__ import absolute_import
@@ -50,6 +54,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import *
+from tensorflow.contrib.distributions.python.ops.bijectors.batch_normalization import *
 from tensorflow.contrib.distributions.python.ops.bijectors.chain import *
 from tensorflow.contrib.distributions.python.ops.bijectors.cholesky_outer_product import *
 from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector import *
@@ -57,9 +62,11 @@ from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.gumbel import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
+from tensorflow.contrib.distributions.python.ops.bijectors.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
+from tensorflow.contrib.distributions.python.ops.bijectors.real_nvp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_centered import *

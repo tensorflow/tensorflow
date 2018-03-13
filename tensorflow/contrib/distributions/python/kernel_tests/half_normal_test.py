@@ -21,6 +21,7 @@ from __future__ import print_function
 import importlib
 import numpy as np
 
+from tensorflow.contrib.distributions.python.ops import half_normal as hn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,7 +29,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
-from tensorflow.contrib.distributions.python.ops import half_normal as hn_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -200,7 +200,7 @@ class HalfNormalTest(test.TestCase):
     with self.test_session():
       scale = np.array([[1.0, 2.0, 3.0]])
       halfnorm = hn_lib.HalfNormal(scale=scale)
-      
+
       # See https://en.wikipedia.org/wiki/Half-normal_distribution for the
       # entropy formula used here.
       expected_entropy = 0.5 * np.log(np.pi * scale ** 2.0 / 2.0) + 0.5

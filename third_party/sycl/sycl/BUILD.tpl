@@ -1,9 +1,9 @@
 licenses(["notice"])  # Apache 2.0
 
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
-load("platform", "sycl_library_path")
+load(":platform.bzl", "sycl_library_path")
 
-load("platform", "readlink_command")
+load(":platform.bzl", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
 

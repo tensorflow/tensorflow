@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -56,22 +58,6 @@ class NodeMap {
   const std::set<NodeDef*> empty_set_;
   std::unordered_map<string, NodeDef*> nodes_;
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
-};
-
-// A utility class to lookup a node's outputs and the number of times it
-// presents in each output.
-class OutputMap {
- public:
-  explicit OutputMap(GraphDef* graph);
-  NodeDef* GetNode(const string& name) const;
-  const std::unordered_map<NodeDef*, int>& GetOutputs(
-      const string& node_name) const;
-
- private:
-  GraphDef* graph_;
-  std::unordered_map<NodeDef*, int> empty_map_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::unordered_map<NodeDef*, int>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -150,13 +136,16 @@ string AsControlDependency(const string& node);
 
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -174,6 +163,54 @@ DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
 NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
                         bool follow_control_input,
                         const std::function<bool(const NodeDef&)>& pred_fn);
+
+// Permute the nodes of graph in place according to the permutation.
+void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
+                         bool invert_permutation);
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
+
+class SimpleGraphView {
+ public:
+  Status Initialize(const GraphDef& graph) {
+    return Initialize(graph, true, true);
+  }
+  Status Initialize(const GraphDef& graph, bool dedup_inputs,
+                    bool dedup_outputs);
+
+  const GraphDef* graph() const { return graph_; }
+  inline int num_nodes() const { return index_to_name_.size(); }
+  inline const int index(const string& node_name) const {
+    const auto& it = name_to_index_.find(node_name);
+    DCHECK(it != name_to_index_.end());
+    return it == name_to_index_.end() ? -1 : it->second;
+  }
+  inline const string& node_name(int node_idx) const {
+    return index_to_name_[node_idx];
+  }
+  inline const gtl::InlinedVector<int, 4>& inputs(int node_idx) const {
+    return inputs_[node_idx];
+  }
+  inline const gtl::InlinedVector<int, 2>& outputs(int node_idx) const {
+    return outputs_[node_idx];
+  }
+
+  // Traverse the graph starting at `node_idx`, collecting indices of nodes
+  // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
+  // walk continues to its children. It is assumed that *graph_ was not modified
+  // after the call to Initialize().
+  void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
+                        int node_idx, std::set<int>* nodes_found) const;
+
+  string PrintToString() const;
+
+ private:
+  const GraphDef* graph_;  // Not owned.
+  std::vector<string> index_to_name_;
+  std::unordered_map<string, int> name_to_index_;
+  std::vector<gtl::InlinedVector<int, 4>> inputs_;
+  std::vector<gtl::InlinedVector<int, 2>> outputs_;
+};
 
 }  // end namespace grappler
 }  // end namespace tensorflow

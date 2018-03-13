@@ -40,7 +40,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
   VLOG(2) << "Before dce:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation : module->MakeComputationPostOrder()) {
     std::unordered_set<HloInstruction*> live_instructions;
     TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
         [&live_instructions](HloInstruction* instruction) {
@@ -55,7 +55,8 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
           live_instructions.count(instruction) == 0 &&
-          computation->IsRemovable(instruction)) {
+          computation->IsRemovable(instruction) &&
+          !instruction->HasSideEffect()) {
         dead_roots.push_back(instruction);
       }
     }

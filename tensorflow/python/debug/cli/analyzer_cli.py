@@ -402,6 +402,12 @@ class DebugAnalyzer(object):
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses "
         "(may be slow for large results).")
+    ap.add_argument(
+        "-w",
+        "--write_path",
+        default="",
+        help="Path of the numpy file to write the evaluation result to, "
+        "using numpy.save()")
     self._arg_parsers["eval"] = ap
 
   def add_tensor_filter(self, filter_name, filter_callable):
@@ -972,7 +978,8 @@ class DebugAnalyzer(object):
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options,
-            include_numeric_summary=parsed.numeric_summary)
+            include_numeric_summary=parsed.numeric_summary,
+            write_path=parsed.write_path)
       else:
         output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
@@ -1018,7 +1025,8 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            write_path=parsed.write_path)
       _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
 
     return output
@@ -1071,7 +1079,8 @@ class DebugAnalyzer(object):
         "from eval of expression '%s'" % parsed.expression,
         np_printoptions,
         print_all=parsed.print_all,
-        include_numeric_summary=True)
+        include_numeric_summary=True,
+        write_path=parsed.write_path)
 
   def _reconstruct_print_source_command(self,
                                         parsed,

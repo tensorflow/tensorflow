@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
-                                 xla::Shape& shape) {
+                                 const xla::Shape& shape) {
   return builder->Broadcast(
       builder->ConstantLiteral(xla::Literal::Zero(shape.element_type())),
       xla::AsInt64Slice(shape.dimensions()));
@@ -39,6 +39,9 @@ xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
   switch (type) {
     case xla::F16:
       return builder->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      break;
+    case xla::BF16:
+      return builder->ConstantR0<bfloat16>(static_cast<bfloat16>(value));
       break;
     case xla::F32:
       return builder->ConstantR0<float>(static_cast<float>(value));
@@ -52,6 +55,61 @@ xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
+}
+
+xla::ComputationDataHandle IntegerLiteral(xla::ComputationBuilder* builder,
+                                          xla::PrimitiveType type,
+                                          int64 value) {
+  xla::Literal literal;
+  switch (type) {
+    case xla::U8:
+      literal = std::move(*xla::Literal::CreateR0<uint8>(value));
+      break;
+    case xla::U32:
+      literal = std::move(*xla::Literal::CreateR0<uint32>(value));
+      break;
+    case xla::U64:
+      literal = std::move(*xla::Literal::CreateR0<uint64>(value));
+      break;
+    case xla::S8:
+      literal = std::move(*xla::Literal::CreateR0<int8>(value));
+      break;
+    case xla::S32:
+      literal = std::move(*xla::Literal::CreateR0<int32>(value));
+      break;
+    case xla::S64:
+      literal = std::move(*xla::Literal::CreateR0<int64>(value));
+      break;
+    case xla::F32:
+      literal = std::move(*xla::Literal::CreateR0<float>(value));
+      break;
+    case xla::F64:
+      literal = std::move(*xla::Literal::CreateR0<double>(value));
+      break;
+    case xla::C64:
+      literal = std::move(*xla::Literal::CreateR0<complex64>(value));
+      break;
+    case xla::PRED:
+      LOG(FATAL) << "pred element type is not integral";
+    case xla::S16:
+    case xla::U16:
+      LOG(FATAL) << "u16/s16 literals not yet implemented";
+    case xla::BF16:
+      literal = std::move(
+          *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value)));
+      break;
+    case xla::F16:
+      literal = std::move(
+          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value)));
+      break;
+    case xla::TUPLE:
+      LOG(FATAL) << "tuple element type is not integral";
+    case xla::OPAQUE:
+      LOG(FATAL) << "opaque element type is not integral";
+    default:
+      LOG(FATAL) << "unhandled element type " << type;
+  }
+  return builder->ConstantLiteral(literal);
 }
 
 xla::StatusOr<xla::ComputationDataHandle> SliceInMinorDims(
@@ -102,6 +160,17 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
   std::copy(start.begin(), start.end(),
             padded_start.begin() + (n_dims - n_minor_dims));
   return UpdateSlice(builder, x, update, padded_start);
+}
+
+xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> shape, builder->GetShape(x));
+  const int64 n_dims = xla::ShapeUtil::Rank(*shape);
+  TF_RET_CHECK(n_dims >= 2);
+  std::vector<int64> permutation(n_dims);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
+  return builder->Transpose(x, permutation);
 }
 
 }  // namespace tensorflow

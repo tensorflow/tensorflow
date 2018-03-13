@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -46,7 +47,7 @@ class StatsAggregator(object):
   dataset = ...
   iterator = dataset.make_one_shot_iterator()
   stats_aggregator = stats_ops.StatsAggregator()
-  set_op = stats_op.set_stats_aggregator_op(iterator, stats_aggregator)
+  set_op = stats_aggregator.subscribe(iterator)
 
   with tf.Session() as sess:
     # Running `set_op` will associate `iterator` with `stats_aggregator`.
@@ -117,7 +118,7 @@ def bytes_produced_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):
@@ -139,7 +140,7 @@ def latency_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):
@@ -161,8 +162,10 @@ class _StatsDataset(dataset_ops.Dataset):
     return self._op_function(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._tag,
-        output_shapes=nest.flatten(self.output_shapes),
-        output_types=nest.flatten(self.output_types))
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
 
   @property
   def output_shapes(self):

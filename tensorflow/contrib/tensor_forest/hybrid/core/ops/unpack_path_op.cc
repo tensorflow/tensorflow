@@ -13,16 +13,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include <stdlib.h>
-#include <time.h>
-#include <algorithm>
-#include <cmath>
-#include <memory>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
 #include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
@@ -30,6 +20,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -73,8 +64,7 @@ REGISTER_OP("UnpackPath")
 
 class UnpackPath : public OpKernel {
  public:
-  explicit UnpackPath(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit UnpackPath(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     VLOG(1) << "unpack start";
@@ -82,10 +72,10 @@ class UnpackPath : public OpKernel {
     const Tensor& path_values_tensor = context->input(1);
 
     const int32 num_data = static_cast<int32>(path_tensor.shape().dim_size(0));
-    const int32 tree_depth = static_cast<int32>(
-        path_tensor.shape().dim_size(1));
+    const int32 tree_depth =
+        static_cast<int32>(path_tensor.shape().dim_size(1));
 
-    const int32 num_nodes = pow(2, tree_depth) - 1;
+    const int32 num_nodes = MathUtil::IPow(2, tree_depth) - 1;
 
     VLOG(1) << "num_data: " << num_data;
     VLOG(1) << "tree_depth: " << tree_depth;
@@ -116,6 +106,6 @@ class UnpackPath : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("UnpackPath").Device(DEVICE_CPU),
-                        UnpackPath);
+REGISTER_KERNEL_BUILDER(Name("UnpackPath").Device(DEVICE_CPU), UnpackPath);
+
 }  // namespace tensorflow

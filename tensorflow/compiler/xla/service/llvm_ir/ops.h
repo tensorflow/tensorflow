@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -90,4 +90,4 @@ Status EmitParallelFusedDynamicUpdateSliceInPlace(
 }  // namespace llvm_ir
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_

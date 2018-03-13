@@ -95,7 +95,7 @@ following:
 
     All of the following models are guaranteed to work out of the box:
 
-    - Inception V3, a popular model for detecting the the dominant objects
+    - Inception V3, a popular model for detecting the dominant objects
       present in an image.
 
     - [MobileNets](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md),
@@ -155,7 +155,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src = "/images/tflite-architecture.jpg">
+![tensorflow lite architecture](https://www.tensorflow.org/images/tflite-architecture.jpg)
 
 Starting with a trained TensorFlow model on disk, you'll convert that model to
 the TensorFlow Lite file format (`.tflite`) using the TensorFlow Lite

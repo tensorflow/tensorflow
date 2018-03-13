@@ -62,9 +62,10 @@ them. For this reason TensorFlow provides **collections**, which are named lists
 of tensors or other objects, such as `tf.Variable` instances.
 
 By default every `tf.Variable` gets placed in the following two collections:
+
  * `tf.GraphKeys.GLOBAL_VARIABLES` --- variables that can be shared across
-multiple devices,
- * `tf.GraphKeys.TRAINABLE_VARIABLES`--- variables for which TensorFlow will
+   multiple devices,
+ * `tf.GraphKeys.TRAINABLE_VARIABLES` --- variables for which TensorFlow will
    calculate gradients.
 
 If you don't want a variable to be trainable, add it to the
@@ -205,7 +206,7 @@ methods:
 v = tf.get_variable("v", shape=(), initializer=tf.zeros_initializer())
 assignment = v.assign_add(1)
 tf.global_variables_initializer().run()
-assignment.run()
+sess.run(assignment)  # or assignment.op.run(), or assignment.eval()
 ```
 
 Most TensorFlow optimizers have specialized ops that efficiently update the

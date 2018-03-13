@@ -29,7 +29,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        "//learning/tfx:__subpackages__",
+    ],
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
@@ -102,25 +105,17 @@ cc_library(
 cc_library(
     name = "xla_interpreter_device",
     srcs = ["xla_interpreter_device.cc"],
+    visibility = [":friends"],
     deps = [
+        ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",  # buildcleaner: keep
+        "//tensorflow/core:lib",
     ],
-    alwayslink = True,
-)
-
-# Internal targets below this point.
-
-cc_library(
-    name = "common",
-    srcs = [
-        "defs.cc",
-    ],
-    hdrs = [
-        "defs.h",
-    ],
-    visibility = [":friends"],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -135,9 +130,12 @@ cc_library(
         "xla_device_context.h",
         "xla_device_ops.h",
     ],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
     deps = [
         ":common",
         ":jit_compilation_passes",
+        ":xla_launch_util",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -160,6 +158,41 @@ cc_library(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:sendrecv_ops",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
+)
+
+# Internal targets below this point.
+
+cc_library(
+    name = "common",
+    srcs = [
+        "defs.cc",
+    ],
+    hdrs = [
+        "defs.h",
+    ],
+    visibility = [":friends"],
+)
+
+cc_library(
+    name = "xla_launch_util",
+    srcs = ["xla_launch_util.cc"],
+    hdrs = ["xla_launch_util.h"],
+    deps = [
+        ":common",
+        ":xla_compilation_cache",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )
@@ -198,6 +231,7 @@ cc_library(
     name = "graph_to_functiondef",
     srcs = ["graph_to_functiondef.cc"],
     hdrs = ["graph_to_functiondef.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -215,7 +249,6 @@ cc_library(
         ":common",
         ":compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
-        "//tensorflow/compiler/tf2xla:const_analysis",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -245,12 +278,13 @@ cc_library(
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:parallel_check_op",
         "//tensorflow/compiler/jit/ops:xla_ops",
-        "//tensorflow/compiler/tf2xla:const_analysis",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

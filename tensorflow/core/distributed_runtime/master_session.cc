@@ -446,7 +446,13 @@ class RunManyGraphs {
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
-    if (!s.ok()) {
+    auto resp = get(index)->resp.get();
+    if (resp->status_code() != error::Code::OK) {
+      // resp->status_code will only be non-OK if s.ok().
+      mutex_lock l(mu_);
+      UpdateStatusLocked(
+          Status(resp->status_code(), resp->status_error_message()));
+    } else if (!s.ok()) {
       mutex_lock l(mu_);
       UpdateStatusLocked(s);
     }
@@ -539,6 +545,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
+    c->req->set_store_errors_in_response_body(true);
     // If any feeds are provided, send the feed values together
     // in the RunGraph request.
     // In the partial case, we only want to include feeds provided in the req.
@@ -1441,6 +1448,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const auto count = run_state->count;
     pss.collect_timeline =
         req.options().trace_level() == RunOptions::FULL_TRACE;
+    pss.collect_rpcs = req.options().trace_level() == RunOptions::FULL_TRACE;
     pss.report_tensor_allocations_upon_oom =
         req.options().report_tensor_allocations_upon_oom();
 
@@ -1603,6 +1611,7 @@ Status MasterSession::DoRunWithLocalExecution(
   TRACEPRINTF("stepid %llu", step_id);
 
   pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
+  pss.collect_rpcs = req.options().trace_level() == RunOptions::FULL_TRACE;
   pss.report_tensor_allocations_upon_oom =
       req.options().report_tensor_allocations_upon_oom();
   // Build the cost model every 'build_cost_model_every' steps after skipping an

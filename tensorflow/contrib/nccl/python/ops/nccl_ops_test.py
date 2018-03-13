@@ -77,10 +77,6 @@ class NcclTestCase(test.TestCase):
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
 
-        # Check GPU availability *after* creating test session, see b/68975239.
-        if not test.is_gpu_available():
-          return  # Test requires access to a GPU
-
         for devices in device_sets:
           shape = (3, 4)
           random = (np.random.random_sample(shape) - .5) * 1024
@@ -100,6 +96,11 @@ class NcclTestCase(test.TestCase):
 
           result_tensors = [array_ops.identity(t) for t in reduce_tensors]
 
+          # Check GPU availability *after* creating session, see b/68975239.
+          if not test.is_gpu_available():
+            # If no GPU is available, only test graph construction.
+            continue
+
           # Test execution and results.
           for t in sess.run(result_tensors):
             self.assertAllClose(t, np_ans)
@@ -114,6 +115,7 @@ class NcclTestCase(test.TestCase):
       numpy_fn: A function taking two tensors and returning the gradient of the
           reduction of the two.
     """
+
     def _Gradient(tensors, devices):
       inputs = [array_ops.placeholder(t.dtype, t.shape) for t in tensors]
       reduce_tensors = nccl_reduce(inputs, devices)
@@ -164,12 +166,17 @@ class BroadcastTest(NcclTestCase):
                (['/device:GPU:0', '/device:GPU:0'],))
 
   def testBroadcastToCpuError(self):
-    # Broadcasts to CPU is not supported.
-    with self.assertRaisesRegexp(
-        errors.NotFoundError,
-        "No registered '_NcclBroadcastRecv' OpKernel for CPU devices"):
+    try:
+      # Broadcasts to CPU is not supported.
       self._Test(_NcclBroadcast, lambda x, y: x,
                  (['/device:GPU:0', '/device:CPU:0'],))
+    except errors.NotFoundError as e:
+      self.assertRegexpMatches(
+          str(e), "No registered '_NcclBroadcastRecv' OpKernel for CPU devices")
+    else:
+      # Session isn't executed when no GPU is available.
+      if test.is_gpu_available():
+        self.fail("Didn't raise NotFoundError trying to broadcast to CPU")
 
 
 class CombinedTest(NcclTestCase):

@@ -43,6 +43,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 

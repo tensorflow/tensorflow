@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -436,10 +437,7 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   }
 }
 
-REGISTER_OP("Darth")
-    .Input("x: float")
-    .Output("y: float")
-    .Doc(R"doc(
+REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
 Darth promises one return value.
 
 x: float
@@ -871,59 +869,14 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   TF_ASSERT_OK(session->Close());
 }
 
-class BlockingOpState {
- public:
-  void AwaitState(int awaiting_state) {
-    mutex_lock ml(mu_);
-    while (state_ != awaiting_state) {
-      cv_.wait(ml);
-    }
-  }
-  void MoveToState(int expected_current, int next) {
-    mutex_lock ml(mu_);
-    CHECK_EQ(expected_current, state_);
-    state_ = next;
-    cv_.notify_all();
-  }
-
- private:
-  mutex mu_;
-  condition_variable cv_;
-  int state_ = 0;
-};
-static BlockingOpState* blocking_op_state = nullptr;
-
-// BlockingOp blocks on the global <blocking_op_state's> state,
-// and also updates it when it is unblocked and finishing computation.
-class BlockingOp : public OpKernel {
- public:
-  explicit BlockingOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-  void Compute(OpKernelContext* ctx) override {
-    blocking_op_state->MoveToState(0, 1);
-    blocking_op_state->AwaitState(2);
-    blocking_op_state->MoveToState(2, 3);
-
-    Tensor* out = nullptr;
-    const Tensor& in = ctx->input(0);
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in.shape(), &out));
-    out->flat<float>() = in.flat<float>();
-  }
-};
-REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
-REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
-
 static void TestSessionInterOpThreadsImpl(bool use_function_lib,
                                           bool use_global_pools) {
+  using test::function::blocking_op_state;
+  using test::function::BlockingOpState;
+
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
-    const string lib = R"proto(
-        signature: {
-          name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
-                               output_arg: { name: "y" type: DT_FLOAT }}
-        node_def: { name: "y" op: "BlockingOp" input: "x" }
-        ret: { key: "y" value: "y:y:0" } )proto";
-    CHECK(protobuf::TextFormat::ParseFromString(
-        lib, library_graph_def.add_function()));
+    *library_graph_def.add_function() = test::function::BlockingOpFn();
   }
 
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
@@ -972,39 +925,38 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
 
   std::atomic<int32> num_done(0);
   // Runs session to compute <node>:0 using inter_op thread pool <pool>.
-  auto add_session_run_call = [use_global_pools, &def, &options, &sessions,
-                               &sessions_mu,
-                               &num_done](thread::ThreadPool* tp, Node* node,
-                                          int inter_op_pool) {
-    auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
-               inter_op_pool, node, &num_done]() {
-      RunOptions run_options;
-      run_options.set_inter_op_thread_pool(inter_op_pool);
-      std::vector<Tensor> outputs;
+  auto add_session_run_call =
+      [use_global_pools, &def, &options, &sessions, &sessions_mu, &num_done](
+          thread::ThreadPool* tp, Node* node, int inter_op_pool) {
+        auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
+                   inter_op_pool, node, &num_done]() {
+          RunOptions run_options;
+          run_options.set_inter_op_thread_pool(inter_op_pool);
+          std::vector<Tensor> outputs;
 
-      Session* session;
-      if (use_global_pools) {
-        std::unique_ptr<Session> s(NewSession(options));
-        TF_ASSERT_OK(s->Create(def));
-        session = s.get();
+          Session* session;
+          if (use_global_pools) {
+            std::unique_ptr<Session> s(NewSession(options));
+            TF_ASSERT_OK(s->Create(def));
+            session = s.get();
 
-        mutex_lock l(sessions_mu);
-        sessions.emplace_back(std::move(s));
-      } else {
-        session = sessions[0].get();
-      }
+            mutex_lock l(sessions_mu);
+            sessions.emplace_back(std::move(s));
+          } else {
+            session = sessions[0].get();
+          }
 
-      Status s = session->Run(run_options, {} /* inputs */,
-                              {node->name() + ":0"} /* output_names */, {},
-                              &outputs, nullptr /* run_metadata */);
-      TF_CHECK_OK(s);
-      ASSERT_EQ(1, outputs.size());
-      auto flat = outputs[0].flat<float>();
-      EXPECT_FLOAT_EQ(1.2, flat(0));
-      num_done.fetch_add(1);
-    };
-    tp->Schedule(fn);
-  };
+          Status s = session->Run(run_options, {} /* inputs */,
+                                  {node->name() + ":0"} /* output_names */, {},
+                                  &outputs, nullptr /* run_metadata */);
+          TF_CHECK_OK(s);
+          ASSERT_EQ(1, outputs.size());
+          auto flat = outputs[0].flat<float>();
+          EXPECT_FLOAT_EQ(1.2, flat(0));
+          num_done.fetch_add(1);
+        };
+        tp->Schedule(fn);
+      };
 
   // For blocking states:
   // - Starts at 0, BlockingOp::Compute will move to 1.
@@ -1265,7 +1217,7 @@ TEST(DirectSessionTest, LocalDeviceManager) {
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());

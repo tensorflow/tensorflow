@@ -26,7 +26,9 @@ from __future__ import print_function
 
 from collections import defaultdict
 from collections import OrderedDict
+from functools import partial
 
+import math
 import six
 
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
@@ -57,19 +59,21 @@ _CONV2D_APPROX_TO_BLOCK_TYPES = {
     APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
 }
 
+APPROX_KRONECKER_INDEP_NAME = "kron_indep"
+APPROX_KRONECKER_SERIES_1_NAME = "kron_series_1"
+APPROX_KRONECKER_SERIES_2_NAME = "kron_series_2"
+
+_FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_INDEP_NAME: fb.FullyConnectedMultiIndepFB,
+    APPROX_KRONECKER_SERIES_1_NAME: partial(fb.FullyConnectedSeriesFB,
+                                            option=1),
+    APPROX_KRONECKER_SERIES_2_NAME: partial(fb.FullyConnectedSeriesFB,
+                                            option=2)
+}
+
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
-
-# TODO(jamesmartens): need to add find_canonical_output back into this somewhere
-
-
-def ensure_sequence(obj):
-  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
-  if isinstance(obj, (tuple, list)):
-    return obj
-  else:
-    return (obj,)
 
 
 class LayerParametersDict(OrderedDict):
@@ -126,11 +130,12 @@ class LayerCollection(object):
     fisher_factors: an OrderedDict mapping tuples to FisherFactor instances.
     losses: a list of LossFunction objects. The loss to be optimized is their
         sum.
+    loss_colocation_ops: ops to colocate loss function evaluations with.  These
+        will typically be the inputs to the losses.
   """
 
   def __init__(self,
                graph=None,
-               colocate_cov_ops_with_inputs=False,
                name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
@@ -140,31 +145,34 @@ class LayerCollection(object):
     self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
     self._default_generic_approximation = APPROX_FULL_NAME
+    self._default_embedding_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
+    self._default_fully_connected_multi_approximation = (
+        APPROX_KRONECKER_SERIES_2_NAME)
+    self.loss_colocation_ops = {}
+    self._vars_to_uses = defaultdict(lambda: 0)
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
 
   @property
   def losses(self):
-    """LossFunctions registered with this LayerCollection."""
-    return list(self._loss_dict.values())
+    """Tuple of LossFunction objects registered with this LayerCollection."""
+    return nest.flatten(self.towers_by_loss)
 
-  def is_variable_registered(self, variable):
-    """Checks whether the variable has already been registered.
+  @property
+  def towers_by_loss(self):
+    """Tuple across losses of LossFunction objects registered to each tower."""
+    return tuple(tuple(lst) for lst in self._loss_dict.values())
 
-    Args:
-      variable: A single variable or tensor.
-    Returns:
-      True if the variable has been registered either by itself or as part of a
-      tuple.
-    """
-    return any([
-        variable in key if isinstance(key, (tuple, list)) else variable == key
-        for key in self.fisher_blocks.keys()
-    ])
+  @property
+  def registered_variables(self):
+    """A tuple of all of the variables currently registered."""
+    tuple_of_tuples = (utils.ensure_sequence(key) for key, block
+                       in six.iteritems(self.fisher_blocks))
+    flat_tuple = tuple(item for tuple_ in tuple_of_tuples for item in tuple_)
+    return flat_tuple
 
   @property
   def linked_parameters(self):
@@ -179,6 +187,17 @@ class LayerCollection(object):
       A `dict` mapping tuples of parameters to an optional string.
     """
     return self._linked_parameters
+
+  @property
+  def default_embedding_approximation(self):
+    return self._default_embedding_approximation
+
+  def set_default_embedding_approximation(self, value):
+    if value != APPROX_KRONECKER_NAME:
+      raise ValueError(
+          "{} is not a valid approximation for embedding variables.".format(
+              value))
+    self._default_embedding_approximation = value
 
   @property
   def default_generic_approximation(self):
@@ -213,6 +232,16 @@ class LayerCollection(object):
               value))
     self._default_convolution_2d_approximation = value
 
+  @property
+  def default_fully_connected_multi_approximation(self):
+    return self._default_fully_connected_multi_approximation
+
+  def set_default_fully_connected_multi_approximation(self, value):
+    if value not in _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES:
+      raise ValueError("{} is not a valid approximation for a fully-connected "
+                       "multi layer.".format(value))
+    self._default_fully_connected_multi_approximation = value
+
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
 
@@ -221,7 +250,7 @@ class LayerCollection(object):
           existing registrations and to register if valid.
       fisher_block: The associated `FisherBlock`.
       reuse: Method to use for inserting new `FisherBlock`s. One of True, False,
-        or VARIABLE_SCOPE.
+        or 'VARIABLE_SCOPE'.
 
     Raises:
       ValueError: If `layer_key` was already registered and reuse is `False`,
@@ -258,9 +287,9 @@ class LayerCollection(object):
     variable_to_block = {
         var: (params, block)
         for (params, block) in self.fisher_blocks.items()
-        for var in ensure_sequence(params)
+        for var in utils.ensure_sequence(params)
     }
-    for variable in ensure_sequence(layer_key):
+    for variable in utils.ensure_sequence(layer_key):
       if variable in variable_to_block:
         prev_key, prev_block = variable_to_block[variable]
         raise ValueError(
@@ -270,14 +299,117 @@ class LayerCollection(object):
     self.fisher_blocks[layer_key] = fisher_block
     return fisher_block
 
-  def get_use_count_map(self):
-    """Returns a dict of variables to their number of registrations."""
-    vars_to_uses = defaultdict(int)
-    for key, block in six.iteritems(self.fisher_blocks):
-      key = key if isinstance(key, (tuple, list)) else (key,)
-      for k in key:
-        vars_to_uses[k] += block.num_registered_minibatches
-    return vars_to_uses
+  def register_loss_function(self,
+                             loss,
+                             colocation_op,
+                             base_name,
+                             name=None,
+                             reuse=VARIABLE_SCOPE):
+    """Registers a LossFunction object.
+
+    Args:
+      loss: The LossFunction object.
+      colocation_op: The op to colocate the loss function's computations with.
+      base_name: The name to derive a new unique name from is the name argument
+        is None.
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: If reuse == True and name == None.
+      ValueError: If reuse == True and seed != None.
+      KeyError: If reuse == True and no existing LossFunction with 'name' found.
+      KeyError: If reuse == False and existing LossFunction with 'name' found.
+    """
+
+    name = name or self._graph.unique_name(base_name)
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      if name is None:
+        raise ValueError(
+            "If reuse is enabled, loss function's name must be set.")
+
+      loss_list = self._loss_dict.get(name, None)
+
+      if loss_list is None:
+        raise KeyError(
+            "Unable to find loss function named {}. Register a new loss "
+            "function with reuse=False.".format(name))
+    else:
+      if name in self._loss_dict:
+        raise KeyError(
+            "Loss function named {} already exists. Set reuse=True to append "
+            "another minibatch/tower.".format(name))
+
+      loss_list = []
+      self._loss_dict[name] = loss_list
+
+    loss_list.append(loss)
+    self.loss_colocation_ops[loss] = colocation_op
+
+  def _get_use_count_map(self):
+    """Returns a dict mapping variables to their number of registrations."""
+    return self._vars_to_uses
+
+  def _add_uses(self, params, uses):
+    """Register additional uses by params in the graph.
+
+    Args:
+      params: Variable or tuple of Variables. Parameters for a layer.
+      uses: int or float. Number of additional uses for these parameters.
+    """
+    params = params if isinstance(params, (tuple, list)) else (params,)
+    for var in params:
+      self._vars_to_uses[var] += uses
+
+  def check_registration(self, variables):
+    """Checks that all variable uses have been registered properly.
+
+    Args:
+      variables: List of variables.
+
+    Raises:
+      ValueError: If any registered variables are not included in the list.
+      ValueError: If any variable in the list is not registered.
+      ValueError: If any variable in the list is registered with the wrong
+          number of "uses" in the subgraph recorded (vs the number of times that
+          variable is actually used in the subgraph).
+    """
+    # Note that overlapping parameters (i.e. those that share variables) will
+    # be caught by layer_collection.LayerParametersDict during registration.
+
+    reg_use_map = self._get_use_count_map()
+
+    error_messages = []
+
+    for var in variables:
+      total_uses = self.subgraph.variable_uses(var)
+      reg_uses = reg_use_map[var]
+
+      if reg_uses == 0:
+        error_messages.append("Variable {} not registered.".format(var))
+      elif (not math.isinf(reg_uses)) and reg_uses != total_uses:
+        error_messages.append(
+            "Variable {} registered with wrong number of uses ({} "
+            "registrations vs {} uses).".format(var, reg_uses, total_uses))
+
+    num_get_vars = len(reg_use_map)
+
+    if num_get_vars > len(variables):
+      error_messages.append("{} registered variables were not included in list."
+                            .format(num_get_vars - len(variables)))
+
+    if error_messages:
+      error_messages = [
+          "Found the following errors with variable registration:"
+      ] + error_messages
+      raise ValueError("\n\t".join(error_messages))
 
   def get_blocks(self):
     return self.fisher_blocks.values()
@@ -312,12 +444,12 @@ class LayerCollection(object):
       ValueError: If the parameters were already registered in a layer or
         identified as part of an incompatible group.
     """
-    params = frozenset(ensure_sequence(params))
+    params = frozenset(utils.ensure_sequence(params))
 
     # Check if any of the variables in 'params' is already in
     # 'self.fisher_blocks.keys()'.
     for registered_params, fisher_block in self.fisher_blocks.items():
-      registered_params_set = set(ensure_sequence(registered_params))
+      registered_params_set = set(utils.ensure_sequence(registered_params))
       for variable in params:
         if (variable in registered_params_set and
             params != registered_params_set):
@@ -342,20 +474,77 @@ class LayerCollection(object):
     inputs_to_losses = nest.flatten(tuple(loss.inputs for loss in self.losses))
     self._subgraph = utils.SubGraph(inputs_to_losses)
 
+  def eval_losses(self):
+    """Return evaluated losses (colocated with inputs to losses)."""
+    evals = []
+    for loss in self.losses:
+      with ops.colocate_with(self.loss_colocation_ops[loss]):
+        evals.append(loss.evaluate())
+    return evals
+
+  def eval_losses_on_samples(self):
+    """Return losses evaluated on samples (colocated with inputs to losses)."""
+    evals = []
+    for loss in self.losses:
+      with ops.colocate_with(self.loss_colocation_ops[loss]):
+        evals.append(loss.evaluate_on_sample())
+    return evals
+
   def total_loss(self):
-    return math_ops.add_n(tuple(loss.evaluate() for loss in self.losses))
+    return math_ops.add_n(self.eval_losses())
 
   def total_sampled_loss(self):
-    return math_ops.add_n(
-        tuple(loss.evaluate_on_sample() for loss in self.losses))
+    return math_ops.add_n(self.eval_losses_on_samples())
 
   def _get_linked_approx(self, params):
     """If params were linked, return their specified approximation."""
-    params_set = frozenset(ensure_sequence(params))
+    params_set = frozenset(utils.ensure_sequence(params))
     if params_set in self.linked_parameters:
       return self.linked_parameters[params_set]
     else:
       return None
+
+  def register_embedding(self,
+                         params,
+                         inputs,
+                         outputs,
+                         approx=None,
+                         reuse=VARIABLE_SCOPE):
+    """Registers a fully connnected layer.
+
+    Args:
+      params: Embedding matrix of shape [vocab_size, embedding_size].
+      inputs: Tensor of shape [batch_size, input_size] and dtype int32. Indices
+        into embedding matrix.
+      outputs: Tensor of shape [batch_size, output_size]. Outputs
+        produced by layer.
+      approx: str. Must be "kron".
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_embedding_approximation
+
+    if approx != APPROX_KRONECKER_NAME:
+      raise ValueError("Bad value {} for approx.".format(approx))
+
+    if isinstance(params, (tuple, list)):
+      raise ValueError("Bias not supported.")
+
+    vocab_size = int(params.shape[0])
+    block = self.register_block(
+        params, fb.EmbeddingKFACFB(self, vocab_size), reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
+
+    self._add_uses(params, 1)
 
   def register_fully_connected(self,
                                params,
@@ -370,11 +559,11 @@ class LayerCollection(object):
         this layer. Weight matrix should have shape [input_size, output_size].
         Bias should have shape [output_size].
       inputs: Tensor of shape [batch_size, input_size]. Inputs to layer.
-      outputs: Tensor of shape [batch_size, output_size]. Preactivations
+      outputs: Tensor of shape [batch_size, output_size]. Outputs
         produced by layer.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      approx: str. One of "kron" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -393,8 +582,11 @@ class LayerCollection(object):
     block_type = _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES[approx]
     has_bias = isinstance(params, (tuple, list))
 
-    block = self.register_block(params, block_type(self, has_bias), reuse=reuse)
+    block = self.register_block(params, block_type(self, has_bias=has_bias),
+                                reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
+
+    self._add_uses(params, 1)
 
   def register_conv2d(self,
                       params,
@@ -416,10 +608,10 @@ class LayerCollection(object):
       inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
         to layer.
       outputs: Tensor of shape [batch_size, height, width, out_channels].
-        Preactivations produced by layer.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+        Output produced by layer.
+      approx: str. One of "kron" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -441,6 +633,8 @@ class LayerCollection(object):
         params, block_type(self, params, strides, padding), reuse=reuse)
     block.register_additional_minibatch(inputs, outputs)
 
+    self._add_uses(params, 1)
+
   def register_generic(self,
                        params,
                        batch_size,
@@ -449,14 +643,11 @@ class LayerCollection(object):
     """Registers a generic layer.
 
     Args:
-      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
-        this layer. Weight matrix should have shape [kernel_height,
-        kernel_width, in_channels, out_channels].  Bias should have shape
-        [out_channels].
+      params: Tensor or tuple of Tensors corresponding to the parameters.
       batch_size: 0-D Tensor. Size of the minibatch.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      approx: str. One of "full" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -476,6 +667,55 @@ class LayerCollection(object):
     block_type = _GENERIC_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(params, block_type(self, params), reuse=reuse)
     block.register_additional_minibatch(batch_size)
+
+    self._add_uses(params, float("inf"))
+
+  def register_fully_connected_multi(self, params, inputs, outputs,
+                                     approx=None, reuse=VARIABLE_SCOPE):
+    """Register fully connected layers with shared parameters.
+
+    This can handle general fully-connected layers with shared parameters, but
+    has specialized approximations to deal with the case where there is a
+    meaningful linear order to the share instances (such as in an RNN).
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [input_size, output_size].
+        Bias should have shape [output_size].
+      inputs: A list of tensors, each of shape [batch_size, input_size]. Inputs
+        to layer. In the case of RNNs, one Tensor per time step.
+      outputs: A list of tensors, the same length as 'inputs', each of shape
+        [batch_size, output_size]. Outputs produced by layer. In the case of
+        RNNs, one Tensor per time step.
+      approx: str. One of "kron_indep", "kron_series_1", or "kron_series_2".
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+    """
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_fully_connected_multi_approximation
+    has_bias = isinstance(params, (tuple, list))
+
+    # TODO(b/70283649): something along the lines of find_canonical_output
+    # should be added back in here (and for the other block types, arguably).
+
+    if approx not in _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES:
+      raise ValueError("Bad value {} for approx.".format(approx))
+    block_type = _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES[approx]
+
+    block = self.register_block(params, block_type(self, has_bias=has_bias),
+                                reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
+    self._add_uses(params, len(inputs))
+
+  # TODO(b/74108452): change the loss registration functions names to refer
+  # to "loss functions" instead of distributions.  Following naming convention
+  # of the loss function classes themselves.
 
   def register_categorical_predictive_distribution(self,
                                                    logits,
@@ -498,50 +738,20 @@ class LayerCollection(object):
       reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
         If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
         tf.get_variable_scope().reuse.
-
-    Raises:
-      ValueError: If reuse == True and name == None.
-      ValueError: If reuse == True and seed != None.
-      KeyError: If reuse == True and no existing LossFunction with 'name' found.
-      KeyError: If reuse == False and existing LossFunction with 'name' found.
     """
-    name = name or self._graph.unique_name(
-        "register_categorical_predictive_distribution")
-
-    if reuse == VARIABLE_SCOPE:
-      reuse = variable_scope.get_variable_scope().reuse
-
-    if reuse:
-      if name is None:
-        raise ValueError(
-            "If reuse is enabled, loss function's name must be set.")
-      if seed is not None:
-        raise ValueError(
-            "Seed can only be specified at LossFunction instantiation.")
-
-      loss = self._loss_dict.get(name, None)
-
-      if loss is None:
-        raise KeyError(
-            "Unable to find loss function named {}. Create a new LossFunction "
-            "with reuse=False.".format(name))
-
-      loss.register_additional_minibatch(logits, targets=targets)
-    else:
-      if name in self._loss_dict:
-        raise KeyError(
-            "Loss function named {} already exists. Set reuse=True to append "
-            "another minibatch.".format(name))
-      loss = lf.CategoricalLogitsNegativeLogProbLoss(
-          logits, targets=targets, seed=seed)
-      self._loss_dict[name] = loss
+    loss = lf.CategoricalLogitsNegativeLogProbLoss(logits, targets=targets,
+                                                   seed=seed)
+    self.register_loss_function(loss, logits,
+                                "categorical_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def register_normal_predictive_distribution(self,
                                               mean,
                                               var=0.5,
                                               seed=None,
                                               targets=None,
-                                              name=None):
+                                              name=None,
+                                              reuse=VARIABLE_SCOPE):
     """Registers a normal predictive distribution.
 
     Args:
@@ -558,21 +768,22 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
     """
-    name = name or self._graph.unique_name(
-        "register_normal_predictive_distribution")
-    if name in self._loss_dict:
-      raise NotImplementedError(
-          "Adding logits to an existing LossFunction not yet supported.")
-    loss = lf.NormalMeanNegativeLogProbLoss(
-        mean, var, targets=targets, seed=seed)
-    self._loss_dict[name] = loss
+    loss = lf.NormalMeanNegativeLogProbLoss(mean, var, targets=targets,
+                                            seed=seed)
+    self.register_loss_function(loss, mean,
+                                "normal_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def register_multi_bernoulli_predictive_distribution(self,
                                                        logits,
                                                        seed=None,
                                                        targets=None,
-                                                       name=None):
+                                                       name=None,
+                                                       reuse=VARIABLE_SCOPE):
     """Registers a multi-Bernoulli predictive distribution.
 
     Args:
@@ -585,15 +796,15 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
     """
-    name = name or self._graph.unique_name(
-        "register_multi_bernoulli_predictive_distribution")
-    if name in self._loss_dict:
-      raise NotImplementedError(
-          "Adding logits to an existing LossFunction not yet supported.")
-    loss = lf.MultiBernoulliNegativeLogProbLoss(
-        logits, targets=targets, seed=seed)
-    self._loss_dict[name] = loss
+    loss = lf.MultiBernoulliNegativeLogProbLoss(logits, targets=targets,
+                                                seed=seed)
+    self.register_loss_function(loss, logits,
+                                "multi_bernoulli_predictive_distribution",
+                                name=name, reuse=reuse)
 
   def make_or_get_factor(self, cls, args):
     """Insert 'cls(args)' into 'self.fisher_factors' if not already present.
@@ -619,7 +830,6 @@ class LayerCollection(object):
 
     key = cls, args
     if key not in self.fisher_factors:
-      colo = self._colocate_cov_ops_with_inputs
       with variable_scope.variable_scope(self._var_scope):
-        self.fisher_factors[key] = cls(*args, colocate_cov_ops_with_inputs=colo)
+        self.fisher_factors[key] = cls(*args)
     return self.fisher_factors[key]

@@ -1,6 +1,8 @@
 index.md
 ### TensorFlow Lite
 tflite/index.md
+tflite/demo_android.md
+tflite/demo_ios.md
 >>>
 ### TensorFlow Mobile
 mobile_intro.md

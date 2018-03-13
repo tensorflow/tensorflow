@@ -22,4 +22,15 @@ cuda_py_test(
         ":linear_regression",
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+)
+
+cuda_py_test(
+    name = "linear_regression_graph_test",
+    size = "small",
+    srcs = ["linear_regression_graph_test.py"],
+    additional_deps = [
+        ":linear_regression",
+        "//tensorflow:tensorflow_py",
+    ],
 )

@@ -4,3 +4,4 @@
 *TF_*
 *TFE_*
 *nsync_*
+*pywrap_xla*

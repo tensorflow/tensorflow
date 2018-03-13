@@ -42,7 +42,7 @@ class StringPiece {
   typedef size_t size_type;
 
   // Create an empty slice.
-  StringPiece() : data_(""), size_(0) {}
+  StringPiece() : data_(nullptr), size_(0) {}
 
   // Create a slice that refers to d[0,n-1].
   StringPiece(const char* d, size_t n) : data_(d), size_(n) {}
@@ -67,7 +67,7 @@ class StringPiece {
   iterator begin() const { return data_; }
   iterator end() const { return data_ + size_; }
 
-  static const size_t npos;
+  static const size_t npos = size_type(-1);
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()

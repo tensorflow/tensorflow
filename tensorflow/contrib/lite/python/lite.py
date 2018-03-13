@@ -18,23 +18,36 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@toco_convert
 @@toco_convert_protos
+@@OpHint
+@@convert_op_hints_to_stubs
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import os
 import subprocess
 import tempfile
 
+# pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
+from tensorflow.contrib.lite.python.op_hint import OpHint
+# pylint: enable=unused-import
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
-from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# Lazy load since some of the performance benchmark skylark rules
+# break dependencies.
+_toco_python = LazyLoader(
+    "tensorflow_wrap_toco", globals(),
+    "tensorflow.contrib.lite.toco.python."
+    "tensorflow_wrap_toco")
+del LazyLoader
 
 # Enum types from the protobuf promoted to the API
 FLOAT = _types_pb2.FLOAT
@@ -50,7 +63,7 @@ GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
 # to protect against crashes. However, it breaks some dependent targets because
 # it forces us to depend on an external py_binary. The experimental API doesn't
 # have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = True
+EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -86,7 +99,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    return _toco_convert_protos(model_flags_str, toco_flags_str, input_data_str)
+    return _toco_python.TocoConvert(
+        model_flags_str, toco_flags_str, input_data_str)
 
   with tempfile.NamedTemporaryFile() as fp_toco, \
            tempfile.NamedTemporaryFile() as fp_model, \
@@ -184,10 +198,10 @@ def toco_convert(input_data,
     if inference_type == QUANTIZED_UINT8:
       if tflite_input_type == FLOAT:
         tflite_input_type = QUANTIZED_UINT8
-      input_array.mean, input_array.std = quantized_input_stats[idx]
+      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
 
     input_array.name = _tensor_name(input_tensor)
-    input_array.shape.extend(map(int, input_tensor.get_shape()))
+    input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
     toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:

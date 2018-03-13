@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -50,6 +51,7 @@ fractional components, and such that
 with `self.probs` and `self.total_count`."""
 
 
+@tf_export("distributions.Multinomial")
 class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
@@ -236,7 +238,7 @@ class Multinomial(distribution.Distribution):
     n_draws = math_ops.cast(self.total_count, dtype=dtypes.int32)
     k = self.event_shape_tensor()[0]
 
-    # boardcast the total_count and logits to same shape
+    # broadcast the total_count and logits to same shape
     n_draws = array_ops.ones_like(
         self.logits[..., 0], dtype=n_draws.dtype) * n_draws
     logits = array_ops.ones_like(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
@@ -43,29 +43,35 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
-  Status OptimizeDependencies();
-
+  // Returns true if node is not an Identity node or if it is an Identity
+  // that is safe to remove.
+  bool SafeToRemoveIdentity(const NodeDef& node);
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node);
-
-  // Tries to simplify the expression that roots at `node` and replaces the uses
-  // of `node` to the simplified expression. Returns the name of the simplified
-  // tensor (e.g. "split:1") or an empty string if no simplification is
-  // performed.
-  string TryOptimizeDependencies(NodeDef* node,
-                                 SetVector<NodeDef*>* nodes_to_simplify);
-
-  bool HasOnlyControlOutputs(const NodeDef* node);
+  // Removes all duplicate control dependencies.
+  void CleanControlInputs();
+  // Builds a map from the &optimized_graph_->node(i) to i.
+  void BuildNodeToIdx();
+  // Tries to optimize the node with the given index, possibly additional
+  // optimizations by inserting nodes in nodes_to_simplify, and pruning nodes by
+  // inserting them in nodes_to_delete.
+  void OptimizeNode(int node_idx, SetVector<int>* nodes_to_simplify,
+                    std::set<int>* nodes_to_delete);
+  // Eliminates redundant control dependencies by computing the transitive
+  // reduction of the graph.
+  Status TransitiveReduction();
+  // Main driver of dependency optimizations.
+  Status OptimizeDependencies();
 
   RewriterConfig::Toggle opt_level_;
-
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
+  std::unordered_map<const NodeDef*, int> node_to_idx_;
   GraphDef* optimized_graph_;  // Not owned.
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_

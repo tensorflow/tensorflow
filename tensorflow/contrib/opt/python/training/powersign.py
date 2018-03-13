@@ -32,8 +32,8 @@ from tensorflow.python.training import training_ops
 class PowerSignOptimizer(optimizer.Optimizer):
   """Optimizer that implements the PowerSign update.
 
-  See  Neural Optimizer Search with Reinforcement Learning
-  [Bello et al., ICML2017].
+  See [Bello et al., ICML2017],
+  [Neural Optimizer Search with RL](https://arxiv.org/abs/1709.07417).
   """
 
   def __init__(self,
@@ -57,7 +57,7 @@ class PowerSignOptimizer(optimizer.Optimizer):
     ```
     t <- t + 1
     m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-    sign_decay <- sign_decay(t)
+    sign_decay <- sign_decay_fn(t)
     update <- base ** (sign_decay * sign(g) * sign(m)) * g
     variable <- variable - lr_t * update
     ```
@@ -73,10 +73,9 @@ class PowerSignOptimizer(optimizer.Optimizer):
       learning_rate: learning_rate used when taking a step.
       base: base used in optimizer.
       beta: decay used for computing the moving average m.
-      sign_decay_fn: decay function applied to the sign(g*m) quantity.
-          Takes global_step as an argument and returns the quantity to multiply
-          the sign(g*m) by.
-      use_locking: If True use locks for update operations.
+      sign_decay_fn: decay function applied to the sign(g) sign(m) quantity.
+          Takes global_step as an argument. See sign_decay.py for some examples.
+      use_locking: If True, use locks for update operations.
       name: Optional name for the operations created iwhen applying gradients.
         Defaults to "PowerSignOptimizer".
     """

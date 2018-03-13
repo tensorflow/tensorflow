@@ -53,11 +53,11 @@ class TransposeTest(test.TestCase):
       # Gradient check on CPU.
       xs = list(np.shape(x))
       ys = list(np.shape(tf_ans))
-      if x.dtype == np.float32:
+      if x.dtype in [np.float32, np.complex64]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-3, 1e-3)
-      elif x.dtype == np.float64:
+      elif x.dtype in [np.float64, np.complex128]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-6, 1e-6)

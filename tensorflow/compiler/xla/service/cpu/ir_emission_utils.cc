@@ -44,6 +44,9 @@ bool PotentiallyImplementedAsEigenConvolution(
       ShapeUtil::ElementIsComplex(kernel_shape)) {
     return false;
   }
+  if (window_util::HasWindowReversal(convolution.window())) {
+    return false;
+  }
 
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();

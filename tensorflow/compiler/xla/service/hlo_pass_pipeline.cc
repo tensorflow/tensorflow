@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -32,11 +33,27 @@ using ::tensorflow::strings::StrCat;
 namespace xla {
 
 namespace {
-void DumpModule(const HloModule& module,
-                const string& message) {
+void DumpModuleGraph(const HloModule& module, const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
   XLA_VLOG_LINES(3, module.ToString());
+}
+
+void DumpModuleProto(const HloModule& module, const string& dump_to,
+                     const string& pipeline_name, const string& pass_name) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static auto* const module_id_to_pass_number =
+      new tensorflow::gtl::FlatMap<int64, int64>();
+
+  tensorflow::mutex_lock lock(mu);
+  const int64 pass_number = (*module_id_to_pass_number)[module.unique_id()]++;
+
+  const string mod_name = SanitizeFileName(tensorflow::strings::Printf(
+      "module_%04d.%04lld.%s.after_%s", module.unique_id(), pass_number,
+      pipeline_name.c_str(), pass_name.c_str()));
+
+  TF_QCHECK_OK(protobuf_util::DumpProtoToDirectory(MakeHloProto(module),
+                                                   dump_to, mod_name));
 }
 }  // namespace
 
@@ -78,6 +95,13 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   string message;
   TF_RETURN_IF_ERROR(
       run_invariant_checkers(StrCat("before running pipeline: ", name())));
+  const string xla_dump_per_pass_hlo_proto_to =
+      module->config().debug_options().xla_dump_per_pass_hlo_proto_to();
+  if (!xla_dump_per_pass_hlo_proto_to.empty()) {
+    DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to, name().ToString(),
+                    "pipeline_start");
+  }
+
   for (auto& pass : passes_) {
     if (disabled_passes.count(pass->name().ToString()) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
@@ -90,17 +114,21 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
     StrAppend(&message, prefix, ", before ", pass->name());
-    DumpModule(*module, message);
+    DumpModuleGraph(*module, message);
 
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
     TF_RETURN_IF_ERROR(
         run_invariant_checkers(StrCat("after running pass: ", pass->name())));
+    if (!xla_dump_per_pass_hlo_proto_to.empty()) {
+      DumpModuleProto(*module, xla_dump_per_pass_hlo_proto_to,
+                      name().ToString(), pass->name().ToString());
+    }
 
     changed |= changed_this_pass;
     prefix.clear();
     StrAppend(&prefix, name(), ": after ", pass->name());
   }
-  DumpModule(*module, prefix + ", pipeline end");
+  DumpModuleGraph(*module, prefix + ", pipeline end");
   return changed;
 }
 

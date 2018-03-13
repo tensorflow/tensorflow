@@ -17,14 +17,39 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+# NOTE(mrry): It is legitimate to call `Iterator.get_next()` multiple
+# times, e.g. when you are distributing different elements to multiple
+# devices in a single step. However, a common pitfall arises when
+# users call `Iterator.get_next()` in each iteration of their training
+# loop. `Iterator.get_next()` adds ops to the graph, and executing
+# each op allocates resources (including threads); as a consequence,
+# invoking it in every iteration of a training loop causes slowdown
+# and eventual resource exhaustion. To guard against this outcome, we
+# log a warning when the number of uses crosses a threshold of suspicion.
+GET_NEXT_CALL_WARNING_THRESHOLD = 32
+
+GET_NEXT_CALL_WARNING_MESSAGE = (
+    "An unusually high number of `Iterator.get_next()` calls was detected. "
+    "This often indicates that `Iterator.get_next()` is being called inside "
+    "a training loop, which will cause gradual slowdown and eventual resource "
+    "exhaustion. If this is the case, restructure your code to call "
+    "`next_element = iterator.get_next()` once outside the loop, and use "
+    "`next_element` as the input to some computation that is invoked inside "
+    "the loop.")
+
+
+@tf_export("data.Iterator")
 class Iterator(object):
   """Represents the state of iterating through a `Dataset`."""
 
@@ -56,6 +81,7 @@ class Iterator(object):
     self._output_shapes = output_shapes
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
+    self._get_next_call_count = 0
 
   @staticmethod
   def from_structure(output_types,
@@ -142,8 +168,10 @@ class Iterator(object):
     iterator_resource = gen_dataset_ops.iterator(
         container="",
         shared_name=shared_name,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -209,8 +237,10 @@ class Iterator(object):
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
     iterator_resource = gen_dataset_ops.iterator_from_string_handle(
         string_handle,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -274,7 +304,42 @@ class Iterator(object):
           dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
 
   def get_next(self, name=None):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
+    """Returns a nested structure of `tf.Tensor`s representing the next element.
+
+    In graph mode, you should typically call this method *once* and use its
+    result as the input to another computation. A typical loop will then call
+    @{tf.Session.run} on the result of that computation. The loop will terminate
+    when the `Iterator.get_next()` operation raises
+    @{tf.errors.OutOfRangeError}. The following skeleton shows how to use
+    this method when building a training loop:
+
+    ```python
+    dataset = ...  # A `tf.data.Dataset` object.
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    # Build a TensorFlow graph that does something with each element.
+    loss = model_function(next_element)
+    optimizer = ...  # A `tf.train.Optimizer` object.
+    train_op = optimizer.minimize(loss)
+
+    with tf.Session() as sess:
+      try:
+        while True:
+          sess.run(train_op)
+      except tf.errors.OutOfRangeError:
+        pass
+    ```
+
+    NOTE: It is legitimate to call `Iterator.get_next()` multiple times, e.g.
+    when you are distributing different elements to multiple devices in a single
+    step. However, a common pitfall arises when users call `Iterator.get_next()`
+    in each iteration of their training loop. `Iterator.get_next()` adds ops to
+    the graph, and executing each op allocates resources (including threads); as
+    a consequence, invoking it in every iteration of a training loop causes
+    slowdown and eventual resource exhaustion. To guard against this outcome, we
+    log a warning when the number of uses crosses a fixed threshold of
+    suspiciousness.
 
     Args:
       name: (Optional.) A name for the created operation.
@@ -282,6 +347,10 @@ class Iterator(object):
     Returns:
       A nested structure of `tf.Tensor` objects.
     """
+    self._get_next_call_count += 1
+    if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
+      warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
+
     return sparse.deserialize_sparse_tensors(
         nest.pack_sequence_as(self._output_types,
                               gen_dataset_ops.iterator_get_next(

@@ -34,12 +34,13 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops as framework_ops
+from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 __all__ = ["rev_block", "RevBlock", "recompute_grad"]
@@ -137,7 +138,17 @@ def _rev_block_forward(x1,
   return y1, y2
 
 
-class RevBlock(object):
+def _scope_wrap(fn, scope):
+
+  @functools.wraps(fn)
+  def wrap(*args, **kwargs):
+    with variable_scope.variable_scope(scope):
+      return fn(*args, **kwargs)
+
+  return wrap
+
+
+class RevBlock(base.Layer):
   """Block of reversible layers. See rev_block."""
 
   def __init__(self,
@@ -146,7 +157,10 @@ class RevBlock(object):
                num_layers=1,
                f_side_input=None,
                g_side_input=None,
-               use_efficient_backprop=True):
+               use_efficient_backprop=True,
+               name="revblock",
+               **kwargs):
+    super(RevBlock, self).__init__(name=name, **kwargs)
 
     if isinstance(f, list):
       assert len(f) == num_layers
@@ -158,18 +172,8 @@ class RevBlock(object):
     else:
       g = [g] * num_layers
 
-    scope_prefix = "revblock/revlayer_%d/"
-    f_scope = scope_prefix + "f"
-    g_scope = scope_prefix + "g"
-
-    f = [
-        template.make_template(f_scope % i, fn, create_scope_now_=True)
-        for i, fn in enumerate(f)
-    ]
-    g = [
-        template.make_template(g_scope % i, fn, create_scope_now_=True)
-        for i, fn in enumerate(g)
-    ]
+    f = [_scope_wrap(fn, "revlayer_%d/f" % i) for i, fn in enumerate(f)]
+    g = [_scope_wrap(fn, "revlayer_%d/g" % i) for i, fn in enumerate(g)]
 
     self.f = f
     self.g = g
@@ -179,6 +183,39 @@ class RevBlock(object):
     self.g_side_input = g_side_input or []
 
     self._use_efficient_backprop = use_efficient_backprop
+
+  def call(self, inputs, forward=True):
+    vs = variable_scope.get_variable_scope()
+    vars_before = vs.global_variables()
+
+    if forward:
+      x1, x2 = inputs
+      out = self._forward(x1, x2)
+    else:
+      y1, y2 = inputs
+      out = self._backward(y1, y2)
+
+    # Add any created variables to the Layer's variable stores
+    new_vars = vs.global_variables()[len(vars_before):]
+    train_vars = vs.trainable_variables()
+    for new_var in new_vars:
+      if new_var in train_vars:
+        self._trainable_weights.append(new_var)
+      else:
+        self._non_trainable_weights.append(new_var)
+
+    return out
+
+  def forward(self, x1, x2):
+    return self.apply([x1, x2])
+
+  def backward(self, y1, y2):
+    return self.apply([y1, y2], forward=False)
+
+  def build(self, _):
+    logging.warn("RevBlock constructs its variables on first call, not on "
+                 "build.")
+    self.built = True
 
   def _efficient_grad_fn(self, inputs, variables, ys, grad_ys):
     """Custom gradient fn for a block of reversible residual layers."""
@@ -228,17 +265,18 @@ class RevBlock(object):
     f.reverse()
     g.reverse()
 
-    for i in xrange(self.num_layers):
-      ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
-          ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
-          self.g_side_input)
+    with variable_scope.variable_scope(self.scope_name, reuse=True):
+      for i in xrange(self.num_layers):
+        ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
+            ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
+            self.g_side_input)
 
-      grad_f_vars, grad_f_side = f_ret
-      grad_g_vars, grad_g_side = g_ret
-      f_var_grads.append(grad_f_vars)
-      g_var_grads.append(grad_g_vars)
-      f_side_grads.append(grad_f_side)
-      g_side_grads.append(grad_g_side)
+        grad_f_vars, grad_f_side = f_ret
+        grad_g_vars, grad_g_side = g_ret
+        f_var_grads.append(grad_f_vars)
+        g_var_grads.append(grad_g_vars)
+        f_side_grads.append(grad_f_side)
+        g_side_grads.append(grad_g_side)
 
     # Accumulate layer gradients for f_side_input and g_side_input
     acc_f_side_grads = _acc_grads(*f_side_grads)
@@ -265,7 +303,7 @@ class RevBlock(object):
     grad_x1, grad_x2 = grad_ys
     return [grad_x1, grad_x2] + side_input_grads, variable_grads
 
-  def forward(self, x1, x2):
+  def _forward(self, x1, x2):
     """Run forward through the reversible layers."""
 
     side_inputs = [self.f_side_input, self.g_side_input]
@@ -275,7 +313,7 @@ class RevBlock(object):
         self._efficient_grad_fn if self._use_efficient_backprop else None)
 
     @_fn_with_custom_grad(custom_grad_fn)
-    def _forward(x1_, x2_, *flat_side_inputs):
+    def _forward_wrap(x1_, x2_, *flat_side_inputs):
       f_side, g_side = nest.pack_sequence_as(side_inputs, flat_side_inputs)
       return _rev_block_forward(
           x1_,
@@ -287,9 +325,9 @@ class RevBlock(object):
           g_side_input=g_side,
           gate_outputs=self._use_efficient_backprop)
 
-    return _forward(x1, x2, *flat_side_inputs)
+    return _forward_wrap(x1, x2, *flat_side_inputs)
 
-  def backward(self, y1, y2):
+  def _backward(self, y1, y2):
     """Run backward through the reversible layers."""
 
     f = list(self.f)
@@ -356,7 +394,14 @@ def rev_block(x1,
   Returns:
     y1, y2: tuple of float Tensors.
   """
-  block = RevBlock(f, g, num_layers, f_side_input, g_side_input, is_training)
+  block = RevBlock(
+      f=f,
+      g=g,
+      num_layers=num_layers,
+      f_side_input=f_side_input,
+      g_side_input=g_side_input,
+      use_efficient_backprop=is_training,
+      _reuse=variable_scope.get_variable_scope().reuse)
   return block.forward(x1, x2)
 
 

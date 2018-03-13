@@ -48,7 +48,7 @@ class CostAnalysisTest(test.TestCase):
     train_op.append(d)
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
 
-    report = cost_analyzer.GenerateCostReport(mg)
+    report = cost_analyzer.GenerateCostReport(mg, per_node_report=True)
 
     # Check the report headers
     self.assertTrue(b"Total time measured in ns (serialized):" in report)
@@ -57,6 +57,26 @@ class CostAnalysisTest(test.TestCase):
     self.assertTrue(b"Total time analytical in ns (lower bound):" in report)
     self.assertTrue(b"Overall efficiency (analytical upper/actual):" in report)
     self.assertTrue(b"Overall efficiency (analytical lower/actual):" in report)
+    self.assertTrue(b"Below is the per-node report summary:" in report)
+
+    # Also print the report to make it easier to debug
+    print("{}".format(report))
+
+  def testVerbose(self):
+    """Make sure the full report is generated with verbose=True."""
+    a = constant_op.constant(10, name="a")
+    b = constant_op.constant(20, name="b")
+    c = math_ops.add_n([a, b], name="c")
+    d = math_ops.add_n([b, c], name="d")
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(d)
+    mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
+
+    report = cost_analyzer.GenerateCostReport(
+        mg, per_node_report=True, verbose=True)
+
+    # Check the report headers
+    self.assertTrue(b"Below is the full per-node report:" in report)
 
     # Also print the report to make it easier to debug
     print("{}".format(report))
@@ -89,13 +109,10 @@ class CostAnalysisTest(test.TestCase):
     self.assertTrue(b"MatMul" in report)
     self.assertTrue(b"ApplyAdam" in report)
     self.assertTrue(b"Conv2D" in report)
-    self.assertTrue(b"Conv2DBackpropInput" in report)
     self.assertTrue(b"Conv2DBackpropFilter" in report)
     self.assertTrue(b"Softmax" in report)
 
-    for op_type in [
-        b"MatMul", b"Conv2D", b"Conv2DBackpropInput", b"Conv2DBackpropFilter"
-    ]:
+    for op_type in [b"MatMul", b"Conv2D", b"Conv2DBackpropFilter"]:
       matcher = re.compile(
           br"\s+" + op_type + br",\s*(\d+),\s*(\d+),\s*([\d\.eE+-]+)%,\s*" +
           br"([\d\.eE+-]+)%,\s*(-?\d+),\s*(\d+),", re.MULTILINE)
@@ -130,7 +147,8 @@ class CostAnalysisTest(test.TestCase):
 
     # Check the report
     self.assertTrue(
-        "Peak usage for device /job:localhost/replica:0/task:0/cpu:0: 16 bytes"
+        "Peak usage for device /job:localhost/replica:0/task:0/device:CPU:0: "
+        "16 bytes"
         in report)
     self.assertTrue("  a:0 uses 4 bytes" in report)
     self.assertTrue("  b:0 uses 4 bytes" in report)

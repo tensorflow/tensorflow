@@ -14,10 +14,10 @@
 
 #import "RunModelViewController.h"
 
-#include <fstream>
-#include <iostream>
 #include <pthread.h>
 #include <unistd.h>
+#include <fstream>
+#include <iostream>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -28,9 +28,6 @@
 #include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 
 #include "ios_image_load.h"
-
-#define LOG(x) std::cerr
-#define CHECK(x) if (!(x)) { LOG(ERROR) << #x << "failed"; exit(1); }
 
 NSString* RunInferenceOnImage();
 
@@ -49,15 +46,12 @@ NSString* RunInferenceOnImage();
 
 // Returns the top N confidence values over threshold in the provided vector,
 // sorted by confidence in descending order.
-static void GetTopN(
-    const float* prediction,
-    const int prediction_size,
-    const int num_results, const float threshold,
-    std::vector<std::pair<float, int> >* top_results) {
+static void GetTopN(const float* prediction, const int prediction_size, const int num_results,
+                    const float threshold, std::vector<std::pair<float, int> >* top_results) {
   // Will contain top N results in ascending order.
-  std::priority_queue<std::pair<float, int>,
-      std::vector<std::pair<float, int> >,
-      std::greater<std::pair<float, int> > > top_result_pq;
+  std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int> >,
+                      std::greater<std::pair<float, int> > >
+      top_result_pq;
 
   const long count = prediction_size;
   for (int i = 0; i < count; ++i) {
@@ -88,27 +82,29 @@ static void GetTopN(
 NSString* FilePathForResourceName(NSString* name, NSString* extension) {
   NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
   if (file_path == NULL) {
-    LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "."
-	       << [extension UTF8String] << "' in bundle.";
+    NSLog(@"Couldn't find '%@.%@' in bundle.", name, extension);
+    exit(-1);
   }
   return file_path;
 }
 
 NSString* RunInferenceOnImage() {
-  std::string graph;
+  NSString* graph = @"mobilenet_v1_1.0_224";
   const int num_threads = 1;
   std::string input_layer_type = "float";
   std::vector<int> sizes = {1, 224, 224, 3};
 
-  NSString* graph_path = FilePathForResourceName(@"mobilenet_v1_1.0_224", @"tflite");
+  const NSString* graph_path = FilePathForResourceName(graph, @"tflite");
 
-  std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
+  std::unique_ptr<tflite::FlatBufferModel> model(
+      tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
   if (!model) {
-    LOG(FATAL) << "Failed to mmap model " << graph;
+    NSLog(@"Failed to mmap model %@.", graph);
+    exit(-1);
   }
-  LOG(INFO) << "Loaded model " << graph;
+  NSLog(@"Loaded model %@.", graph);
   model->error_reporter();
-  LOG(INFO) << "resolved reporter";
+  NSLog(@"Resolved reporter.");
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
   tflite::MutableOpResolver resolver;
@@ -120,7 +116,8 @@ NSString* RunInferenceOnImage() {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
-    LOG(FATAL) << "Failed to construct interpreter";
+    NSLog(@"Failed to construct interpreter.");
+    exit(-1);
   }
 
   if (num_threads != -1) {
@@ -134,7 +131,8 @@ NSString* RunInferenceOnImage() {
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+    NSLog(@"Failed to allocate tensors.");
+    exit(-1);
   }
 
   // Read the label list
@@ -143,7 +141,7 @@ NSString* RunInferenceOnImage() {
   std::ifstream t;
   t.open([labels_path UTF8String]);
   std::string line;
-  while(t){
+  while (t) {
     std::getline(t, line);
     label_strings.push_back(line);
   }
@@ -154,7 +152,8 @@ NSString* RunInferenceOnImage() {
   int image_width;
   int image_height;
   int image_channels;
-  std::vector<uint8_t> image_data = LoadImageFromFile([image_path UTF8String], &image_width, &image_height, &image_channels);
+  std::vector<uint8_t> image_data =
+      LoadImageFromFile([image_path UTF8String], &image_width, &image_height, &image_channels);
   const int wanted_width = 224;
   const int wanted_height = 224;
   const int wanted_channels = 3;
@@ -178,7 +177,8 @@ NSString* RunInferenceOnImage() {
   }
 
   if (interpreter->Invoke() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to invoke!";
+    NSLog(@"Failed to invoke!");
+    exit(-1);
   }
 
   float* output = interpreter->typed_output_tensor<float>(0);
@@ -208,12 +208,9 @@ NSString* RunInferenceOnImage() {
     ss << "\n";
   }
 
-  LOG(INFO) << "Predictions: " << ss.str();
-
   std::string predictions = ss.str();
   NSString* result = @"";
-  result = [NSString stringWithFormat: @"%@ - %s", result,
-            predictions.c_str()];
-  
+  result = [NSString stringWithFormat:@"%@ - %s", result, predictions.c_str()];
+  NSLog(@"Predictions: %@", result);
   return result;
 }

@@ -20,16 +20,23 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
 # Method used for inverting matrices.
 POSDEF_INV_METHOD = "cholesky"
+POSDEF_EIG_METHOD = "self_adjoint"
 
 
 def set_global_constants(posdef_inv_method=None):
@@ -138,7 +145,9 @@ def layer_params_to_mat2d(vector):
                                         [-1, w_part.shape.as_list()[-1]])
     return array_ops.concat(
         (w_part_reshaped, array_ops.reshape(b_part, [1, -1])), axis=0)
-  else:
+  elif isinstance(vector, ops.IndexedSlices):
+    return vector
+  else:  # Tensor or Tensor-like.
     return array_ops.reshape(vector, [-1, vector.shape.as_list()[-1]])
 
 
@@ -157,37 +166,20 @@ def mat2d_to_layer_params(vector_template, mat2d):
   if isinstance(vector_template, (tuple, list)):
     w_part, b_part = mat2d[:-1], mat2d[-1]
     return array_ops.reshape(w_part, vector_template[0].shape), b_part
+  elif isinstance(vector_template, ops.IndexedSlices):
+    if not isinstance(mat2d, ops.IndexedSlices):
+      raise TypeError(
+          "If vector_template is an IndexedSlices, so should mat2d.")
+    return mat2d
   else:
     return array_ops.reshape(mat2d, vector_template.shape)
-
-
-def compute_pi(left_factor, right_factor):
-  """Computes the scalar constant pi for Tikhonov regularization/damping.
-
-  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
-  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
-
-  Args:
-    left_factor: The left Kronecker factor Tensor.
-    right_factor: The right Kronecker factor Tensor.
-
-  Returns:
-    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
-  """
-  # Instead of dividing by the dim of the norm, we multiply by the dim of the
-  # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_factor) * right_factor.get_shape().as_list()[
-      0]
-  right_norm = math_ops.trace(right_factor) * left_factor.get_shape().as_list()[
-      0]
-  return math_ops.sqrt(left_norm / right_norm)
 
 
 def posdef_inv(tensor, damping):
   """Computes the inverse of tensor + damping * identity."""
   identity = linalg_ops.eye(tensor.shape.as_list()[0], dtype=tensor.dtype)
   damping = math_ops.cast(damping, dtype=tensor.dtype)
-  return posdef_inv_funcs[POSDEF_INV_METHOD](tensor, identity, damping)
+  return posdef_inv_functions[POSDEF_INV_METHOD](tensor, identity, damping)
 
 
 def posdef_inv_matrix_inverse(tensor, identity, damping):
@@ -209,10 +201,36 @@ def posdef_inv_eig(tensor, identity, damping):
       eigenvectors / eigenvalues, eigenvectors, transpose_b=True)
 
 
-posdef_inv_funcs = {
+posdef_inv_functions = {
     "matrix_inverse": posdef_inv_matrix_inverse,
     "cholesky": posdef_inv_cholesky,
     "eig": posdef_inv_eig,
+}
+
+
+def posdef_eig(mat):
+  """Computes the eigendecomposition of a positive semidefinite matrix."""
+  return posdef_eig_functions[POSDEF_EIG_METHOD](mat)
+
+
+def posdef_eig_svd(mat):
+  """Computes the singular values and left singular vectors of a matrix."""
+  evals, evecs, _ = linalg_ops.svd(mat)
+
+  return evals, evecs
+
+
+def posdef_eig_self_adjoint(mat):
+  """Computes eigendecomposition using self_adjoint_eig."""
+  evals, evecs = linalg_ops.self_adjoint_eig(mat)
+  evals = math_ops.abs(evals)  # Should be equivalent to svd approach.
+
+  return evals, evecs
+
+
+posdef_eig_functions = {
+    "self_adjoint": posdef_eig_self_adjoint,
+    "svd": posdef_eig_svd,
 }
 
 
@@ -221,28 +239,50 @@ class SubGraph(object):
   """
 
   def __init__(self, outputs):
+    # Set of all ancestor Tensors, Ops to 'outputs'.
     self._members = set()
 
-    self._recurse_add(outputs)
+    self._iter_add(outputs)
 
-  def _recurse_add(self, nodes):
-    for node in nodes:
-      if node in self._members:
-        continue
-      self._members.add(node)
+  def _iter_add(self, root):
+    """Iteratively adds all of nodes' ancestors using depth first search."""
+    stack = [root]
+    while stack:
+      nodes = stack.pop()
+      for node in nodes:
+        if node in self._members:
+          continue
+        self._members.add(node)
 
-      if isinstance(node, ops.Tensor):
-        self._recurse_add((node.op,))
-      elif isinstance(node, ops.Operation):
-        self._recurse_add(node.inputs)
+        if isinstance(node, ops.Tensor):
+          stack.append((node.op,))
+        elif isinstance(node, ops.Operation):
+          stack.append(node.inputs)
 
   def is_member(self, node):
     """Check if 'node' is in this subgraph."""
     return node in self._members
 
   def variable_uses(self, var):
-    """Computes number of times a variable is used."""
-    return len(self._members.intersection(set(var.value().consumers())))
+    """Computes number of times a variable is used.
+
+    Args:
+      var: Variable or ResourceVariable instance.
+
+    Returns:
+      Number of times a variable is used within this subgraph.
+
+    Raises:
+      ValueError: If 'var' is not a variable type.
+    """
+    if isinstance(var, resource_variable_ops.ResourceVariable):
+      var = var.handle
+    elif isinstance(var, variables.Variable):
+      var = var.value()
+    else:
+      raise ValueError("%s does not appear to be a variable." % str(var))
+
+    return len(self._members.intersection(set(var.consumers())))
 
   def filter_list(self, node_list):
     """Filters 'node_list' to nodes in this subgraph."""
@@ -286,6 +326,233 @@ def fwd_gradients(ys, xs, grad_xs=None, stop_gradients=None):
   dysdx = gradients_impl.gradients(dydxs, us, grad_ys=grad_xs)
 
   return dysdx
+
+
+def on_tpu():
+  """Returns True when building a TPU computation."""
+  return tpu_function.get_tpu_context().number_of_shards is not None
+
+
+def cross_replica_mean(tensor, name=None):
+  """Takes mean value of a Tensor across all TPU cores.
+
+  Args:
+    tensor: Tensor to be synchronized.
+    name: None or string. Name of Op.
+
+  Returns:
+    Average of Tensor across all TPU cores.
+
+  Raises:
+    ValueError: If called outside of TPU context.
+  """
+  with ops.name_scope(name, "cross_replica_mean", [tensor]):
+    num_shards = tpu_function.get_tpu_context().number_of_shards
+    if num_shards is None:
+      raise ValueError(
+          "Cannot take cross_replica_mean() outside of TPU Context.")
+    if num_shards == 1:
+      return tensor
+    return tpu_ops.cross_replica_sum(tensor / num_shards)
+
+
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
+
+
+def batch_execute(global_step, thunks, batch_size, name=None):
+  """Executes a subset of ops per global step.
+
+  Given a list of thunks, each of which produces a single stateful op,
+  ensures that exactly 'batch_size' ops are run per global step. Ops are
+  scheduled in a round-robin fashion. For example, with 3 ops
+
+    global_step | op0 | op1 | op2
+    ------------+-----+-----+-----
+        0       |  x  |  x  |
+    ------------+-----+-----+-----
+        1       |  x  |     |  x
+    ------------+-----+-----+-----
+        2       |     |  x  |  x
+    ------------+-----+-----+-----
+        3       |  x  |  x  |
+    ------------+-----+-----+-----
+        4       |  x  |     |  x
+
+  Does not guarantee order of op execution within a single global step.
+
+  Args:
+    global_step: Tensor indicating time. Determines which ops run.
+    thunks: List of thunks. Each thunk encapsulates one op. Return values are
+      ignored.
+    batch_size: int. Number of ops to execute per global_step.
+    name: string or None. Name scope for newly added ops.
+
+  Returns:
+    List of ops. Exactly 'batch_size' ops are guaranteed to have an effect
+    every global step.
+  """
+
+  def true_fn(thunk):
+    """Ensures thunk is executed and returns an Op (not a Tensor)."""
+
+    def result():
+      with ops.control_dependencies([thunk()]):
+        return control_flow_ops.no_op()
+
+    return result
+
+  def false_fn(_):
+    """Executes a no-op."""
+
+    def result():
+      return control_flow_ops.no_op()
+
+    return result
+
+  with ops.name_scope(name, "batch_execute"):
+    true_fns = [true_fn(thunk) for thunk in thunks]
+    false_fns = [false_fn(thunk) for thunk in thunks]
+    num_thunks = len(thunks)
+    conditions = [
+        math_ops.less(
+            math_ops.mod(batch_size - 1 + global_step * batch_size - j,
+                         num_thunks), batch_size) for j in range(num_thunks)
+    ]
+    result = [
+        control_flow_ops.cond(condition, true_fn, false_fn)
+        for (condition, true_fn,
+             false_fn) in zip(conditions, true_fns, false_fns)
+    ]
+    return result
+
+
+def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is sparse, B is dense.
+
+  Args:
+    A: tf.IndexedSlices with dense shape [m, n].
+    B: tf.Tensor with shape [n, k].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A doesn't represent a matrix.
+    ValueError: If B is not rank-2.
+  """
+  with ops.name_scope(name, "matmul_sparse_dense", [A, B]):
+    if A.indices.shape.ndims != 1 or A.values.shape.ndims != 2:
+      raise ValueError("A must represent a matrix. Found: %s." % A)
+    if B.shape.ndims != 2:
+      raise ValueError("B must be a matrix.")
+    new_values = math_ops.matmul(A.values, B)
+    return ops.IndexedSlices(
+        new_values,
+        A.indices,
+        dense_shape=array_ops.stack([A.dense_shape[0], new_values.shape[1]]))
+
+
+def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is a diagonal matrix, B is sparse.
+
+  Args:
+    A_diag: diagonal entries of matrix A of shape [m, m].
+    B: tf.IndexedSlices. Represents matrix of shape [m, n].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A_diag is not rank-1.
+    ValueError: If B doesn't represent a matrix.
+  """
+  with ops.name_scope(name, "matmul_diag_sparse", [A_diag, B]):
+    A_diag = ops.convert_to_tensor(A_diag)
+    if A_diag.shape.ndims != 1:
+      raise ValueError("A_diag must be a rank-1 Tensor.")
+    if B.indices.shape.ndims != 1 or B.values.shape.ndims != 2:
+      raise ValueError("B must represent a matrix. Found: %s." % B)
+    a = array_ops.gather(A_diag, B.indices)
+    a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
+    return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
+
+
+class PartitionedTensor(object):
+  """A Tensor partitioned across its 0-th dimension."""
+
+  def __init__(self, tensors):
+    """Initializes PartitionedTensor.
+
+    Args:
+      tensors: List of Tensors. All Tensors must agree on shape (excepting
+        batch dimension) and dtype.
+
+    Raises:
+      ValueError: If 'tensors' has length zero.
+      ValueError: if contents of 'tensors' don't agree on shape or dtype.
+    """
+    if not tensors:
+      raise ValueError("tensors must be a list of 1+ Tensors.")
+
+    dtype = tensors[0].dtype
+    if not all(tensor.dtype == dtype for tensor in tensors):
+      raise ValueError("all tensors must have dtype = %s." % dtype)
+
+    shape = tensors[0].shape[1:]
+    if not all(tensor.shape[1:] == shape for tensor in tensors):
+      raise ValueError("All tensors must have shape = %s (excluding batch "
+                       "dimension)." % shape)
+
+    self.tensors = tensors
+    self._concats = {}  # {device: Tensor}
+
+  @property
+  def shape(self):
+    feature_shape = self.tensors[0].shape[1:]
+    batch_size = sum([tensor.shape[0] for tensor in self.tensors],
+                     tensor_shape.Dimension(0))
+    return tensor_shape.TensorShape([batch_size]).concatenate(feature_shape)
+
+  def get_shape(self):
+    return self.shape
+
+  @property
+  def dtype(self):
+    return self.tensors[0].dtype
+
+  def devices(self):
+    return set(tensor.device for tensor in self.tensors)
+
+  def __str__(self):
+    return "PartitionedTensor([%s, ...], dtype=%s, shape=%s)" % (
+        self.tensors[0].name, self.dtype.name, tuple(self.shape.as_list()))
+
+  def __hash__(self):
+    return hash(tuple(self.tensors))
+
+  def as_tensor(self, dtype=None, name=None, as_ref=False):
+    with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
+      assert not as_ref
+      assert dtype in [None, self.dtype]
+      result = array_ops.concat(self.tensors, axis=0)
+
+      # Cache 'result' if we haven't already cached a value for this device.
+      if result.device not in self._concats:
+        self._concats[result.device] = result
+      return self._concats[result.device]
+
+
+ops.register_tensor_conversion_function(
+    PartitionedTensor,
+    lambda val, dtype, name, as_ref: val.as_tensor(dtype, name, as_ref))
+
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.

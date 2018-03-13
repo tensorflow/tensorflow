@@ -149,7 +149,7 @@ TEST_F(ComputeConstantTest, Param) {
     auto computation = b.Add(param, b.ConstantR0<float>(1.5f));
 
     std::vector<Literal> arguments;
-    arguments.emplace_back(*Literal::CreateR0(42.5f));
+    arguments.push_back(std::move(*Literal::CreateR0(42.5f)));
     EXPECT_TRUE(IsConstant(computation, &b, arguments.size()));
 
     auto value =
@@ -168,7 +168,7 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+                    .contains("depends on a parameter"))
         << value.status();
   }
 }
@@ -184,7 +184,7 @@ TEST_F(ComputeConstantTest, IndirectParamMissing) {
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+                    .contains("depends on a parameter"))
         << value.status();
   }
 }

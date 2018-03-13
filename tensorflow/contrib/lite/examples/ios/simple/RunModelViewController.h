@@ -18,7 +18,7 @@
 
 - (IBAction)getUrl:(id)sender;
 
-@property (weak, nonatomic) IBOutlet UITextView *urlContentTextView;
-@property (weak, nonatomic) IBOutlet UITextField *urlTextField;
+@property(weak, nonatomic) IBOutlet UITextView *urlContentTextView;
+@property(weak, nonatomic) IBOutlet UITextField *urlTextField;
 
 @end

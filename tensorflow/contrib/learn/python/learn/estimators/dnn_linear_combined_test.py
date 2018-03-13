@@ -1046,11 +1046,14 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     if global_step == 100:
       # Expected is 100, but because of the global step increment bug, is 50.
-      self.assertEqual(50, step_counter.steps)
+      # Occasionally, step increments one more time due to a race condition,
+      # reaching 51 steps.
+      self.assertIn(step_counter.steps, [50, 51])
     else:
-      # Occasionally, training stops when global_step == 101, due to a race
-      # condition.
-      self.assertEqual(51, step_counter.steps)
+      # Occasionally, training stops when global_step == 102, due to a race
+      # condition. In addition, occasionally step increments one more time due
+      # to a race condition reaching 52 steps.
+      self.assertIn(step_counter.steps, [51, 52])
 
   def testGlobalStepDNNLinearCombinedBugFixed(self):
     """Tests global step update for dnn-linear combined model."""

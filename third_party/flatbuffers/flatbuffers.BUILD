@@ -4,6 +4,14 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE.txt"])
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
 FLATBUFFERS_COPTS = [
     "-fexceptions",
 ] + select({
@@ -107,10 +115,15 @@ cc_binary(
         "grpc/",
         "include/",
     ],
-    linkopts = [
-        "-lm",
-        "-ldl",
-    ],
+    linkopts = select({
+        ":freebsd": [
+            "-lm",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-ldl",
+        ],
+    }),
     deps = [
         ":flatc_library",
     ],

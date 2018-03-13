@@ -31,6 +31,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Please note that the gradients from replicas are averaged instead of summed
@@ -38,6 +39,7 @@ from tensorflow.python.training import session_run_hook
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
+@tf_export("train.SyncReplicasOptimizer")
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -449,7 +451,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
 
   def __init__(self, sync_optimizer, is_chief, num_tokens):
-    """Creates hook to handle SyncReplicaOptimizer initialization ops.
+    """Creates hook to handle SyncReplicasOptimizer initialization ops.
 
     Args:
       sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.

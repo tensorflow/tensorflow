@@ -280,8 +280,8 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   const int rows_in_this_warp = min(rows_per_warp, num_rows - start_row_warp);
   // not the most efficient way to do this sum
   for (int i = 1; i < rows_in_this_warp; ++i) {
-    value_type tmp =
-        cub::ShuffleIndex(sum, threadIdx.x + i * num_cols, 32, 0xffffffff);
+    value_type tmp = cub::ShuffleIndex<32, value_type>(
+        sum, static_cast<int>(threadIdx.x + i * num_cols), 0xffffffff);
     if (lane < num_cols) sum = op(sum, tmp);
   }
 
@@ -312,8 +312,7 @@ __global__ void ColumnReduceKernel(
   int col = blockIdx.x * 32 + threadIdx.x;
 
   value_type sum = initVal;
-  if (row < num_rows && col < num_cols)
-    sum = in[row * num_cols + col];
+  if (row < num_rows && col < num_cols) sum = in[row * num_cols + col];
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
@@ -366,8 +365,7 @@ __global__ void CleanupSegments(
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
   value_type val = initVal;
-  if (tid < segment_size * num_cols)
-    val = partial_sums[tid];
+  if (tid < segment_size * num_cols) val = partial_sums[tid];
 
   typedef cub::WarpReduce<value_type> WarpReduce;
 

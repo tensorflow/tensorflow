@@ -189,6 +189,10 @@ class SGLDOptimizer(optimizer.Optimizer):
         new_grad,
         use_locking=self._use_locking).op
 
+  def _finish(self, update_ops, name_scope):
+    update_ops.append([self._counter.assign_add(1)])
+    return control_flow_ops.group(*update_ops, name=name_scope)
+
   @property
   def variable_scope(self):
     """Variable scope of all calls to `tf.get_variable`."""

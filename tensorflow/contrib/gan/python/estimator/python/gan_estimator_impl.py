@@ -59,7 +59,11 @@ _summary_type_map = {
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
-  This Estimator is backed by TFGAN.
+  This Estimator is backed by TFGAN. The network functions follow the TFGAN API
+  except for one exception: if either `generator_fn` or `discriminator_fn` have
+  an argument called `mode`, then the tf.Estimator mode is passed in for that
+  argument. This helps with operations like batch normalization, which have
+  different train and evaluation behavior.
 
   Example:
 
@@ -96,7 +100,7 @@ class GANEstimator(estimator.Estimator):
       # Generate samples from generator.
       predictions = np.array([
           x for x in gan_estimator.predict(predict_input_fn)])
-    ```
+  ```
   """
 
   def __init__(self,
@@ -107,6 +111,7 @@ class GANEstimator(estimator.Estimator):
                discriminator_loss_fn=None,
                generator_optimizer=None,
                discriminator_optimizer=None,
+               get_hooks_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
                config=None):
@@ -137,6 +142,10 @@ class GANEstimator(estimator.Estimator):
         work.
       discriminator_optimizer: Same as `generator_optimizer`, but for the
         discriminator updates.
+      get_hooks_fn: A function that takes a `GANTrainOps` tuple and returns a
+        list of hooks. These hooks are run on the generator and discriminator
+        train ops, and can be used to implement the GAN training scheme.
+        Defaults to `train.get_sequential_train_hooks()`.
       add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
@@ -151,18 +160,13 @@ class GANEstimator(estimator.Estimator):
               else discriminator_optimizer)
       gan_head = head_lib.gan_head(
           generator_loss_fn, discriminator_loss_fn, gopt, dopt,
-          use_loss_summaries)
+          use_loss_summaries, get_hooks_fn=get_hooks_fn)
       return _gan_model_fn(
           features, labels, mode, generator_fn, discriminator_fn, gan_head,
           add_summaries)
 
     super(GANEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
-
-
-def _use_check_shapes(real_data):
-  """Determines whether TFGAN should check Tensor shapes."""
-  return isinstance(real_data, ops.Tensor)
 
 
 def _gan_model_fn(
@@ -233,16 +237,18 @@ def _gan_model_fn(
 def _make_gan_model(generator_fn, discriminator_fn, real_data,
                     generator_inputs, generator_scope, add_summaries, mode):
   """Make a `GANModel`, and optionally pass in `mode`."""
-  # If `generator_fn` has an argument `mode`, pass mode to it.
+  # If network functions have an argument `mode`, pass mode to it.
   if 'mode' in inspect.getargspec(generator_fn).args:
     generator_fn = functools.partial(generator_fn, mode=mode)
+  if 'mode' in inspect.getargspec(discriminator_fn).args:
+    discriminator_fn = functools.partial(discriminator_fn, mode=mode)
   gan_model = tfgan_train.gan_model(
       generator_fn,
       discriminator_fn,
       real_data,
       generator_inputs,
       generator_scope=generator_scope,
-      check_shapes=_use_check_shapes(real_data))
+      check_shapes=False)
   if add_summaries:
     if not isinstance(add_summaries, (tuple, list)):
       add_summaries = [add_summaries]

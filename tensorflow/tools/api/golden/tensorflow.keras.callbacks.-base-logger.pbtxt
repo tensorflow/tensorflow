@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'stateful_metrics\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "on_batch_begin"

@@ -29,20 +29,18 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.4.0'
+_VERSION = '1.6.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py',
-    # weakref.finalize introduced in Python 3.4
-    'backports.weakref >= 1.0rc1; python_version < "3.4"',
-    # enum module introduced in Python 3.4
-    'enum34 >= 1.1.6; python_version < "3.4"',
-    # Needed for unittest.mock in Python 2
-    'mock >= 2.0.0; python_version < "3.0"',
-    'numpy >= 1.12.1',
+    'absl-py >= 0.1.6',
+    'astor >= 0.6.0',
+    'gast >= 0.2.0',
+    'grpcio >= 1.8.6',
+    'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
-    'tensorflow-tensorboard',
+    'tensorboard >= 1.6.0, < 1.7.0',
+    'termcolor >= 1.1.0',
 ]
 
 project_name = 'tensorflow'
@@ -57,13 +55,20 @@ if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
 else:
   REQUIRED_PACKAGES.append('wheel')
+  # mock comes with unittest.mock for python3, need to install for python2
+  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.5.0a0, < 1.6.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.7.0a0, < 1.8.0a0'
       break
+
+# weakref.finalize and enum were introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
+  REQUIRED_PACKAGES.append('enum34 >= 1.1.6')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
@@ -175,7 +180,16 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
-matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
+
+so_lib_paths = [
+    i for i in os.listdir('.')
+    if os.path.isdir(i) and fnmatch.fnmatch(i, '_solib_*')
+]
+
+for path in so_lib_paths:
+  matches.extend(
+      ['../' + x for x in find_files('*', path) if '.py' not in x]
+  )
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

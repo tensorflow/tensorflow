@@ -28,7 +28,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,

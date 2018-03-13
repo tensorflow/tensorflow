@@ -71,7 +71,8 @@ struct QuantizeAndDequantizeOneScaleImpl {
         out.device(d) =
             ((input.cwiseMin(max_range).cwiseMax(min_range) - min_range) *
                  scale +
-             T(0.5)).floor() *
+             T(0.5))
+                    .floor() *
                 inverse_scale +
             min_range;
       } else {

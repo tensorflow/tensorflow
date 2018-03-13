@@ -118,7 +118,7 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
   if src_dir != None:
     src_dir = _norm_path(src_dir)
     dest_dir = _norm_path(dest_dir)
-    files = _read_dir(repository_ctx, src_dir)
+    files = '\n'.join(sorted(_read_dir(repository_ctx, src_dir).splitlines()))
     # Create a list with the src_dir stripped to use for outputs.
     dest_files = files.replace(src_dir, '').splitlines()
     src_files = files.splitlines()

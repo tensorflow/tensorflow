@@ -434,7 +434,7 @@ class TransformedDistribution(distribution_lib.Distribution):
     log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
-    log_prob = ildj + log_prob
+    log_prob += math_ops.cast(ildj, log_prob.dtype)
     if self._is_maybe_event_override:
       log_prob.set_shape(array_ops.broadcast_static_shape(
           y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
@@ -457,7 +457,7 @@ class TransformedDistribution(distribution_lib.Distribution):
     prob = self.distribution.prob(x)
     if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
-    prob *= math_ops.exp(ildj)
+    prob *= math_ops.exp(math_ops.cast(ildj, prob.dtype))
     if self._is_maybe_event_override:
       prob.set_shape(array_ops.broadcast_static_shape(
           y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
@@ -546,7 +546,9 @@ class TransformedDistribution(distribution_lib.Distribution):
       ], 0)
       entropy = array_ops.tile(entropy, multiples)
     dummy = array_ops.zeros([], self.dtype)
-    entropy -= self.bijector.inverse_log_det_jacobian(dummy)
+    entropy -= math_ops.cast(
+        self.bijector.inverse_log_det_jacobian(dummy),
+        entropy.dtype)
     entropy.set_shape(self.batch_shape)
     return entropy
 

@@ -80,6 +80,10 @@ def _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
   if lower_edge_hertz >= upper_edge_hertz:
     raise ValueError('lower_edge_hertz %.1f >= upper_edge_hertz %.1f' %
                      (lower_edge_hertz, upper_edge_hertz))
+  if upper_edge_hertz > sample_rate / 2:
+    raise ValueError('upper_edge_hertz must not be larger than the Nyquist '
+                     'frequency (sample_rate / 2). Got: %s for sample_rate: %s'
+                     % (upper_edge_hertz, sample_rate))
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Got: %s' % dtype)
 
@@ -138,8 +142,8 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
   Raises:
     ValueError: If num_mel_bins/num_spectrogram_bins/sample_rate are not
-      positive, lower_edge_hertz is negative, or frequency edges are incorrectly
-      ordered.
+      positive, lower_edge_hertz is negative, frequency edges are incorrectly
+      ordered, or upper_edge_hertz is larger than the Nyquist frequency.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """

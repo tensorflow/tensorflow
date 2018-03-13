@@ -13,30 +13,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/tools/gen_op_registration.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
+
+const char kInputModelFlag[] = "input_model";
+const char kOutputRegistrationFlag[] = "output_registration";
+const char kTfLitePathFlag[] = "tflite_path";
 
 using tensorflow::Flag;
 using tensorflow::Flags;
 using tensorflow::string;
 
+void ParseFlagAndInit(int argc, char** argv, string* input_model,
+                      string* output_registration, string* tflite_path) {
+  std::vector<tensorflow::Flag> flag_list = {
+      Flag(kInputModelFlag, input_model, "path to the tflite model"),
+      Flag(kOutputRegistrationFlag, output_registration,
+           "filename for generated registration code"),
+      Flag(kTfLitePathFlag, tflite_path, "Path to tensorflow lite dir"),
+  };
+
+  Flags::Parse(&argc, argv, flag_list);
+  tensorflow::port::InitMain(argv[0], &argc, &argv);
+}
+
 namespace {
 
-void GenerateFileContent(const string& filename,
+void GenerateFileContent(const std::string& tflite_path,
+                         const std::string& filename,
                          const std::vector<string>& builtin_ops,
                          const std::vector<string>& custom_ops) {
   std::ofstream fout(filename);
 
-  fout << "#include "
-          "\"third_party/tensorflow/contrib/lite/model.h\"\n";
-  fout << "#include "
-          "\"third_party/tensorflow/contrib/lite/tools/mutable_op_resolver.h\"\n";
+  fout << "#include \"" << tflite_path << "/model.h\"\n";
+  fout << "#include \"" << tflite_path << "/tools/mutable_op_resolver.h\"\n";
+
   fout << "namespace tflite {\n";
   fout << "namespace ops {\n";
   if (!builtin_ops.empty()) {
@@ -78,22 +98,20 @@ void GenerateFileContent(const string& filename,
 int main(int argc, char** argv) {
   string input_model;
   string output_registration;
-  std::vector<tensorflow::Flag> flag_list = {
-      Flag("input_model", &input_model, "path to the tflite model"),
-      Flag("output_registration", &output_registration,
-           "filename for generated registration code"),
-  };
-  Flags::Parse(&argc, argv, flag_list);
+  string tflite_path;
+  ParseFlagAndInit(argc, argv, &input_model, &output_registration,
+                   &tflite_path);
 
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
   std::vector<string> builtin_ops;
   std::vector<string> custom_ops;
-
   std::ifstream fin(input_model);
   std::stringstream content;
   content << fin.rdbuf();
-  const ::tflite::Model* model = ::tflite::GetModel(content.str().data());
+  // Need to store content data first, otherwise, it won't work in bazel.
+  string content_str = content.str();
+  const ::tflite::Model* model = ::tflite::GetModel(content_str.data());
   ::tflite::ReadOpsFromModel(model, &builtin_ops, &custom_ops);
-  GenerateFileContent(output_registration, builtin_ops, custom_ops);
+  GenerateFileContent(tflite_path, output_registration, builtin_ops,
+                      custom_ops);
   return 0;
 }

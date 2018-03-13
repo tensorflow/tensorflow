@@ -99,8 +99,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss)
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss)
 
 # Create the train ops, which calculate gradients and apply updates to weights.
 train_ops = tfgan.gan_train_ops(
@@ -161,8 +161,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss and standard pixel loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss,
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
     gradient_penalty=1.0)
 l1_pixel_loss = tf.norm(gan_model.real_data - gan_model.generated_data, ord=1)
 
@@ -193,8 +193,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss and standard pixel loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.least_squares_generator_loss,
-    discriminator_loss_fn=tfgan_losses.least_squares_discriminator_loss)
+    generator_loss_fn=tfgan.losses.least_squares_generator_loss,
+    discriminator_loss_fn=tfgan.losses.least_squares_discriminator_loss)
 l1_pixel_loss = tf.norm(gan_model.real_data - gan_model.generated_data, ord=1)
 
 # Modify the loss tuple to include the pixel loss.
@@ -223,8 +223,8 @@ gan_model = tfgan.infogan_model(
 # Build the GAN loss with mutual information penalty.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss,
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
     gradient_penalty=1.0,
     mutual_information_penalty_weight=1.0)
 

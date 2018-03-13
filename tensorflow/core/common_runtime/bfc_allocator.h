@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -62,13 +62,15 @@ class BFCAllocator : public VisitableAllocator {
 
   bool TracksAllocationSizes() override;
 
-  size_t RequestedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
 
-  size_t AllocatedSize(void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
 
-  int64 AllocationId(void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
 
   void GetStats(AllocatorStats* stats) override;
+
+  void ClearStats() override;
 
  private:
   struct Bin;
@@ -125,10 +127,10 @@ class BFCAllocator : public VisitableAllocator {
     string DebugString(BFCAllocator* a,
                        bool recurse) NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
-      strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
-                         " | Requested Size: ",
-                         strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use());
+      strings::StrAppend(
+          &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
+          " | Requested Size: ", strings::HumanReadableNumBytes(requested_size),
+          " | in_use: ", in_use());
       if (recurse && prev != BFCAllocator::kInvalidChunkHandle) {
         Chunk* p = a->ChunkFromHandle(prev);
         strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));
@@ -418,11 +420,13 @@ class BFCAllocator : public VisitableAllocator {
   mutable mutex lock_;
   RegionManager region_manager_ GUARDED_BY(lock_);
 
-  std::vector<Chunk> chunks_;
-  ChunkHandle free_chunks_list_;  // Ptr to head of linked list of free Chunks
+  std::vector<Chunk> chunks_ GUARDED_BY(lock_);
+
+  // Pointer to head of linked list of free Chunks
+  ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
 
   // Called once on each region, ASAP.
-  std::vector<Visitor> region_visitors_;
+  std::vector<Visitor> region_visitors_ GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.

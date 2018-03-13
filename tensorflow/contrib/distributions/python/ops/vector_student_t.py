@@ -91,14 +91,14 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   Extra leading dimensions, if provided, allow for batches.
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate vector Student's t-distribution.
   mu = [1., 2, 3]
   chol = [[1., 0, 0.],
           [1, 3, 0],
           [1, 2, 3]]
-  vt = ds.VectorStudentT(df=2, loc=mu, scale_tril=chol)
+  vt = tfd.VectorStudentT(df=2, loc=mu, scale_tril=chol)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   vt.prob([-1., 0, 1])
@@ -107,7 +107,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   mu = [[1., 2, 3],
         [11, 22, 33]]
   chol = ...  # shape 2 x 3 x 3, lower triangular, positive diagonal.
-  vt = ds.VectorStudentT(loc=mu, scale_tril=chol)
+  vt = tfd.VectorStudentT(loc=mu, scale_tril=chol)
 
   # Evaluate this on a two observations, each in R^3, returning a length two
   # tensor.

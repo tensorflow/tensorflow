@@ -37,6 +37,11 @@ namespace xla {
 // the expected result type for computations that are built up via the API --
 // the shape that results from an operation is inferred. Some methods have
 // overloads for inferring shape at the HLO level.
+//
+// TODO(b/73352135): Shape inference does not issue very good error messages, in
+// part because HloInstruction::ToString() is not available since shape
+// inference runs before the HloInstruction object is created. We need a
+// solution for this.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the
@@ -109,8 +114,15 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Infers the shape produced a cross replica sum with the given operand shape.
-  static StatusOr<Shape> InferCrossReplicaSumShape(const Shape& operand);
+  // Infers the shape produced by the given FFT type on the given operand.
+  static StatusOr<Shape> InferFftShape(
+      const Shape& in, FftType fft_type,
+      tensorflow::gtl::ArraySlice<int64> fft_length);
+
+  // Infers the shape produced a cross replica sum with the given operand
+  // shapes.
+  static StatusOr<Shape> InferCrossReplicaSumShape(
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.
@@ -178,6 +190,12 @@ class ShapeInference {
                                          const ProgramShape& body,
                                          const Shape& init);
 
+  // Infers the shape produced by a conditional operation.
+  static StatusOr<Shape> InferConditionalShape(
+      const Shape& predicate, const Shape& true_operand,
+      const Shape& false_operand, const ProgramShape& true_computation,
+      const ProgramShape& false_computation);
+
   // Infers the shape produced by a broadcast operation.
   static StatusOr<Shape> InferBroadcastShape(
       const Shape& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
@@ -229,11 +247,21 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       const ProgramShape& to_apply);
 
- private:
   // Helper that infers the shape produced by performing a dot operation with
   // the given LHS and RHS shapes.
-  static StatusOr<Shape> InferDotOpShape(const Shape& lhs, const Shape& rhs);
+  static StatusOr<Shape> InferDotOpShape(
+      const Shape& lhs, const Shape& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
+  // Helper that infers the shape of the tensor produced by a gather operation
+  // with the given input shape, gather indices shape and gather dimension
+  // numbers.
+  static StatusOr<Shape> InferGatherShape(
+      const Shape& input_shape, const Shape& gather_indices_shape,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
+ private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.
   // Note: By "element-wise" we mean operations that look at a single element in

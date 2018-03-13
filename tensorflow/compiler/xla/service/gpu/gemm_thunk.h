@@ -52,6 +52,15 @@ class GemmThunk : public Thunk {
       const BufferAllocations& buffer_allocations,
       perftools::gputools::Stream* stream) override;
 
+  // Returns true if we'll perform autotuning if run on the given stream.  If
+  // so, we want the GPU to be quiescent during autotuning, so as not to
+  // introduce noise in our results.
+  bool ShouldHaltAllActivityBeforeRunning(
+      perftools::gputools::Stream* stream) override {
+    return autotune_results_.count(
+               stream->parent()->GetDeviceDescription().name()) != 0;
+  }
+
  private:
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;

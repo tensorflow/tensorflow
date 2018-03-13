@@ -56,6 +56,12 @@ class AdvancedActivationsTest(test.TestCase):
                                kwargs={'theta': 0.5},
                                input_shape=(2, 3, 4))
 
+  def test_softmax(self):
+    with self.test_session():
+      testing_utils.layer_test(keras.layers.Softmax,
+                               kwargs={'axis': 1},
+                               input_shape=(2, 3, 4))
+
 
 if __name__ == '__main__':
   test.main()

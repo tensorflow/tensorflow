@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -102,6 +103,17 @@ TEST(Bfloat16Test, Conversion) {
     // has 7 bits mantissa.
     EXPECT_LE(fabs(c[i] - a[i]) / a[i], 1.0 / 128);
   }
+}
+
+TEST(Bfloat16Test, Epsilon) {
+  EXPECT_LT(1.0f, static_cast<float>(bfloat16::epsilon() + bfloat16(1.0f)));
+  EXPECT_EQ(1.0f, static_cast<float>((bfloat16::epsilon() / bfloat16(2.0f)) +
+                                     bfloat16(1.0f)));
+}
+
+TEST(Bfloat16Test, Negate) {
+  EXPECT_EQ(-3.0f, static_cast<float>(-bfloat16(3.0f)));
+  EXPECT_EQ(4.5f, static_cast<float>(-bfloat16(-4.5f)));
 }
 
 static void BM_FloatToBFloat16(int iters) {

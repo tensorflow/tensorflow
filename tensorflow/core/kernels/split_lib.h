@@ -31,33 +31,33 @@ struct SplitCustom {
                   const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_sizes);
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, int NDims>
 struct Split {
-  void operator()(const Device& d, typename TTypes<T, 3>::Tensor output,
-                  typename TTypes<T, 3>::ConstTensor input,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
+  void operator()(const Device& d, typename TTypes<T, NDims>::Tensor output,
+                  typename TTypes<T, NDims>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes);
 };
 
-template <typename T>
-struct Split<Eigen::ThreadPoolDevice, T> {
+template <typename T, int NDims>
+struct Split<Eigen::ThreadPoolDevice, T, NDims> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<T, 3>::Tensor output,
-                  typename TTypes<T, 3>::ConstTensor input,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
+                  typename TTypes<T, NDims>::Tensor output,
+                  typename TTypes<T, NDims>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes);
 };
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T>
+template <typename T, int NDims>
 struct Split<Eigen::SyclDevice, T> {
   void operator()(const Eigen::SyclDevice& d,
-                  typename TTypes<T, 3>::Tensor output,
-                  typename TTypes<T, 3>::ConstTensor input,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
+                  typename TTypes<T, NDims>::Tensor output,
+                  typename TTypes<T, NDims>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes);
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

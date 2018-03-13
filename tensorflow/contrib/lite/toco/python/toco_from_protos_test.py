@@ -53,7 +53,7 @@ class TocoFromProtosTest(googletest.TestCase):
     model_flags = model_flags_pb2.ModelFlags()
     input_array = model_flags.input_arrays.add()
     input_array.name = TensorName(in_tensor)
-    input_array.shape.extend(map(int, in_tensor.get_shape()))
+    input_array.shape.dims.extend(map(int, in_tensor.get_shape()))
     model_flags.output_arrays.append(TensorName(out_tensor))
     # Shell out to run toco (in case it crashes)
     with tempfile.NamedTemporaryFile() as fp_toco, \

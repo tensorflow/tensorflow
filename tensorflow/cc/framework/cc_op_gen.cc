@@ -697,7 +697,8 @@ string OpInfo::GetOpAttrStruct() const {
     attr_comment = MakeComment(attr_comment, "    ");
 
     strings::StrAppend(&setters, attr_comment);
-    strings::StrAppend(&setters, "    Attrs ", attr_func_def, " x) {\n");
+    strings::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
+                       " x) {\n");
     strings::StrAppend(&setters, "      Attrs ret = *this;\n");
     strings::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
                        "_ = x;\n");
@@ -1057,15 +1058,8 @@ string MakeInternal(const string& fname) {
 }  // namespace
 
 void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& dot_h_fname, const string& dot_cc_fname,
-                const string& overrides_fnames) {
+                const string& dot_h_fname, const string& dot_cc_fname) {
   Env* env = Env::Default();
-
-  // Load the override map.
-  OpGenOverrideMap override_map;
-  if (!overrides_fnames.empty()) {
-    TF_CHECK_OK(override_map.LoadFileList(env, overrides_fnames));
-  }
 
   // Write the initial boilerplate to the .h and .cc files.
   std::unique_ptr<WritableFile> h = nullptr;

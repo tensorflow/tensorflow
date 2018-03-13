@@ -44,7 +44,7 @@ constexpr int kMaxSpaceToBatchBlockDims = 4;
   MACRO(2 /**/, ##__VA_ARGS__)                              \
   MACRO(3 /**/, ##__VA_ARGS__)                              \
   MACRO(4 /**/, ##__VA_ARGS__)                              \
-/**/
+  /**/
 
 namespace internal {
 namespace spacetobatch {

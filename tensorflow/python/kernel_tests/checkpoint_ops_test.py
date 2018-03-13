@@ -50,7 +50,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_no_vocab_changes(self):
     """Tests where vocab does not change at all."""
-    remapping, num_present = gen_checkpoint_ops._generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.old_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=3,
@@ -63,7 +63,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_shifted_vocab(self):
     """Tests where vocab is the same, but shifted / ordered differently."""
-    remapping, num_present = gen_checkpoint_ops._generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.new_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=3,
@@ -76,7 +76,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_offset(self):
     """Tests offset and num_new_vocab logic."""
-    remapping, num_present = gen_checkpoint_ops._generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.new_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=1,
@@ -89,7 +89,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_old_vocab_size(self):
     """Tests where old_vocab_size is specified."""
-    remapping, num_present = gen_checkpoint_ops._generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.new_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=3,
@@ -132,7 +132,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
     # No column remapping, new weight matrix has second row, then first row.
     row_remapping = [1, 0]
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -147,7 +147,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     # No row remapping, new weight matrix has third col, then first col.
     row_remapping = list(range(self.old_num_rows))
     col_remapping = [2, 0]
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -162,7 +162,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     # Both row and column remappings.
     row_remapping = [1, 0, 4]
     col_remapping = [1, 15]
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -177,7 +177,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
   def test_load_and_remap_with_init(self):
     """Tests the op's load and remap where there are missing entries."""
     init_val = 42
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[2, -1, 0],
@@ -196,7 +196,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     """Tests when all the rows are missing and need to be initialized."""
     num_rows = 7
     initializing_values = [42] * num_rows * self.old_num_cols
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[-1] * num_rows,
@@ -214,7 +214,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     num_rows = 7
     num_cols = 4
     initializing_values = [42] * num_rows * num_cols
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[-1] * num_rows,
@@ -235,7 +235,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     invalid_remapping = [1, 0, 0, 0, 1, 2]
 
     # Invalid row remapping.
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=invalid_remapping,
@@ -247,7 +247,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
       remapped_matrix.eval()
 
     # Invalid column remapping.
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=list(range(self.old_num_rows)),
@@ -260,7 +260,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
   def test_load_and_remap_incorrect_initializing_values(self):
     """Tests that errors are raised with incorrect number of init values."""
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[2, -1, 0],
@@ -275,7 +275,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.test_session(), self.assertRaises(errors.InvalidArgumentError):
       remapped_matrix.eval()
 
-    remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[2, -1, 0],
@@ -314,7 +314,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
       num_rows, num_cols = np_value.shape
 
       # Tests loading the entire tensor (except reversed).
-      remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
           ckpt_path=ckpt_path,
           old_tensor_name=old_tensor_name,
           # Simply reverses the rows of the matrix.
@@ -332,7 +332,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
       self.assertGreater(num_rows, 2)
       prefix_rows = 2
       suffix_rows = 3
-      remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
           ckpt_path=ckpt_path,
           old_tensor_name=old_tensor_name,
           # Reverses the rows of the matrix, then prepends and appends
@@ -353,7 +353,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
       # Tests when everything is taken from initializing_values.
       new_rows = 7
       initializing_values = [42] * new_rows * num_cols
-      remapped_matrix = gen_checkpoint_ops._load_and_remap_matrix(
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
           ckpt_path=ckpt_path,
           old_tensor_name=old_tensor_name,
           # Nothing is loaded from the old tensor.

@@ -417,7 +417,7 @@ class MeanTensorTest(test.TestCase):
 
       self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(mean), 5)
 
-  def testWeighted1d(self):
+  def testBinaryWeighted1d(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
@@ -443,6 +443,33 @@ class MeanTensorTest(test.TestCase):
       for _ in range(4):
         sess.run(update_op)
       self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [[0.0025]])
+      _enqueue_vector(sess, weights_queue, [[0.005]])
+      _enqueue_vector(sess, weights_queue, [[0.01]])
+      _enqueue_vector(sess, weights_queue, [[0.0075]])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.mean_tensor(values, weights)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[0.8, 3.52]], sess.run(mean), 5)
 
   def testWeighted2d_1(self):
     with self.test_session() as sess:
@@ -3628,7 +3655,8 @@ class MeanPerClassAccuracyTest(test.TestCase):
         predictions=array_ops.ones([10, 1]),
         labels=array_ops.ones([10, 1]),
         num_classes=2)
-    _assert_metric_variables(self, ('mean_accuracy/total_confusion_matrix:0',))
+    _assert_metric_variables(self, ('mean_accuracy/count:0',
+                                    'mean_accuracy/total:0'))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3797,23 +3825,6 @@ class MeanPerClassAccuracyTest(test.TestCase):
       desired_output = np.mean([1.0 / 2.0, 2.0 / 3.0, 0.])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
-  def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = array_ops.concat([
-        constant_op.constant(0, shape=[5]), constant_op.constant(1, shape=[5])
-    ], 0)
-    labels = array_ops.concat([
-        constant_op.constant(0, shape=[3]), constant_op.constant(1, shape=[7])
-    ], 0)
-    num_classes = 2
-    with self.test_session() as sess:
-      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
-          labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
-      confusion_matrix = update_op.eval()
-      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
-      desired_mean_accuracy = np.mean([3. / 3., 5. / 7.])
-      self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
-
   def testAllCorrect(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
@@ -3822,7 +3833,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(40, update_op.eval()[0])
+      self.assertEqual(1.0, update_op.eval()[0])
       self.assertEqual(1.0, mean_accuracy.eval())
 
   def testAllWrong(self):
@@ -3833,7 +3844,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
+      self.assertAllEqual([0.0, 0.0], update_op.eval())
       self.assertEqual(0., mean_accuracy.eval())
 
   def testResultsWithSomeMissing(self):
@@ -3852,8 +3863,9 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes, weights=weights)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
-      desired_mean_accuracy = np.mean([2. / 2., 4. / 6.])
+      desired_accuracy = np.array([2. / 2., 4. / 6.], dtype=np.float32)
+      self.assertAllEqual(desired_accuracy, update_op.eval())
+      desired_mean_accuracy = np.mean(desired_accuracy)
       self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
 
 

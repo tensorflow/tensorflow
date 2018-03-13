@@ -40,6 +40,13 @@ limitations under the License.
 
 namespace xla {
 
+// Logs the provided status message with a backtrace.
+//
+// For use by Status-factories, logs a backtrace at the point where the status
+// is created, such that we can use --vmodule=util=1 to see all status
+// creation backtraces.
+Status WithLogBacktrace(const Status& status);
+
 // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
@@ -207,6 +214,27 @@ Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 
+// Passed-varargs variant of the InvalidArgument factory above.
+Status InvalidArgumentV(const char* format, va_list args);
+
+template <typename... Args>
+Status UnimplementedStrCat(Args&&... concat) {
+  return Unimplemented(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status InternalErrorStrCat(Args&&... concat) {
+  return InternalError(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status ResourceExhaustedStrCat(Args&&... concat) {
+  return ResourceExhausted(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
 // side effect, any additional trailing whitespace is removed.
@@ -239,11 +267,14 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
 
 // Override of the above that works around compile failures with gcc 7.1.1.
 // For details see https://github.com/tensorflow/tensorflow/issues/10843
+// Hide this workaround from MSVC as it causes ambiguous error.
+#ifndef _MSC_VER
 template <typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        const std::vector<T>& input) {
   return Permute<std::vector, T>(permutation, input);
 }
+#endif
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
@@ -329,7 +360,7 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToMultiple(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
@@ -337,7 +368,7 @@ T RoundUpToNearest(T value, T divisor) {
 
 // Rounds the value down to a multiple of the divisor by first calling
 // FloorOfRatio then multiplying by the divisor. For example:
-// RoundUpToMultiple(13, 8) => 8
+// RoundDownToNearest(13, 8) => 8
 template <typename T>
 T RoundDownToNearest(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
@@ -395,6 +426,79 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
+template <typename Container, typename Predicate>
+bool c_all_of(const Container& container, Predicate&& predicate) {
+  return std::all_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
+}
+
+template <typename Container, typename Predicate>
+bool c_any_of(const Container& container, Predicate&& predicate) {
+  return std::any_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
+}
+
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(const InputContainer& input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation&& unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator,
+                        std::forward<UnaryOperation>(unary_op));
+}
+
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(const InputContainer& input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate&& predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, std::forward<UnaryPredicate>(predicate));
+}
+
+template <class InputContainer, class OutputIterator>
+OutputIterator c_copy(const InputContainer& input_container,
+                      OutputIterator output_iterator) {
+  return std::copy(std::begin(input_container), std::end(input_container),
+                   output_iterator);
+}
+
+template <class InputContainer>
+void c_sort(InputContainer& input_container) {
+  std::sort(std::begin(input_container), std::end(input_container));
+}
+
+template <class InputContainer, class Comparator>
+void c_sort(InputContainer& input_container, Comparator&& comparator) {
+  std::sort(std::begin(input_container), std::end(input_container),
+            std::forward<Comparator>(comparator));
+}
+
+template <typename Sequence, typename T>
+bool c_binary_search(const Sequence& sequence, T&& value) {
+  return std::binary_search(std::begin(sequence), std::end(sequence),
+                            std::forward<T>(value));
+}
+
+template <typename C>
+bool c_is_sorted(const C& c) {
+  return std::is_sorted(std::begin(c), std::end(c));
+}
+
+template <typename C>
+auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+  return std::adjacent_find(std::begin(c), std::end(c));
+}
+
+template <typename C, typename Pred>
+auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
+
+template <typename C, typename Value>
+auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+  return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

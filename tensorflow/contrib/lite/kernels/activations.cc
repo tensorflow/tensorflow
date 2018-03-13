@@ -15,8 +15,8 @@ limitations under the License.
 #include <unistd.h>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 
@@ -58,6 +58,33 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(input->dims));
+}
+
+TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+
+  if (input->type == kTfLiteUInt8) {
+    static constexpr int kInputIntegerBits = 4;
+
+    const double input_real_multiplier =
+        input->params.scale *
+        static_cast<double>(1 << (31 - kInputIntegerBits));
+
+    QuantizeMultiplierGreaterThanOne(input_real_multiplier,
+                                     &data->input_multiplier,
+                                     &data->input_left_shift);
+    data->input_range_radius =
+        CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+  }
 
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
@@ -134,8 +161,7 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::max(0.f, *in);
       return kTfLiteOk;
-    }
-    break;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;
@@ -173,8 +199,7 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
       return kTfLiteOk;
-    }
-    break;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;
@@ -182,6 +207,7 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
@@ -192,8 +218,15 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::tanh(*in);
       return kTfLiteOk;
-    }
-    break;
+    } break;
+    case kTfLiteUInt8: {
+      optimized_ops::Tanh(GetTensorData<uint8_t>(input), GetTensorDims(input),
+                          input->params.zero_point, data->input_range_radius,
+                          data->input_multiplier, data->input_left_shift,
+                          GetTensorData<uint8_t>(output),
+                          GetTensorDims(output));
+      return kTfLiteOk;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;
@@ -340,6 +373,21 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
+  TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (input->type) {
+    case kTfLiteFloat32:
+      optimized_ops::LogSoftmax(
+          GetTensorData<float>(input), GetTensorDims(input),
+          GetTensorData<float>(output), GetTensorDims(output));
+      return kTfLiteOk;
+    default:
+      context->ReportError(context, "Only float32 supported currently.");
+      return kTfLiteError;
+  }
+}
+
 }  // namespace activations
 
 TfLiteRegistration* Register_RELU() {
@@ -349,7 +397,7 @@ TfLiteRegistration* Register_RELU() {
   return &r;
 }
 
-TfLiteRegistration* Register_RELU1() {
+TfLiteRegistration* Register_RELU_N1_TO_1() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
                                  activations::GenericPrepare,
                                  activations::Relu1Eval};
@@ -364,8 +412,8 @@ TfLiteRegistration* Register_RELU6() {
 }
 
 TfLiteRegistration* Register_TANH() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::TanhPrepare,
                                  activations::TanhEval};
   return &r;
 }
@@ -381,6 +429,13 @@ TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {activations::Init, activations::Free,
                                  activations::SoftmaxPrepare,
                                  activations::SoftmaxEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOG_SOFTMAX() {
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::GenericPrepare,
+                                 activations::LogSoftmaxEval};
   return &r;
 }
 

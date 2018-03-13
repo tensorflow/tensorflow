@@ -21,8 +21,6 @@ namespace tensorflow {
 bool GpuOpFilter(KernelDef* kdef) {
   // TODO(b/31361304): The GPU backend does not parallelize PRNG ops, leading to
   // slow code.
-  // TODO(b/34969189) The implementation of TruncatedNormal generates illegal
-  // code on GPU.
   if (kdef->op() == "RandomStandardNormal" || kdef->op() == "RandomUniform" ||
       kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal") {
     return false;
