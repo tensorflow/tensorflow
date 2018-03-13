@@ -149,8 +149,6 @@ class FisherEstimator(object):
     self._damping = damping
     self._estimation_mode = estimation_mode
     self._layers = layer_collection
-    self._layers.create_subgraph()
-    self._layers.check_registration(variables)
     self._gradient_fns = {
         "gradients": self._get_grads_lists_gradients,
         "empirical": self._get_grads_lists_empirical,
@@ -163,9 +161,6 @@ class FisherEstimator(object):
     self._exps = exps
 
     self._name = name
-
-    self._instantiate_factors()
-    self._register_matrix_functions()
 
   @property
   def variables(self):
@@ -284,6 +279,12 @@ class FisherEstimator(object):
     for exp in self._exps:
       for block in self.blocks:
         block.register_matpower(exp)
+
+  def _finalize_layer_collection(self):
+    self._layers.create_subgraph()
+    self._layers.check_registration(self.variables)
+    self._instantiate_factors()
+    self._register_matrix_functions()
 
   def make_ops_and_vars(self, scope=None):
     """Make ops and vars with no specific device placement.
@@ -466,6 +467,8 @@ class FisherEstimator(object):
       inv_update_thunks: A list of thunks that make the inv update ops.
     """
     self._check_vars_unmade_and_set_made_flag()
+
+    self._finalize_layer_collection()
 
     scope = self.name if scope is None else scope
 
