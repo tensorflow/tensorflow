@@ -121,8 +121,9 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
     estimator = dnn.DNNClassifier(
         hidden_units=(2, 2),
         # Adagrad is configured with `get_optimizer_instance`, so the function
-        # form of `_TowerOptimizer.__init__` is used.
-        optimizer=replicate_model_fn._TowerOptimizer(optimizer_fn),
+        # form of `TowerOptimizer.__init__` is used.
+        optimizer=replicate_model_fn._TowerOptimizer(
+            optimizer_fn, loss_reduction=losses.Reduction.SUM),
         feature_columns=feature_columns,
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -134,7 +135,6 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
       model_fn = replicate_model_fn._replicate_model_fn_with_mode(
           estimator.model_fn,
           devices=['/gpu:0', '/gpu:1', '/gpu:2'],
-          loss_reduction=losses.Reduction.SUM,
           mode=mode)
 
     estimator = estimator_lib.Estimator(
@@ -178,32 +178,39 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
 
 class ReplicateModelTest(test_util.TensorFlowTestCase):
 
-  def model_fn(self, mode, features, labels, params):
-    c = variable_scope.get_variable(
-        'c',
-        initializer=constant_op.constant(10, dtype=dtypes.float64),
-        dtype=dtypes.float64)
+  def create_model_fn_with_loss_reduction(self, loss_reduction):
 
-    predictions = math_ops.multiply(features, c)
+    def model_fn(mode, features, labels, params):
+      c = variable_scope.get_variable(
+          'c',
+          initializer=constant_op.constant(10, dtype=dtypes.float64),
+          dtype=dtypes.float64)
 
-    loss = losses.absolute_difference(
-        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
-    loss = math_ops.reduce_sum(loss)
+      predictions = math_ops.multiply(features, c)
 
-    metrics = {
-        'accuracy': metrics_lib.accuracy(labels, predictions),
-        'auc': metrics_lib.auc(labels, predictions)
-    }
+      loss = losses.absolute_difference(
+          labels=labels,
+          predictions=predictions,
+          reduction=losses.Reduction.SUM)
+      loss = math_ops.reduce_sum(loss)
 
-    optimizer = replicate_model_fn._TowerOptimizer(
-        gradient_descent.GradientDescentOptimizer(params['learning_rate']))
+      metrics = {
+          'accuracy': metrics_lib.accuracy(labels, predictions),
+          'auc': metrics_lib.auc(labels, predictions)
+      }
 
-    return model_fn_lib.EstimatorSpec(
-        mode=mode,
-        loss=loss,
-        eval_metric_ops=metrics,
-        predictions={'probabilities': predictions},
-        train_op=optimizer.minimize(loss))
+      optimizer = replicate_model_fn._TowerOptimizer(
+          gradient_descent.GradientDescentOptimizer(params['learning_rate']),
+          loss_reduction=loss_reduction)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=loss,
+          eval_metric_ops=metrics,
+          predictions={'probabilities': predictions},
+          train_op=optimizer.minimize(loss))
+
+    return model_fn
 
   @property
   def params(self):
@@ -217,8 +224,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn,
-          loss_reduction=losses.Reduction.SUM,
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
           devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
@@ -248,7 +254,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
           dtype=dtypes.float64)
 
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, losses.Reduction.MEAN, devices=['/gpu:0', '/gpu:1'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.MEAN),
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
@@ -284,8 +291,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       with self.test_session() as session, variable_scope.variable_scope(
           '', reuse=variable_scope.AUTO_REUSE):
         replicated_model_fn = replicate_model_fn._replicate_model_fn(
-            self.model_fn,
-            loss_reduction=losses.Reduction.SUM,
+            self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
             devices=['/gpu:0', '/gpu:1'])
         estimator_spec = replicated_model_fn(
             features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
@@ -307,8 +313,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn,
-          loss_reduction=losses.Reduction.SUM,
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
           devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
@@ -338,7 +343,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, losses.Reduction.MEAN, devices=['/gpu:0', '/gpu:1'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.MEAN),
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
       session.run(variables.local_variables_initializer())
@@ -367,7 +373,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.PREDICT, self.params)
       session.run(variables.global_variables_initializer())
@@ -382,7 +389,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
@@ -404,7 +412,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
       session.run(variables.local_variables_initializer())
@@ -432,7 +441,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.PREDICT, self.params)
       session.run(variables.global_variables_initializer())
@@ -448,15 +458,22 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, '.*Batch.+size.+needs.+to.+be.+divisible.+by.+GPUs.+'):
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0', '/gpu:1'])
       _ = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
 
   def test_unsupported_loss_reduction(self):
+    features = np.array([[1.0], [2.0], [3.0]])
+    labels = np.array([[1.0], [2.0], [3.0]])
+
     with self.assertRaisesRegexp(ValueError,
                                  '.+none.+reduction.+is.+specified.+'):
-      _ = replicate_model_fn._replicate_model_fn(self.model_fn,
-                                                 losses.Reduction.NONE)
+      replicated_model_fn = replicate_model_fn._replicate_model_fn(
+          self.create_model_fn_with_loss_reduction(losses.Reduction.NONE),
+          devices=['/gpu:0', '/gpu:1', '/gpu:2'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
 
   def test_places_on_gpu_with_upper_case_spelling(self):
     features = np.array([[0.01], [0.002]])
@@ -464,7 +481,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/GPU:0'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/GPU:0'])
       _ = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
 
@@ -478,7 +496,8 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session():
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
-          self.model_fn, devices=['/gpu:0'])
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
+          devices=['/gpu:0'])
       _ = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
 
@@ -624,7 +643,8 @@ class MakeSureSyncReplicasOptimizerWorks(test_util.TensorFlowTestCase):
     optimizer = training.SyncReplicasOptimizer(
         optimizer, replicas_to_aggregate=1)
     sync_hook = optimizer.make_session_run_hook(True)
-    optimizer = replicate_model_fn._TowerOptimizer(optimizer)
+    optimizer = replicate_model_fn._TowerOptimizer(
+        optimizer, loss_reduction=losses.Reduction.SUM)
 
     return model_fn_lib.EstimatorSpec(
         mode=mode,
@@ -650,7 +670,6 @@ class MakeSureSyncReplicasOptimizerWorks(test_util.TensorFlowTestCase):
 
     model_fn = replicate_model_fn._replicate_model_fn(
         self.model_fn,
-        loss_reduction=losses.Reduction.SUM,
         devices=['/gpu:0', '/gpu:1'])
 
     estimator = estimator_lib.Estimator(
@@ -687,9 +706,10 @@ class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
     }
 
     first_optimizer = replicate_model_fn._TowerOptimizer(
-        gradient_descent.GradientDescentOptimizer(1.0))
+        gradient_descent.GradientDescentOptimizer(1.0),
+        loss_reduction=losses.Reduction.SUM)
     second_optimizer = replicate_model_fn._TowerOptimizer(
-        adam.AdamOptimizer(1.0))
+        adam.AdamOptimizer(1.0), loss_reduction=losses.Reduction.SUM)
 
     with ops_lib.control_dependencies([side_effects.assign_add(1.0)]):
       first_grads_and_vars = first_optimizer.compute_gradients(loss)
@@ -712,7 +732,6 @@ class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
           self.model_fn,
-          loss_reduction=losses.Reduction.SUM,
           devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN, {})
@@ -787,11 +806,13 @@ class ReplicateWithTwoLossesAndOneOptimizer(test_util.TensorFlowTestCase):
     train_ops = []
 
     optimizer = replicate_model_fn._TowerOptimizer(
-        gradient_descent.GradientDescentOptimizer(1.0))
+        gradient_descent.GradientDescentOptimizer(1.0),
+        loss_reduction=losses.Reduction.SUM)
     train_ops.append(optimizer.minimize(loss, var_list=[c]))
     if not self.should_skip_optimizer():
       another_optimizer = replicate_model_fn._TowerOptimizer(
-          gradient_descent.GradientDescentOptimizer(1.0))
+          gradient_descent.GradientDescentOptimizer(1.0),
+          loss_reduction=losses.Reduction.SUM)
       train_ops.append(another_optimizer.minimize(another_loss, var_list=[d]))
 
     train_op = control_flow_ops.group(train_ops)
@@ -806,10 +827,9 @@ class ReplicateWithTwoLossesAndOneOptimizer(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with ops_lib.Graph().as_default(), self.test_session() as session:
       replicated_model_fn = replicate_model_fn._replicate_model_fn(
           self.model_fn,
-          loss_reduction=losses.Reduction.SUM,
           devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN, {})
@@ -881,7 +901,7 @@ class FailToWrapOptimizerInTheModelFn(test_util.TensorFlowTestCase):
 
     with self.test_session():
       with self.assertRaisesRegexp(ValueError,
-                                   'Please.+wrap.+with.+_TowerOptimizer'):
+                                   'Please.+wrap.+with.+TowerOptimizer'):
         replicated_model_fn = replicate_model_fn._replicate_model_fn(
             self.model_fn, devices=['/gpu:0', '/gpu:1'])
         _ = replicated_model_fn(features, labels, model_fn_lib.ModeKeys.TRAIN,
@@ -890,30 +910,43 @@ class FailToWrapOptimizerInTheModelFn(test_util.TensorFlowTestCase):
 
 class GetLossTowersTest(test_util.TensorFlowTestCase):
 
-  def model_fn(self, mode, features, labels, params):
-    c = variable_scope.get_variable(
-        'c',
-        initializer=constant_op.constant(0.25, dtype=dtypes.float64),
-        dtype=dtypes.float64)
+  def create_model_fn_with_loss_reduction(self, loss_reduction):
 
-    predictions = math_ops.add(np.array([0.1, 0.2, 0.3, features[0]]), c)
-    labels = np.array([0.1, 0.2, 0.3, labels[0]])
+    def model_fn(mode, features, labels, params):
+      del params
+      c = variable_scope.get_variable(
+          'c',
+          initializer=constant_op.constant(0.25, dtype=dtypes.float64),
+          dtype=dtypes.float64)
 
-    loss = losses.absolute_difference(
-        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
+      predictions = math_ops.add(np.array([0.1, 0.2, 0.3, features[0]]), c)
+      labels = np.array([0.1, 0.2, 0.3, labels[0]])
 
-    return model_fn_lib.EstimatorSpec(mode=mode, loss=math_ops.reduce_sum(loss))
+      loss = losses.absolute_difference(
+          labels=labels,
+          predictions=predictions,
+          reduction=losses.Reduction.SUM)
+
+      optimizer = replicate_model_fn._TowerOptimizer(
+          gradient_descent.GradientDescentOptimizer(1.0),
+          loss_reduction)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=math_ops.reduce_sum(loss),
+          train_op=optimizer.minimize(loss))
+
+    return model_fn
 
   def test_gradients_are_computed(self):
     with self.test_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
-          self.model_fn,
+          self.create_model_fn_with_loss_reduction(losses.Reduction.SUM),
           mode=None,
           features=[[0.6], [1.6]],
           labels=[[0.6], [0.6]],
           params=None,
           config=None,
-          loss_reduction=losses.Reduction.SUM,
           devices=['/gpu:0', '/gpu:1'],
           local_ps_devices=['/gpu:0'],
           name_scope_pattern='test_tower_{}')
@@ -941,12 +974,11 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
   def test_gradients_are_computed_with_mean_reduction(self):
     with self.test_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
-          self.model_fn,
+          self.create_model_fn_with_loss_reduction(losses.Reduction.MEAN),
           mode=model_fn_lib.ModeKeys.EVAL,
           features=[[0.6], [1.6]],
           labels=[[0.6], [0.6]],
           params=None,
-          loss_reduction=losses.Reduction.MEAN,
           config=None,
           devices=['/gpu:0', '/gpu:1'],
           local_ps_devices=['/gpu:0'],
@@ -999,7 +1031,6 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
           features=[[0.6], [1.6], [2.6]],
           labels=[[0.6], [0.6], [2.6]],
           params=None,
-          loss_reduction=losses.Reduction.SUM,
           config=None,
           devices=['/gpu:0', '/gpu:1', '/gpu:3'],
           local_ps_devices=['/gpu:0', '/gpu:1', '/gpu:3'],
@@ -1296,7 +1327,6 @@ class PredictSpecTest(test_util.TensorFlowTestCase):
           self.model_fn,
           mode=None,
           features=[[0.1], [0.2]],
-          loss_reduction=losses.Reduction.SUM,
           labels=[[], []],
           params=None,
           config=None,

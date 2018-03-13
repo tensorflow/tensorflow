@@ -56,6 +56,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // Granular control for arithmetic optimizer stages
   struct ArithmeticOptimizerOptions {
     bool combine_add_to_addn = true;
+    bool hoist_common_factor_out_of_aggregation = true;
     bool remove_inverse_transpose = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
