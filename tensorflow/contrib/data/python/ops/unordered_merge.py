@@ -46,7 +46,7 @@ def unordered_merge(datasets):
   # NOTE: the output order might be different
 
   # The shapes and types in `datasets` argument must be the same.
-  unorderd_merge([a, b, c]) ==> TypeError
+  unorderd_merge([a, b, d]) ==> TypeError
   
   # sample usage:
   dataset = tf.data.Dataset.from_tensor_slices(tensors)
