@@ -323,7 +323,7 @@ The connection weights and biases are managed by the layer object.
 
 The following code creates a @{tf.layers.Dense$`Dense`} layer that takes a
 batch of input vectors, and produces a single output value for each. To apply a
-layer to an input, call the layer as if it was a function. For example:
+layer to an input, call the layer as if it were a function. For example:
 
 ```python
 x = tf.placeholder(tf.float32, shape=[None, 3])
@@ -360,7 +360,7 @@ should be one of the last things added during graph construction.
 ### Executing Layers
 
 Now that the layer is initialized, we can evaluate the `linear_model`'s output
-tensor as we could for any other tensor. For example, the following code:
+tensor as we would any other tensor. For example, the following code:
 
 ```python
 print(sess.run(y, {x: [[1, 2, 3],[4, 5, 6]]}))
