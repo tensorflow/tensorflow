@@ -58,12 +58,12 @@ __all__ = [
     'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
     'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse', 'dropout',
-    'elu', 'flatten', 'fully_connected', 'GDN', 'gdn', 'images_to_sequence',
-    'layer_norm', 'linear', 'pool', 'max_pool2d', 'max_pool3d',
-    'one_hot_encoding', 'relu', 'relu6', 'repeat', 'scale_gradient',
-    'separable_conv2d', 'separable_convolution2d', 'sequence_to_images',
-    'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
+    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
+    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
+    'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
     'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
 ]
 
@@ -2718,7 +2718,8 @@ def sequence_to_images(inputs,
       num_batches = -1
     else:
       num_batches = num_batches // height
-    reshaped = array_ops.reshape(inputs, [width, num_batches, height, depth])
+    reshaped = array_ops.reshape(inputs,
+                                 [width, num_batches, height, depth])
     if output_data_format == 'channels_first':
       outputs = array_ops.transpose(reshaped, [1, 3, 2, 0])
     else:

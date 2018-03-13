@@ -456,7 +456,6 @@ def _rot90_4D(images, k, name_scope):
 
   def _rot180():
     return array_ops.reverse_v2(images, [1, 2])
-
   def _rot270():
     return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]), [2])
 
@@ -468,7 +467,6 @@ def _rot90_4D(images, k, name_scope):
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
   return result
-
 
 @tf_export('image.transpose_image')
 def transpose_image(image):

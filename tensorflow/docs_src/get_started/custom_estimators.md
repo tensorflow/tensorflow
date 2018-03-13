@@ -213,7 +213,7 @@ is connected to every node in the preceding layer.  Here's the relevant code:
 ```
 
 * The `units` parameter defines the number of output neurons in a given layer.
-* The `activation` parameter defines the [activation function](https://developers.google.com/machine-learning/glossary/#a) —
+* The `activation` parameter defines the [activation function](https://developers.google.com/machine-learning/glossary/#activation_function) —
   [Relu](https://developers.google.com/machine-learning/glossary/#ReLU) in this
   case.
 

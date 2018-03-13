@@ -25,6 +25,7 @@ limitations under the License.
 #include <aws/core/utils/StringUtils.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>

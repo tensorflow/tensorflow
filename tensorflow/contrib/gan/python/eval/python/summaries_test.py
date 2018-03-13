@@ -71,10 +71,11 @@ def get_cyclegan_model():
 
 class SummariesTest(test.TestCase):
 
-  def _test_add_gan_model_image_summaries_impl(
-      self, get_model_fn, expected_num_summary_ops, model_summaries):
-    summaries.add_gan_model_image_summaries(
-        get_model_fn(), grid_size=2, model_summaries=model_summaries)
+  def _test_add_gan_model_image_summaries_impl(self, get_model_fn,
+                                               expected_num_summary_ops,
+                                               model_summaries):
+    summaries.add_gan_model_image_summaries(get_model_fn(), grid_size=2,
+                                            model_summaries=model_summaries)
 
     self.assertEquals(expected_num_summary_ops,
                       len(ops.get_collection(ops.GraphKeys.SUMMARIES)))

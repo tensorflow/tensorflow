@@ -16,14 +16,17 @@ limitations under the License.
 package com.example.android.tflitecamerademo;
 
 import android.app.Activity;
+
 import java.io.IOException;
 
-/** This classifier works with the quantized MobileNet model. */
+/**
+ * This classifier works with the quantized MobileNet model.
+ */
 public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
   /**
-   * An array to hold inference results, to be feed into Tensorflow Lite as outputs. This isn't part
-   * of the super class, because we need a primitive array here.
+   * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
+   * This isn't part of the super class, because we need a primitive array here.
    */
   private byte[][] labelProbArray = null;
 

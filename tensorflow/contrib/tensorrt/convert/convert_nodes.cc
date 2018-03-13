@@ -809,9 +809,9 @@ tensorflow::Status BinaryTensorOpTensor(
   CHECK_EQ_TYPE(tensor_r->getType(), dtype);
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end())
-    return tensorflow::errors::Unimplemented(
-        "binary op: " + node_def.op() +
-        " not supported at: " + node_def.name());
+    return tensorflow::errors::Unimplemented("binary op: " + node_def.op() +
+                                             " not supported at: " +
+                                             node_def.name());
 
   nvinfer1::IElementWiseLayer* layer = ctx.network()->addElementWise(
       *const_cast<nvinfer1::ITensor*>(tensor_l),
@@ -1471,13 +1471,13 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
             << std::to_string(op_info_vec.size());
 
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_pseudo_chw;
-    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_psuedo_chw;
+    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
 
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -1486,7 +1486,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
       input_tensor_name = node_name + ":" + std::to_string(output_idx);
 
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(

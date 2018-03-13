@@ -207,7 +207,9 @@ class CheckpointsTest(test.TestCase):
 
       checkpoint_utils.init_from_checkpoint(checkpoint_dir,
                                             {"useful_scope/": "useful_scope/"})
-      self.assertEqual(my4._initializer_op.op.inputs[1].device, "/job:ps")
+      # initializer runs on the same task but always on CPU.
+      self.assertEqual(my4._initializer_op.op.inputs[1].device,
+                       "/job:ps/device:CPU:0")
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()

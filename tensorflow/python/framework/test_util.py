@@ -1413,7 +1413,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
-    self.assertEqual(device1, device2, "Devices %s and %s are not equal. %s" %
+    self.assertEqual(device1, device2,
+                     "Devices %s and %s are not equal. %s" % 
                      (device1, device2, msg))
 
   # Fix Python 3 compatibility issues

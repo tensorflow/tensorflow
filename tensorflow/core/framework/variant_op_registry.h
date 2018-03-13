@@ -310,8 +310,8 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
     return errors::Internal(
         "No unary variant binary_op function found for binary variant op "
         "enum: ",
-        op, " Variant type_name: '", a.TypeName(),
-        "' for device type: ", device);
+        op, " Variant type_name: '", a.TypeName(), "' for device type: ",
+        device);
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }

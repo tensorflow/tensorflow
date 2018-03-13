@@ -1173,6 +1173,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
         op(p_wrong_rank)
 
+
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.test_session(use_gpu=True):
@@ -1206,7 +1207,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
-
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
 

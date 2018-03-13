@@ -48,8 +48,8 @@ class LSTMLayerTest(test.TestCase):
     units = 2
 
     model = keras.models.Sequential()
-    inputs = keras.layers.Dense(
-        embedding_dim, input_shape=(timesteps, embedding_dim))
+    inputs = keras.layers.Dense(embedding_dim,
+                                input_shape=(timesteps, embedding_dim))
     model.add(inputs)
     layer = keras.layers.LSTM(units, return_sequences=True)
     model.add(layer)

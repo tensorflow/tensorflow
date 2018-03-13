@@ -16,22 +16,24 @@ limitations under the License.
 package com.example.android.tflitecamerademo;
 
 import android.app.Activity;
+
 import java.io.IOException;
 
 /**
- * This classifier works with the Inception-v3 slim model. It applies floating point inference
- * rather than using a quantized model.
+ * This classifier works with the Inception-v3 slim model.
+ * It applies floating point inference rather than using a quantized model.
  */
 public class ImageClassifierFloatInception extends ImageClassifier {
 
-  /** The inception net requires additional normalization of the used input. */
+  /**
+   * The inception net requires additional normalization of the used input.
+   */
   private static final int IMAGE_MEAN = 128;
-
   private static final float IMAGE_STD = 128.0f;
 
   /**
-   * An array to hold inference results, to be feed into Tensorflow Lite as outputs. This isn't part
-   * of the super class, because we need a primitive array here.
+   * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
+   * This isn't part of the super class, because we need a primitive array here.
    */
   private float[][] labelProbArray = null;
 

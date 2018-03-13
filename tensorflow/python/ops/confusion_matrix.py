@@ -99,19 +99,16 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
                      name=None, weights=None):
   """Computes the confusion matrix from predictions and labels.
 
-  Calculate the Confusion Matrix for a pair of prediction and
-  label 1-D int arrays.
-
   The matrix columns represent the prediction labels and the rows represent the
   real labels. The confusion matrix is always a 2-D array of shape `[n, n]`,
   where `n` is the number of valid labels for a given classification task. Both
   prediction and labels must be 1-D arrays of the same shape in order for this
   function to work.
 
-  If `num_classes` is None, then `num_classes` will be set to the one plus
-  the maximum value in either predictions or labels.
-  Class labels are expected to start at 0. E.g., if `num_classes` was
-  three, then the possible labels would be `[0, 1, 2]`.
+  If `num_classes` is `None`, then `num_classes` will be set to one plus the
+  maximum value in either predictions or labels. Class labels are expected to
+  start at 0. For example, if `num_classes` is 3, then the possible labels
+  would be `[0, 1, 2]`.
 
   If `weights` is not `None`, then each prediction contributes its
   corresponding weight to the total value of the confusion matrix cell.
@@ -141,8 +138,9 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
     weights: An optional `Tensor` whose shape matches `predictions`.
 
   Returns:
-    A k X k matrix representing the confusion matrix, where k is the number of
-    possible labels in the classification task.
+    A `Tensor` of type `dtype` with shape `[n, n]` representing the confusion
+    matrix, where `n` is the number of possible labels in the classification
+    task.
 
   Raises:
     ValueError: If both predictions and labels are not 1-D vectors and have
@@ -188,7 +186,7 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
       weights = math_ops.cast(weights, dtype)
 
     shape = array_ops.stack([num_classes, num_classes])
-    indices = array_ops.transpose(array_ops.stack([labels, predictions]))
+    indices = array_ops.stack([labels, predictions], axis=1)
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     cm_sparse = sparse_tensor.SparseTensor(

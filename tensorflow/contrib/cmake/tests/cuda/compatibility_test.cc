@@ -17,4 +17,6 @@ limitations under the License.
 #define __CUDACC__
 #include "crt/host_config.h"
 
-int main(void) { return 0; }
+int main(void) {
+  return 0;
+}
