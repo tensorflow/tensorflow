@@ -924,14 +924,15 @@ def raw_rnn(cell, loop_fn,
       and `emit_output`: the output to store for this iteration.
 
       Note that `emit_output` should be a `Tensor` or (possibly nested)
-      tuple of tensors which is aggregated in the `emit_ta` inside the `while_loop`.
-      For the first call to `loop_fn`, the `emit_output` corresponds to the `emit_structure`
-      which is then used to determine the size of the `zero_tensor` for the `emit_ta`
-      (defaults to `cell.output_size`). For the subsequent calls to the `loop_fn`, the
-      `emit_output` corresponds to the actual output tensor that is to be aggregated in the
-      `emit_ta`. The parameter `cell_state` and output
-      `next_cell_state` may be either a single or (possibly nested) tuple
-      of tensors.  The parameter `loop_state` and
+      tuple of tensors which is aggregated in the `emit_ta` inside the
+      `while_loop`. For the first call to `loop_fn`, the `emit_output`
+      corresponds to the `emit_structure` which is then used to determine the
+      size of the `zero_tensor` for the `emit_ta` (defaults to
+      `cell.output_size`). For the subsequent calls to the `loop_fn`, the
+      `emit_output` corresponds to the actual output tensor
+      that is to be aggregated in the `emit_ta`. The parameter `cell_state`
+      and output `next_cell_state` may be either a single or (possibly nested)
+      tuple of tensors.  The parameter `loop_state` and
       output `next_loop_state` may be either a single or (possibly nested) tuple
       of `Tensor` and `TensorArray` objects.  This last parameter
       may be ignored by `loop_fn` and the return value may be `None`.  If it
