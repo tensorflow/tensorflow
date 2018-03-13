@@ -5348,6 +5348,8 @@ def get_name_scope():
   Returns:
     A string representing the current name scope.
   """
+  if context.in_eager_mode():
+    return context.context().scope_name.rstrip("/")
   return get_default_graph().get_name_scope()
 
 
