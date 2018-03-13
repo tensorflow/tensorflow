@@ -24,7 +24,7 @@ from tensorflow.python.data.util import nest
 
 
 def unordered_merge(datasets):
-  """Creates a `Dataset` by zipping together the given datasets.
+  """Creates a `Dataset` by merging the given datasets without garantee of data order.
 
   This method has similar semantics to the built-in `zip()` function
   in Python, with the main difference being that the `datasets`
