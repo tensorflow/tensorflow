@@ -46,7 +46,7 @@ if [ -d /usr/include/openssl ]; then
   sudo mv /usr/include/openssl /usr/include/openssl.original
 fi
 
-WORKSPACE_PATH=`pwd`
+WORKSPACE_PATH=$(pwd)
 
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build

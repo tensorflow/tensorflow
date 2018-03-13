@@ -39,7 +39,7 @@ shift $((OPTIND - 1))
 
 IFS=' ' read -r -a build_targets <<< "${BUILD_TARGET}"
 
-SCRIPT_DIR=$(cd `dirname $0` && pwd)
+SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 source "${SCRIPT_DIR}/build_helper.subr"
 
 cd ${SCRIPT_DIR}

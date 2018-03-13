@@ -47,12 +47,12 @@ Specify the Android API version; the default is $android_api_version."
 # Deduce host platform.
 host_platform=
 nsync_path=
-case `uname -s` in
+case $(uname -s) in
 Linux)  host_platform=linux  android_host=linux;;
 Darwin) host_platform=macos  android_host=darwin;;
 *)      echo "$prog: can't deduce host platform" >&2; exit 2;;
 esac
-host_arch=`uname -m`
+host_arch=$(uname -m)
 case "$host_arch" in i[345678]86) host_arch=x86_32;; esac
 
 # Parse command line.

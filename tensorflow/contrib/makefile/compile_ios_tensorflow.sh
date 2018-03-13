@@ -64,7 +64,7 @@ shift $((OPTIND - 1))
 
 IFS=' ' read -r -a build_targets <<< "${BUILD_TARGET}"
 
-SCRIPT_DIR=$(cd `dirname $0` && pwd)
+SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 source "${SCRIPT_DIR}/build_helper.subr"
 
 
@@ -76,7 +76,7 @@ LIB_PREFIX=libtensorflow-core
 rm -rf ${LIBDIR}/${LIB_PREFIX}.a
 
 package_tf_library() {
-    CAP_DIR=`echo $1 | tr 'a-z' 'A-Z'`
+    CAP_DIR=$(echo $1 | tr 'a-z' 'A-Z')
     tf_libs="${LIBDIR}/ios_${CAP_DIR}/${LIB_PREFIX}-${1}.a"
     if [ -f "${LIBDIR}/${LIB_PREFIX}.a" ]; then
         tf_libs="$tf_libs ${LIBDIR}/${LIB_PREFIX}.a"

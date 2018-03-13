@@ -23,7 +23,7 @@
 #                 the latest commit
 
 # Current script directory
-SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+SCRIPT_DIR=$( cd "${0%/*}" && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 ROOT_DIR=$( cd "$SCRIPT_DIR/../../.." && pwd -P )
@@ -41,7 +41,7 @@ num_cpus() {
     die "ERROR: Unable to determine the number of CPUs"
   fi
 
-  echo ${N_CPUS}
+  echo "${N_CPUS}"
 }
 
 # Helper functions for examining changed files in the last non-merge git
@@ -57,7 +57,7 @@ get_last_non_merge_git_commit() {
 # git commit.
 # Usage: get_changed_files_in_last_non_merge_git_commit
 get_changed_files_in_last_non_merge_git_commit() {
-  git diff-tree --no-commit-id --name-only -r $(get_last_non_merge_git_commit)
+  git diff-tree --no-commit-id --name-only -r "$(get_last_non_merge_git_commit)"
 }
 
 # List Python files changed in the last non-merge git commit that still exist,
@@ -164,13 +164,13 @@ do_pylint() {
   ERRORS_FILE="$(mktemp)_pylint_errors.log"
   NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
 
-  rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FILE}
-  rm -rf ${NONWL_ERRORS_FILE}
-  touch ${NONWL_ERRORS_FILE}
+  rm -rf "${OUTPUT_FILE}"
+  rm -rf "${ERRORS_FILE}"
+  rm -rf "${NONWL_ERRORS_FILE}"
+  touch "${NONWL_ERRORS_FILE}"
 
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
+      --jobs="${NUM_CPUS}" "${PYTHON_SRC_FILES}" > "${OUTPUT_FILE}" 2>&1
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
@@ -187,7 +187,7 @@ do_pylint() {
   # C0326 bad-whitespace
   # W0611 unused-import
   # W0622 redefined-builtin
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' "${OUTPUT_FILE}" > "${ERRORS_FILE}"
 
   N_ERRORS=0
   while read -r LINE; do
@@ -201,11 +201,11 @@ do_pylint() {
     done
 
     if [[ ${IS_WHITELISTED} == "0" ]]; then
-      echo "${LINE}" >> ${NONWL_ERRORS_FILE}
-      echo "" >> ${NONWL_ERRORS_FILE}
+      echo "${LINE}" >> "${NONWL_ERRORS_FILE}"
+      echo "" >> "${NONWL_ERRORS_FILE}"
       ((N_ERRORS++))
     fi
-  done <${ERRORS_FILE}
+  done <"${ERRORS_FILE}"
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
@@ -259,10 +259,10 @@ do_pep8() {
   PEP8_START_TIME=$(date +'%s')
   PEP8_OUTPUT_FILE="$(mktemp)_pep8_output.log"
 
-  rm -rf ${PEP8_OUTPUT_FILE}
+  rm -rf "${PEP8_OUTPUT_FILE}"
 
   ${PEP8_BIN} --config="${PEP8_CONFIG_FILE}" --statistics \
-      ${PYTHON_SRC_FILES} 2>&1 | tee ${PEP8_OUTPUT_FILE}
+      ${PYTHON_SRC_FILES} 2>&1 | tee "${PEP8_OUTPUT_FILE}"
   PEP8_END_TIME=$(date +'%s')
 
   echo ""
@@ -289,17 +289,17 @@ do_buildifier(){
   BUILDIFIER_START_TIME=$(date +'%s')
   BUILDIFIER_OUTPUT_FILE="$(mktemp)_buildifier_output.log"
 
-  rm -rf ${BUILDIFIER_OUTPUT_FILE}
+  rm -rf "${BUILDIFIER_OUTPUT_FILE}"
 
   buildifier -showlog -v -mode=check \
-    ${BUILD_FILES} 2>&1 | tee ${BUILDIFIER_OUTPUT_FILE}
+    ${BUILD_FILES} 2>&1 | tee "${BUILDIFIER_OUTPUT_FILE}"
   BUILDIFIER_END_TIME=$(date +'%s')
 
   echo ""
   echo "buildifier took $((BUILDIFIER_END_TIME - BUILDIFIER_START_TIME)) s"
   echo ""
 
-  if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
+  if [[ -s "${BUILDIFIER_OUTPUT_FILE}" ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
     buildifier -showlog -v -mode=diff ${BUILD_FILES}
@@ -328,7 +328,7 @@ do_external_licenses_check(){
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
-  | tee ${EXTERNAL_DEPENDENCIES_FILE}
+  | tee "${EXTERNAL_DEPENDENCIES_FILE}"
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
@@ -337,24 +337,24 @@ do_external_licenses_check(){
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
-  | tee ${LICENSES_FILE}
+  | tee "${LICENSES_FILE}"
 
   echo
-  comm -1 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${EXTRA_LICENSES_FILE}
+  comm -1 -3 "${EXTERNAL_DEPENDENCIES_FILE}"  "${LICENSES_FILE}" 2>&1 | tee "${EXTRA_LICENSES_FILE}"
   echo
-  comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
+  comm -2 -3 "${EXTERNAL_DEPENDENCIES_FILE}"  "${LICENSES_FILE}" 2>&1 | tee "${MISSING_LICENSES_FILE}"
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
   # Blacklist
-  echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -v ${MISSING_LICENSES_FILE} > temp.txt
-  mv temp.txt ${MISSING_LICENSES_FILE}
+  echo "${MISSING_LICENSES_FILE}"
+  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -v "${MISSING_LICENSES_FILE}" > temp.txt
+  mv temp.txt "${MISSING_LICENSES_FILE}"
 
   # Whitelist
-  echo ${EXTRA_LICENSE_FILE}
-  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v ${EXTRA_LICENSES_FILE} > temp.txt
-  mv temp.txt ${EXTRA_LICENSES_FILE}
+  echo "${EXTRA_LICENSES_FILE}"
+  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v "${EXTRA_LICENSES_FILE}" > temp.txt
+  mv temp.txt "${EXTRA_LICENSES_FILE}"
 
 
 
@@ -362,27 +362,27 @@ do_external_licenses_check(){
   echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo
 
-  if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+  if [[ -s "${MISSING_LICENSES_FILE}" ]] || [[ -s "${EXTRA_LICENSES_FILE}" ]] ; then
     echo "FAIL: mismatch in packaged licenses and external dependencies"
-    if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
+    if [[ -s "${MISSING_LICENSES_FILE}" ]] ; then
       echo "Missing the licenses for the following external dependencies:"
-      cat ${MISSING_LICENSES_FILE}
+      cat "${MISSING_LICENSES_FILE}"
     fi
-    if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+    if [[ -s "${EXTRA_LICENSES_FILE}" ]] ; then
       echo "Please remove the licenses for the following external dependencies:"
-      cat ${EXTRA_LICENSES_FILE}
+      cat "${EXTRA_LICENSES_FILE}"
     fi
-    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
-    rm -rf ${LICENSES_FILE}
-    rm -rf ${MISSING_LICENSES_FILE}
-    rm -rf ${EXTRA_LICENSES_FILE}
+    rm -rf "${EXTERNAL_DEPENDENCIES_FILE}"
+    rm -rf "${LICENSES_FILE}"
+    rm -rf "${MISSING_LICENSES_FILE}"
+    rm -rf "${EXTRA_LICENSES_FILE}"
     return 1
   else
     echo "PASS: all external licenses included."
-    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
-    rm -rf ${LICENSES_FILE}
-    rm -rf ${MISSING_LICENSES_FILE}
-    rm -rf ${EXTRA_LICENSES_FILE}
+    rm -rf "${EXTERNAL_DEPENDENCIES_FILE}"
+    rm -rf "${LICENSES_FILE}"
+    rm -rf "${MISSING_LICENSES_FILE}"
+    rm -rf "${EXTRA_LICENSES_FILE}"
     return 0
   fi
 }
@@ -442,7 +442,7 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  cd "$ROOT_DIR/tensorflow/tools/pip_package" || exit 1
   python pip_smoke_test.py
 }
 
@@ -501,10 +501,9 @@ do_clang_format_check() {
 
   success=1
   for filename in $CLANG_SRC_FILES; do
-    $CLANG_FORMAT --style=google $filename | diff $filename - > /dev/null
-    if [ ! $? -eq 0 ]; then
+    if ! $CLANG_FORMAT --style=google "$filename" | diff "$filename" - > /dev/null then
       success=0
-      echo File $filename is not properly formatted with "clang-format "\
+      echo File "$filename" is not properly formatted with "clang-format "\
 "--style=google"
     fi
   done
@@ -517,22 +516,22 @@ do_clang_format_check() {
 }
 
 do_check_load_py_test() {
-  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  cd "$ROOT_DIR/tensorflow/tools/pip_package" || exit 1
   python check_load_py_test.py
 }
 
 do_cmake_python_sanity() {
-  cd "$ROOT_DIR/tensorflow/contrib/cmake"
+  cd "$ROOT_DIR/tensorflow/contrib/cmake" || exit 1
   python -m unittest -v python_sanity_test
 }
 
 do_check_futures_test() {
-  cd "$ROOT_DIR/tensorflow/tools/test"
+  cd "$ROOT_DIR/tensorflow/tools/test" || exit 1
   python check_futures_test.py
 }
 
 do_check_file_name_test() {
-  cd "$ROOT_DIR/tensorflow/tools/test"
+  cd "$ROOT_DIR/tensorflow/tools/test" || exit 1
   python file_name_test.py
 }
 
@@ -600,9 +599,9 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
-    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
+    printf "  %sPASS%s\n" ${COLOR_GREEN} ${COLOR_NC}
   else
-    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+    printf "  %sFAIL%s\n" ${COLOR_RED} ${COLOR_NC}
   fi
 
   ((COUNTER++))
@@ -613,8 +612,8 @@ echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
-  printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
+  printf "Sanity checks %sPASSED%s\n" ${COLOR_GREEN} ${COLOR_NC}
 else
-  printf "Sanity checks ${COLOR_RED}FAILED${COLOR_NC}\n"
+  printf "Sanity checks %sFAILED%s\n" ${COLOR_RED} ${COLOR_NC}
   exit 1
 fi

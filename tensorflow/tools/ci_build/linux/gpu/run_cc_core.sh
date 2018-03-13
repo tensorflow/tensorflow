@@ -25,7 +25,7 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export PYTHON_BIN_PATH=`which python3`
+export PYTHON_BIN_PATH=$(which python3)
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_CUDA=1

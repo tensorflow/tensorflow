@@ -25,7 +25,8 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export PYTHON_BIN_PATH=`which python3`
+PYTHON_BIN_PATH=$(which python3)
+export PYTHON_BIN_PATH
 
 export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
@@ -36,7 +37,7 @@ echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
 bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_gpu,-benchmark-test -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --jobs="${N_JOBS}" --test_timeout 300,450,1200,3600 \
     --build_tests_only --test_output=errors --local_test_jobs=8 \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
     --config=xla -- \

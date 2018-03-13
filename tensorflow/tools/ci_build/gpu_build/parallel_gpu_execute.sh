@@ -37,7 +37,7 @@ fi
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-8}
 
-for i in `seq 0 $((TF_GPU_COUNT-1))`; do
+for i in $(seq 0 $((TF_GPU_COUNT-1))); do
   exec {lock_fd}>/var/lock/gpulock$i || exit 1
   if flock -n "$lock_fd";
   then
@@ -53,4 +53,3 @@ for i in `seq 0 $((TF_GPU_COUNT-1))`; do
     exit $return_code
   fi
 done
-

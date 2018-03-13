@@ -17,11 +17,11 @@
 # please run this at root directory of tensorflow
 success=1
 
-for i in `grep -onI https://www.tensorflow.org/code/\[a-zA-Z0-9/._-\]\* -r tensorflow`
+for i in $(grep -onI https://www.tensorflow.org/code/\[a-zA-Z0-9/._-\]\* -r tensorflow)
 do
-  filename=`echo $i|awk -F: '{print $1}'`
-  linenumber=`echo $i|awk -F: '{print $2}'`
-  target=`echo $i|awk -F: '{print $4}'|tail -c +27`
+  filename="$(echo $i|awk -F: '{print $1}')"
+  linenumber="$(echo $i|awk -F: '{print $2}')"
+  target="$(echo $i|awk -F: '{print $4}'|tail -c +27)"
 
   # skip files in tensorflow/models
   if [[ $target == tensorflow_models/* ]] ; then

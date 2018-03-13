@@ -36,8 +36,8 @@ source cmake_test/bin/activate
 
 # For older versions of PIP, remove the ABI tag.
 # TODO(gunan) get rid of this part once pip is upgraded on all test machines.
-WHEEL_FILE_PATH=`ls tf_python/dist/*tensorflow*.whl`
-FIXED_WHEEL_PATH=`echo $WHEEL_FILE_PATH | sed -e s/cp27mu/none/`
+WHEEL_FILE_PATH=$(ls tf_python/dist/*tensorflow*.whl)
+FIXED_WHEEL_PATH=$(echo $WHEEL_FILE_PATH | sed -e s/cp27mu/none/)
 mv $WHEEL_FILE_PATH $FIXED_WHEEL_PATH
 
 # Install the pip package we just built.

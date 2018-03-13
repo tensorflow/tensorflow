@@ -104,14 +104,14 @@ if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
 fi
 
 # Compile nsync for the target iOS device architectures.
-# Don't use  export var=`something` syntax; it swallows the exit status.
-HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+# Don't use  export var=$(something) syntax; it swallows the exit status.
+HOST_NSYNC_LIB=$(tensorflow/contrib/makefile/compile_nsync.sh)
 if [[ -z "${BUILD_ARCH}" ]]; then
     # No arch specified so build all architectures
-    TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
+    TARGET_NSYNC_LIB=$(tensorflow/contrib/makefile/compile_nsync.sh -t ios)
 else
     # arch specified so build just that
-    TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios -a ${BUILD_ARCH}`
+    TARGET_NSYNC_LIB=$(tensorflow/contrib/makefile/compile_nsync.sh -t ios -a ${BUILD_ARCH})
 fi
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
