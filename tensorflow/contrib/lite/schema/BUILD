@@ -1,6 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_hdrs_check = "loose",
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
 
 licenses(["notice"])  # Apache 2.0
 
