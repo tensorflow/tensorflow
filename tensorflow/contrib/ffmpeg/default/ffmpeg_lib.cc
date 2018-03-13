@@ -256,6 +256,9 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
         if (p != std::string::npos) {
           string rgb24 = line.substr(p + 9, line.find(" ", p + 9));
           rgb24 = rgb24.substr(0, rgb24.find(","));
+          // Strip anything after " ", in case the format is
+          // `640x360 [SAR 1:1 DAR 16:9]`
+          rgb24 = rgb24.substr(0, rgb24.find(" "));
           string rgb24_width = rgb24.substr(0, rgb24.find("x"));
           string rgb24_height = rgb24.substr(rgb24_width.length() + 1);
           if (strings::safe_strtou32(rgb24_width, &width_value) &&
