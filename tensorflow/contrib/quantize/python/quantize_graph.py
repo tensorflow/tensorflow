@@ -158,7 +158,7 @@ def experimental_create_training_graph(input_graph=None,
   often fail.
 
   Args:
-    input_graph: The tf.Graph to be transformed,if None then defaults to the
+    input_graph: The tf.Graph to be transformed, if None then defaults to the
       default graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
