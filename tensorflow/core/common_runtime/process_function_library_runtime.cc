@@ -243,8 +243,9 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
         "Currently don't support instantiating functions on device: ",
         options.target);
   }
-
-  string function_key = Canonicalize(function_name, attrs);
+  VLOG(1) << "ProcessFLR Instantiate: " << function_name
+          << " on: " << options.target;
+  string function_key = Canonicalize(function_name, attrs, options);
   FunctionData* f;
   {
     mutex_lock l(mu_);
@@ -262,7 +263,9 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
   }
   TF_RETURN_IF_ERROR(
       f->DistributedInit(parent_, function_name, *lib_def_, attrs, options));
-
+  VLOG(1) << "ProcessFLR Instantiate [success]: " << function_name
+          << " on: " << options.target << " with handle: " << *handle
+          << " (this: " << this << ")";
   return Status::OK();
 }
 

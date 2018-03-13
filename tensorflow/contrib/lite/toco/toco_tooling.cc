@@ -59,6 +59,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new ResolveTransposeAttributes);
+  transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
   transformations->Add(new RemoveTensorFlowAssert);

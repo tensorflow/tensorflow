@@ -142,4 +142,11 @@ struct TFE_Op {
   bool use_xla = false;
 };
 
+namespace tensorflow {
+// Set an AttrValue on the op. Doesn't handle the list types.
+void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
+                          const tensorflow::AttrValue& default_value,
+                          const char* attr_name, TF_Status* status);
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

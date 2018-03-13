@@ -1524,8 +1524,118 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       // The node is replaceable iff
       // unknown_rank == false && (dim_size == 0 || all dims have size 1)
       bool replaceable = !shape.unknown_rank();
-      for (int j = 0; j < shape.dim_size(); ++j) {
+      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
         replaceable &= shape.dim(j).size() == 1;
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, node, output);
+      }
+    }
+
+    if (use_shape_info && IsSlice(*node) &&
+        properties.GetInputProperties(node->name()).size() == 3) {
+      const auto& input = properties.GetInputProperties(node->name())[0];
+      const auto& b = properties.GetInputProperties(node->name())[1];
+      const auto& s = properties.GetInputProperties(node->name())[2];
+      if (TensorShape::IsValid(b.shape()) && b.has_value() &&
+          TensorShape::IsValid(s.shape()) && s.has_value()) {
+        Tensor begin(b.dtype(), b.shape());
+        if (!begin.FromProto(b.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         b.value().DebugString());
+        }
+        Tensor size(s.dtype(), s.shape());
+        if (!size.FromProto(s.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         s.value().DebugString());
+        }
+        // The node is replaceable iff unknown_rank == false &&
+        // begin == 0 && (size == -1 || size == input_shape) for all dimensions
+        bool replaceable = !input.shape().unknown_rank();
+        for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
+          if (begin.dtype() == DT_INT32) {
+            replaceable &= begin.vec<int>()(j) == 0;
+          } else {
+            replaceable &= begin.vec<int64>()(j) == 0;
+          }
+          if (size.dtype() == DT_INT32) {
+            replaceable &= (size.vec<int>()(j) == -1 ||
+                            size.vec<int>()(j) == input.shape().dim(j).size());
+          } else {
+            replaceable &=
+                (size.vec<int64>()(j) == -1 ||
+                 size.vec<int64>()(j) == input.shape().dim(j).size());
+          }
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (IsTile(*node) &&
+        properties.GetInputProperties(node->name()).size() == 2) {
+      const auto& m = properties.GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(m.shape()) && m.has_value()) {
+        Tensor multiplies(m.dtype(), m.shape());
+        if (!multiplies.FromProto(m.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         m.value().DebugString());
+        }
+        // The node is replaceable iff all values in multiplies are 1.
+        bool replaceable = true;
+        if (multiplies.dtype() == DT_INT32) {
+          for (int j = 0; replaceable && j < multiplies.vec<int>().size();
+               ++j) {
+            replaceable &= multiplies.vec<int>()(j) == 1;
+          }
+        } else {
+          for (int j = 0; replaceable && j < multiplies.vec<int64>().size();
+               ++j) {
+            replaceable &= multiplies.vec<int64>()(j) == 1;
+          }
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (IsPad(*node) &&
+        properties.GetInputProperties(node->name()).size() >= 2) {
+      const auto& p = properties.GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(p.shape()) && p.has_value()) {
+        Tensor paddings(p.dtype(), p.shape());
+        if (!paddings.FromProto(p.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         p.value().DebugString());
+        }
+        // The node is replaceable iff all values in paddings are 0.
+        bool replaceable = true;
+        // The operation requires it to be int32 value so we don't check for
+        // 1nt64.
+        const auto flatten = paddings.flat<int32>();
+        for (int j = 0; replaceable && j < flatten.size(); ++j) {
+          replaceable &= flatten(j) == 0;
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (use_shape_info && IsSqueeze(*node) &&
+        !properties.GetInputProperties(node->name()).empty()) {
+      // https://www.tensorflow.org/api_docs/python/tf/squeeze mentions it's
+      // error to squeeze a dimension that is not 1, so we only need to check
+      // whether the input has > 1 size for each dimension.
+      const auto& shape =
+          properties.GetInputProperties(node->name())[0].shape();
+      // The node is replaceable iff
+      // unknown_rank == false && (dim_size == 0 || all dims have size > 1)
+      bool replaceable = !shape.unknown_rank();
+      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+        replaceable &= shape.dim(j).size() > 1;
       }
       if (replaceable) {
         ReplaceOperationWithIdentity(0, node, output);
@@ -2027,7 +2137,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
-
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));

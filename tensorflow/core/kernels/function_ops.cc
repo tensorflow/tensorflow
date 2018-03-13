@@ -318,6 +318,7 @@ class RemoteCallOp : public AsyncOpKernel {
       if (cached_entry != handle_cache_.end()) {
         handle = cached_entry->second;
       } else {
+        VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
         port::Tracing::TraceMe activity(strings::StrCat(
             "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
         OP_REQUIRES_OK_ASYNC(
@@ -327,6 +328,8 @@ class RemoteCallOp : public AsyncOpKernel {
             done);
         auto insert_result = handle_cache_.insert({function_target, handle});
         CHECK(insert_result.second) << "Insert unsuccessful.";
+        VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+                << ", resulting in handle: " << handle << " flr: " << lib;
       }
     }
 
@@ -349,6 +352,8 @@ class RemoteCallOp : public AsyncOpKernel {
     auto* rets = new std::vector<Tensor>;
     auto* trace = new port::Tracing::TraceMe(strings::StrCat(
         "RemoteCall: Run: ", func_.name(), " on ", target_device));
+    VLOG(1) << "Running " << func_.name() << " on " << target_device
+            << " with handle: " << handle;
     lib->Run(opts, handle, args, rets,
              [rets, trace, done, ctx](const Status& status) {
                if (!status.ok()) {

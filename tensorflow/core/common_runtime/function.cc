@@ -496,11 +496,26 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   InstantiateOptions options_copy(options);
   options_copy.target = device_name_;
   const string key = Canonicalize(function_name, attrs, options_copy);
-  *handle = parent_->GetHandle(key);
-  if (*handle != kInvalidHandle) {
+
+  {
     mutex_lock l(mu_);
-    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
-    return Status::OK();
+    *handle = parent_->GetHandle(key);
+    if (*handle != kInvalidHandle) {
+      FunctionLibraryRuntime::LocalHandle handle_on_device =
+          parent_->GetHandleOnDevice(device_name_, *handle);
+      if (handle_on_device == kInvalidLocalHandle) {
+        return errors::Internal("LocalHandle not found for handle ", *handle,
+                                ".");
+      }
+      auto item_handle = items_.find(handle_on_device);
+      if (item_handle == items_.end()) {
+        return errors::Internal("LocalHandle ", handle_on_device,
+                                " for handle ", *handle,
+                                " not found in items.");
+      }
+      item_handle->second->Ref();
+      return Status::OK();
+    }
   }
 
   Status s;
@@ -553,6 +568,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   }
 
   LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
+  CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
   Item* item = items_[h];

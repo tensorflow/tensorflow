@@ -280,6 +280,27 @@ TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
   ASSERT_TRUE(item != nullptr);
 }
 
+TEST_F(GrapplerItemBuilderTest, GraphWithCustomOps) {
+  MetaGraphDef meta_graph;
+  // y = XTimesTwo(x)
+  constexpr char device[] = "/cpu:0";
+  *meta_graph.mutable_graph_def() = test::function::GDef(
+      {test::function::NDef("x", "Const", {}, {{"dtype", DT_FLOAT}}, device),
+       test::function::NDef("y", "CustomOp", {"x"}, {{"T", DT_FLOAT}}, device)},
+      {});
+
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  ItemConfig cfg;
+  cfg.inline_functions = false;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item != nullptr);
+}
+
 TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), 0);

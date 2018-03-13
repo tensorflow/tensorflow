@@ -1037,3 +1037,74 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
   status->status = MessageToBuffer(ctx->run_metadata, buf);
   ctx->run_metadata.Clear();
 }
+
+namespace {
+TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
+                TF_Status* status) {
+  TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
+  for (const auto& attr : func.attr()) {
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+  }
+  return func_op;
+}
+}  // namespace
+
+namespace tensorflow {
+void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
+                          const tensorflow::AttrValue& default_value,
+                          const char* attr_name, TF_Status* status) {
+  switch (default_value.value_case()) {
+    case tensorflow::AttrValue::kS:
+      TFE_OpSetAttrString(op, attr_name, default_value.s().data());
+      break;
+    case tensorflow::AttrValue::kI:
+      TFE_OpSetAttrInt(op, attr_name, static_cast<int64_t>(default_value.i()));
+      break;
+    case tensorflow::AttrValue::kF:
+      TFE_OpSetAttrFloat(op, attr_name, default_value.f());
+      break;
+    case tensorflow::AttrValue::kB:
+      TFE_OpSetAttrBool(op, attr_name, default_value.b());
+      break;
+    case tensorflow::AttrValue::kType:
+      TFE_OpSetAttrType(op, attr_name,
+                        static_cast<TF_DataType>(default_value.type()));
+      break;
+    case tensorflow::AttrValue::kShape: {
+      const auto& tensor_shape = default_value.shape();
+      if (tensor_shape.unknown_rank()) {
+        TFE_OpSetAttrShape(op, attr_name, nullptr, -1, status);
+      } else {
+        const auto num_dims = tensor_shape.dim_size();
+        std::unique_ptr<int64_t[]> dims(new int64_t[num_dims]);
+        for (int i = 0; i < num_dims; ++i) {
+          dims[i] = tensor_shape.dim(i).size();
+        }
+        TFE_OpSetAttrShape(op, attr_name, dims.get(), num_dims, status);
+      }
+    } break;
+    case tensorflow::AttrValue::kFunc: {
+      const auto func_op = GetFunc(ctx, default_value.func(), status);
+      if (TF_GetCode(status) != TF_OK) return;
+      // TODO(nareshmodi): TFE_OpSetAttrFunction and TFE_OpSetAttrFunctionList
+      // require TFE_Op* and just convert it internally a NameAttrValue, so
+      // consider adding an overload to the C API to make this case easier.
+      TFE_OpSetAttrFunction(op, attr_name, func_op);
+    } break;
+    case tensorflow::AttrValue::kList:
+      TF_FALLTHROUGH_INTENDED;
+    case tensorflow::AttrValue::kTensor:
+      TF_FALLTHROUGH_INTENDED;
+    case tensorflow::AttrValue::kPlaceholder:
+      TF_FALLTHROUGH_INTENDED;
+    case tensorflow::AttrValue::VALUE_NOT_SET:
+      TF_SetStatus(
+          status, TF_UNIMPLEMENTED,
+          tensorflow::strings::StrCat("Unable to get setfor default value: ",
+                                      default_value.DebugString())
+              .data());
+  }
+}
+}  // namespace tensorflow
