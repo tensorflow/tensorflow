@@ -72,7 +72,7 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:main',
+    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
     'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
