@@ -1385,7 +1385,6 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "GraphKeys.GLOBAL_VARIABLES")
 
 
-@functools.wraps(get_variable)
 @tf_export("get_local_variable")
 def get_local_variable(*args, **kwargs):
   kwargs["trainable"] = False

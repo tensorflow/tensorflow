@@ -830,3 +830,14 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python"],
 )
+
+py_library(
+    name = "experimental_tensorflow_py",
+    srcs = ["experimental_api.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/tools/api/tests:__subpackages__"],
+    deps = [
+        "//tensorflow/python",
+        "//tensorflow/tools/api/generator:python_api",
+    ],
+)

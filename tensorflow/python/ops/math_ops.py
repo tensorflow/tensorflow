@@ -1184,11 +1184,16 @@ def floordiv(x, y, name=None):
 
 
 realdiv = gen_math_ops.real_div
+tf_export("realdiv")(realdiv)
 truncatediv = gen_math_ops.truncate_div
+tf_export("truncatediv")(truncatediv)
 # TODO(aselle): Rename this to floordiv when we can.
 floor_div = gen_math_ops.floor_div
+tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
+tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
+tf_export("floormod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -2111,6 +2116,7 @@ def matmul(a,
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops.sparse_mat_mul
+tf_export("sparse_matmul")(sparse_matmul)
 
 
 @ops.RegisterStatistics("MatMul", "flops")
