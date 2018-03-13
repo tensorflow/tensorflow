@@ -472,7 +472,7 @@ class Interpreter {
   // During Invoke(), Interpreter will allocate input tensors first, which are
   // known to be fixed size. Then it will allocate outputs from nodes as many
   // as possible. When there is a node that produces dynamic sized tensor.
-  // Intepreter will stop allocating tensors, set the value of next allocate
+  // Interpreter will stop allocating tensors, set the value of next allocate
   // node id, and execute the node to generate the output tensor before continue
   // to allocate successors. This process repeats until all nodes are executed.
   // NOTE: this relies on the order of nodes that is in topological order.
