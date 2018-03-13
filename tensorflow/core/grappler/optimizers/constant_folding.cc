@@ -1377,6 +1377,10 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
   if (node.op() == "OnesLike") {
     return true;
   }
+  if (node.op() == "Fill") {
+    NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
+    return values != nullptr && IsOnes(*values);
+  }
   if (node.op() != "Const") {
     return false;
   }
@@ -1407,6 +1411,10 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   }
   if (node.op() == "ZerosLike") {
     return true;
+  }
+  if (node.op() == "Fill") {
+    NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
+    return values != nullptr && IsZeros(*values);
   }
   if (!IsConstant(node)) {
     return false;
@@ -1846,7 +1854,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const TensorShapeProto& y_shape =
           properties->GetInputProperties(node->name())[1].shape();
       const bool x_is_zero = IsZeros(*x);
-      const bool x_is_one = IsOnes(*x);
+      const bool x_is_one = x_is_zero ? false : IsOnes(*x);
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
       if (y_matches_output_shape &&
           ((is_mul && x_is_one) || (is_add && x_is_zero))) {
@@ -1873,7 +1881,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const TensorShapeProto& x_shape =
           properties->GetInputProperties(node->name())[0].shape();
       const bool y_is_zero = IsZeros(*y);
-      const bool y_is_one = IsOnes(*y);
+      const bool y_is_one = y_is_zero ? false : IsOnes(*y);
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
       if (x_matches_output_shape && (((is_mul || is_any_div) && y_is_one) ||
                                      ((is_add || is_sub) && y_is_zero))) {
