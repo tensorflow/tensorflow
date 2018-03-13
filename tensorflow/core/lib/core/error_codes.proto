@@ -119,7 +119,7 @@ enum Code {
   // Operation is not implemented or not supported/enabled in this service.
   UNIMPLEMENTED = 12;
 
-  // Internal errors.  Means some invariants expected by underlying
+  // Internal errors.  Means some invariant expected by the underlying
   // system has been broken.  If you see one of these errors,
   // something is very broken.
   INTERNAL = 13;

@@ -2096,6 +2096,13 @@ class TPUEstimator(estimator_lib.Estimator):
                                                      host_ops),
         ] + input_hooks
 
+        # TODO(b/73813593): Delete this logging once the bug is resolved.
+        logging.info(
+            'If the Tensors in TPUEstimatorSpec.predictions dict are large, '
+            'you might observe the TPU program getting stuck (b/73813593). '
+            'Consider using small Tensors in the predictions dict to verify '
+            'the issue and report on the bug.')
+
         return model_fn_lib.EstimatorSpec(
             mode,
             prediction_hooks=hooks,

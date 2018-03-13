@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import gc
 
 import numpy as np
 
@@ -82,6 +83,28 @@ class DenseTest(test.TestCase):
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias.name, 'my_dense/bias:0')
+
+  def testNoEagerLeak(self):
+    # Tests that repeatedly constructing and building a Layer does not leak
+    # Python objects.
+    def _test_fn():
+      inputs = random_ops.random_uniform((5, 4), seed=1)
+      core_layers.Dense(5)(inputs)
+      core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')(inputs)
+
+    with context.eager_mode():
+      _test_fn()  # warmup
+      gc.disable()
+      gc.collect()
+      object_count = len(gc.get_objects())
+      for _ in range(100):
+        _test_fn()
+      gc.collect()
+      self.assertLessEqual(
+          len(gc.get_objects()),
+          # DEBUG_SAVEALL messes with this slightly.
+          object_count + 1)
+      gc.enable()
 
   @test_util.run_in_graph_and_eager_modes()
   def testCallTensorDot(self):

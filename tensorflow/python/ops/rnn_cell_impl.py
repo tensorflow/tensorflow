@@ -55,11 +55,52 @@ _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
 
 
+# TODO(jblespiau): Remove this function when we are sure there are no longer
+# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
 def _like_rnncell(cell):
   """Checks that a given object is an RNNCell by using duck typing."""
   conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
                 hasattr(cell, "zero_state"), callable(cell)]
   return all(conditions)
+
+
+# This can be used with self.assertRaisesRegexp for assert_like_rnncell.
+ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
+
+
+def assert_like_rnncell(cell_name, cell):
+  """Raises a TypeError if cell is not like an RNNCell.
+
+  NOTE: Do not rely on the error message (in particular in tests) which can be
+  subject to change to increase readability. Use
+  ASSERT_LIKE_RNNCELL_ERROR_REGEXP.
+
+  Args:
+    cell_name: A string to give a meaningful error referencing to the name
+      of the functionargument.
+    cell: The object which should behave like an RNNCell.
+
+  Raises:
+    TypeError: A human-friendly exception.
+  """
+  conditions = [
+      hasattr(cell, "output_size"),
+      hasattr(cell, "state_size"),
+      hasattr(cell, "zero_state"),
+      callable(cell),
+  ]
+  errors = [
+      "'output_size' property is missing",
+      "'state_size' property is missing",
+      "'zero_state' method is missing",
+      "is not callable"
+  ]
+
+  if not all(conditions):
+
+    errors = [error for error, cond in zip(errors, conditions) if not cond]
+    raise TypeError("The argument {!r} ({}) is not an RNNCell: {}.".format(
+        cell_name, cell, ", ".join(errors)))
 
 
 def _concat(prefix, suffix, static=False):
@@ -914,8 +955,8 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not a RNNCell.")
+    assert_like_rnncell("cell", cell)
+
     if (dropout_state_filter_visitor is not None
         and not callable(dropout_state_filter_visitor)):
       raise TypeError("dropout_state_filter_visitor must be callable")

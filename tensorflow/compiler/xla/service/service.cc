@@ -937,6 +937,11 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* /*arg*/,
+                                         ExecuteResponse* /*result*/) {
+  return Unimplemented("execute-graph is not yet implemented");
+}
+
 tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
                                          ExecuteAsyncResponse* result) {
   VLOG(1) << "running execute-async request: " << arg->ShortDebugString();
