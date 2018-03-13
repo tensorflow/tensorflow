@@ -2,7 +2,6 @@
 #   TensorFlow Serving session bundle.
 
 package(
-    default_hdrs_check = "loose",
     default_visibility = ["//visibility:public"],
 )
 
