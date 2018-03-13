@@ -78,6 +78,10 @@ bool IsConstant(const NodeDef& node) { return node.op() == "Const"; }
 
 bool IsConj(const NodeDef& node) { return node.op() == "Conj"; }
 
+bool IsConjugateTranspose(const NodeDef& node) {
+  return node.op() == "ConjugateTranspose";
+}
+
 bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
 
 bool IsConv2DBackpropFilter(const NodeDef& node) {
@@ -144,6 +148,9 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
+  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
+    return true;
+  }
   return op == "Identity" || op == "RefIdentity";
 }
 

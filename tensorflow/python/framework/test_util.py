@@ -56,6 +56,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -200,9 +201,12 @@ def _strip_checkpoint_v2_randomized(graph_def):
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
-
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+
+
+def IsMklEnabled():
+  return pywrap_tensorflow.IsMklEnabled()
 
 
 def InstallStackTraceHandler():
@@ -451,15 +455,19 @@ def assert_no_new_tensors(f):
   def decorator(self, **kwargs):
     """Finds existing Tensors, runs the test, checks for new Tensors."""
 
-    def _is_tensor(obj):
+    def _is_tensorflow_object(obj):
       try:
-        return (isinstance(obj, ops.Tensor) or
-                isinstance(obj, variables.Variable))
+        return isinstance(obj, (
+            ops.Tensor,
+            variables.Variable,
+            tensor_shape.Dimension,
+            tensor_shape.TensorShape))
       except ReferenceError:
         # If the object no longer exists, we don't care about it.
         return False
 
-    tensors_before = set(id(obj) for obj in gc.get_objects() if _is_tensor(obj))
+    tensors_before = set(id(obj) for obj in gc.get_objects()
+                         if _is_tensorflow_object(obj))
     outside_graph_key = ops.get_default_graph()._graph_key
     with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
@@ -469,11 +477,12 @@ def assert_no_new_tensors(f):
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     backprop._zeros_cache.flush()
+    context.get_default_context().ones_rank_cache().flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
-        if _is_tensor(obj) and id(obj) not in tensors_before
+        if _is_tensorflow_object(obj) and id(obj) not in tensors_before
     ]
     if tensors_after:
       raise AssertionError(("%d Tensors not deallocated after test: %s" % (
@@ -812,7 +821,7 @@ class TensorFlowTestCase(googletest.TestCase):
     Returns:
       tensors numpy values.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()

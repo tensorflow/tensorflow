@@ -91,7 +91,7 @@ class Dataset(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
           "execution is enabled.")
@@ -123,7 +123,7 @@ class Dataset(object):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_one_shot_iterator is not supported when eager "
           "execution is enabled.")
@@ -774,11 +774,31 @@ class Dataset(object):
   def padded_batch(self, batch_size, padded_shapes, padding_values=None):
     """Combines consecutive elements of this dataset into padded batches.
 
-    Like `Dataset.dense_to_sparse_batch()`, this method combines
-    multiple consecutive elements of this dataset, which might have
-    different shapes, into a single element. The tensors in the
-    resulting element have an additional outer dimension, and are
-    padded to the respective shape in `padded_shapes`.
+    This transformation combines multiple consecutive elements of the input
+    dataset into a single element. Like @{tf.data.Dataset.batch}, the tensors
+    in the resulting element have an additional outer dimension, which will be
+    `batch_size` for all but the last element, and `N % batch_size` for the
+    last element (where `N` is the number of elements in this dataset). Unlike
+    @{tf.data.Dataset.batch}, the elements may have different shapes for some
+    of their components, and this transformation will pad each component to
+    the respective shape in `padding_shapes`. The `padding_shapes` argument
+    determines the resulting shape for each dimension of each component in an
+    output element:
+
+    * If the dimension is a constant (e.g. `tf.Dimension(37)`), the component
+      will be padded out to that length in that dimension.
+    * If the dimension is unknown (e.g. `tf.Dimension(None)`), the component
+      will be padded out to the maximum length of all elements in that
+      dimension.
+
+    NOTE: If the number of elements (`N`) in this dataset is not an exact
+    multiple of `batch_size`, the final batch contain smaller tensors with
+    shape `N % batch_size` in the batch dimension. If your program depends on
+    the batches having the same shape, consider using the
+    @{tf.contrib.data.padded_batch_and_drop_remainder} transformation instead.
+
+    See also @{tf.contrib.data.dense_to_sparse_batch}, which combines elements
+    that may have different shapes into a @{tf.SparseTensor}.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of

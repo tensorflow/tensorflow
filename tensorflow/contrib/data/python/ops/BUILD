@@ -67,6 +67,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_ops",
+        ":shuffle_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -104,6 +105,7 @@ py_library(
         "interleave_ops.py",
         "resampling.py",
         "scan_ops.py",
+        "sliding.py",
         "stats_ops.py",
         "threadpool.py",
         "unique.py",

@@ -279,15 +279,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
     # Tests for the 'read_value' argument:
     assign_with_read = v.assign(3.0, read_value=True)
-    if context.in_graph_mode():
-      self.assertEqual(3.0, assign_with_read.eval())
-    else:
-      self.assertEqual(3.0, self.evaluate(assign_with_read))
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
     assign_without_read = v.assign(4.0, read_value=False)
-    if context.in_graph_mode():
-      self.assertIsInstance(assign_without_read, ops.Operation)
-    else:
+    if context.executing_eagerly():
       self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
@@ -355,15 +352,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
     # Tests for the 'read_value' argument:
     assign_with_read = v.assign_add(1.0, read_value=True)
-    if context.in_graph_mode():
-      self.assertEqual(3.0, assign_with_read.eval())
-    else:
-      self.assertEqual(3.0, self.evaluate(assign_with_read))
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
     assign_without_read = v.assign_add(1.0, read_value=False)
-    if context.in_graph_mode():
-      self.assertIsInstance(assign_without_read, ops.Operation)
-    else:
+    if context.executing_eagerly():
       self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
@@ -376,15 +370,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
     # Tests for the 'read_value' argument:
     assign_with_read = v.assign_sub(1.0, read_value=True)
-    if context.in_graph_mode():
-      self.assertEqual(1.0, assign_with_read.eval())
-    else:
-      self.assertEqual(1.0, self.evaluate(assign_with_read))
+    self.assertEqual(1.0, self.evaluate(assign_with_read))
     assign_without_read = v.assign_sub(1.0, read_value=False)
-    if context.in_graph_mode():
-      self.assertIsInstance(assign_without_read, ops.Operation)
-    else:
+    if context.executing_eagerly():
       self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
     self.evaluate(assign_without_read)
     self.assertEqual(0.0, self.evaluate(v.value()))
 
@@ -485,7 +476,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual("(10, 20, 35)", str(v.get_shape()))
     self.assertEqual("(10, 20, 35)", str(v.value().shape))
     self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           "<unknown>",
           str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
@@ -594,6 +585,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="update")
       state_ops.scatter_update(v, [1], [3])
       self.assertAllEqual([1.0, 3.0], v.numpy())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScatterUpdateInvalidArgs(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3], name="update")
+    # The exact error and message differ between graph construction (where the
+    # error is realized during shape inference at graph construction time) and
+    # eager execution (where the error is realized during kernel execution).
+    with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
+      state_ops.scatter_update(v, [0, 1], [0, 1, 2])
 
 
 if __name__ == "__main__":

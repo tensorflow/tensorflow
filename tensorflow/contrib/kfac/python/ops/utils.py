@@ -24,6 +24,7 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -481,6 +482,77 @@ def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
     a = array_ops.gather(A_diag, B.indices)
     a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
     return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
+
+
+class PartitionedTensor(object):
+  """A Tensor partitioned across its 0-th dimension."""
+
+  def __init__(self, tensors):
+    """Initializes PartitionedTensor.
+
+    Args:
+      tensors: List of Tensors. All Tensors must agree on shape (excepting
+        batch dimension) and dtype.
+
+    Raises:
+      ValueError: If 'tensors' has length zero.
+      ValueError: if contents of 'tensors' don't agree on shape or dtype.
+    """
+    if not tensors:
+      raise ValueError("tensors must be a list of 1+ Tensors.")
+
+    dtype = tensors[0].dtype
+    if not all(tensor.dtype == dtype for tensor in tensors):
+      raise ValueError("all tensors must have dtype = %s." % dtype)
+
+    shape = tensors[0].shape[1:]
+    if not all(tensor.shape[1:] == shape for tensor in tensors):
+      raise ValueError("All tensors must have shape = %s (excluding batch "
+                       "dimension)." % shape)
+
+    self.tensors = tensors
+    self._concats = {}  # {device: Tensor}
+
+  @property
+  def shape(self):
+    feature_shape = self.tensors[0].shape[1:]
+    batch_size = sum([tensor.shape[0] for tensor in self.tensors],
+                     tensor_shape.Dimension(0))
+    return tensor_shape.TensorShape([batch_size]).concatenate(feature_shape)
+
+  def get_shape(self):
+    return self.shape
+
+  @property
+  def dtype(self):
+    return self.tensors[0].dtype
+
+  def devices(self):
+    return set(tensor.device for tensor in self.tensors)
+
+  def __str__(self):
+    return "PartitionedTensor([%s, ...], dtype=%s, shape=%s)" % (
+        self.tensors[0].name, self.dtype.name, tuple(self.shape.as_list()))
+
+  def __hash__(self):
+    return hash(tuple(self.tensors))
+
+  def as_tensor(self, dtype=None, name=None, as_ref=False):
+    with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
+      assert not as_ref
+      assert dtype in [None, self.dtype]
+      result = array_ops.concat(self.tensors, axis=0)
+
+      # Cache 'result' if we haven't already cached a value for this device.
+      if result.device not in self._concats:
+        self._concats[result.device] = result
+      return self._concats[result.device]
+
+
+ops.register_tensor_conversion_function(
+    PartitionedTensor,
+    lambda val, dtype, name, as_ref: val.as_tensor(dtype, name, as_ref))
+
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.

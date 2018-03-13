@@ -193,7 +193,10 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   const Shape& accumulator_shape = reducer_shape.result();
   if (ShapeUtil::Rank(accumulator_shape) != 0) {
-    return InvalidArgument("Reduction function must have rank 0.");
+    return InvalidArgument(
+        "Reduction function must have rank 0 (rank %lld reduction function "
+        "given).",
+        ShapeUtil::Rank(accumulator_shape));
   }
 
   // Check that the accumulator can be passed in as the first argument.
@@ -2092,8 +2095,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "Dynamic slice start number of dimensions %lld (%s) must match rank "
-        "%lld of slice input (%s).",
+        "Dynamic update slice start number of dimensions %lld (%s) must match "
+        "rank %lld of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
         ShapeUtil::Rank(operand_shape),
         ShapeUtil::HumanString(operand_shape).c_str());
@@ -2394,7 +2397,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
-  if (ShapeUtil::SameDimensions(pred, on_true) || ShapeUtil::Rank(pred) == 0) {
+  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+      ShapeUtil::Rank(pred) == 0) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.

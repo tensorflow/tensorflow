@@ -399,6 +399,7 @@ HloComputationProto HloComputation::ToProto() const {
     proto.add_instructions()->Swap(&instruction_proto);
   }
   proto.set_root_name(root_instruction()->name());
+  *proto.mutable_program_shape() = ComputeProgramShape();
   return proto;
 }
 
@@ -532,7 +533,6 @@ ProgramShape HloComputation::ComputeProgramShape() const {
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
-  LayoutUtil::ClearLayout(&program_shape);
   return program_shape;
 }
 

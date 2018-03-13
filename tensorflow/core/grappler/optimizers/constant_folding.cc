@@ -140,20 +140,20 @@ bool AllValuesAre(const TensorProto& tensor, const T& value) {
 // Add new_input as a control input to node if it does not already depend on it.
 // TODO(rmlarsen): Move the following two utility functions to utils.{h,cc} and
 // clean up code that should be using them.
-bool MaybeAddControlInput(const string& new_input, NodeDef* node,
+bool MaybeAddControlInput(const string& ctrl_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
   bool already_exists = false;
   for (const string& input : node->input()) {
-    if (input == new_input || AsControlDependency(input) == new_input) {
+    if (input == ctrl_input || AsControlDependency(input) == ctrl_input) {
       already_exists = true;
       break;
     }
   }
   if (!already_exists) {
     const string ctrl_dep =
-        ConstantFolding::AddControlDependency(new_input, graph, node_map);
+        ConstantFolding::AddControlDependency(ctrl_input, graph, node_map);
     node->add_input(ctrl_dep);
-    node_map->AddOutput(NodeName(new_input), node->name());
+    node_map->AddOutput(NodeName(ctrl_input), node->name());
   }
   return !already_exists;
 }
@@ -161,16 +161,27 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
 // Remove old_input as a control input to node.
 bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
                              GraphDef* graph, NodeMap* node_map) {
+  bool removed_input = false;
+  bool update_node_map = true;
+  const string old_input_ctrl_dep = AsControlDependency(NodeName(old_input));
   for (int i = 0; i < node->input_size(); ++i) {
     const string& input = node->input(i);
-    if (IsControlInput(input) && AsControlDependency(old_input) == input) {
-      node->mutable_input()->SwapElements(i, node->input_size() - 1);
-      node->mutable_input()->RemoveLast();
-      node_map->RemoveOutput(NodeName(old_input), node->name());
-      return true;
+    if (old_input_ctrl_dep == input) {
+      if (IsControlInput(input)) {
+        node->mutable_input()->SwapElements(i, node->input_size() - 1);
+        node->mutable_input()->RemoveLast();
+        removed_input = true;
+      } else {
+        // There is a non-control input from the same node.
+        // Don't remove the output from the NodeMap.
+        update_node_map = false;
+      }
     }
   }
-  return false;
+  if (update_node_map) {
+    node_map->RemoveOutput(NodeName(old_input), node->name());
+  }
+  return removed_input;
 }
 
 }  // namespace
@@ -353,7 +364,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
           node_map_->AddOutput(NodeName(ctrl_dep), node->name());
         } else {
           auto outputs = node_map_->GetOutputs(node->name());
-          for (const auto& output : outputs) {
+          for (NodeDef* output : outputs) {
             for (int k = 0; k < output->input_size(); ++k) {
               int port;
               string node_name = ParseNodeName(output->input(k), &port);
@@ -378,10 +389,21 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
                   *added_node->add_input() = ctrl_dep;
                   node_map_->AddOutput(NodeName(ctrl_dep), added_node->name());
                 }
-                node_map_->UpdateInput(output->name(),
-                                       NodeName(output->input(k)), const_name);
                 *output->mutable_input(k) = const_name;
+                node_map_->AddOutput(const_name, output->name());
               }
+            }
+            bool remove_output = true;
+            for (int k = 0; k < output->input_size(); ++k) {
+              int port;
+              string node_name = ParseNodeName(output->input(k), &port);
+              if (node_name == node->name()) {
+                remove_output = false;
+                break;
+              }
+            }
+            if (remove_output) {
+              node_map_->RemoveOutput(node->name(), output->name());
             }
           }
         }
@@ -1051,7 +1073,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
       node_map_->AddOutput(node->name(), const_index->name());
 
       auto outputs = node_map_->GetOutputs(node->name());
-      for (auto& output : outputs) {
+      for (NodeDef* output : outputs) {
         for (int i = 0; i < output->input_size(); i++) {
           int port;
           string node_name = ParseNodeName(output->input(i), &port);
@@ -1142,7 +1164,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
 
   if (const_nodes.size() > 1) {
     auto outputs = node_map_->GetOutputs(node->name());
-    for (const auto& output : outputs) {
+    for (NodeDef* output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
         int port;
         string node_name = ParseNodeName(output->input(i), &port);
@@ -1502,8 +1524,118 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       // The node is replaceable iff
       // unknown_rank == false && (dim_size == 0 || all dims have size 1)
       bool replaceable = !shape.unknown_rank();
-      for (int j = 0; j < shape.dim_size(); ++j) {
+      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
         replaceable &= shape.dim(j).size() == 1;
+      }
+      if (replaceable) {
+        ReplaceOperationWithIdentity(0, node, output);
+      }
+    }
+
+    if (use_shape_info && IsSlice(*node) &&
+        properties.GetInputProperties(node->name()).size() == 3) {
+      const auto& input = properties.GetInputProperties(node->name())[0];
+      const auto& b = properties.GetInputProperties(node->name())[1];
+      const auto& s = properties.GetInputProperties(node->name())[2];
+      if (TensorShape::IsValid(b.shape()) && b.has_value() &&
+          TensorShape::IsValid(s.shape()) && s.has_value()) {
+        Tensor begin(b.dtype(), b.shape());
+        if (!begin.FromProto(b.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         b.value().DebugString());
+        }
+        Tensor size(s.dtype(), s.shape());
+        if (!size.FromProto(s.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         s.value().DebugString());
+        }
+        // The node is replaceable iff unknown_rank == false &&
+        // begin == 0 && (size == -1 || size == input_shape) for all dimensions
+        bool replaceable = !input.shape().unknown_rank();
+        for (int j = 0; replaceable && j < input.shape().dim_size(); ++j) {
+          if (begin.dtype() == DT_INT32) {
+            replaceable &= begin.vec<int>()(j) == 0;
+          } else {
+            replaceable &= begin.vec<int64>()(j) == 0;
+          }
+          if (size.dtype() == DT_INT32) {
+            replaceable &= (size.vec<int>()(j) == -1 ||
+                            size.vec<int>()(j) == input.shape().dim(j).size());
+          } else {
+            replaceable &=
+                (size.vec<int64>()(j) == -1 ||
+                 size.vec<int64>()(j) == input.shape().dim(j).size());
+          }
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (IsTile(*node) &&
+        properties.GetInputProperties(node->name()).size() == 2) {
+      const auto& m = properties.GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(m.shape()) && m.has_value()) {
+        Tensor multiplies(m.dtype(), m.shape());
+        if (!multiplies.FromProto(m.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         m.value().DebugString());
+        }
+        // The node is replaceable iff all values in multiplies are 1.
+        bool replaceable = true;
+        if (multiplies.dtype() == DT_INT32) {
+          for (int j = 0; replaceable && j < multiplies.vec<int>().size();
+               ++j) {
+            replaceable &= multiplies.vec<int>()(j) == 1;
+          }
+        } else {
+          for (int j = 0; replaceable && j < multiplies.vec<int64>().size();
+               ++j) {
+            replaceable &= multiplies.vec<int64>()(j) == 1;
+          }
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (IsPad(*node) &&
+        properties.GetInputProperties(node->name()).size() >= 2) {
+      const auto& p = properties.GetInputProperties(node->name())[1];
+      if (TensorShape::IsValid(p.shape()) && p.has_value()) {
+        Tensor paddings(p.dtype(), p.shape());
+        if (!paddings.FromProto(p.value())) {
+          return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                         p.value().DebugString());
+        }
+        // The node is replaceable iff all values in paddings are 0.
+        bool replaceable = true;
+        // The operation requires it to be int32 value so we don't check for
+        // 1nt64.
+        const auto flatten = paddings.flat<int32>();
+        for (int j = 0; replaceable && j < flatten.size(); ++j) {
+          replaceable &= flatten(j) == 0;
+        }
+        if (replaceable) {
+          ReplaceOperationWithIdentity(0, node, output);
+        }
+      }
+    }
+
+    if (use_shape_info && IsSqueeze(*node) &&
+        !properties.GetInputProperties(node->name()).empty()) {
+      // https://www.tensorflow.org/api_docs/python/tf/squeeze mentions it's
+      // error to squeeze a dimension that is not 1, so we only need to check
+      // whether the input has > 1 size for each dimension.
+      const auto& shape =
+          properties.GetInputProperties(node->name())[0].shape();
+      // The node is replaceable iff
+      // unknown_rank == false && (dim_size == 0 || all dims have size > 1)
+      bool replaceable = !shape.unknown_rank();
+      for (int j = 0; replaceable && j < shape.dim_size(); ++j) {
+        replaceable &= shape.dim(j).size() > 1;
       }
       if (replaceable) {
         ReplaceOperationWithIdentity(0, node, output);
@@ -2005,7 +2137,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
-
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));

@@ -378,10 +378,15 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
                                        init_costs.node_size() +
                                        queue_costs.node_size());
   std::unordered_set<string> nodes_seen;
+  int queue_costs_id_offset = graph_costs->node_size();
   for (const auto& node : graph_costs->node()) {
     nodes_seen.insert(node.name());
+    if (node.id() >= queue_costs_id_offset) {
+      queue_costs_id_offset = node.id() + 1;
+    }
   }
 
+  int init_costs_id_offset = queue_costs_id_offset + queue_costs.node_size();
   // The costs obtained by running the main graph could be more stable than
   // the one we get from the queue runners since the queue runners run
   // asynchronously.
@@ -389,7 +394,22 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
     if (nodes_seen.find(node.name()) != nodes_seen.end()) {
       continue;
     }
-    graph_costs->add_node()->MergeFrom(node);
+
+    auto* new_node = graph_costs->add_node();
+    new_node->MergeFrom(node);
+
+    new_node->set_id(node.id() + queue_costs_id_offset);
+    if (new_node->id() >= init_costs_id_offset) {
+      init_costs_id_offset = new_node->id() + 1;
+    }
+
+    for (auto& input_info : *new_node->mutable_input_info()) {
+      input_info.set_preceding_node(input_info.preceding_node() +
+                                    queue_costs_id_offset);
+    }
+    for (auto& control_input : *new_node->mutable_control_input()) {
+      control_input += queue_costs_id_offset;
+    }
   }
 
   // Don't overwrite the costs with that generated during initialization since
@@ -398,7 +418,18 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
     if (nodes_seen.find(node.name()) != nodes_seen.end()) {
       continue;
     }
-    graph_costs->add_node()->MergeFrom(node);
+
+    auto* new_node = graph_costs->add_node();
+    new_node->MergeFrom(node);
+
+    new_node->set_id(node.id() + init_costs_id_offset);
+    for (auto& input_info : *new_node->mutable_input_info()) {
+      input_info.set_preceding_node(input_info.preceding_node() +
+                                    init_costs_id_offset);
+    }
+    for (auto& control_input : *new_node->mutable_control_input()) {
+      control_input += init_costs_id_offset;
+    }
   }
 }
 

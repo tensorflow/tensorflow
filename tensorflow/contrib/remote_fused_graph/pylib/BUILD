@@ -38,7 +38,6 @@ py_test(
     size = "small",
     srcs = ["python/ops/remote_fused_graph_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":remote_fused_graph_ops_py",
         "//tensorflow/core:protos_all_py",

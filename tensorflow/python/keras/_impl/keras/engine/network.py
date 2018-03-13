@@ -99,11 +99,11 @@ class Network(base_layer.Layer):
     self._losses = []   # Used in symbolic mode only.
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    if context.in_eager_mode:
+    if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-        # A Network does not create weights of its own, thus has no dtype.
+      # A Network does not create weights of its own, thus has no dtype.
     self._dtype = None
 
     # All layers in order of horizontal graph traversal.
@@ -126,7 +126,7 @@ class Network(base_layer.Layer):
       self.outputs = [outputs]
 
     # User-prodived argument validation.
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Check that all inputs/outputs are DeferredTensors.
       for tensor in self.inputs:
         if not isinstance(tensor, tf_base_layers._DeferredTensor):  # pylint: disable=protected-access
@@ -275,7 +275,7 @@ class Network(base_layer.Layer):
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
         # layer.input gives an error in eager mode
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
@@ -317,7 +317,7 @@ class Network(base_layer.Layer):
     raise NotImplementedError('`add_variable` is not supported on Networks.')
 
   def add_loss(self, *args, **kwargs):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError('`add_loss` is not supported on Networks '
                                 'when eager execution is enabled.')
     super(Network, self).add_loss(*args, **kwargs)
@@ -396,7 +396,7 @@ class Network(base_layer.Layer):
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
-      _, output_masks = self._run_internal_graph(inputs, masks)
+      _, output_masks = self._run_internal_graph(inputs, mask=masks)
       return output_masks
 
   @property
@@ -406,6 +406,7 @@ class Network(base_layer.Layer):
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
 
+    If `name` and `index` are both provided, `index` will take precedence.
     Indices are based on order of horizontal graph traversal (bottom-up).
 
     Arguments:
@@ -437,7 +438,7 @@ class Network(base_layer.Layer):
 
   @property
   def updates(self):
-    """Retrieve the network's updates.
+    """Retrieves the network's updates.
 
     Will only include updates that are either
     unconditional, or conditional on inputs to this model
@@ -483,7 +484,7 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return []
 
     if not self.trainable and not self.stateful:
@@ -495,7 +496,10 @@ class Network(base_layer.Layer):
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
@@ -514,7 +518,7 @@ class Network(base_layer.Layer):
 
   @property
   def losses(self):
-    """Retrieve the network's losses.
+    """Retrieves the network's losses.
 
     Will only include losses that are either
     unconditional, or conditional on inputs to this model
@@ -527,10 +531,13 @@ class Network(base_layer.Layer):
     losses = []
     for layer in self.layers:
       losses += layer.losses
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return losses
 
-    relevant_inputs = self.inputs or []
+    if self.inputs:
+      relevant_inputs = self.inputs[:]
+    else:
+      relevant_inputs = []
     for i in range(1, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
@@ -594,7 +601,7 @@ class Network(base_layer.Layer):
     return specs
 
   def call(self, inputs, training=None, mask=None):
-    """Call the model on new inputs.
+    """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
@@ -617,7 +624,7 @@ class Network(base_layer.Layer):
     else:
       masks = nest.flatten(mask)
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Try to retrieve cached outputs if the layer has already been called
       # on these exact inputs.
       cache_key = (tf_layers_util.object_list_uid(inputs)
@@ -823,7 +830,7 @@ class Network(base_layer.Layer):
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
 
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               if layer.activity_regularizer is not None:
                 regularization_losses = [
                     layer.activity_regularizer(x) for x in output_tensors
@@ -853,7 +860,7 @@ class Network(base_layer.Layer):
       if output_masks is not None:
         output_masks = output_masks[0]
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Update cache;
       # keys are based on ids on input tensors and inputs masks.
       cache_key = (tf_layers_util.object_list_uid(inputs)
@@ -1024,7 +1031,7 @@ class Network(base_layer.Layer):
           layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
-      """Deserialize a layer, then call it on appropriate inputs.
+      """Deserializes a layer, then call it on appropriate inputs.
 
       Arguments:
           layer_data: layer config dict.
@@ -1081,7 +1088,7 @@ class Network(base_layer.Layer):
     return cls(inputs=input_tensors, outputs=output_tensors, name=name)
 
   def save(self, filepath, overwrite=True, include_optimizer=True):
-    """Save the model to a single HDF5 file.
+    """Saves the model to a single HDF5 file.
 
     The savefile includes:
         - The model architecture, allowing to re-instantiate the model.
@@ -1187,7 +1194,7 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
-    """Util hared between different serialization methods.
+    """Util shared between different serialization methods.
 
     Returns:
         Model config with Keras version information added.
@@ -1327,7 +1334,7 @@ def _make_node_key(layer_name, node_index):
 
 
 def _map_graph_network(inputs, outputs):
-  """Validate a network's topology and gather its layers and nodes.
+  """Validates a network's topology and gather its layers and nodes.
 
   Arguments:
     inputs: List of input tensors.

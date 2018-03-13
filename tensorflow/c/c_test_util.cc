@@ -102,16 +102,10 @@ void PlaceholderHelper(TF_Graph* graph, TF_Status* s, const char* name,
   ASSERT_NE(*op, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name) {
+TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s, const char* name,
+                          TF_DataType dtype) {
   TF_Operation* op;
-  PlaceholderHelper(graph, s, name, TF_INT32, &op);
-  return op;
-}
-
-TF_Operation* PlaceholderFloat(TF_Graph* graph, TF_Status* s,
-                               const char* name) {
-  TF_Operation* op;
-  PlaceholderHelper(graph, s, name, TF_FLOAT, &op);
+  PlaceholderHelper(graph, s, name, dtype, &op);
   return op;
 }
 

@@ -697,7 +697,8 @@ string OpInfo::GetOpAttrStruct() const {
     attr_comment = MakeComment(attr_comment, "    ");
 
     strings::StrAppend(&setters, attr_comment);
-    strings::StrAppend(&setters, "    Attrs ", attr_func_def, " x) {\n");
+    strings::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
+                       " x) {\n");
     strings::StrAppend(&setters, "      Attrs ret = *this;\n");
     strings::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
                        "_ = x;\n");

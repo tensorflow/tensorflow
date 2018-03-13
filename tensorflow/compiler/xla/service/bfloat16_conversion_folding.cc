@@ -147,6 +147,10 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kGetTupleElement ||  //
       hlo->opcode() == HloOpcode::kInfeed ||           //
       hlo->opcode() == HloOpcode::kOutfeed ||          //
+      hlo->opcode() == HloOpcode::kSend ||             //
+      hlo->opcode() == HloOpcode::kSendDone ||         //
+      hlo->opcode() == HloOpcode::kRecv ||             //
+      hlo->opcode() == HloOpcode::kRecvDone ||         //
       hlo->opcode() == HloOpcode::kConstant ||         //
       hlo->opcode() == HloOpcode::kParameter ||        //
       hlo->opcode() == HloOpcode::kFusion ||           //

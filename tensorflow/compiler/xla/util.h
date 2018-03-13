@@ -494,6 +494,11 @@ template <typename C, typename Pred>
 auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
   return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
+
+template <typename C, typename Value>
+auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+  return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

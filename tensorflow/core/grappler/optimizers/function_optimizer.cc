@@ -78,9 +78,15 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
       func_body_node.add_input(
           strings::StrCat(func_inputs->name(), ":", input_id));
     } else {
-      // Update the input names.
+      // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
         input = AddPrefixToNodeName(input, node.name());
+      }
+      // If the node has no input, make hook it up to the func_inputs node to
+      // ensure it runs in the same frame as the other nodes of the function
+      // body.
+      if (func_body_node.input_size() == 0) {
+        *func_body_node.add_input() = AsControlDependency(func_inputs->name());
       }
     }
 
@@ -128,6 +134,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const FunctionDef& func : item.graph.library().function()) {
     // Don't inline functions marked as noinline
     if (func.attr().count("_noinline") != 0) {
+      continue;
+    }
+    // Don't touch anything marked XLA to prevent XLA failures further down the
+    // road.
+    if (func.attr().count("_XlaCompile") != 0) {
       continue;
     }
     // Can't create IdentityN nodes with no input or output: skip these

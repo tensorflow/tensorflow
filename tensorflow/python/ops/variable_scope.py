@@ -321,7 +321,7 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if not self._store_eager_variables and reuse:
         raise RuntimeError(
             "When eager execution is enabled variable reuse is only supported"
@@ -518,7 +518,7 @@ class _VariableStore(object):
         when violating reuse during variable creation, or if an existing
         sharded variable exists for the given name but with different sharding.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
 
@@ -798,7 +798,7 @@ class _VariableStore(object):
         validate_shape=validate_shape,
         constraint=constraint,
         use_resource=use_resource)
-    if context.in_graph_mode() or self._store_eager_variables:
+    if not context.executing_eagerly() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
       self._vars[name] = v
@@ -811,12 +811,12 @@ class _VariableStore(object):
         with ops.name_scope(name + "/Regularizer/"):
           loss = regularizer(v)
         if loss is not None:
-          if context.in_graph_mode():
-            v_name = v.name
-            loss_name = loss.name
-          else:
+          if context.executing_eagerly():
             v_name = "v_%s" % type(v)
             loss_name = "loss_%s" % type(loss)
+          else:
+            v_name = v.name
+            loss_name = loss.name
           logging.vlog(1, "Applied regularizer to %s and added the result %s "
                        "to REGULARIZATION_LOSSES.", v_name, loss_name)
           ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES, loss)
@@ -920,7 +920,7 @@ class VariableScope(object):
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
                                   "when eager execution is enabled.")
@@ -988,7 +988,7 @@ class VariableScope(object):
 
   def set_use_resource(self, use_resource):
     """Sets whether to use ResourceVariables for this scope."""
-    if context.in_eager_mode() and not use_resource:
+    if context.executing_eagerly() and not use_resource:
       raise ValueError("When eager execution is enabled, "
                        "use_resource cannot be set to false.")
     self._use_resource = use_resource
@@ -999,14 +999,14 @@ class VariableScope(object):
 
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Caching devices are not yet supported "
                                 "when eager execution is enabled.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if partitioner and context.in_eager_mode():
+    if partitioner and context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
     self._partitioner = partitioner
@@ -1057,14 +1057,14 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      reuse = False
+      use_resource = True
+    else:
       if reuse is None:
         reuse = self._reuse
       if use_resource is None:
         use_resource = self._use_resource
-    else:
-      reuse = False
-      use_resource = True
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
@@ -1107,7 +1107,7 @@ class VariableScope(object):
                                 use_resource=None,
                                 constraint=None):
     """Gets an existing variable with this name or create a new one."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
                                 "when eager execution is enabled.")
     if initializer is None:
@@ -1871,7 +1871,7 @@ class variable_scope(object):
       raise ValueError("The reuse parameter must be True or False or None.")
     if self._values is None:
       self._values = []
-    self._in_graph_mode = not context.in_eager_mode()
+    self._in_graph_mode = not context.executing_eagerly()
     if self._in_graph_mode:
       self._graph = ops._get_graph_from_inputs(self._values)  # pylint: disable=protected-access
     self._cached_pure_variable_scope = None
@@ -2111,13 +2111,13 @@ def default_variable_creator(next_creator=None, **kwargs):
   use_resource = kwargs.get("use_resource", None)
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
-  if use_resource or (use_resource is None and context.in_eager_mode()):
+  if use_resource or (use_resource is None and context.executing_eagerly()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype,
         constraint=constraint)
-  elif not use_resource and context.in_eager_mode():
+  elif not use_resource and context.executing_eagerly():
     raise RuntimeError(
         "VariableScope should use resource variable when eager execution is"
         " enabled, but use_resource is False."
@@ -2145,7 +2145,7 @@ def variable(initial_value=None,
              constraint=None,
              use_resource=None):
   previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-  for getter in ops.get_default_graph()._get_variable_creator_stack():  # pylint: disable=protected-access
+  for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
     previous_getter = _make_getter(getter, previous_getter)
   return previous_getter(initial_value=initial_value,
                          trainable=trainable,

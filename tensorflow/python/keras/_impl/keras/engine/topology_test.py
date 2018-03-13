@@ -531,7 +531,9 @@ class TopologyConstructionTest(test.TestCase):
 
       e = keras.layers.Input(shape=(32,), name='input_e')
       f = keras.layers.Input(shape=(32,), name='input_f')
+      self.assertEqual(len(model.inputs), 2)
       g, h = model([e, f])
+      self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
       self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
@@ -713,7 +715,9 @@ class TopologyConstructionTest(test.TestCase):
 
     j = keras.layers.Input(shape=(32,), name='input_j')
     k = keras.layers.Input(shape=(32,), name='input_k')
+    self.assertEqual(len(model.inputs), 2)
     m, n = model([j, k])
+    self.assertEqual(len(model.inputs), 2)
     tf_model = keras.models.Model([j, k], [m, n])
 
     j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
@@ -751,7 +755,17 @@ class TopologyConstructionTest(test.TestCase):
       def compute_mask(self, inputs, mask=None):
         return array_ops.ones_like(inputs)
 
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      a = constant_op.constant([2] * 32)
+      mask = constant_op.constant([0, 1] * 16)
+      a._keras_mask = mask
+      b = MaskedLayer().apply(a)
+      self.assertTrue(hasattr(b, '_keras_mask'))
+      self.assertAllEqual(
+          self.evaluate(array_ops.ones_like(mask)),
+          self.evaluate(getattr(b, '_keras_mask')))
+      self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
+    else:
       x = keras.Input(shape=(32,))
       y = MaskedLayer()(x)  # pylint: disable=not-callable
       network = keras.engine.Network(x, y)
@@ -765,15 +779,6 @@ class TopologyConstructionTest(test.TestCase):
       x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
       y_2 = network(x_2)
       self.assertEqual(y_2.get_shape().as_list(), [None, 32])
-    else:
-      a = constant_op.constant([2] * 32)
-      mask = constant_op.constant([0, 1] * 16)
-      a._keras_mask = mask
-      b = MaskedLayer().apply(a)
-      self.assertTrue(hasattr(b, '_keras_mask'))
-      self.assertAllEqual(self.evaluate(array_ops.ones_like(mask)),
-                          self.evaluate(getattr(b, '_keras_mask')))
-      self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
 
   def test_activity_regularization_with_model_composition(self):
 
@@ -881,13 +886,13 @@ class DeferredModeTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testSimpleNetworkBuilding(self):
     inputs = keras.engine.Input(shape=(32,))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self.assertIsInstance(inputs, tf_base_layers._DeferredTensor)
       self.assertEqual(inputs.dtype.name, 'float32')
       self.assertEqual(inputs.shape.as_list(), [None, 32])
 
     x = keras.layers.Dense(2)(inputs)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       self.assertIsInstance(x, tf_base_layers._DeferredTensor)
       self.assertEqual(x.dtype.name, 'float32')
       self.assertEqual(x.shape.as_list(), [None, 2])
@@ -896,7 +901,7 @@ class DeferredModeTest(test.TestCase):
     network = keras.engine.Network(inputs, outputs)
     self.assertIsInstance(network, keras.engine.Network)
 
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # It should be possible to call such a network on EagerTensors.
       inputs = constant_op.constant(
           np.random.random((10, 32)).astype('float32'))
@@ -921,7 +926,7 @@ class DeferredModeTest(test.TestCase):
     c = keras.layers.Dense(2)(c)
 
     network = keras.engine.Network([input_a, input_b], [a, c])
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       a_val = constant_op.constant(
           np.random.random((10, 32)).astype('float32'))
       b_val = constant_op.constant(

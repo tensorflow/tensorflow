@@ -113,7 +113,7 @@ use have been carefully audited to be safe**.
 
 Similar to best practices for other servers, we recommend running any
 `ModelServer` with appropriate privileges (i.e., using a separate user with
-reduced permisisons). In the spirit of defense in depth, we recommend
+reduced permissions). In the spirit of defense in depth, we recommend
 authenticating requests to any TensorFlow server connected to an untrusted
 network, as well as sandboxing the server to minimize the adverse effects of
 any breach.

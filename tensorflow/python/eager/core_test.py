@@ -57,8 +57,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testContext(self):
     ctx = context.Context()
-    self.assertFalse(ctx.in_graph_mode())
-    self.assertTrue(ctx.in_eager_mode())
+    self.assertTrue(ctx.executing_eagerly())
 
     self.assertEqual('', ctx.scope_name)
     ctx.scope_name = 'foo'
@@ -150,9 +149,9 @@ class TFETest(test_util.TensorFlowTestCase):
 
     def get_context_values(ctx):
       return [
-          ctx.in_graph_mode(),
-          ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
-          ctx.device_name, ctx.num_gpus()
+          ctx.executing_eagerly(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.device_name,
+          ctx.num_gpus()
       ]
 
     def get_values(ctx, values):
@@ -544,6 +543,62 @@ class TFETest(test_util.TensorFlowTestCase):
     for typ, t in zip(types, tensors):
       self.assertEquals(typ, dtypes.float32)
       self.assertIsInstance(t, ops.EagerTensor)
+
+
+class SendRecvTest(test_util.TensorFlowTestCase):
+
+  cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'
+
+  def _send(self, tensor, tensor_name, to_device):
+    return execute(
+        b'_Send', num_outputs=0, inputs=[tensor],
+        attrs=('T', tensor.dtype.as_datatype_enum,
+               'tensor_name', tensor_name,
+               'send_device', tensor.device,
+               'send_device_incarnation', 0,
+               'recv_device', to_device,
+               'client_terminated', True))
+
+  def _recv(self, dtype, tensor_name, from_device):
+    device_name = context.context().device_name
+    if not device_name:
+      device_name = self.cpu_device
+    return execute(
+        b'_Recv', num_outputs=1, inputs=[],
+        attrs=('tensor_type', dtype.as_datatype_enum,
+               'tensor_name', tensor_name,
+               'send_device', from_device,
+               'send_device_incarnation', 0,
+               'recv_device', device_name,
+               'client_terminated', False))[0]
+
+  def testBasic(self):
+    t0 = constant_op.constant(1.0)
+    t1 = constant_op.constant(2.0)
+    self._send(t0, 't0', self.cpu_device)
+    self._send(t1, 't1', self.cpu_device)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't0', self.cpu_device),
+        1.0)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't1', self.cpu_device),
+        2.0)
+
+  def testLocalCrossDevice(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    gpu_device_name = '/job:localhost/replica:0/task:0/device:GPU:0'
+    with ops.device('GPU:0'):
+      t0 = constant_op.constant(1.0)
+      self._send(t0, 't0', self.cpu_device)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't0', gpu_device_name),
+        1.0)
+    self._send(constant_op.constant(2.0), 't1', gpu_device_name)
+    with ops.device('GPU:0'):
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't1', self.cpu_device),
+          2.0)
 
 
 if __name__ == '__main__':

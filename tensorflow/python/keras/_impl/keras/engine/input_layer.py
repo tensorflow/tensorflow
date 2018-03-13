@@ -92,7 +92,7 @@ class InputLayer(base_layer.Layer):
       else:
         batch_input_shape = None
 
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         # In eager mode, create a temporary placeholder to call the layer on.
         input_tensor = tf_base_layers._DeferredTensor(  # pylint: disable=protected-access
             shape=batch_input_shape,

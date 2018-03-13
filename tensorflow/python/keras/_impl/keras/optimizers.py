@@ -95,7 +95,26 @@ class Optimizer(object):
     raise NotImplementedError
 
   def get_gradients(self, loss, params):
+    """Returns gradients of `loss` with respect to `params`.
+
+    Arguments:
+        loss: Loss tensor.
+        params: List of variables.
+
+    Returns:
+        List of gradient tensors.
+
+    Raises:
+        ValueError: In case any gradient cannot be computed (e.g. if gradient
+          function not implemented).
+    """
     grads = K.gradients(loss, params)
+    if None in grads:
+      raise ValueError('An operation has `None` for gradient. '
+                       'Please make sure that all of your ops have a '
+                       'gradient defined (i.e. are differentiable). '
+                       'Common ops without gradient: '
+                       'K.argmax, K.round, K.eval.')
     if hasattr(self, 'clipnorm') and self.clipnorm > 0:
       norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
       grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
@@ -120,6 +139,11 @@ class Optimizer(object):
         ValueError: in case of incompatible weight shapes.
     """
     params = self.weights
+    if len(params) != len(weights):
+      raise ValueError(
+          'Length of the specified weight list (' + str(len(weights)) +
+          ') does not match the number of weights '
+          'of the optimizer (' + str(len(params)) + ')')
     weight_value_tuples = []
     param_values = K.batch_get_value(params)
     for pv, p, w in zip(param_values, params, weights):

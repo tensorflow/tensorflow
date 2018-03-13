@@ -2621,5 +2621,74 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
   TF_EXPECT_OK(request->Send());
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
+  class TestGcsStats : public GcsStatsInterface {
+   public:
+    void Init(GcsFileSystem* fs, GcsThrottle* throttle,
+              const FileBlockCache* block_cache) override {
+      CHECK(fs_ == nullptr);
+      CHECK(throttle_ == nullptr);
+      CHECK(block_cache_ == nullptr);
+
+      fs_ = fs;
+      throttle_ = throttle;
+      block_cache_ = block_cache;
+    }
+
+    void RecordBlockLoadRequest(const string& file, size_t offset) override {
+      block_load_request_file_ = file;
+    }
+
+    void RecordBlockRetrieved(const string& file, size_t offset,
+                              size_t bytes_transferred) override {
+      block_retrieved_file_ = file;
+      block_retrieved_bytes_transferred_ = bytes_transferred;
+    }
+
+    HttpRequest::RequestStats* HttpStats() override { return nullptr; }
+
+    GcsFileSystem* fs_ = nullptr;
+    GcsThrottle* throttle_ = nullptr;
+    const FileBlockCache* block_cache_ = nullptr;
+
+    string block_load_request_file_;
+    string block_retrieved_file_;
+    size_t block_retrieved_bytes_transferred_ = 0;
+  };
+
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+      "Auth Token: fake_token\n"
+      "Range: 0-5\n"
+      "Timeouts: 5 1 20\n",
+      "012345")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  TestGcsStats stats;
+  fs.SetStats(&stats);
+  EXPECT_EQ(stats.fs_, &fs);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char scratch[6];
+  StringPiece result;
+
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("012345", result);
+
+  EXPECT_EQ("gs://bucket/random_access.txt", stats.block_load_request_file_);
+  EXPECT_EQ("gs://bucket/random_access.txt", stats.block_retrieved_file_);
+  EXPECT_EQ(6, stats.block_retrieved_bytes_transferred_);
+}
+
 }  // namespace
 }  // namespace tensorflow

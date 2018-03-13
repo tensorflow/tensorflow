@@ -512,6 +512,10 @@ class ComputationBuilder {
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
+  ComputationDataHandle Xor(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   ComputationDataHandle Not(const ComputationDataHandle& operand);
 
   ComputationDataHandle ShiftLeft(

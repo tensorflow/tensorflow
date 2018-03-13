@@ -24,7 +24,6 @@ from tensorflow.python.util import all_util
 
 _allowed_symbols = [
     "sample_chain",
-    "sample_annealed_importance_chain",
     "kernel",
 ]
 

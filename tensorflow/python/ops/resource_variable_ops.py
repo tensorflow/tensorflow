@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -134,10 +135,10 @@ class EagerResourceDeleter(object):
       # valid, and so on. Printing warnings in these cases is silly
       # (exceptions raised from __del__ are printed as warnings to stderr).
       pass  # 'NoneType' object is not callable when the handle has been
-            # partially unloaded.
+      # partially unloaded.
     except AttributeError:
       pass  # 'NoneType' object has no attribute 'eager_mode' when context has
-            # been unloaded. Will catch other module unloads as well.
+      # been unloaded. Will catch other module unloads as well.
 
 
 def shape_safe_assign_variable_handle(handle, shape, value, name=None):
@@ -152,7 +153,7 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  See the ${variables} documentation for more details.
+  See the @{$python/state_ops$`Variables`} documentation for more details.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -266,9 +267,9 @@ class ResourceVariable(variables.Variable):
       if initial_value is not None:
         raise ValueError("variable_def and initial_value are mutually "
                          "exclusive.")
-      if not context.in_graph_mode():
-        raise ValueError("Creating ResourceVariable from variable_def"
-                         " only supported in GRAPH mode.")
+      if context.executing_eagerly():
+        raise ValueError("Creating ResourceVariable from variable_def is "
+                         "not supported when eager execution is enabled.")
       self._init_from_proto(variable_def, import_scope=import_scope)
     else:
       self._init_from_args(
@@ -362,7 +363,7 @@ class ResourceVariable(variables.Variable):
     # this graph.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     with ops.init_scope():
-      self._in_graph_mode = context.in_graph_mode()
+      self._in_graph_mode = not context.executing_eagerly()
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
@@ -469,7 +470,7 @@ class ResourceVariable(variables.Variable):
               self._cached_value = self._read_variable_op()
           else:
             self._cached_value = None
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
@@ -483,11 +484,12 @@ class ResourceVariable(variables.Variable):
       # all in graph mode.
       self._handle_deleter = EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
+    self._cached_shape_as_list = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
     # Note that init_from_proto is currently not supported in Eager mode.
-    assert context.in_graph_mode()
+    assert not context.executing_eagerly()
     self._in_graph_mode = True
     assert isinstance(variable_def, variable_pb2.VariableDef)
     if not variable_def.is_resource:
@@ -529,6 +531,7 @@ class ResourceVariable(variables.Variable):
     self._graph_element = g.get_tensor_by_name(
         self._handle.op.name + "/Read/ReadVariableOp:0")
     self._constraint = None
+    self._cached_shape_as_list = None
 
   def __nonzero__(self):
     return self.__bool__()
@@ -561,11 +564,26 @@ class ResourceVariable(variables.Variable):
     """The shape of this variable."""
     return self._shape
 
+  def _shape_as_list(self):
+    if self._cached_shape_as_list:
+      return self._cached_shape_as_list
+    if self.shape.ndims is None:
+      return None
+    self._cached_shape_as_list = [dim.value for dim in self.shape.dims]
+    return self._cached_shape_as_list
+
+  def _shape_tuple(self):
+    shape = self._shape_as_list()
+    if shape is None:
+      return None
+    return tuple(shape)
+
   @property
   def create(self):
     """The op responsible for initializing this variable."""
     if not self._in_graph_mode:
-      raise RuntimeError("Calling create in EAGER mode not supported.")
+      raise RuntimeError("Calling create is not supported when eager execution"
+                         " is enabled.")
     return self._initializer_op
 
   @property
@@ -593,7 +611,7 @@ class ResourceVariable(variables.Variable):
   @property
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("initial_value not supported in EAGER mode.")
     return self._initial_value
 
@@ -614,15 +632,15 @@ class ResourceVariable(variables.Variable):
 
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
 
   def numpy(self):
-    if context.in_graph_mode():
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
-    return self.read_value().numpy()
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    raise NotImplementedError(
+        "numpy() is only available when eager execution is enabled.")
 
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -703,7 +721,7 @@ class ResourceVariable(variables.Variable):
       A `VariableDef` protocol buffer, or `None` if the `Variable` is not
       in the specified name scope.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("to_proto not supported in EAGER mode.")
     if export_scope is None or self.handle.name.startswith(export_scope):
       var_def = variable_pb2.VariableDef()
@@ -730,7 +748,7 @@ class ResourceVariable(variables.Variable):
 
   @staticmethod
   def from_proto(variable_def, import_scope=None):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
@@ -934,6 +952,7 @@ class ResourceVariable(variables.Variable):
 
 
 pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)
+math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
@@ -966,10 +985,10 @@ class _UnreadVariable(ResourceVariable):
     self._is_initialized_op = None
     self._initializer_op = None
     self._parent_op = parent_op
-    if context.in_graph_mode():
-      self._graph_element = self.read_value()
-    else:
+    if context.executing_eagerly():
       self._graph_element = None
+    else:
+      self._graph_element = self.read_value()
     self._handle_deleter = deleter
 
   def value(self):
@@ -985,6 +1004,7 @@ class _UnreadVariable(ResourceVariable):
 
   def set_shape(self, shape):
     self._shape = shape
+    self._cached_shape_as_list = None
 
   @property
   def op(self):

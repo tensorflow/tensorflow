@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -46,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -1049,6 +1051,43 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.start()
       ev.set()
+      for t in threads:
+        t.join()
+
+  def testParallelRunAndBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          self.assertEqual(sess.run(c), 5.0)
+
+      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      for t in threads:
+        t.start()
+
+      # Do some graph construction. Try to exercise non-trivial paths.
+      graph = ops.get_default_graph()
+      gdef = None
+      for _ in range(10):
+        x = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.colocate_with(x):
+          y = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.device('/cpu:0'):
+          z = control_flow_ops.while_loop(
+              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+          gradients_impl.gradients(z, [x, y])
+          if gdef is None:
+            gdef = graph.as_graph_def()
+          else:
+            # NOTE(skyewm): import_graph_def breaks the running threads without
+            # the C API enabled. This is not a regression so I didn't fix it.
+            if ops._USE_C_API:
+              importer.import_graph_def(gdef, name='import')
+
+      stop.set()
       for t in threads:
         t.join()
 
