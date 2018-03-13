@@ -48,13 +48,13 @@ struct GlimpseExtractionOp {
   GlimpseExtractionOp(const Index width, const Index height,
                       const std::vector<IndexPair<float> >& offsets,
                       const bool normalized, const bool centered,
-                      const bool uniform_noise)
+                      const std::string &noise)
       : width_(width),
         height_(height),
         offsets_(offsets),
         normalized_(normalized),
         centered_(centered),
-        uniform_noise_(uniform_noise) {}
+        noise_(noise) {}
 
   template <typename Input>
   DSizes<Index, 4> dimensions(const Input& input) const {
@@ -144,8 +144,11 @@ struct GlimpseExtractionOp {
       slice_extent[2] = std::min<Index>(input_height, slice_extent[2]);
 
       if (partial_overlap) {
-        if (uniform_noise_) {
-          // Initialize the glimpse with uniform noise.
+        if (noise_ == "zero") {
+           // Initialize the glimpse with zero noise.
+          output.template chip<3>(i).setZero();
+        } else if (noise_ == "uniform") {
+           // Initialize the glimpse with uniform noise.
           typedef typename internal::remove_const<
               typename internal::traits<Input>::Scalar>::type Scalar;
           TensorFixedSize<Scalar, Sizes<> > mini;
@@ -225,7 +228,7 @@ struct GlimpseExtractionOp {
   const std::vector<IndexPair<float> > offsets_;
   const bool normalized_;
   const bool centered_;
-  const bool uniform_noise_;
+  const std::string noise_;
 };
 }  // namespace
 
@@ -238,7 +241,7 @@ ExtractGlimpses(const Input& input,
                 const typename internal::traits<Input>::Index height,
                 const std::vector<IndexPair<float> >& offsets,
                 const bool normalized = true, const bool centered = true,
-                const bool uniform_noise = true) {
+                const std::string &noise = "uniform") {
   EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout == ColMajor,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 4,
@@ -246,7 +249,7 @@ ExtractGlimpses(const Input& input,
 
   typedef typename internal::traits<Input>::Index Index;
   const GlimpseExtractionOp<Index> op(width, height, offsets, normalized,
-                                      centered, uniform_noise);
+                                      centered, noise);
   return input.customOp(op);
 }
 
