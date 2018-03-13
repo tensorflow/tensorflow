@@ -210,7 +210,7 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-If you are deploying TensorFlow in a typical @{$deploy/distributed} configuration,
+If you are deploying TensorFlow in a @{$distributed$typical distributed configuration},
 you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):
