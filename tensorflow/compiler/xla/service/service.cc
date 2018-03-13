@@ -314,8 +314,6 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   if (execution_options != nullptr) {
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
-    config->enable_hlo_profiling(
-        execution_options->debug_options().xla_hlo_profile());
   } else {
     config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }

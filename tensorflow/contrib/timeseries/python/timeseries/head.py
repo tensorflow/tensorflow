@@ -95,12 +95,12 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def _train_ops(self, features):
     """Add training ops to the graph."""
+    mode = estimator_lib.ModeKeys.TRAIN
     with variable_scope.variable_scope(
         "model",
         # Use ResourceVariables to avoid race conditions.
         use_resource=True):
-      model_outputs = self.state_manager.define_loss(
-          self.model, features, estimator_lib.ModeKeys.TRAIN)
+      model_outputs = self.create_loss(features, mode)
 
     train_op = optimizers.optimize_loss(
         model_outputs.loss,
@@ -110,14 +110,14 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         learning_rate=None)
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
-        mode=estimator_lib.ModeKeys.TRAIN,
+        mode=mode,
         train_op=train_op)
 
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
+    mode = estimator_lib.ModeKeys.EVAL
     with variable_scope.variable_scope("model", use_resource=True):
-      model_outputs = self.state_manager.define_loss(
-          self.model, features, estimator_lib.ModeKeys.EVAL)
+      model_outputs = self.create_loss(features, mode)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
     for prediction_key, prediction_value in model_outputs.predictions.items():
@@ -130,7 +130,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                                 model_outputs.end_state))
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
-        mode=estimator_lib.ModeKeys.EVAL,
+        mode=mode,
         eval_metric_ops=metrics,
         predictions={})
 

@@ -923,8 +923,24 @@ TEST_F(TestDelegate, BasicDelegate) {
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   int node = interpreter_->execution_plan()[0];
   const auto* node_and_reg = interpreter_->node_and_registration(node);
-  ASSERT_EQ(node_and_reg->second.custom_name,
+  EXPECT_EQ(node_and_reg->second.custom_name,
             SimpleDelegate::FakeFusedRegistration().custom_name);
+
+  const TfLiteDelegateParams* params =
+      reinterpret_cast<const TfLiteDelegateParams*>(
+          node_and_reg->first.builtin_data);
+  ASSERT_EQ(params->nodes_to_replace->size, 3);
+  EXPECT_EQ(params->nodes_to_replace->data[0], 0);
+  EXPECT_EQ(params->nodes_to_replace->data[1], 1);
+  EXPECT_EQ(params->nodes_to_replace->data[2], 2);
+
+  ASSERT_EQ(params->input_tensors->size, 2);
+  EXPECT_EQ(params->input_tensors->data[0], 0);
+  EXPECT_EQ(params->input_tensors->data[1], 1);
+
+  ASSERT_EQ(params->output_tensors->size, 2);
+  EXPECT_EQ(params->output_tensors->data[0], 3);
+  EXPECT_EQ(params->output_tensors->data[1], 4);
 }
 
 TEST_F(TestDelegate, ComplexDeligate) {

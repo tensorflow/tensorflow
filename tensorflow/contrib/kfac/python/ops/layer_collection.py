@@ -26,6 +26,7 @@ from __future__ import print_function
 
 from collections import defaultdict
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import partial
 
 import math
@@ -74,6 +75,27 @@ _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES = {
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
+
+_DEFAULT_LAYER_COLLECTION = None
+
+
+def get_default_layer_collection():
+  """Get default LayerCollection."""
+  if _DEFAULT_LAYER_COLLECTION is None:
+    raise ValueError(
+        "Attempted to retrieve default LayerCollection when none is set. Use "
+        "LayerCollection.as_default().")
+
+  return _DEFAULT_LAYER_COLLECTION
+
+
+def set_default_layer_collection(layer_collection):
+  global _DEFAULT_LAYER_COLLECTION
+
+  if _DEFAULT_LAYER_COLLECTION is not None and layer_collection is not None:
+    raise ValueError("Default LayerCollection is already set.")
+
+  _DEFAULT_LAYER_COLLECTION = layer_collection
 
 
 class LayerParametersDict(OrderedDict):
@@ -594,21 +616,25 @@ class LayerCollection(object):
                       padding,
                       inputs,
                       outputs,
+                      data_format=None,
+                      dilations=None,
                       approx=None,
                       reuse=VARIABLE_SCOPE):
-    """Registers a convolutional layer.
+    """Registers a call to tf.nn.conv2d().
 
     Args:
       params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
         this layer. Weight matrix should have shape [kernel_height,
         kernel_width, in_channels, out_channels].  Bias should have shape
         [out_channels].
-      strides: 1-D Tensor of length 4. Strides for convolution kernel.
+      strides: List of 4 ints. Strides for convolution kernel.
       padding: string. see tf.nn.conv2d for valid values.
       inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
         to layer.
       outputs: Tensor of shape [batch_size, height, width, out_channels].
         Output produced by layer.
+      data_format: str or None. Format of data.
+      dilations: List of 4 ints. Dilations along each dimension.
       approx: str. One of "kron" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
         create a new FisherBlock.  If "VARIABLE_SCOPE", use
@@ -629,11 +655,205 @@ class LayerCollection(object):
       raise ValueError("Bad value {} for approx.".format(approx))
 
     block_type = _CONV2D_APPROX_TO_BLOCK_TYPES[approx]
-    block = self.register_block(
-        params, block_type(self, params, strides, padding), reuse=reuse)
+    if approx == APPROX_KRONECKER_NAME:
+      block = self.register_block(
+          params,
+          block_type(
+              layer_collection=self,
+              params=params,
+              padding=padding,
+              strides=strides,
+              data_format=data_format,
+              dilation_rate=dilations,
+              extract_patches_fn="extract_image_patches"),
+          reuse=reuse)
+    elif approx == APPROX_DIAGONAL_NAME:
+      assert strides[0] == strides[-1] == 1
+      block = self.register_block(
+          params,
+          block_type(
+              layer_collection=self,
+              params=params,
+              padding=padding,
+              strides=strides,
+              dilations=dilations,
+              data_format=data_format),
+          reuse=reuse)
+    else:
+      raise NotImplementedError
+
     block.register_additional_minibatch(inputs, outputs)
 
     self._add_uses(params, 1)
+
+  def register_convolution(self,
+                           params,
+                           inputs,
+                           outputs,
+                           padding,
+                           strides=None,
+                           dilation_rate=None,
+                           data_format=None,
+                           approx=None,
+                           reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.convolution().
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [..filter_spatial_size..,
+        in_channels, out_channels].  Bias should have shape [out_channels].
+      inputs: Tensor of shape [batch_size, ..input_spatial_size.., in_channels].
+        Inputs to layer.
+      outputs: Tensor of shape [batch_size, ..output_spatial_size..,
+        out_channels].  Output produced by layer.
+      padding: string. see tf.nn.conv2d for valid values.
+      strides: List of ints of length len(..input_spatial_size..). Strides for
+        convolution kernel in spatial dimensions.
+      dilation_rate: List of ints of length len(..input_spatial_size..).
+        Dilations along spatial dimension.
+      data_format: str or None. Format of data.
+      approx: str. One of "kron" or "diagonal".
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    assert approx is None or approx == APPROX_KRONECKER_NAME
+
+    block = self.register_block(
+        params,
+        fb.ConvKFCBasicFB(
+            layer_collection=self,
+            params=params,
+            padding=padding,
+            strides=strides,
+            dilation_rate=dilation_rate,
+            data_format=data_format),
+        reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
+
+    self._add_uses(params, 1)
+
+  def register_depthwise_conv2d(self,
+                                params,
+                                inputs,
+                                outputs,
+                                strides,
+                                padding,
+                                rate=None,
+                                data_format=None,
+                                approx=None,
+                                reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.depthwise_conv2d().
+
+    Args:
+      params: 4-D Tensor of shape [filter_height, filter_width,
+        in_channels, channel_multiplier].  Convolutional filter.
+      inputs: Tensor of shape [batch_size, input_height, input_width,
+        in_channels].  Inputs to layer.
+      outputs: Tensor of shape [batch_size, output_height, output_width,
+        in_channels * channel_multiplier].  Output produced by depthwise conv2d.
+      strides: List of ints of length 4. Strides along all dimensions.
+      padding: string. see tf.nn.conv2d for valid values.
+      rate: None or List of ints of length 2. Dilation rates in spatial
+        dimensions.
+      data_format: str or None. Format of data.
+      approx: None or str. Must be "diagonal" if non-None.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    assert approx is None or approx == APPROX_DIAGONAL_NAME
+    assert data_format in [None, "NHWC"]
+
+    block = self.register_block(
+        params,
+        fb.DepthwiseConvDiagonalFB(
+            layer_collection=self,
+            params=params,
+            strides=strides,
+            padding=padding,
+            rate=rate,
+            data_format=data_format),
+        reuse=reuse)
+    block.register_additional_minibatch(inputs, outputs)
+
+    self._add_uses(params, 1)
+
+  def register_separable_conv2d(self,
+                                depthwise_params,
+                                pointwise_params,
+                                inputs,
+                                depthwise_outputs,
+                                pointwise_outputs,
+                                strides,
+                                padding,
+                                rate=None,
+                                data_format=None,
+                                approx=None,
+                                reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.separable_conv2d().
+
+    Note: This requires access to intermediate outputs betwee depthwise and
+    pointwise convolutions.
+
+    Args:
+      depthwise_params: 4-D Tensor of shape [filter_height, filter_width,
+        in_channels, channel_multiplier].  Filter for depthwise conv2d.
+      pointwise_params: 4-D Tensor of shape [1, 1, in_channels *
+        channel_multiplier, out_channels].  Filter for pointwise conv2d.
+      inputs: Tensor of shape [batch_size, input_height, input_width,
+        in_channels].  Inputs to layer.
+      depthwise_outputs: Tensor of shape [batch_size, output_height,
+        output_width, in_channels * channel_multiplier].  Output produced by
+        depthwise conv2d.
+      pointwise_outputs: Tensor of shape [batch_size, output_height,
+        output_width, out_channels].  Output produced by pointwise conv2d.
+      strides: List of ints of length 4. Strides for depthwise conv2d kernel in
+        all dimensions.
+      padding: string. see tf.nn.conv2d for valid values.
+      rate: None or List of ints of length 2. Dilation rate of depthwise conv2d
+        kernel in spatial dimensions.
+      data_format: str or None. Format of data.
+      approx: None or str. Must be "kron" if non-None.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    self.register_depthwise_conv2d(
+        params=depthwise_params,
+        inputs=inputs,
+        outputs=depthwise_outputs,
+        strides=strides,
+        padding=padding,
+        rate=rate,
+        data_format=data_format,
+        approx=APPROX_DIAGONAL_NAME,
+        reuse=reuse)
+
+    self.register_conv2d(
+        params=pointwise_params,
+        inputs=depthwise_outputs,
+        outputs=pointwise_outputs,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format=data_format,
+        approx=approx,
+        reuse=reuse)
 
   def register_generic(self,
                        params,
@@ -833,3 +1053,10 @@ class LayerCollection(object):
       with variable_scope.variable_scope(self._var_scope):
         self.fisher_factors[key] = cls(*args)
     return self.fisher_factors[key]
+
+  @contextmanager
+  def as_default(self):
+    """Sets this LayerCollection as the default."""
+    set_default_layer_collection(self)
+    yield
+    set_default_layer_collection(None)

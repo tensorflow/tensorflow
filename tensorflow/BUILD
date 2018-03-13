@@ -682,7 +682,6 @@ filegroup(
         "//tensorflow/tools/docs:all_files",
         "//tensorflow/tools/git:all_files",
         "//tensorflow/tools/graph_transforms:all_files",
-        "//tensorflow/tools/integration_tests/gcs_smoke_test:all_files",
         "//tensorflow/tools/mlpbtxt:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/quantization:all_files",

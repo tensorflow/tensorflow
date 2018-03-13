@@ -40,10 +40,12 @@ from __future__ import print_function
 import abc
 import enum  # pylint: disable=g-bad-import-order
 
+import numpy as np
 import six
 
 from tensorflow.contrib.kfac.python.ops import fisher_factors
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -517,7 +519,7 @@ class FullyConnectedDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
 
 
 class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
-  """FisherBlock for convolutional layers using a diagonal approx.
+  """FisherBlock for 2-D convolutional layers using a diagonal approx.
 
   Estimates the Fisher Information matrix's diagonal entries for a convolutional
   layer. Unlike NaiveDiagonalFB this uses the low-variance "sum of squares"
@@ -541,7 +543,13 @@ class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
   to the layer's parameters 'w'.
   """
 
-  def __init__(self, layer_collection, params, strides, padding):
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               data_format=None,
+               dilations=None):
     """Creates a ConvDiagonalFB block.
 
     Args:
@@ -553,29 +561,53 @@ class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
         containing the previous and a Tensor of shape [out_channels].
       strides: The stride size in this layer (1-D Tensor of length 4).
       padding: The padding in this layer (e.g. "SAME").
+      data_format: str or None. Format of input data.
+      dilations: List of 4 ints or None. Rate for dilation along all dimensions.
+
+    Raises:
+      ValueError: if strides is not length-4.
+      ValueError: if dilations is not length-4.
+      ValueError: if channel is not last dimension.
     """
-    self._strides = tuple(strides) if isinstance(strides, list) else strides
+    if len(strides) != 4:
+      raise ValueError("strides must contain 4 numbers.")
+
+    if dilations is None:
+      dilations = [1, 1, 1, 1]
+
+    if len(dilations) != 4:
+      raise ValueError("dilations must contain 4 numbers.")
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    self._strides = maybe_tuple(strides)
     self._padding = padding
+    self._data_format = data_format
+    self._dilations = maybe_tuple(dilations)
     self._has_bias = isinstance(params, (tuple, list))
 
     fltr = params[0] if self._has_bias else params
     self._filter_shape = tuple(fltr.shape.as_list())
 
+    if len(self._filter_shape) != 4:
+      raise ValueError(
+          "Convolution filter must be of shape"
+          " [filter_height, filter_width, in_channels, out_channels].")
+
     super(ConvDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    # Infer number of locations upon which convolution is applied.
-    inputs_shape = tuple(self._inputs[0].shape.as_list())
-    self._num_locations = (
-        inputs_shape[1] * inputs_shape[2] //
-        (self._strides[1] * self._strides[2]))
-
     inputs, grads_list = self._package_minibatches(grads_list)
+
+    # Infer number of locations upon which convolution is applied.
+    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+                                             self._strides)
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,
-        (inputs, grads_list, self._filter_shape, self._strides,
-         self._padding, self._has_bias))
+        (inputs, grads_list, self._filter_shape, self._strides, self._padding,
+         self._data_format, self._dilations, self._has_bias))
 
     def damping_func():
       return self._num_locations * normalize_damping(damping,
@@ -658,8 +690,8 @@ class KroneckerProductFB(FisherBlock):
     reshaped_out = self._input_factor.left_multiply_matpower(
         reshaped_out, exp, self._input_damping_func)
     if self._renorm_coeff != 1.0:
-      reshaped_out *= math_ops.cast(
-          self._renorm_coeff**exp, dtype=reshaped_out.dtype)
+      renorm_coeff = math_ops.cast(self._renorm_coeff, dtype=reshaped_out.dtype)
+      reshaped_out *= math_ops.cast(renorm_coeff**exp, dtype=reshaped_out.dtype)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def full_fisher_block(self):
@@ -761,7 +793,7 @@ class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
 
 
 class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
-  """FisherBlock for 2D convolutional layers using the basic KFC approx.
+  """FisherBlock for convolutional layers using the basic KFC approx.
 
   Estimates the Fisher Information matrix's blog for a convolutional
   layer.
@@ -784,21 +816,40 @@ class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
   See equation 23 in https://arxiv.org/abs/1602.01407 for details.
   """
 
-  def __init__(self, layer_collection, params, strides, padding):
+  def __init__(self,
+               layer_collection,
+               params,
+               padding,
+               strides=None,
+               dilation_rate=None,
+               data_format=None,
+               extract_patches_fn=None):
     """Creates a ConvKFCBasicFB block.
 
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
       params: The parameters (Tensor or tuple of Tensors) of this layer. If
-        kernel alone, a Tensor of shape [kernel_height, kernel_width,
+        kernel alone, a Tensor of shape [..spatial_filter_shape..,
         in_channels, out_channels]. If kernel and bias, a tuple of 2 elements
         containing the previous and a Tensor of shape [out_channels].
-      strides: The stride size in this layer (1-D Tensor of length 4).
-      padding: The padding in this layer (1-D of Tensor length 4).
+      padding: str. Padding method.
+      strides: List of ints or None. Contains [..spatial_filter_strides..] if
+        'extract_patches_fn' is compatible with tf.nn.convolution(), else
+        [1, ..spatial_filter_strides, 1].
+      dilation_rate: List of ints or None. Rate for dilation along each spatial
+        dimension if 'extract_patches_fn' is compatible with
+        tf.nn.convolution(), else [1, ..spatial_dilation_rates.., 1].
+      data_format: str or None. Format of input data.
+      extract_patches_fn: str or None. Name of function that extracts image
+        patches. One of "extract_convolution_patches", "extract_image_patches",
+        "extract_pointwise_conv2d_patches".
     """
-    self._strides = tuple(strides) if isinstance(strides, list) else strides
     self._padding = padding
+    self._strides = maybe_tuple(strides)
+    self._dilation_rate = maybe_tuple(dilation_rate)
+    self._data_format = data_format
+    self._extract_patches_fn = extract_patches_fn
     self._has_bias = isinstance(params, (tuple, list))
 
     fltr = params[0] if self._has_bias else params
@@ -807,15 +858,16 @@ class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
     super(ConvKFCBasicFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
+    inputs, grads_list = self._package_minibatches(grads_list)
+
     # Infer number of locations upon which convolution is applied.
     self._num_locations = num_conv_locations(self._inputs[0].shape.as_list(),
                                              self._strides)
 
-    inputs, grads_list = self._package_minibatches(grads_list)
-
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvInputKroneckerFactor,
-        (inputs, self._filter_shape, self._strides, self._padding,
+        (inputs, self._filter_shape, self._padding, self._strides,
+         self._dilation_rate, self._data_format, self._extract_patches_fn,
          self._has_bias))
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvOutputKroneckerFactor, (grads_list,))
@@ -827,17 +879,262 @@ class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
     return self._num_locations
 
 
+class DepthwiseConvDiagonalFB(ConvDiagonalFB):
+  """FisherBlock for depthwise_conv2d().
+
+  Equivalent to ConvDiagonalFB applied to each input channel in isolation.
+  """
+
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               rate=None,
+               data_format=None):
+    """Creates a DepthwiseConvKFCBasicFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      params: Tensor of shape [filter_height, filter_width, in_channels,
+        channel_multiplier].
+      strides: List of 4 ints. Strides along all dimensions.
+      padding: str. Padding method.
+      rate: List of 4 ints or None. Rate for dilation along all dimensions.
+      data_format: str or None. Format of input data.
+
+    Raises:
+      NotImplementedError: If parameters contains bias.
+      ValueError: If filter is not 4-D.
+      ValueError: If strides is not length-4.
+      ValueError: If rates is not length-2.
+      ValueError: If channels are not last dimension.
+    """
+    if isinstance(params, (tuple, list)):
+      raise NotImplementedError("Bias not yet supported.")
+
+    if params.shape.ndims != 4:
+      raise ValueError("Filter must be 4-D.")
+
+    if len(strides) != 4:
+      raise ValueError("strides must account for 4 dimensions.")
+
+    if rate is not None:
+      if len(rate) != 2:
+        raise ValueError("rate must only account for spatial dimensions.")
+      rate = [1, rate[0], rate[1], 1]  # conv2d expects 4-element rate.
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    super(DepthwiseConvDiagonalFB, self).__init__(
+        layer_collection=layer_collection,
+        params=params,
+        strides=strides,
+        padding=padding,
+        dilations=rate,
+        data_format=data_format)
+
+    # This is a hack to overwrite the same setting in ConvKFCBasicFB.__init__().
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        params.shape.as_list())
+    self._filter_shape = (filter_height, filter_width, in_channels,
+                          in_channels * channel_multiplier)
+
+  def multiply_matpower(self, vector, exp):
+    conv2d_vector = depthwise_conv2d_filter_to_conv2d_filter(vector)
+    conv2d_result = super(DepthwiseConvDiagonalFB, self).multiply_matpower(
+        conv2d_vector, exp)
+    return conv2d_filter_to_depthwise_conv2d_filter(conv2d_result)
+
+
+class DepthwiseConvKFCBasicFB(ConvKFCBasicFB):
+  """FisherBlock for depthwise_conv2d().
+
+  Equivalent to ConvKFCBasicFB applied to each input channel in isolation.
+  """
+
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               rate=None,
+               data_format=None):
+    """Creates a DepthwiseConvKFCBasicFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      params: Tensor of shape [filter_height, filter_width, in_channels,
+        channel_multiplier].
+      strides: List of 4 ints. Strides along all dimensions.
+      padding: str. Padding method.
+      rate: List of 4 ints or None. Rate for dilation along all dimensions.
+      data_format: str or None. Format of input data.
+
+    Raises:
+      NotImplementedError: If parameters contains bias.
+      ValueError: If filter is not 4-D.
+      ValueError: If strides is not length-4.
+      ValueError: If rates is not length-2.
+      ValueError: If channels are not last dimension.
+    """
+    if isinstance(params, (tuple, list)):
+      raise NotImplementedError("Bias not yet supported.")
+
+    if params.shape.ndims != 4:
+      raise ValueError("Filter must be 4-D.")
+
+    if len(strides) != 4:
+      raise ValueError("strides must account for 4 dimensions.")
+
+    if rate is not None:
+      if len(rate) != 2:
+        raise ValueError("rate must only account for spatial dimensions.")
+      rate = [1, rate[0], rate[1], 1]  # conv2d expects 4-element rate.
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    super(DepthwiseConvKFCBasicFB, self).__init__(
+        layer_collection=layer_collection,
+        params=params,
+        padding=padding,
+        strides=strides,
+        dilation_rate=rate,
+        data_format=data_format,
+        extract_patches_fn="extract_image_patches")
+
+    # This is a hack to overwrite the same setting in ConvKFCBasicFB.__init__().
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        params.shape.as_list())
+    self._filter_shape = (filter_height, filter_width, in_channels,
+                          in_channels * channel_multiplier)
+
+  def multiply_matpower(self, vector, exp):
+    conv2d_vector = depthwise_conv2d_filter_to_conv2d_filter(vector)
+    conv2d_result = super(DepthwiseConvKFCBasicFB, self).multiply_matpower(
+        conv2d_vector, exp)
+    return conv2d_filter_to_depthwise_conv2d_filter(conv2d_result)
+
+
+def depthwise_conv2d_filter_to_conv2d_filter(filter, name=None):  # pylint: disable=redefined-builtin
+  """Converts a convolution filter for use with conv2d.
+
+  Transforms a filter for use with tf.nn.depthwise_conv2d() to one that's
+  compatible with tf.nn.conv2d().
+
+  Args:
+    filter: Tensor of shape [height, width, in_channels, channel_multiplier].
+    name: None or str. Name of Op.
+
+  Returns:
+    Tensor of shape [height, width, in_channels, out_channels].
+
+  """
+  with ops.name_scope(name, "depthwise_conv2d_filter_to_conv2d_filter",
+                      [filter]):
+    filter = ops.convert_to_tensor(filter)
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        filter.shape.as_list())
+
+    results = []
+    for i in range(in_channels):
+      # Slice out one in_channel's filter. Insert zeros around it to force it
+      # to affect that channel and that channel alone.
+      elements = []
+      if i > 0:
+        elements.append(
+            array_ops.zeros(
+                [filter_height, filter_width, i, channel_multiplier]))
+      elements.append(filter[:, :, i:(i + 1), :])
+      if i + 1 < in_channels:
+        elements.append(
+            array_ops.zeros([
+                filter_height, filter_width, in_channels - (i + 1),
+                channel_multiplier
+            ]))
+
+      # Concat along in_channel.
+      results.append(
+          array_ops.concat(elements, axis=-2, name="in_channel_%d" % i))
+
+    # Concat along out_channel.
+    return array_ops.concat(results, axis=-1, name="out_channel")
+
+
+def conv2d_filter_to_depthwise_conv2d_filter(filter, name=None):  # pylint: disable=redefined-builtin
+  """Converts a convolution filter for use with depthwise_conv2d.
+
+  Transforms a filter for use with tf.nn.conv2d() to one that's
+  compatible with tf.nn.depthwise_conv2d(). Ignores all filters but those along
+  the diagonal.
+
+  Args:
+    filter: Tensor of shape [height, width, in_channels, out_channels].
+    name: None or str. Name of Op.
+
+  Returns:
+    Tensor of shape,
+      [height, width, in_channels, channel_multiplier]
+
+  Raises:
+    ValueError: if out_channels is not evenly divisible by in_channels.
+  """
+  with ops.name_scope(name, "conv2d_filter_to_depthwise_conv2d_filter",
+                      [filter]):
+    filter = ops.convert_to_tensor(filter)
+    filter_height, filter_width, in_channels, out_channels = (
+        filter.shape.as_list())
+
+    if out_channels % in_channels != 0:
+      raise ValueError("out_channels must be evenly divisible by in_channels.")
+    channel_multiplier = out_channels // in_channels
+
+    results = []
+    filter = array_ops.reshape(filter, [
+        filter_height, filter_width, in_channels, in_channels,
+        channel_multiplier
+    ])
+    for i in range(in_channels):
+      # Slice out output corresponding to the correct filter.
+      filter_slice = array_ops.reshape(
+          filter[:, :, i, i, :],
+          [filter_height, filter_width, 1, channel_multiplier])
+      results.append(filter_slice)
+
+    # Concat along out_channel.
+    return array_ops.concat(results, axis=-2, name="in_channels")
+
+
+def maybe_tuple(obj):
+  if not isinstance(obj, list):
+    return obj
+  return tuple(obj)
+
+
 def num_conv_locations(input_shape, strides):
   """Returns the number of spatial locations a 2D Conv kernel is applied to.
 
   Args:
-    input_shape: list representing shape of inputs to the Conv layer.
-    strides: list representing strides for the Conv kernel.
+    input_shape: List of ints representing shape of inputs to
+      tf.nn.convolution().
+    strides: List of ints representing strides along spatial dimensions as
+      passed in to tf.nn.convolution().
 
   Returns:
     A scalar |T| denoting the number of spatial locations for the Conv layer.
   """
-  return input_shape[1] * input_shape[2] // (strides[1] * strides[2])
+  spatial_input_locations = np.prod(input_shape[1:-1])
+
+  if strides is None:
+    spatial_strides_divisor = 1
+  else:
+    spatial_strides_divisor = np.prod(strides)
+
+  return spatial_input_locations // spatial_strides_divisor
 
 
 class FullyConnectedMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
@@ -858,7 +1155,7 @@ class FullyConnectedMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
 
   def instantiate_factors(self, grads_list, damping):
 
-    self._num_uses = len(self._inputs[0])
+    self._num_uses = float(len(self._inputs[0]))
     inputs, grads_list = self._package_minibatches_multi(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(

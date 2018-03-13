@@ -543,6 +543,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_oss",  # b/74111495
+        "notap",
     ],
     deps = [
         ":loop_optimizer",

@@ -438,7 +438,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   StartParallelExecutors(handle, step_id, item, rendezvous, collector,
                          cost_graph, cancellation_manager,
-                         [this, item, rendezvous, done](const Status& s) {
+                         [item, rendezvous, done](const Status& s) {
                            done(s);
                            rendezvous->Unref();
                            item->Unref();
