@@ -28,6 +28,15 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace {
+inline functor::DataFormat FormatNameToEnum(const string& name) {
+  if (name == "NHWC") return functor::DataFormat::NHWC;
+  if (name == "NCHW") return functor::DataFormat::NCHW;
+  if (name == "HWNC") return functor::DataFormat::HWNC;
+  return functor::DataFormat::UNKNOWN;
+}
+}  // namespace
+
 template <typename Device, typename T>
 class DataFormatDimMapOp : public OpKernel {
  public:
@@ -69,12 +78,15 @@ class DataFormatVecPermuteOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
     OP_REQUIRES(context,
                 (src_format == "NHWC" && dst_format == "NCHW") ||
-                    (src_format == "NCHW" && dst_format == "NHWC"),
+                    (src_format == "NCHW" && dst_format == "NHWC") ||
+                    (src_format == "NHWC" && dst_format == "HWNC") ||
+                    (src_format == "HWNC" && dst_format == "NHWC"),
                 errors::InvalidArgument(strings::StrCat(
-                    "Current implementation only supports NCHW-to-NHWC and "
-                    "NHWC-to-NCHW format conversion; got source format ",
+                    "Current implementation only supports NHWC<->NCHW and "
+                    "NHWC<->HWNC conversion; got source format ",
                     src_format, " and destination format ", dst_format)));
-    nhwc_to_nchw_ = (src_format == "NHWC") ? true : false;
+    src_format_ = FormatNameToEnum(src_format);
+    dst_format_ = FormatNameToEnum(dst_format);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -106,11 +118,12 @@ class DataFormatVecPermuteOp : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
     functor::DataFormatVecPermute<Device, T>()(
         context->eigen_device<Device>(), input.flat<T>(), output->flat<T>(),
-        nhwc_to_nchw_);
+        src_format_, dst_format_);
   }
 
  private:
-  bool nhwc_to_nchw_;
+  functor::DataFormat src_format_;
+  functor::DataFormat dst_format_;
 };
 
 #define REGISTER_KERNEL(T)                                                \
@@ -143,11 +156,12 @@ TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPEC
 
-#define DECLARE_GPU_SPEC(T)                                \
-  template <>                                              \
-  void DataFormatVecPermute<GPUDevice, T>::operator()(     \
-      const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
-      typename TTypes<T>::Vec y, bool nhwc_to_nchw);       \
+#define DECLARE_GPU_SPEC(T)                                   \
+  template <>                                                 \
+  void DataFormatVecPermute<GPUDevice, T>::operator()(        \
+      const GPUDevice& d, typename TTypes<T>::ConstFlat x,    \
+      typename TTypes<T>::Vec y, const DataFormat src_format, \
+      const DataFormat dst_format);                           \
   extern template struct DataFormatVecPermute<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);

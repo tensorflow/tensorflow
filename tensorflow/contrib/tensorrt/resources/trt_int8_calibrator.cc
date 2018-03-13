@@ -70,6 +70,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                  << "' failed with " << status;
     }
   }
+
   // TODO(Sami, aaorey): Find an alternative way!
   cudaStreamSynchronize(
       stream);  // we have to wait for the stream before returning!
@@ -85,11 +86,12 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   cond_.notify_all();
   while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
     cond_.wait(lock);
+
   }
   if (done_) {
     return false;
   }
-  CHECK(!calib_running_ && batch_is_set_);
+
   for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
     if (it == dev_buffers_.end()) {
@@ -107,11 +109,13 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
   return nullptr;
 }
+
 void TRTInt8Calibrator::setDone() {
   tensorflow::mutex_lock lock(cond_mtx_);
   done_ = true;
   cond_.notify_all();
 }
+
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {}
 TRTInt8Calibrator::~TRTInt8Calibrator() {

@@ -50,7 +50,6 @@ from tensorflow.python.training import optimizer as optimizer_lib
 
 
 def _replicate_model_fn(model_fn,
-                        loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                         devices=None):
   """Replicate `Estimator.model_fn` over GPUs.
 
@@ -109,8 +108,9 @@ def _replicate_model_fn(model_fn,
   On reduction algorithms:
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
-    - Losses from all towers are reduced according to `loss_reduction`.
-    - Gradients from all towers are reduced according to `loss_reduction`
+    - Losses from all towers are reduced according to `loss_reduction` argument
+      to TowerOptimizer..
+    - Gradients from all towers are reduced according to the `loss_reduction`
       for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
@@ -134,15 +134,10 @@ def _replicate_model_fn(model_fn,
   Args:
     model_fn: `model_fn` as defined in `Estimator`.  See the section above about
       the train_op argument of `EstimatorSpec`.
-    loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
-
-  Raises:
-    ValueError: if there is no `loss_reduction` or if _TowerOptimizer is
-      mis-used.
 
   Returns:
     A replicated version of the supplied `model_fn`. Returned function that
@@ -151,7 +146,6 @@ def _replicate_model_fn(model_fn,
   """
   return _replicate_model_fn_with_mode(
       model_fn,
-      loss_reduction,
       devices,
       # TODO(isaprykin): Query the system configuration to choose modes other
       # than `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often
@@ -186,13 +180,9 @@ class _VariableDistributionMode(object):
 
 def _replicate_model_fn_with_mode(
     model_fn,
-    loss_reduction,
     devices=None,
     mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
   """A version of `replicate_model_fn` that allows to specify a `mode`."""
-  if loss_reduction == losses.Reduction.NONE:
-    raise ValueError('Tower losses need to be reduced in some way, yet {} '
-                     'reduction is specified.'.format(loss_reduction))
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
@@ -215,7 +205,6 @@ def _replicate_model_fn_with_mode(
         features=[features],
         labels=[labels],
         params=params,
-        loss_reduction=loss_reduction,
         config=config,
         devices=devices,
         local_ps_devices=ps_devices)[0]  # One device, so one spec is out.
@@ -230,7 +219,6 @@ def _replicate_model_fn_with_mode(
         features=feature_shards,
         labels=label_shards,
         params=params,
-        loss_reduction=loss_reduction,
         config=config,
         devices=devices,
         local_ps_devices=ps_devices)
@@ -255,7 +243,8 @@ class _TowerOptimizer(optimizer_lib.Optimizer):
 
   COLLECTION_FOR_GRAPH_STATES = 'replicate_model_fn_graph_states'
 
-  def __init__(self, optimizer_or_optimizer_fn):
+  def __init__(self, optimizer_or_optimizer_fn,
+               loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE):
     """Wrap an existing optimizer for gathering gradients across towers.
 
     Each invocation of model_fn has to call the same optimizers in the same
@@ -275,8 +264,10 @@ class _TowerOptimizer(optimizer_lib.Optimizer):
       optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
         instance is going to be used for optimizer-specific logic.  This can
         also be a no-argument function that returns such an optimizer instance.
+      loss_reduction: controls whether losses are summed or averaged.
     """
     self._optimizer_or_optimizer_fn = optimizer_or_optimizer_fn
+    self._loss_reduction = loss_reduction
 
   @staticmethod
   def has_been_used():
@@ -296,8 +287,9 @@ class _TowerOptimizer(optimizer_lib.Optimizer):
 
   def compute_gradients(self, loss, *args, **kwargs):
     """Compute gradients, but first, if needed, scale the loss."""
+    _TowerOptimizer._graph_state().set_loss_reduction(self._loss_reduction)
     loss = _scale_loss(loss,
-                       self._graph_state().loss_reduction,
+                       self._loss_reduction,
                        self._graph_state().number_of_towers)
     return self._get_optimizer().compute_gradients(loss, *args, **kwargs)
 
@@ -402,9 +394,11 @@ class _TowerOptimizer(optimizer_lib.Optimizer):
             self._collected_grads_and_vars[tower_id][index_of_last_gradients])
       return grads_and_vars
 
-    def set_reduction_across_towers(self, loss_reduction, number_of_towers):
-      self._loss_reduction = loss_reduction
+    def set_number_of_towers(self, number_of_towers):
       self._number_of_towers = number_of_towers
+
+    def set_loss_reduction(self, loss_reduction):
+      self._loss_reduction = loss_reduction
 
     @contextmanager
     def tower(self, tower_id, var_scope, name_scope):
@@ -509,7 +503,6 @@ def _get_loss_towers(model_fn,
                      config,
                      devices,
                      local_ps_devices,
-                     loss_reduction,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -524,8 +517,7 @@ def _get_loss_towers(model_fn,
   # pylint: disable=protected-access
   round_robin_strategy = device_setter_lib._RoundRobinStrategy(
       num_tasks=len(local_ps_devices))
-  _TowerOptimizer._graph_state().set_reduction_across_towers(
-      loss_reduction, len(devices))
+  _TowerOptimizer._graph_state().set_number_of_towers(len(devices))
 
   for i, device in enumerate(devices):
     is_the_first_tower = (i == 0)
@@ -567,7 +559,9 @@ def _get_loss_towers(model_fn,
             # Scaling the loss here doesn't actually affect gradients.  Another
             # instance of scaling happens inside the _TowerOptimizer.
             tower_spec = _scale_tower_loss(
-                tower_spec, loss_reduction, number_of_towers=len(devices))
+                tower_spec,
+                _TowerOptimizer._graph_state().loss_reduction,
+                number_of_towers=len(devices))
             tower_specs.append(tower_spec)
 
   if not _TowerOptimizer._did_towers_have_same_optimizer_calls():
@@ -607,20 +601,27 @@ def _scale_tower_loss(tower_spec, loss_reduction, number_of_towers):
     return tower_spec
 
   estimator_spec = _asdict(tower_spec)
-  estimator_spec['loss'] = _scale_loss(tower_spec.loss, loss_reduction,
-                                       number_of_towers)
+  estimator_spec['loss'] = _scale_loss(
+      tower_spec.loss,
+      loss_reduction,
+      number_of_towers,
+      reduced_loss_name='averaged_loss')
   return model_fn_lib.EstimatorSpec(**estimator_spec)
 
 
-def _scale_loss(loss, loss_reduction, number_of_towers):
+def _scale_loss(loss, loss_reduction, number_of_towers, reduced_loss_name=None):
   """If needed, scale down the loss for averaging loss by summing."""
   if loss is None:
     return None
   if number_of_towers == 1:
     return loss
 
+  if loss_reduction == losses.Reduction.NONE:
+    raise ValueError('Tower losses need to be reduced in some way, yet {} '
+                     'reduction is specified.'.format(loss_reduction))
+
   if loss_reduction != losses.Reduction.SUM:
-    return math_ops.div(loss, 1.0 * number_of_towers, name='averaged_loss')
+    return math_ops.div(loss, 1.0 * number_of_towers, name=reduced_loss_name)
   else:
     return loss
 

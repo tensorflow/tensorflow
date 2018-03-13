@@ -158,8 +158,8 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable->ExecuteOnStream(&service_run_options, argument_buffer_ptrs,
-                                  /*hlo_execution_profile=*/nullptr));
+      executable->ExecuteOnStreamWrapper(
+          &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
   // Create a ScopedShapedBuffer of the result to manage deallocation. This will
   // deallocate all the device memory when it goes out of scope.

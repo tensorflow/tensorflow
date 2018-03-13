@@ -764,6 +764,54 @@ class ConvDiagonalFBTest(test.TestCase):
     return multiply_result, multiply_inverse_result
 
 
+class DepthwiseConvKFCBasicFBTest(test.TestCase):
+
+  def testInstantiateFactors(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+      params = random_ops.random_normal((3, 3, 8, 2))
+      inputs = random_ops.random_normal((32, 5, 5, 8))
+      outputs = random_ops.random_normal((32, 5, 5, 16))
+      layer_collection = lc.LayerCollection()
+      block = fb.DepthwiseConvKFCBasicFB(
+          layer_collection, params=params, strides=[1, 1, 1, 1], padding='SAME')
+      block.register_additional_minibatch(inputs, outputs)
+      grads = outputs**2
+      block.instantiate_factors(([grads],), 0.5)
+
+  def testMultiplyInverse(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+      params = random_ops.random_normal((3, 3, 8, 2))
+      inputs = random_ops.random_normal((32, 5, 5, 8))
+      outputs = random_ops.random_normal((32, 5, 5, 16))
+      layer_collection = lc.LayerCollection()
+      block = fb.DepthwiseConvKFCBasicFB(
+          layer_collection, params=params, strides=[1, 1, 1, 1], padding='SAME')
+      block.register_additional_minibatch(inputs, outputs)
+      grads = outputs**2
+      block.instantiate_factors(([grads],), 0.5)
+      block._input_factor.instantiate_cov_variables()
+      block._output_factor.instantiate_cov_variables()
+      block.register_inverse()
+      block._input_factor.instantiate_inv_variables()
+      block._output_factor.instantiate_inv_variables()
+
+      # Ensure inverse update op doesn't crash.
+      sess.run(tf_variables.global_variables_initializer())
+      sess.run([
+          factor.make_inverse_update_ops()
+          for factor in layer_collection.get_factors()
+      ])
+
+      # Ensure inverse-vector multiply doesn't crash.
+      output = block.multiply_inverse(params)
+      sess.run(output)
+
+      # Ensure same shape.
+      self.assertAllEqual(output.shape, params.shape)
+
+
 class ConvKFCBasicFBTest(test.TestCase):
 
   def _testConvKFCBasicFBInitParams(self, params):
@@ -775,16 +823,17 @@ class ConvKFCBasicFBTest(test.TestCase):
         params = array_ops.constant(params)
       inputs = random_ops.random_normal((2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, [1, 1, 1], 'SAME')
+      block = fb.ConvKFCBasicFB(
+          lc.LayerCollection(), params=params, padding='SAME')
       block.register_additional_minibatch(inputs, outputs)
 
       self.assertAllEqual([outputs], block.tensors_to_compute_grads())
 
   def testConvKFCBasicFBInitParamsParamsTuple(self):
-    self._testConvKFCBasicFBInitParams([np.array([1., 2.]), np.array(3.)])
+    self._testConvKFCBasicFBInitParams([np.ones([1, 2, 2]), np.ones([2])])
 
   def testConvKFCBasicFBInitParamsParamsSingle(self):
-    self._testConvKFCBasicFBInitParams([np.array([1., 2.])])
+    self._testConvKFCBasicFBInitParams([np.ones([1, 2, 2])])
 
   def testMultiplyInverseTuple(self):
     with ops.Graph().as_default(), self.test_session() as sess:
@@ -792,8 +841,8 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
+      block = fb.ConvKFCBasicFB(
+          lc.LayerCollection(), params=params, padding='SAME')
       block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
       block.instantiate_factors(((grads,),), 0.5)
@@ -823,8 +872,8 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
+      block = fb.ConvKFCBasicFB(
+          lc.LayerCollection(), params=params, padding='SAME')
       block.register_additional_minibatch(inputs, outputs)
       self.assertFalse(block._has_bias)
       grads = outputs**2
@@ -851,8 +900,8 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = [random_ops.random_normal((2, 2, 2, 2))]
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
+      block = fb.ConvKFCBasicFB(
+          lc.LayerCollection(), params=params, padding='SAME')
       block.register_additional_minibatch(inputs, outputs)
       self.assertTrue(block._has_bias)
       grads = outputs**2
@@ -879,8 +928,8 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = array_ops.zeros((2, 2, 2, 2))
       inputs = array_ops.zeros((2, 2, 2, 2))
       outputs = array_ops.zeros((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
-                                'SAME')
+      block = fb.ConvKFCBasicFB(
+          lc.LayerCollection(), params=params, padding='SAME')
       block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.

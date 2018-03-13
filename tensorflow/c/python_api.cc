@@ -105,9 +105,8 @@ void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
 }
 
 void ExtendSession(TF_Session* session, TF_Status* status) {
-  mutex_lock l(session->mu);
-  session->extend_before_run = false;
   ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
 }
 
 }  // namespace tensorflow

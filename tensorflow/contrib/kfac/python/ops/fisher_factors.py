@@ -159,7 +159,9 @@ def scope_string_from_params(params):
 
   name_parts = []
   for param in params:
-    if isinstance(param, (tuple, list)):
+    if param is None:
+      name_parts.append("None")
+    elif isinstance(param, (tuple, list)):
       if all([isinstance(p, int) for p in param]):
         name_parts.append("-".join([str(p) for p in param]))
       else:
@@ -867,6 +869,8 @@ class ConvDiagonalFactor(DiagonalFactor):
                filter_shape,
                strides,
                padding,
+               data_format=None,
+               dilations=None,
                has_bias=False):
     """Creates a ConvDiagonalFactor object.
 
@@ -880,15 +884,42 @@ class ConvDiagonalFactor(DiagonalFactor):
         out_channels). Represents shape of kernel used in this layer.
       strides: The stride size in this layer (1-D Tensor of length 4).
       padding: The padding in this layer (1-D of Tensor length 4).
+      data_format: None or str. Format of conv2d inputs.
+      dilations: None or tuple of 4 ints.
       has_bias: Python bool. If True, the layer is assumed to have a bias
         parameter in addition to its filter parameter.
+
+    Raises:
+      ValueError: If inputs, output_grads, and filter_shape do not agree on
+        in_channels or out_channels.
+      ValueError: If strides, dilations are not length-4 lists of ints.
+      ValueError: If data_format does not put channel last.
     """
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("Channel must be last.")
+    if inputs.shape.ndims != 4:
+      raise ValueError("inputs must be 4-D Tensor.")
+    if inputs.shape.as_list()[-1] != filter_shape[-2]:
+      raise ValueError("inputs and filter_shape must agree on in_channels.")
+    for i, outputs_grad in enumerate(outputs_grads):
+      if outputs_grad.shape.ndims != 4:
+        raise ValueError("outputs[%d] must be 4-D Tensor." % i)
+      if outputs_grad.shape.as_list()[-1] != filter_shape[-1]:
+        raise ValueError(
+            "outputs[%d] and filter_shape must agree on out_channels." % i)
+    if len(strides) != 4:
+      raise ValueError("strides must be length-4 list of ints.")
+    if dilations is not None and len(dilations) != 4:
+      raise ValueError("dilations must be length-4 list of ints.")
+
     self._inputs = inputs
+    self._outputs_grads = outputs_grads
     self._filter_shape = filter_shape
     self._strides = strides
     self._padding = padding
+    self._data_format = data_format
+    self._dilations = dilations
     self._has_bias = has_bias
-    self._outputs_grads = outputs_grads
     self._patches = None
 
     super(ConvDiagonalFactor, self).__init__()
@@ -919,11 +950,15 @@ class ConvDiagonalFactor(DiagonalFactor):
 
     # TODO(b/64144716): there is potential here for a big savings in terms
     # of memory use.
+    if self._dilations is None:
+      rates = (1, 1, 1, 1)
+    else:
+      rates = tuple(self._dilations)
     patches = array_ops.extract_image_patches(
         self._inputs,
         ksizes=[1, filter_height, filter_width, 1],
         strides=self._strides,
-        rates=[1, 1, 1, 1],
+        rates=rates,
         padding=self._padding)
 
     if self._has_bias:
@@ -1010,39 +1045,55 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
   def __init__(self,
                inputs,
                filter_shape,
-               strides,
                padding,
+               strides=None,
+               dilation_rate=None,
+               data_format=None,
+               extract_patches_fn=None,
                has_bias=False):
     """Initializes ConvInputKroneckerFactor.
 
     Args:
-      inputs: A Tensor of shape [batch_size, height, width, in_channels]
-        which is the inputs to the layer (before being processed into patches).
-      filter_shape: 1-D Tensor of length 4. Contains [kernel_height,
-        kernel_width, in_channels, out_channels].
-      strides: 1-D Tensor of length 4. Contains [batch_stride, height_stride,
-        width_stride, in_channel_stride].
+      inputs: Tensor of shape [batch_size, ..spatial_input_size.., in_channels].
+        Inputs to layer.
+      filter_shape: List of ints. Contains [..spatial_filter_size..,
+        in_channels, out_channels]. Shape of convolution kernel.
       padding: str. Padding method for layer. "SAME" or "VALID".
+      strides: List of ints or None. Contains [..spatial_filter_strides..] if
+        'extract_patches_fn' is compatible with tf.nn.convolution(), else
+        [1, ..spatial_filter_strides, 1].
+      dilation_rate: List of ints or None. Rate for dilation along each spatial
+        dimension if 'extract_patches_fn' is compatible with
+        tf.nn.convolution(), else [1, ..spatial_dilation_rates.., 1].
+      data_format: str or None. Format of input data.
+      extract_patches_fn: str or None. Name of function that extracts image
+        patches. One of "extract_convolution_patches", "extract_image_patches",
+        "extract_pointwise_conv2d_patches".
       has_bias: bool. If True, append 1 to in_channel.
     """
+    self._inputs = inputs
     self._filter_shape = filter_shape
     self._strides = strides
     self._padding = padding
+    self._dilation_rate = dilation_rate
+    self._data_format = data_format
+    self._extract_patches_fn = extract_patches_fn
     self._has_bias = has_bias
-    self._inputs = inputs
+
     super(ConvInputKroneckerFactor, self).__init__()
 
   @property
   def _var_scope(self):
     return "ff_convinkron_" + scope_string_from_params([
         self._inputs, self._filter_shape, self._strides, self._padding,
-        self._has_bias
+        self._dilation_rate, self._data_format, self._has_bias
     ])
 
   @property
   def _cov_shape(self):
-    filter_height, filter_width, in_channels, _ = self._filter_shape
-    size = filter_height * filter_width * in_channels + self._has_bias
+    spatial_filter_shape = self._filter_shape[0:-2]
+    in_channels = self._filter_shape[-2]
+    size = np.prod(spatial_filter_shape) * in_channels + self._has_bias
     return [size, size]
 
   @property
@@ -1057,18 +1108,44 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     if idx != 0:
       raise ValueError("ConvInputKroneckerFactor only supports idx = 0")
 
-    filter_height, filter_width, in_channels, _ = self._filter_shape
-
     # TODO(b/64144716): there is potential here for a big savings in terms of
     # memory use.
-    patches = array_ops.extract_image_patches(
-        self._inputs,
-        ksizes=[1, filter_height, filter_width, 1],
-        strides=self._strides,
-        rates=[1, 1, 1, 1],
-        padding=self._padding)
+    if self._extract_patches_fn in [None, "extract_convolution_patches"]:
+      patches = utils.extract_convolution_patches(
+          self._inputs,
+          self._filter_shape,
+          padding=self._padding,
+          strides=self._strides,
+          dilation_rate=self._dilation_rate,
+          data_format=self._data_format)
 
-    flatten_size = (filter_height * filter_width * in_channels)
+    elif self._extract_patches_fn == "extract_image_patches":
+      assert self._inputs.shape.ndims == 4
+      assert len(self._filter_shape) == 4
+      assert len(self._strides) == 4, self._strides
+      if self._dilation_rate is None:
+        rates = [1, 1, 1, 1]
+      else:
+        rates = self._dilation_rate
+        assert len(rates) == 4
+        assert rates[0] == rates[-1] == 1
+      patches = array_ops.extract_image_patches(
+          self._inputs,
+          ksizes=[1] + list(self._filter_shape[0:-2]) + [1],
+          strides=self._strides,
+          rates=rates,
+          padding=self._padding)
+
+    elif self._extract_patches_fn == "extract_pointwise_conv2d_patches":
+      assert self._strides in [None, [1, 1, 1, 1], (1, 1, 1, 1)]
+      assert self._filter_shape[0] == self._filter_shape[1] == 1
+      patches = utils.extract_pointwise_conv2d_patches(
+          self._inputs, self._filter_shape, data_format=None)
+
+    else:
+      raise NotImplementedError(self._extract_patches_fn)
+
+    flatten_size = np.prod(self._filter_shape[0:-1])
     # patches_flat below is the matrix [[A_l]] from the KFC paper (tilde
     # omitted over A for clarity). It has shape M|T| x J|Delta| (eq. 14),
     # where M = minibatch size, |T| = number of spatial locations,
@@ -1100,14 +1177,21 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
   Section 3.1 Estimating the factors.
   """
 
-  def __init__(self, outputs_grads):
+  def __init__(self, outputs_grads, data_format=None):
     """Initializes ConvOutputKroneckerFactor.
 
     Args:
-      outputs_grads: List of Tensors, each of shape [batch_size,
-        height, width, out_channels].  One Tensor for each "source".
+      outputs_grads: list of Tensors. Each Tensor is of shape
+          [batch_size, ..spatial_input_size.., out_channels]. One Tensor per
+          source.
+      data_format: None or str. Format of outputs_grads.
+
+    Raises:
+      ValueError: If channels are not final dimension.
     """
-    self._out_channels = outputs_grads[0].shape.as_list()[3]
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("Channel must be last.")
+    self._out_channels = outputs_grads[0].shape.as_list()[-1]
     self._outputs_grads = outputs_grads
     super(ConvOutputKroneckerFactor, self).__init__()
 
@@ -1433,4 +1517,3 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
     return [control_flow_ops.group(*ops)]
 
     # pylint: enable=invalid-name
-
