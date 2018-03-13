@@ -43,6 +43,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@sliding_window_batch
 @@sloppy_interleave
 @@unbatch
+@@unordered_merge
 
 @@get_single_element
 """
@@ -76,6 +77,7 @@ from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
 from tensorflow.python.data.ops.iterator_ops import Iterator
 from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_single_example
+from tensorflow.contrib.data.python.ops.unordered_merge import unordered_merge
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
