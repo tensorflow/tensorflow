@@ -92,11 +92,11 @@ class ScalarTest(test.TestCase):
     self.check(array_ops.reshape, (7, 1), 'sizes input must be 1-D', [7])
 
   def testShardedFilename(self):
-    self.check(gen_io_ops._sharded_filename, ('foo', 4, [100]),
+    self.check(gen_io_ops.sharded_filename, ('foo', 4, [100]),
                'must be a scalar', b'foo-00004-of-00100')
 
   def testShardedFilespec(self):
-    self.check(gen_io_ops._sharded_filespec, ('foo', [100]), 'must be a scalar',
+    self.check(gen_io_ops.sharded_filespec, ('foo', [100]), 'must be a scalar',
                b'foo-?????-of-00100')
 
   def testUnsortedSegmentSum(self):

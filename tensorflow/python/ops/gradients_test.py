@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
@@ -661,6 +662,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
+
 @test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
@@ -740,6 +742,59 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         "of unknown shape. This may consume a large amount of memory." in
         str(w[0].message))
+
+  def testCustomGradientTrivial(self):
+
+    @custom_gradient.custom_gradient
+    def MyIdentity(x):
+
+      def Grad(dy):
+        return [3 * dy]
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(3.)
+      y = MyIdentity(MyIdentity(x))
+      dy = gradients.gradients(y, x)[0]
+      with session.Session():
+        self.assertEqual(9., dy.eval())
+
+  def testCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def MyMultiply(x1, x2):
+      result = x1 * x2
+
+      def Grad(dy):
+        # Switched the ordering here.
+        return [dy * x1, dy * x2]
+
+      return result, Grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      y = MyMultiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      with session.Session() as sess:
+        self.assertAllEqual([3., 5.], sess.run(dy))
+
+  def testCustomGradientErrors(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+
+      def Grad(_):
+        raise RuntimeError("x")
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = F(x)
+      with self.assertRaises(RuntimeError):
+        gradients.gradients(y, x)
 
 
 @test_util.with_c_api

@@ -43,7 +43,7 @@ BINARY_STRING_TEMPLATE = "%s-%s-%s.whl"
 def check_existence(filename):
   """Check the existence of file or dir."""
   if not os.path.exists(filename):
-    raise RuntimeError("%s not found.")
+    raise RuntimeError("%s not found." % filename)
 
 
 def copy_binary(directory, origin_tag, new_tag, version, gpu=False):

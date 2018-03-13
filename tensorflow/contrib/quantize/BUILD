@@ -24,6 +24,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python:variable_scope",
     ],
 )
 

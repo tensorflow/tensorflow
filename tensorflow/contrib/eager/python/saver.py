@@ -73,7 +73,7 @@ def restore_variables_on_create(save_path, map_func=None):
     NotFoundError: If the variable is not found in checkpoint.
     ValueError: If not used in eager mode or map_func is not callable.
   """
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     raise ValueError(
         "Currently, restore_variables_on_create can only be used with "
         "eager execution enabled.")
@@ -131,7 +131,7 @@ class Saver(object):
     Raises:
       RuntimeError: if invoked when eager execution has not been enabled.
     """
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       raise RuntimeError("tfe.Saver can only be used when eager "
                          "execution is enabled. Use tf.train.Saver when "
                          "building graphs.")

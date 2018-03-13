@@ -165,7 +165,7 @@ class ApiCompatibilityTest(test.TestCase):
       logging.error('%d differences found between API and golden.', diff_count)
       messages = verbose_diffs if verbose else diffs
       for i in range(diff_count):
-        logging.error('Issue %d\t: %s', i + 1, messages[i])
+        print('Issue %d\t: %s' % (i + 1, messages[i]), file=sys.stderr)
 
       if update_goldens:
         # Write files if requested.

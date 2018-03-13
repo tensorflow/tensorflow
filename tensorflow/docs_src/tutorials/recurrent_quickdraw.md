@@ -109,7 +109,8 @@ This download will take a while and download a bit more than 23GB of data.
 
 To convert the `ndjson` files to
 @{$python/python_io#tfrecords_format_details$TFRecord} files containing
-${tf.train.Example} protos run the following command.
+[`tf.train.Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+protos run the following command.
 
 ```shell
    python create_dataset.py --ndjson_path rnn_tutorial_data \

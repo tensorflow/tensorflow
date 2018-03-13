@@ -104,4 +104,9 @@ void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
   graph->refiner.set_require_shape_inference_fns(require);
 }
 
+void ExtendSession(TF_Session* session, TF_Status* status) {
+  ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
+}
+
 }  // namespace tensorflow

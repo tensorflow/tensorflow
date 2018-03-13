@@ -489,10 +489,10 @@ class _DefinedFunction(object):
 
     # Adds this function into 'g'.
     # pylint: disable=protected-access
-    if context.in_graph_mode():
-      g._add_function(self)
-    else:
+    if context.executing_eagerly():
       context.context().add_function_def(self.definition)
+    else:
+      g._add_function(self)
     # pylint: enable=protected-access
 
     # Ensures related sub-routines are defined in 'g', too.

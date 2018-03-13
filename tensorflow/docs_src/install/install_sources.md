@@ -359,10 +359,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.6.0rc1 on Linux:
+for TensorFlow 1.6.0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.6.0rc1-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.6.0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -393,8 +393,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with
-TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).

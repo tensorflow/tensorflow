@@ -475,6 +475,10 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*_test.cc"
   )
 
+  list(REMOVE_ITEM tf_test_src_simple
+    ${tf_core_profiler_test_srcs}
+  )
+
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 

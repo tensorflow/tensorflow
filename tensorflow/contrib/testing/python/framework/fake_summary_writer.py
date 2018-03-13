@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
 
@@ -85,7 +86,11 @@ class FakeSummaryWriter(object):
     if expected_added_graphs is not None:
       test_case.assertEqual(expected_added_graphs, self._added_graphs)
     if expected_added_meta_graphs is not None:
-      test_case.assertEqual(expected_added_meta_graphs, self._added_meta_graphs)
+      test_case.assertEqual(len(expected_added_meta_graphs),
+                            len(self._added_meta_graphs))
+      for expected, actual in zip(expected_added_meta_graphs,
+                                  self._added_meta_graphs):
+        test_util.assert_meta_graph_protos_equal(test_case, expected, actual)
     if expected_session_logs is not None:
       test_case.assertEqual(expected_session_logs, self._added_session_logs)
 

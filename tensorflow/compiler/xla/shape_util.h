@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -208,6 +209,7 @@ class ShapeUtil {
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the lhs and rhs shapes have the same element type.
@@ -319,6 +321,15 @@ class ShapeUtil {
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
                          tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  // Creates a Shape with element type corresponding to T and the given
+  // dimensions
+  template <typename T>
+  static Shape MakeShapeWithType(
+      tensorflow::gtl::ArraySlice<int64> dimensions) {
+    return ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(),
+                                dimensions);
+  }
 
   // Constructs a new shape with the given minor_to_major order in its Layout.
   // Returns a value shape such that shape.has_layout().
@@ -522,12 +533,16 @@ class ShapeUtil {
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(
       const Shape& input_shape, const Shape& output_shape,
       tensorflow::gtl::ArraySlice<int64> dimension_mapping);
 
   // Returns whether a reshape from "input_shape" to "output_shape" is a
   // bitcast.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
@@ -560,16 +575,16 @@ class ShapeUtil {
   // The visitor_function visitor function should return true if it wants to
   // continue, or false otherwise.
   //
-  // visitor_function must be a callable of type bool(const std::vector<int64>&)
-  // or compatible.
+  // visitor_function must be a callable of type
+  // StatusOr<bool>(ArraySlice<int64>) or compatible.
   template <typename FnType>
-  static void ForEachIndex(const Shape& shape,
-                           tensorflow::gtl::ArraySlice<int64> base,
-                           tensorflow::gtl::ArraySlice<int64> count,
-                           tensorflow::gtl::ArraySlice<int64> incr,
-                           const FnType& visitor_function) {
+  static Status ForEachIndexWithStatus(const Shape& shape,
+                                       tensorflow::gtl::ArraySlice<int64> base,
+                                       tensorflow::gtl::ArraySlice<int64> count,
+                                       tensorflow::gtl::ArraySlice<int64> incr,
+                                       const FnType& visitor_function) {
     if (ShapeUtil::HasZeroElements(shape)) {
-      return;
+      return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());
     CHECK_EQ(incr.size(), base.size());
@@ -579,7 +594,11 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    while (n < rank && visitor_function(indexes)) {
+    while (n < rank) {
+      TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
+      if (!should_continue) {
+        break;
+      }
       // Increments dimensions in minor to major order.
       for (n = 0; n < rank; ++n) {
         int64 dim = LayoutUtil::Minor(shape.layout(), n);
@@ -590,6 +609,37 @@ class ShapeUtil {
         indexes[dim] = base[dim];
       }
     }
+
+    return Status::OK();
+  }
+
+  // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
+  struct IndexIterationSpace {
+    std::vector<int64> index_base;
+    std::vector<int64> index_count;
+    std::vector<int64> index_incr;
+  };
+
+  template <typename FnTy>
+  static Status ForEachIndexWithStatus(
+      const Shape& shape, const IndexIterationSpace& iteration_space,
+      FnTy&& function) {
+    return ShapeUtil::ForEachIndexWithStatus(
+        shape, iteration_space.index_base, iteration_space.index_count,
+        iteration_space.index_incr, std::forward<FnTy>(function));
+  }
+
+  template <typename FnType>
+  static void ForEachIndex(const Shape& shape,
+                           tensorflow::gtl::ArraySlice<int64> base,
+                           tensorflow::gtl::ArraySlice<int64> count,
+                           tensorflow::gtl::ArraySlice<int64> incr,
+                           const FnType& visitor_function) {
+    ForEachIndexWithStatus(shape, base, count, incr,
+                           [&](tensorflow::gtl::ArraySlice<int64> indices) {
+                             return StatusOr<bool>(visitor_function(indices));
+                           })
+        .IgnoreError();
   }
 
  private:

@@ -184,7 +184,7 @@ class AdamOptimizerTest(test.TestCase):
           # Shouldn't return non-slot variables from other graphs.
           self.assertEqual(0, len(opt.variables()))
 
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -194,7 +194,7 @@ class AdamOptimizerTest(test.TestCase):
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          if context.in_graph_mode():
+          if not context.executing_eagerly():
             self.evaluate(update)
           elif t > 1:
             opt.apply_gradients(zip([grads0, grads1], [var0, var1]))

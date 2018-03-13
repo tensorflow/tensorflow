@@ -21,33 +21,58 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import six
 
 from tensorflow.python.util import tf_inspect
 
 
-def getcallargs(c, *args, **kwargs):
-  """Extension of getcallargs to non-function callables."""
-  if tf_inspect.isfunction(c):
-    # The traditional getcallargs
-    return tf_inspect.getcallargs(c, *args, **kwargs)
+def getnamespace(f):
+  """Returns the complete namespace of a function.
 
-  if tf_inspect.isclass(c):
-    # Constructors: pass a fake None for self, then remove it.
-    arg_map = tf_inspect.getcallargs(c.__init__, None, *args, **kwargs)
-    assert 'self' in arg_map, 'no "self" argument, is this not a constructor?'
-    del arg_map['self']
-    return arg_map
+  Namespace is defined here as the mapping of all non-local variables to values.
+  This includes the globals and the closure variables. Note that this captures
+  the entire globals collection of the function, and may contain extra symbols
+  that it does not actually use.
 
-  if hasattr(c, '__call__'):
-    # Callable objects: map self to the object itself
-    return tf_inspect.getcallargs(c.__call__, *args, **kwargs)
+  Args:
+    f: User defined function.
+  Returns:
+    A dict mapping symbol names to values.
+  """
+  namespace = dict(six.get_function_globals(f))
+  closure = six.get_function_closure(f)
+  freevars = six.get_function_code(f).co_freevars
+  if freevars and closure:
+    for name, cell in zip(freevars, closure):
+      namespace[name] = cell.cell_contents
+  return namespace
 
-  raise NotImplementedError('unknown callable "%s"' % type(c))
 
+def getmethodclass(m):
+  """Resolves a function's owner, e.g. a method's class.
 
-def getmethodclass(m, namespace):
-  """Resolves a function's owner, e.g. a method's class."""
+  Note that this returns the object that the function was retrieved from, not
+  necessarily the class where it was defined.
+
+  This function relies on Python stack frame support in the interpreter, and
+  has the same limitations that inspect.currentframe.
+
+  Limitations. This function will only work correctly if the owned class is
+  visible in the caller's global or local variables.
+
+  Args:
+    m: A user defined function
+
+  Returns:
+    The class that this function was retrieved from, or None if the function
+    is not an object or class method, or the class that owns the object or
+    method is not visible to m.
+
+  Raises:
+    ValueError: if the class could not be resolved for any unexpected reason.
+  """
 
   # Instance method and class methods: should be bound to a non-null "self".
   # If self is a class, then it's a class method.
@@ -57,34 +82,38 @@ def getmethodclass(m, namespace):
         return m.__self__
       return type(m.__self__)
 
-  # Class and static methods: platform specific.
-  if hasattr(m, 'im_class'):  # Python 2
-    return m.im_class
+  # Class, static and unbound methods: search all defined classes in any
+  # namespace. This is inefficient but more robust method.
+  owners = []
+  caller_frame = tf_inspect.currentframe().f_back
+  try:
+    # TODO(mdan): This doesn't consider cell variables.
+    # TODO(mdan): This won't work if the owner is hidden inside a container.
+    # Cell variables may be pulled using co_freevars and the closure.
+    for v in itertools.chain(caller_frame.f_locals.values(),
+                             caller_frame.f_globals.values()):
+      if hasattr(v, m.__name__):
+        candidate = getattr(v, m.__name__)
+        # Py2 methods may be bound or unbound, extract im_func to get the
+        # underlying function.
+        if hasattr(candidate, 'im_func'):
+          candidate = candidate.im_func
+        if hasattr(m, 'im_func'):
+          m = m.im_func
+        if candidate is m:
+          owners.append(v)
+  finally:
+    del caller_frame
 
-  if hasattr(m, '__qualname__'):  # Python 3
-    qn = m.__qualname__.split('.')
-    if len(qn) < 2:
-      return None
-    owner_name, func_name = qn[-2:]
-    assert func_name == m.__name__, (
-        'inconsistent names detected '
-        '(__qualname__[1] = "%s", __name__ = "%s") for %s.' % (func_name,
-                                                               m.__name__, m))
-    if owner_name == '<locals>':
-      return None
-    if owner_name not in namespace:
-      raise ValueError(
-          'Could not resolve name "%s" while analyzing %s. Namespace:\n%s' %
-          (owner_name, m, namespace))
-    return namespace[owner_name]
+  if owners:
+    if len(owners) == 1:
+      return owners[0]
 
-  if six.PY2:
-    # In Python 2 it's impossible, to our knowledge, to detect the class of a
-    # static function. So we're forced to walk all the objects in the
-    # namespace and see if they own it. If any reader finds a better solution,
-    # please let us know.
-    for _, v in namespace.items():
-      if hasattr(v, m.__name__) and getattr(v, m.__name__) is m:
-        return v
+    # If multiple owners are found, and are not subclasses, raise an error.
+    owner_types = tuple(o if tf_inspect.isclass(o) else type(o) for o in owners)
+    for o in owner_types:
+      if tf_inspect.isclass(o) and issubclass(o, tuple(owner_types)):
+        return o
+    raise ValueError('Found too many owners of %s: %s' % (m, owners))
 
   return None

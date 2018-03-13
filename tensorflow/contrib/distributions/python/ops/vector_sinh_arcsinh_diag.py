@@ -227,7 +227,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
       c = 2 * scale_diag_part / f_noskew.forward(
           ops.convert_to_tensor(2, dtype=dtype))
       affine = bijectors.Affine(
-          shift=loc, scale_diag=c, validate_args=validate_args, event_ndims=1)
+          shift=loc, scale_diag=c, validate_args=validate_args)
 
       bijector = bijectors.Chain([affine, f])
 

@@ -85,8 +85,8 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   auto& dequantized_input_minmax = dequantized_input_array.GetOrCreateMinMax();
   dequantized_input_minmax = input_minmax;
   auto& input_qparams = input_array.GetOrCreateQuantizationParams();
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-      model->flags, input_minmax, &input_qparams);
+  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(input_minmax,
+                                                         &input_qparams);
 
   transformation->AddMessageF(
       "Created %s"

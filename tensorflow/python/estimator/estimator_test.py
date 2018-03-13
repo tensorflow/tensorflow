@@ -48,6 +48,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -1934,6 +1935,60 @@ class EstimatorExportTest(test.TestCase):
         compat.as_bytes(gfile.GFile(expected_extra_path).read()))
 
     # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_tensor_features(self):
+    """Test that models accepting a single raw Tensor can be exported.
+
+    See https://github.com/tensorflow/tensorflow/issues/11674
+
+    If the model_fn and receiver_fn accept raw tensors rather than dictionaries
+    as input, export_savedmodel should be okay with that, too.
+
+    """
+
+    tmpdir = tempfile.mkdtemp()
+
+    def _input_fn_tensor_features():
+      t = array_ops.constant([1, 2, 3], dtype=dtypes.float32, shape=[1, 3])
+      return (t, None)
+
+    def _model_fn_tensor_features(features, labels, mode):
+      _ = labels
+      prediction = math_ops.matmul(features, features, transpose_b=True)
+
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=prediction,
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          export_outputs={
+              'test': export_output.PredictOutput({'prediction': prediction})
+          })
+
+    def _serving_input_receiver_fn():
+      feat = array_ops.placeholder(dtype=dtypes.float32)
+      return export.TensorServingInputReceiver(
+          features=feat, receiver_tensors=feat)
+
+    est = estimator.Estimator(model_fn=_model_fn_tensor_features)
+    est.train(input_fn=_input_fn_tensor_features, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, _serving_input_receiver_fn)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name.lower() for x in graph.get_operations()]
+        self.assertTrue('const' in graph_ops)
+        self.assertTrue('matmul' in graph_ops)
+
+    # Clean up.
     gfile.DeleteRecursively(tmpdir)
 
   def test_scaffold_is_used_for_saver(self):

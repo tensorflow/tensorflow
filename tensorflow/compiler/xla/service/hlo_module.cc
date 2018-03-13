@@ -213,65 +213,13 @@ HloModuleProto HloModule::ToProto() const {
       continue;
     }
     HloComputationProto computation_proto = computation->ToProto();
+    if (computation->name() == entry_computation_->name()) {
+      *proto.mutable_program_shape() = computation_proto.program_shape();
+    }
     proto.add_computations()->Swap(&computation_proto);
   }
   return proto;
 }
-
-namespace {
-
-// Construct a ProgramShape matching the shape of the parameters and root of the
-// given module's entry computation.
-StatusOr<ProgramShape> ProgramShapeFromProto(const HloModuleProto& module) {
-  const HloComputationProto* entry_computation = nullptr;
-  for (const HloComputationProto& computation : module.computations()) {
-    if (computation.name() == module.entry_computation_name()) {
-      entry_computation = &computation;
-      break;
-    }
-  }
-  TF_RET_CHECK(entry_computation != nullptr)
-      << "No computation with entry computation name"
-      << module.entry_computation_name();
-
-  tensorflow::gtl::FlatMap<int64, std::pair<string, const Shape*>> parameters;
-  const HloInstructionProto* root = nullptr;
-  for (const HloInstructionProto& instruction :
-       entry_computation->instructions()) {
-    if (instruction.name() == entry_computation->root_name()) {
-      TF_RET_CHECK(root == nullptr) << "Entry computation has more than "
-                                       "one instruction with (root) name "
-                                    << instruction.name();
-      root = &instruction;
-    }
-    if (instruction.opcode() == HloOpcodeString(HloOpcode::kParameter)) {
-      TF_RET_CHECK(!ContainsKey(parameters, instruction.parameter_number()))
-          << "Entry computation has more than one parameter instruction "
-             "with parameter number "
-          << instruction.parameter_number();
-      parameters[instruction.parameter_number()] = {instruction.name(),
-                                                    &instruction.shape()};
-    }
-  }
-  TF_RET_CHECK(root != nullptr)
-      << "Entry computation is missing root instruction named "
-      << entry_computation->root_name();
-
-  ProgramShape program_shape;
-  *program_shape.mutable_result() = root->shape();
-  for (int64 i = 0; i < parameters.size(); ++i) {
-    TF_RET_CHECK(ContainsKey(parameters, i))
-        << "Entry computation missing parameter number " << i;
-    const string& name = parameters.at(i).first;
-    const Shape& shape = *parameters.at(i).second;
-    *program_shape.add_parameters() = shape;
-    program_shape.add_parameter_names(name);
-  }
-
-  return std::move(program_shape);
-}
-
-}  // namespace
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
@@ -279,8 +227,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const VersionedComputationHandle& entry_computation_handle) {
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
-  TF_ASSIGN_OR_RETURN(ProgramShape expected_program_shape,
-                      ProgramShapeFromProto(proto));
+  TF_RET_CHECK(proto.has_program_shape())
+      << "No program shape found in the proto";
+  const auto& expected_program_shape = proto.program_shape();
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -354,8 +303,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 /* static */
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      ProgramShapeFromProto(module));
+  TF_RET_CHECK(module.has_program_shape())
+      << "No program shape found in the proto";
+  const auto& program_shape = module.program_shape();
 
   HloModuleConfig module_config(program_shape);
 

@@ -210,10 +210,11 @@ class Variable(checkpointable.CheckpointableBase):
     for details on how variables work in eager execution.
     @end_compatibility
     """
-    if not context.in_graph_mode():
-      raise RuntimeError("tf.Variable not supported in Eager mode. "
-                         "Please use tfe.Variable instead")
-    self._in_graph_mode = context.in_graph_mode()
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "tf.Variable not supported when eager execution is enabled. "
+          "Please use tf.contrib.eager.Variable instead")
+    self._in_graph_mode = True
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
       if initial_value:
@@ -234,7 +235,7 @@ class Variable(checkpointable.CheckpointableBase):
           constraint=constraint)
 
   def __repr__(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
           self.name, self.get_shape(), self.dtype.name,
           ops.numpy_text(self.read_value(), is_repr=True))
@@ -307,6 +308,9 @@ class Variable(checkpointable.CheckpointableBase):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
+    # Store the graph key so optimizers know how to only retrieve variables from
+    # this graph.
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     if isinstance(initial_value, checkpointable.CheckpointInitialValue):
       self._maybe_initialize_checkpointable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
@@ -737,15 +741,15 @@ class Variable(checkpointable.CheckpointableBase):
     Raises:
         ValueError: Session is not passed and no default session
     """
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      self.assign(value)
+    else:
       session = session or ops.get_default_session()
       if session is None:
         raise ValueError(
             "Either session argument should be provided or default session "
             "should be established")
       session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
-    else:
-      self.assign(value)
 
   # Conversion to tensor.
   @staticmethod
@@ -1245,9 +1249,9 @@ class PartitionedVariable(object):
         information does not match `shape`, or `partitions` has invalid values.
       RuntimeError: If eager execution is enabled
     """
-    if not context.in_graph_mode():
-      raise RuntimeError("tf.PartitionedVariable not supported in "
-                         "eager mode. Please use tfe.Variable instead")
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "tf.PartitionedVariable not supported with eager execution enabled.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
@@ -1538,7 +1542,7 @@ def variables_initializer(var_list, name="init"):
   Returns:
     An Op that run the initializers of all the specified variables.
   """
-  if var_list and context.in_graph_mode():
+  if var_list and not context.executing_eagerly():
     return control_flow_ops.group(*[v.initializer for v in var_list], name=name)
   return control_flow_ops.no_op(name=name)
 
@@ -1560,7 +1564,7 @@ def global_variables_initializer():
   Returns:
     An Op that initializes global variables in the graph.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return control_flow_ops.no_op(name="global_variables_initializer")
   return variables_initializer(global_variables())
 
@@ -1582,7 +1586,7 @@ def local_variables_initializer():
   Returns:
     An Op that initializes all local variables in the graph.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return control_flow_ops.no_op(name="local_variables_initializer")
   return variables_initializer(local_variables())
 

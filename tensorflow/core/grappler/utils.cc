@@ -348,6 +348,7 @@ inline void STLSortAndRemoveDuplicates(T* v) {
 
 Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
                                    bool dedup_outputs) {
+  graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
   inputs_.resize(num_nodes);
@@ -392,6 +393,22 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     }
   }
   return Status::OK();
+}
+
+void SimpleGraphView::DepthFirstSearch(
+    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    std::set<int>* nodes_found) const {
+  if (nodes_found->find(node_idx) != nodes_found->end()) {
+    return;
+  }
+  nodes_found->insert(node_idx);
+  const string& op_type = graph_->node(node_idx).op();
+  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+    return;
+  }
+  for (auto output_idx : this->outputs(node_idx)) {
+    DepthFirstSearch(op_types_to_traverse, output_idx, nodes_found);
+  }
 }
 
 string SimpleGraphView::PrintToString() const {

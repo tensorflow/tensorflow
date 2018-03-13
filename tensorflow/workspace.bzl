@@ -12,6 +12,8 @@ load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compil
 load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
+     "def_file_filter_configure")
 
 def _extract_version_number(bazel_version):
   """Extracts the semantic version number from a version string
@@ -67,13 +69,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  check_bazel_version_at_least("0.5.4")
+  check_bazel_version_at_least("0.10.0")
   clang6_configure(name="local_config_clang6")
   cuda_configure(name="local_config_cuda")
   tensorrt_configure(name="local_config_tensorrt")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  # For windows bazel build
+  # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
+  def_file_filter_configure(name = "local_config_def_file_filter")
 
   # Point //external/local_config_arm_compiler to //external/arm_compiler
   arm_compiler_configure(
@@ -475,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/197b6c81959a17be37035d4fe71b382023bff2f0.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/197b6c81959a17be37035d4fe71b382023bff2f0.tar.gz",
       ],
-      sha256 = "f5721d9cc18a9109c9e9f847f48e69b710b961cee83e6691227e310cb3b5da58",
-      strip_prefix = "llvm-fc8ba497cd1a1af4ecae19a5b64bdbd71e065e14",
+      sha256 = "e77a8715fbd5d3c049bc7707da236152faab50ee2b7cec5234a0737b72ddb52a",
+      strip_prefix = "llvm-197b6c81959a17be37035d4fe71b382023bff2f0",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -666,15 +672,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "cub_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.4.zip",
-          "https://github.com/NVlabs/cub/archive/1.7.4.zip",
+          "https://mirror.bazel.build/github.com/NVlabs/cub/archive/1.8.0.zip",
+          "https://github.com/NVlabs/cub/archive/1.8.0.zip",
       ],
-      sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
-      strip_prefix = "cub-1.7.4",
+      sha256 = "6bfa06ab52a650ae7ee6963143a0bbc667d6504822cbd9670369b598f18c58c3",
+      strip_prefix = "cub-1.8.0",
       build_file = str(Label("//third_party:cub.BUILD")),
-      # TODO: remove the patch when upstream fix is accepted and released.
-      #       PR with a fix: https://github.com/NVlabs/cub/pull/125
-      patch_file = str(Label("//third_party/cub:fix_compilation_in_clang.patch")),
   )
 
   tf_http_archive(
@@ -698,16 +701,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
       sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
   )
-
-  tf_http_archive(
-      name = "rbe_integration_test",
-      urls = [
-          "http://mirror.bazel.build/github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-          "https://github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-      ],
-      sha256 = "66d93b3919a165d486c31f5290d312abe9fda2685242f812c110653c124e1db4",
-      strip_prefix = "rbe-integration-test-78a6194c7dda200b9522cf07707e3bc695804d1e",
-   )
 
   tf_http_archive(
       name = "arm_neon_2_x86_sse",

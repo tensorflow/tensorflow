@@ -45,7 +45,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
-_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
@@ -403,11 +402,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -568,14 +564,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     TypeError: If `cell` is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
   """
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
   with vs.variable_scope(scope or "rnn") as varscope:
     # Create a new scope in which the caching device is either
     # determined by the parent scope, or is set to place the cached
     # Variable using the same placement as for the rest of the RNN.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -616,7 +611,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if context.in_graph_mode() and sequence_length is not None:
+    if not context.executing_eagerly() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -742,7 +737,7 @@ def _dynamic_rnn_loop(cell,
                                         element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   if in_graph_mode:
     output_ta = tuple(
         _create_ta(
@@ -1015,9 +1010,8 @@ def raw_rnn(cell, loop_fn,
     TypeError: If `cell` is not an instance of RNNCell, or `loop_fn` is not
       a `callable`.
   """
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -1027,7 +1021,7 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1229,9 +1223,7 @@ def static_rnn(cell,
     ValueError: If `inputs` is `None` or an empty list, or if the input depth
       (column size) cannot be inferred from inputs via shape inference.
   """
-
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:
@@ -1242,7 +1234,7 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1469,11 +1461,8 @@ def static_bidirectional_rnn(cell_fw,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
     ValueError: If inputs is None or an empty list.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:
