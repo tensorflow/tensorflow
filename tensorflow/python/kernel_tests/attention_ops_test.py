@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
@@ -194,6 +195,16 @@ class ExtractGlimpseTest(test.TestCase):
         offsets=[-1, 0.9],
         expected_rows=[None, None, None, 1, 2, 3, 4],
         expected_cols=[56, 57, 58, 59, 60])
+
+  def testGlimpseNoOverlapZero(self):
+    img = constant_op.constant(np.arange(25).reshape((1, 5, 5, 1)),
+                               dtype=dtypes.float32)
+    with self.test_session():
+      result = image_ops.extract_glimpse(img, [3, 3], [[-2, 2]],
+                                         centered=False, normalized=False,
+                                         uniform_noise=False, noise="zero")
+      self.assertAllEqual(np.asarray([[0, 0, 0], [0, 0, 0], [0, 0, 0]]),
+                          result.eval()[0, :, :, 0])
 
 if __name__ == '__main__':
   test.main()
