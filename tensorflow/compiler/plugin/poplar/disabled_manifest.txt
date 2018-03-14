@@ -8,3 +8,4 @@ Pooling3DTest.testMaxPool3dSamePaddingDifferentStrides  # Too slow at the moment
 FFTTest # No support for FFT
 MatrixTriangularSolveOpTest.testLarge # Too slow at the moment
 SegmentReductionOpsTest.testUnsortedSegmentSum1DIndices1DDataNegativeIndices # Tests negative indices, not allowed in TF Op
+BinaryOpsTest.testS64Comparisons # No S64
