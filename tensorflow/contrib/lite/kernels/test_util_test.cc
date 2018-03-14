@@ -22,22 +22,22 @@ using ::testing::ElementsAreArray;
 
 TEST(TestUtilTest, QuantizeVector) {
   std::vector<float> data = {-1.0, -0.5, 0.0, 0.5, 1.0, 1000.0};
-  auto q_data = Quantize<uint8>(data, /*scale=*/1.0, /*zero_point=*/0);
-  std::vector<uint8> expected = {0, 0, 0, 1, 1, 255};
+  auto q_data = Quantize<uint8_t>(data, /*scale=*/1.0, /*zero_point=*/0);
+  std::vector<uint8_t> expected = {0, 0, 0, 1, 1, 255};
   EXPECT_THAT(q_data, ElementsAreArray(expected));
 }
 
 TEST(TestUtilTest, QuantizeVectorScalingDown) {
   std::vector<float> data = {-1.0, -0.5, 0.0, 0.5, 1.0, 1000.0};
-  auto q_data = Quantize<uint8>(data, /*scale=*/10.0, /*zero_point=*/0);
-  std::vector<uint8> expected = {0, 0, 0, 0, 0, 100};
+  auto q_data = Quantize<uint8_t>(data, /*scale=*/10.0, /*zero_point=*/0);
+  std::vector<uint8_t> expected = {0, 0, 0, 0, 0, 100};
   EXPECT_THAT(q_data, ElementsAreArray(expected));
 }
 
 TEST(TestUtilTest, QuantizeVectorScalingUp) {
   std::vector<float> data = {-1.0, -0.5, 0.0, 0.5, 1.0, 1000.0};
-  auto q_data = Quantize<uint8>(data, /*scale=*/0.1, /*zero_point=*/0);
-  std::vector<uint8> expected = {0, 0, 0, 5, 10, 255};
+  auto q_data = Quantize<uint8_t>(data, /*scale=*/0.1, /*zero_point=*/0);
+  std::vector<uint8_t> expected = {0, 0, 0, 5, 10, 255};
   EXPECT_THAT(q_data, ElementsAreArray(expected));
 }
 

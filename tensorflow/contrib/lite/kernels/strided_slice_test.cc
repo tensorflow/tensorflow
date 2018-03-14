@@ -21,7 +21,6 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-using ::int32;
 using ::testing::ElementsAreArray;
 
 template <typename input_type = float,
@@ -50,14 +49,14 @@ class StridedSliceOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
   }
-  void SetBegin(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(begin_, data);
+  void SetBegin(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(begin_, data);
   }
-  void SetEnd(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(end_, data);
+  void SetEnd(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(end_, data);
   }
-  void SetStrides(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(strides_, data);
+  void SetStrides(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(strides_, data);
   }
 
   std::vector<input_type> GetOutput() {
