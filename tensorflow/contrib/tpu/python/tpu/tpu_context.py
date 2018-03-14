@@ -39,7 +39,7 @@ class _TPUContext(object):
 
   This immutable object holds TPUEstimator config, train/eval batch size, and
   `TPUEstimator.use_tpu`, which is expected to be passed around. It also
-  provides utility functions, basded on the current state, to determine other
+  provides utility functions, based on the current state, to determine other
   information commonly required by TPU computation, such as TPU device names,
   TPU hosts, shard batch size, etc.
 
@@ -218,7 +218,7 @@ class _TPUContext(object):
         model, when mode == PREDICT. Only with this bool, we could
         tell whether user is calling the Estimator.predict or
         Estimator.export_savedmodel, which are running on TPU and CPU
-        respectively. Parent class Estimator does not distingush these two.
+        respectively. Parent class Estimator does not distinguish these two.
 
     Returns:
       bool, whether current input_fn or model_fn should be running on CPU.
