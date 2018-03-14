@@ -260,12 +260,13 @@ class BinaryOpsTest(XLATestCase):
           np.array([[1], [2]], dtype=dtype),
           dtype(7),
           expected=np.array([[8], [9]], dtype=dtype))
-      self._testBinary(
-          math_ops.add,
-          np.array([0xffffffff, 0xfffffffff, 1, 1], dtype=np.int64),
-          np.array([1, 1, 0xffffffff, 0xfffffffff], dtype=np.int64),
-          expected=np.array(
-              [1 << 32, 1 << 36, 1 << 32, 1 << 36], dtype=np.int64))
+      if np.int64 in self.numeric_types:
+        self._testBinary(
+            math_ops.add,
+            np.array([0xffffffff, 0xfffffffff, 1, 1], dtype=np.int64),
+            np.array([1, 1, 0xffffffff, 0xfffffffff], dtype=np.int64),
+            expected=np.array(
+                [1 << 32, 1 << 36, 1 << 32, 1 << 36], dtype=np.int64))
 
       self._testBinary(
           math_ops.subtract,
