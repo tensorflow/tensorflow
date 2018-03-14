@@ -1024,6 +1024,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.test_session():
       # test dtype and default maxlen:
@@ -1037,6 +1038,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
+  @test_util.enable_c_shapes
   def testOneDimensionalWithoutMaxlen(self):
     with self.test_session():
       res = array_ops.sequence_mask(
@@ -1051,6 +1053,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
+  @test_util.enable_c_shapes
   def testTwoDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)

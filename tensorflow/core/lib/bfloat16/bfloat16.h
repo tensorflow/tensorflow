@@ -19,6 +19,9 @@ limitations under the License.
 #include <cmath>
 #include <complex>
 
+// We need types.h here in order to pick up __BYTE_ORDER__ from cpu_info.h
+#include "tensorflow/core/platform/types.h"
+
 #ifdef __CUDACC__
 // All functions callable from CUDA code must be qualified with __device__
 #define B16_DEVICE_FUNC __host__ __device__

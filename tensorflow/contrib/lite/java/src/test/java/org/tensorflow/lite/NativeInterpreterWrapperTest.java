@@ -482,4 +482,46 @@ public final class NativeInterpreterWrapperTest {
     assertThat(wrapper.getLastNativeInferenceDurationNanoseconds()).isNull();
     wrapper.close();
   }
+
+  @Test
+  public void testGetInputDims() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    int[] expectedDims = {1, 8, 8, 3};
+    assertThat(wrapper.getInputDims(0)).isEqualTo(expectedDims);
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetInputDimsOutOfRange() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    try {
+      wrapper.getInputDims(-1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    try {
+      wrapper.getInputDims(1);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Out of range");
+    }
+    wrapper.close();
+  }
+
+  @Test
+  public void testGetOutputDataType() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("float");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(LONG_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("long");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(INT_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("int");
+    wrapper.close();
+    wrapper = new NativeInterpreterWrapper(BYTE_MODEL_PATH);
+    assertThat(wrapper.getOutputDataType(0)).contains("byte");
+    wrapper.close();
+  }
 }

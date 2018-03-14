@@ -133,6 +133,9 @@ message HloInstructionProto {
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_window_bounds = 34;
+
+  // The id of this instruction.
+  int64 id = 35;
 }
 
 // Serialization of HloComputation.
@@ -148,6 +151,9 @@ message HloComputationProto {
 
   // The program shape (with layout) of this computation.
   xla.ProgramShape program_shape = 4;
+
+  // The id of this computation.
+  int64 id = 5;
 }
 
 // Serialization of HloModule.
@@ -161,6 +167,9 @@ message HloModuleProto {
 
   // The program shape (with layout) of the entry computation.
   xla.ProgramShape program_shape = 4;
+
+  // The id of this module.
+  int64 id = 5;
 }
 
 // Serialization of HloOrdering.

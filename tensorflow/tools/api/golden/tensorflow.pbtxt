@@ -597,6 +597,10 @@ tf_module {
     argspec: "args=[\'name\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "add_to_collections"
+    argspec: "args=[\'names\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "all_variables"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1106,7 +1110,7 @@ tf_module {
   }
   member_method {
     name: "get_local_variable"
-    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_seed"
@@ -2013,6 +2017,14 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToBFloat16\'], "
   }
   member_method {
+    name: "to_complex128"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex128\'], "
+  }
+  member_method {
+    name: "to_complex64"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex64\'], "
+  }
+  member_method {
     name: "to_double"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToDouble\'], "
   }
@@ -2074,6 +2086,10 @@ tf_module {
   }
   member_method {
     name: "unsorted_segment_max"
+    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unsorted_segment_mean"
     argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
