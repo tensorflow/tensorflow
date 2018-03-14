@@ -1571,7 +1571,7 @@ def make_transpose_tests(zip_path):
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4, 5]],
-      "perm": [[0, 1, 2, 3, 4]],
+      "perm": [[4, 3, 2, 1, 0]],
       "constant_perm": [True, False],
   }]
 

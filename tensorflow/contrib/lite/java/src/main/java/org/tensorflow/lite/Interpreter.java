@@ -19,7 +19,7 @@ import java.io.File;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
  * Driver class to drive model inference with TensorFlow Lite.
@@ -60,7 +60,7 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    */
-  public Interpreter(@NotNull File modelFile) {
+  public Interpreter(@NonNull File modelFile) {
     if (modelFile == null) {
       return;
     }
@@ -73,7 +73,7 @@ public final class Interpreter implements AutoCloseable {
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
    * Interpreter}.
    */
-  public Interpreter(@NotNull MappedByteBuffer mappedByteBuffer) {
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
     wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
   }
 
@@ -89,7 +89,7 @@ public final class Interpreter implements AutoCloseable {
    *     model inference is done.
    * @param output a multidimensional array of output data.
    */
-  public void run(@NotNull Object input, @NotNull Object output) {
+  public void run(@NonNull Object input, @NonNull Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
     outputs.put(0, output);
@@ -111,7 +111,7 @@ public final class Interpreter implements AutoCloseable {
    *     needs to keep entries for the outputs to be used.
    */
   public void runForMultipleInputsOutputs(
-      @NotNull Object[] inputs, @NotNull Map<Integer, Object> outputs) {
+      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     if (wrapper == null) {
       throw new IllegalStateException("The Interpreter has already been closed.");
     }
@@ -134,7 +134,7 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>IllegalArgumentException will be thrown if it fails to resize.
    */
-  public void resizeInput(int idx, @NotNull int[] dims) {
+  public void resizeInput(int idx, @NonNull int[] dims) {
     if (wrapper == null) {
       throw new IllegalStateException("The Interpreter has already been closed.");
     }

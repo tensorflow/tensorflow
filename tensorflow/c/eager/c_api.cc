@@ -714,10 +714,7 @@ tensorflow::Status Execute(
       *dev_stats->add_node_stats() = *maybe_stats;
     }
   }
-  if (num_retvals != outputs.size()) {
-    return tensorflow::errors::InvalidArgument(
-        "Expecting ", num_retvals, " outputs but got ", outputs.size());
-  }
+  DCHECK_EQ(num_retvals, outputs.size());
   tensorflow::Device* op_device = IsCPU(device) ? nullptr : device;
   for (int i = 0; i < num_retvals; ++i) {
     tensorflow::Device* d = op_device;
@@ -1154,7 +1151,8 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
   }
   const tensorflow::DataTypeVector& output_dtypes = kernel->output_dtypes();
-  if (output_dtypes.size() != *num_retvals) {
+  const int output_dtypes_size = output_dtypes.size();
+  if (output_dtypes_size > *num_retvals) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  tensorflow::strings::StrCat("Expecting ", output_dtypes.size(),
                                              " outputs, but *num_retvals is ",
@@ -1162,6 +1160,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                      .c_str());
     return;
   }
+  *num_retvals = output_dtypes_size;
   if (device == nullptr) {
     // TODO(apassos) debug how the assignment below might return a different
     // device from the one requested above.

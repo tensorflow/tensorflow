@@ -36,6 +36,7 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
@@ -138,6 +139,7 @@ def StatefulSessionAvailable():
   return False
 
 
+@tf_export('test.StubOutForTesting')
 class StubOutForTesting(object):
   """Support class for stubbing methods out for unit testing.
 

@@ -35,8 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/windows/cpu_info.h"
 #endif
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
-
 namespace tensorflow {
 
 // Define tensorflow::string to refer to appropriate platform specific type.
