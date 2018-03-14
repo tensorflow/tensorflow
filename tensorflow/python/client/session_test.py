@@ -190,12 +190,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(0.0, shape=[2, 3])
       # NOTE(mrry): The original_op is nonsense, but used here to test that the
       #   errors are reported correctly.
-      # pylint: disable=protected-access
       with sess.graph._original_op(a.op):
         b = array_ops.identity(a, name='id')
       with sess.graph._original_op(b.op):
         c = array_ops.placeholder(dtypes.float32)
-      # pylint: enable=protected-access
 
       def exc_predicate(e):
         return (e.op == c.op and e.op._original_op == b.op and
@@ -1785,8 +1783,8 @@ class SessionTest(test_util.TensorFlowTestCase):
     # Ensure that errors from building the graph get propagated.
     data = array_ops.placeholder(dtypes.float32, shape=[])
     # pylint: disable=protected-access
-    enter_1 = gen_control_flow_ops._enter(data, 'foo_1', False)
-    enter_2 = gen_control_flow_ops._enter(data, 'foo_2', False)
+    enter_1 = gen_control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = gen_control_flow_ops.enter(data, 'foo_2', False)
     # pylint: enable=protected-access
     res = math_ops.add(enter_1, enter_2)
     with self.assertRaisesOpError('has inputs from different frames'):
