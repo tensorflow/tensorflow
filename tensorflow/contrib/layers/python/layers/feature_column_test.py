@@ -97,6 +97,13 @@ class FeatureColumnTest(test.TestCase):
       b = fc.sparse_column_with_vocabulary_file(
           "bbb", vocabulary_file="a_file", vocab_size=454, dtype=dtypes.float32)
 
+    with tempfile.NamedTemporaryFile("w+t") as vocabulary_file:
+      vocabulary_file.write(os.linesep.join("abcd"))
+      vocabulary_file.flush()
+      b = fc.sparse_column_with_vocabulary_file(
+        "bbb", vocabulary_file=vocabulary_file.name)
+      self.assertEqual(b.lookup_config.vocab_size, 4)
+
   def testWeightedSparseColumn(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")

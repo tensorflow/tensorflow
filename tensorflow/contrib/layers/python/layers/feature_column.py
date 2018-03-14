@@ -152,6 +152,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -755,9 +756,19 @@ def sparse_column_with_vocabulary_file(column_name,
     ValueError: vocab_size is not defined.
     ValueError: dtype is neither string nor integer.
   """
+  if not vocabulary_file:
+    raise ValueError("Missing vocabulary_file in {}.".format(column_name))
+
   if vocab_size is None:
-    raise ValueError("vocab_size should be defined. "
-                     "column_name: {}".format(column_name))
+    if not gfile.Exists(vocabulary_file):
+      raise ValueError(
+          "vocabulary_file in {} does not exist.".format(column_name))
+
+    with gfile.GFile(vocabulary_file) as f:
+      vocab_size = sum(1 for _ in f)
+      logging.info(
+          "vocab_size = %d in %s is inferred from the number of elements "
+          "in the vocabulary_file %s.", vocab_size, column_name, vocabulary_file)
 
   return _SparseColumnVocabulary(
       column_name,
