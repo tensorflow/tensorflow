@@ -633,7 +633,8 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondGrad_1(self):
-    with self.test_session():
+    graph = ops.Graph()
+    with graph.as_default():
       x = constant_op.constant(10.0, name="x")
       pred = math_ops.less(1, 2)
       fn1 = lambda: array_ops.identity(x)
@@ -641,8 +642,14 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
-      result = grad.eval()
-    self.assertAllEqual(1.0, result)
+      with self.test_session():
+        self.assertAllEqual(1.0, grad.eval())
+    # The gradients computation creates a tensor with zeros by broadcasting a
+    # zeros constant to the required shape. Verify that the zero constant
+    # feeding into the fill is dominated by a Switch.
+    zero = graph.get_operation_by_name("gradients/zeros/Const")
+    self.assertEqual(len(zero.control_inputs), 1)
+    self.assertEqual(zero.control_inputs[0].type, "Switch")
 
   def testCondGrad_2(self):
     with self.test_session():

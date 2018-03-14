@@ -1467,7 +1467,10 @@ def ZerosLikeOutsideLoop(op, index):
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+      # Ensure ops created within array_ops.zeros are dominated by switch in
+      # cond context.
+      with ops.control_dependencies([switch_val]):
+        return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
 
