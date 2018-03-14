@@ -217,6 +217,8 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
+  //pipeline.AddPass<TupleSimplifier>();
+  //pipeline.AddPass<WhileLoopSimplifier>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<WideConstFinder>();
