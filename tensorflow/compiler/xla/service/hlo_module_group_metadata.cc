@@ -216,6 +216,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       channels_.emplace_back();
       channels_.back().id = hlo->channel_id();
       channel_id_map_[hlo->channel_id()] = channels_.size() - 1;
+      max_channel_id_ = std::max(max_channel_id_, hlo->channel_id());
     }
     Channel& channel = channels_[channel_id_map_[hlo->channel_id()]];
 
