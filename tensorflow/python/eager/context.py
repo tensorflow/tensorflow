@@ -53,6 +53,8 @@ DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
 DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
+SYNC = 0
+ASYNC = 1
 
 
 class _TensorCache(object):
@@ -89,6 +91,7 @@ class _EagerContext(threading.local):
     self.summary_writer_resource = None
     self.scalar_cache = {}
     self.ones_rank_cache = _TensorCache()
+    self.execution_mode = None
 
 
 ContextStackEntry = collections.namedtuple(
@@ -131,24 +134,41 @@ context_stack = ContextStack()
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, config=None, device_policy=None):
+  # TODO(agarwal): create and link in some documentation for `execution_mode`.
+  # pylint: disable=redefined-outer-name
+  def __init__(self, config=None, device_policy=None, execution_mode=None):
     """Creates a new Context.
 
     Args:
       config: (Optional.) A `ConfigProto` protocol buffer with configuration
-       options for the Context. Note that a lot of these options may be
-       currently unimplemented or irrelevant when eager execution is enabled.
+        options for the Context. Note that a lot of these options may be
+        currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-       operation on a device with inputs which are not on that device.
-       Valid values:
-         tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
-           correct.
-         tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+         operation on a device with inputs which are not on that device.
+         When set to None, an appropriate value will be picked automatically.
+         The value picked may change between TensorFlow releases.
+
+         Defaults to tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32.
+         Valid values:
+         - tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
+           not correct.
+         - tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
            right device but raises a warning.
-         tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+         - tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
            hide performance problems.
-         tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+         - tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
            raising errors on the other ones.
+      execution_mode: (Optional.) Policy controlling how operations dispatched
+        are actually executed. When set to None, an appropriate value will be
+        picked automatically. The value picked may change between TensorFlow
+        releases.
+        Valid values:
+        - tf.contrib.eager.SYNC: executes each operation synchronously.
+        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+          operations may return "non-ready" handles.
+
+    Raises:
+     ValueError: If execution_mode is not valid.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None
@@ -158,6 +178,14 @@ class Context(object):
     self._seed = None
     self._initialize_lock = threading.Lock()
     self._device_policy = device_policy
+    if execution_mode not in (None, SYNC, ASYNC):
+      raise ValueError(
+          "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
+    if execution_mode is None:
+      execution_mode = SYNC
+    self._execution_mode = execution_mode
+
+  # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
@@ -195,6 +223,8 @@ class Context(object):
           if self._device_policy is not None:
             pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
                 opts, self._device_policy)
+          if self._execution_mode == ASYNC:
+            pywrap_tensorflow.TFE_ContextOptionsSetAsync(True)
           self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
@@ -355,6 +385,43 @@ class Context(object):
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
+
+  def get_execution_mode(self):
+    mode = self._eager_context.execution_mode
+    if mode is None:
+      mode = self._execution_mode
+    return mode
+
+  def set_execution_mode(self, mode):
+    """Sets execution mode for current thread."""
+    if mode not in (None, SYNC, ASYNC):
+      raise ValueError(
+          "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+    if mode is None:
+      mode = SYNC
+    self._eager_context.execution_mode = mode
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle,
+                                                     mode == ASYNC, status)
+
+  @tf_contextlib.contextmanager
+  def execution_mode(self, mode):
+    """Context manager for setting execution mode for current thread."""
+    old_mode = self.get_execution_mode()
+    try:
+      self.set_execution_mode(mode)
+      yield
+    finally:
+      self.set_execution_mode(old_mode)
+
+  def async_wait(self):
+    """Waits for ops dispatched in ASYNC mode to finish."""
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAsyncWait(self._handle, status)
+
+  def async_clear_error(self):
+    """Clears errors raised during ASYNC execution."""
+    pywrap_tensorflow.TFE_ContextAsyncClearError(self._handle)
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
@@ -593,6 +660,26 @@ def list_devices():
     Names of the available devices, as a `list`.
   """
   return context().devices()
+
+
+def set_execution_mode(mode):
+  """Sets execution mode for the current thread."""
+  context().set_execution_mode(mode)
+
+
+def execution_mode(mode):
+  """Context manager for setting execution mode for current thread."""
+  return context().execution_mode(mode)
+
+
+def async_wait():
+  """Waits for ops dispatched in ASYNC mode to finish."""
+  return context().async_wait()
+
+
+def async_clear_error():
+  """Clears errors raised during ASYNC execution mode."""
+  return context().async_clear_error()
 
 
 def num_gpus():

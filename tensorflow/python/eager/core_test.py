@@ -63,6 +63,16 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.scope_name = 'foo'
     self.assertEqual('foo', ctx.scope_name)
 
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.ASYNC)
+    self.assertEqual(context.ASYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.SYNC)
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    with ctx.execution_mode(context.ASYNC):
+      self.assertEqual(context.ASYNC, ctx.get_execution_mode())
+    ctx.set_execution_mode(context.SYNC)
+    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+
     self.assertIsNone(ctx.summary_writer_resource)
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
@@ -208,6 +218,23 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
 
+  def testCopyBetweenDevicesAsync(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with context.execution_mode(context.ASYNC):
+      x = constant_op.constant([[1., 2.], [3., 4.]])
+      x = x.cpu()
+      x = x.gpu()
+      x = x.gpu()
+      x = x.cpu()
+      context.async_wait()
+
+    # Invalid device
+    with self.assertRaises(RuntimeError):
+      x.gpu(context.context().num_gpus() + 1)
+      context.async_wait()
+    context.async_clear_error()
+
   def testCopyScope(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -247,6 +274,29 @@ class TFETest(test_util.TensorFlowTestCase):
         inputs=[three, five],
         attrs=('T', three.dtype.as_datatype_enum))[0]
     self.assertAllEqual(15, product)
+
+  def testExecuteBasicAsync(self):
+    with context.execution_mode(context.ASYNC):
+      three = constant_op.constant(3)
+      five = constant_op.constant(5)
+      product = execute(
+          b'Mul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('T', three.dtype.as_datatype_enum))[0]
+      self.assertAllEqual(15, product)
+    # Error: Invalid arguments
+    context.set_execution_mode(context.ASYNC)
+    with self.assertRaises(errors.InvalidArgumentError):
+      execute(
+          b'MatMul',
+          num_outputs=1,
+          inputs=[three, five],
+          attrs=('transpose_a', False, 'transpose_b', False, 'T',
+                 three.dtype.as_datatype_enum))
+      context.async_wait()
+    context.async_clear_error()
+    context.set_execution_mode(context.SYNC)
 
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.

@@ -5184,7 +5184,8 @@ def init_scope():
 
 
 @tf_export("enable_eager_execution")
-def enable_eager_execution(config=None, device_policy=None):
+def enable_eager_execution(config=None, device_policy=None,
+                           execution_mode=None):
   """Enables eager execution for the lifetime of this program.
 
   Eager execution provides an imperative interface to TensorFlow. With eager
@@ -5210,13 +5211,15 @@ def enable_eager_execution(config=None, device_policy=None):
 
   Args:
     config: (Optional.) A @{tf.ConfigProto} to use to configure the environment
-     in which operations are executed. Note that @{tf.ConfigProto} is also
-     used to configure graph execution (via @{tf.Session}) and many options
-     within `tf.ConfigProto` are not implemented (or are irrelevant) when
+      in which operations are executed. Note that @{tf.ConfigProto} is also
+      used to configure graph execution (via @{tf.Session}) and many options
+      within `tf.ConfigProto` are not implemented (or are irrelevant) when
      eager execution is enabled.
     device_policy: (Optional.) Policy controlling how operations requiring
      inputs on a specific device (e.g., a GPU 0) handle inputs on a different
-     device  (e.g. GPU 1 or CPU).
+     device  (e.g. GPU 1 or CPU). When set to None, an appropriate value will be
+     picked automatically. The value picked may change between TensorFlow
+     releases.
      Valid values:
 
       - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
@@ -5232,6 +5235,15 @@ def enable_eager_execution(config=None, device_policy=None):
 
       - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
         int32 tensors, raising errors on the other ones.
+    execution_mode: (Optional.) Policy controlling how operations dispatched are
+      actually executed. When set to None, an appropriate value will be picked
+      automatically. The value picked may change between TensorFlow releases.
+      Valid values:
+
+        - tf.contrib.eager.SYNC: executes each operation synchronously.
+
+        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+          operations may return "non-ready" handles.
 
   Raises:
     ValueError: If eager execution is enabled after creating/executing a
@@ -5248,6 +5260,10 @@ def enable_eager_execution(config=None, device_policy=None):
     raise ValueError(
         "device_policy must be one of None, tf.contrib.eager.DEVICE_PLACEMENT_*"
     )
+  if execution_mode not in (None, context.SYNC, context.ASYNC):
+    raise ValueError(
+        "execution_mode must be one of None, tf.contrib.eager.SYNC, "
+        "tf.contrib.eager.ASYNC")
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
@@ -5258,8 +5274,10 @@ def enable_eager_execution(config=None, device_policy=None):
           "tf.enable_eager_execution must be called at program startup.")
   context._default_mode = context.EAGER_MODE
   if context._context is None:
-    context._context = context.Context(config=config,
-                                       device_policy=device_policy)
+    context._context = context.Context(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode)
     if context.context_stack.stack:
       raise AssertionError("Invariant violated: The context stack must "
                            "be empty when eager execution is enabled.")
@@ -5267,15 +5285,19 @@ def enable_eager_execution(config=None, device_policy=None):
     # context stack; this entry won't ever be popped, as it's impossible to
     # disable eager execution
     context.context_stack.push(False, context.eager_mode)
-  elif ((config is not None and config is not context._context._config)
-        or (device_policy is not None
-            and device_policy is not context._context._device_policy)):
+  elif ((config is not None and config is not context._context._config) or
+        (device_policy is not None and
+         device_policy is not context._context._device_policy) or
+        (execution_mode is not None and
+         execution_mode is not context._context._execution_mode)):
     raise ValueError("Trying to change the options of an active eager"
                      " execution. Context config: %s, specified config:"
-                     " %s. Context device policy: %s; specified device"
-                     " policy: %s." % (config, context._context._config,
-                                       device_policy,
-                                       context._context._device_policy))
+                     " %s. Context device policy: %s, specified device"
+                     " policy: %s. Context execution mode: %s, "
+                     " specified execution mode %s." %
+                     (context._context._config, config,
+                      context._context._device_policy, device_policy,
+                      context._context._execution_mode, execution_mode))
   else:
     raise ValueError(
         "tf.enable_eager_execution must be called at program startup.")
