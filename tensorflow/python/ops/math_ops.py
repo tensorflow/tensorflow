@@ -127,8 +127,11 @@ See the @{$python/math_ops} guide.
 @@segment_min
 @@segment_max
 @@segment_mean
+@@to_complex128
+@@to_complex64
 @@unsorted_segment_sum
 @@unsorted_segment_max
+@@unsorted_segment_mean
 @@unsorted_segment_min
 @@unsorted_segment_prod
 @@unsorted_segment_sqrt_n

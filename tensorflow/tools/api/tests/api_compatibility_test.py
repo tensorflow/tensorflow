@@ -247,12 +247,6 @@ class ApiCompatibilityTest(test.TestCase):
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
     public_api_visitor.do_not_descend_map['tf'].append('contrib')
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    # TODO(annarev): these symbols have been added recently with tf_export
-    # decorators, but they are not exported with old API. Export them using
-    # old API approach and remove them from here.
-    public_api_visitor.private_map['tf'] = [
-        'to_complex128', 'to_complex64', 'add_to_collections',
-        'unsorted_segment_mean']
     traverse.traverse(api, public_api_visitor)
 
     proto_dict = visitor.GetProtos()
