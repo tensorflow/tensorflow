@@ -529,10 +529,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "user_ops"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "variable_scope"
     mtype: "<type \'type\'>"
   }
@@ -1795,6 +1791,10 @@ tf_module {
   member_method {
     name: "slice"
     argspec: "args=[\'input_\', \'begin\', \'size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "slide_dataset"
+    argspec: "args=[\'input_dataset\', \'window_size\', \'stride\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "space_to_batch"
