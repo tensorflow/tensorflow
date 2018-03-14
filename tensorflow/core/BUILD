@@ -1958,7 +1958,6 @@ cc_header_only_library(
     deps = [
         ":framework",
         ":reader_base",
-        "@nsync//:nsync_headers",
     ],
 )
 

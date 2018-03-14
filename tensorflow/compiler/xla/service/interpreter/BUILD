@@ -63,10 +63,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = [
-        "@nsync//:nsync_headers",
-        "//tensorflow/core:stream_executor_headers_lib",
-    ] + if_static(
+    deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
         ["@protobuf_archive//:protobuf"],
         ["@protobuf_archive//:protobuf_headers"],
     ),
