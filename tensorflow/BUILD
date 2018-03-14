@@ -832,14 +832,6 @@ exports_files(
 )
 
 py_library(
-    name = "tensorflow_py",
-    srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python"],
-)
-
-py_library(
     name = "experimental_tensorflow_py",
     srcs = ["experimental_api.py"],
     srcs_version = "PY2AND3",
