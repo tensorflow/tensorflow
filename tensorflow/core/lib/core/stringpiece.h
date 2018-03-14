@@ -35,8 +35,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct StringPieceHasher;
-
 class StringPiece {
  public:
   typedef size_t size_type;
@@ -129,10 +127,6 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
-};
-
-struct StringPieceHasher {
-  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {
