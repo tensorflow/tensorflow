@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/kernels/no_op.h"
 
 namespace se = ::perftools::gputools;
@@ -134,6 +135,7 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 static bool OpFilter(KernelDef* kdef) {
   // TODO - probably remove int32/bool for some set of operators
   // (or keep them for some given set)
+  if (kdef->op() == "MaxPoolGradGrad") return false;
   return true;
 }
 
