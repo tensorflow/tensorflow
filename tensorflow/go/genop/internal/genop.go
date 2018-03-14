@@ -359,13 +359,13 @@ type attrWrapper struct {
 	api *pb.ApiDef_Attr
 }
 
-func (a *attrWrapper) Name() string             { return a.api.Name }
-func (a *attrWrapper) RenameTo() string         { return a.api.RenameTo }
-func (a *attrWrapper) Description() string      { return a.api.Description }
-func (a *attrWrapper) Type() string             { return a.op.Type }
-func (a *attrWrapper) IsListAttr() bool         { return isListAttr(a.op) }
-func (a *attrWrapper) HasMinimum() bool         { return a.op.HasMinimum }
-func (a *attrWrapper) Minimum() int64           { return a.op.Minimum }
+func (a *attrWrapper) Name() string              { return a.api.Name }
+func (a *attrWrapper) RenameTo() string          { return a.api.RenameTo }
+func (a *attrWrapper) Description() string       { return a.api.Description }
+func (a *attrWrapper) Type() string              { return a.op.Type }
+func (a *attrWrapper) IsListAttr() bool          { return isListAttr(a.op) }
+func (a *attrWrapper) HasMinimum() bool          { return a.op.HasMinimum }
+func (a *attrWrapper) Minimum() int64            { return a.op.Minimum }
 func (a *attrWrapper) DefaultValue() interface{} { return a.api.DefaultValue }
 
 type argWrapper struct {
