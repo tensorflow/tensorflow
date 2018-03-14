@@ -2075,7 +2075,7 @@ def sensitivity(labels,
                 updates_collections=None,
                 name=None):
   """Same as `tensorflow.metrics.recall`
-  
+
   For additional information about specificity and sensitivity, see the
   following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity"""
   return recall(labels, predictions, weights, metrics_collections,
@@ -2165,7 +2165,7 @@ def specificity(labels,
 
     specificity = compute_specificity(true_n, false_p, 'value')
     update_op = compute_specificity(true_negatives_update_op,
-                               false_positives_update_op, 'update_op')
+                                    false_positives_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, specificity)
