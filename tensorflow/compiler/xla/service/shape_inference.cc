@@ -945,6 +945,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
+    HloOpcode opcode, const Shape& lhs, const Shape& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return InferBinaryOpShape(OpcodeToBinaryOperation(opcode), lhs, rhs,
+                            broadcast_dimensions);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     BinaryOperation operation, const Shape& lhs, const Shape& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   VLOG(2) << tensorflow::strings::Printf(

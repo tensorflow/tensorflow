@@ -433,6 +433,7 @@ filegroup(
         "//tensorflow/compiler/xla:all_files",
         "//tensorflow/compiler/xla/client:all_files",
         "//tensorflow/compiler/xla/client/lib:all_files",
+        "//tensorflow/compiler/xla/client/xla_client:all_files",
         "//tensorflow/compiler/xla/legacy_flags:all_files",
         "//tensorflow/compiler/xla/python:all_files",
         "//tensorflow/compiler/xla/service:all_files",
