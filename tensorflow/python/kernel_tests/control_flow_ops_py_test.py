@@ -591,10 +591,10 @@ class ControlFlowTest(test.TestCase):
       # Both v_f and v_t are uninitialized references. However, an actual use
       # of the reference in the 'true' branch in the 'tf.identity' op will
       # not 'fire' when v is uninitialized, so this is a valid construction.
-      # This test tests that _ref_identity allows uninitialized ref as input
+      # This test tests that ref_identity allows uninitialized ref as input
       # so that this construction is allowed.
-      v_f_op = gen_array_ops._ref_identity(v_f)
-      v_t_op = gen_array_ops._ref_identity(v_t)
+      v_f_op = gen_array_ops.ref_identity(v_f)
+      v_t_op = gen_array_ops.ref_identity(v_t)
       with ops.control_dependencies([v_f_op]):
         assign_v = state_ops.assign(v, [1.0])
       with ops.control_dependencies([v_t_op]):
@@ -751,7 +751,7 @@ class ControlFlowTest(test.TestCase):
 
       def b(i, x):
         self.assertEqual(x.dtype, dtypes.int32_ref)
-        return (i + 1, gen_array_ops._ref_identity(x))
+        return (i + 1, gen_array_ops.ref_identity(x))
 
       r = control_flow_ops.while_loop(c, b, [i, x], parallel_iterations=5)
 
@@ -2212,12 +2212,9 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(x.dtype, dtypes.int32_ref)
 
-      # pylint: disable=protected-access
       def body(i, x):
         self.assertEqual(x.dtype, dtypes.int32_ref)
-        return [i + 1, gen_array_ops._ref_identity(x)]
-
-      # pylint: enable=protected-access
+        return [i + 1, gen_array_ops.ref_identity(x)]
 
       r = control_flow_ops.while_loop(c, body, [i, x], parallel_iterations=5)
 
