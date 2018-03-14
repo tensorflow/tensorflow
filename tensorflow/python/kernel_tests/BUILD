@@ -295,7 +295,6 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -1087,6 +1086,7 @@ cuda_py_test(
     tags = [
         "no_windows",
         "noasan",
+        "notap",
     ],
 )
 
@@ -1138,7 +1138,6 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1571,12 +1570,15 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:layers",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
@@ -2325,7 +2327,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2456,7 +2457,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(

@@ -22,6 +22,7 @@ import collections
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.util import nest
 
@@ -181,13 +182,16 @@ class _CheckpointPosition(object):
       dtype = self._checkpoint.dtype_map[checkpoint_key]
       base_type = dtype.base_dtype
       with ops.init_scope():
-        value, = io_ops.restore_v2(
-            prefix=self._checkpoint.save_path,
-            tensor_names=[checkpoint_key],
-            shape_and_slices=[""],
-            dtypes=[base_type],
-            name="%s_checkpoint_read" % (serialized_tensor.name,))
-        value_tensors[serialized_tensor.name] = value
+        with ops.device("/cpu:0"):
+          # Run the restore itself on the CPU.
+          value, = io_ops.restore_v2(
+              prefix=self._checkpoint.save_path,
+              tensor_names=[checkpoint_key],
+              shape_and_slices=[""],
+              dtypes=[base_type],
+              name="%s_checkpoint_read" % (serialized_tensor.name,))
+        # Copy the value to the current device if necessary.
+        value_tensors[serialized_tensor.name] = array_ops.identity(value)
       return value_tensors
 
   def restore_ops(self):
@@ -204,7 +208,7 @@ class _CheckpointPosition(object):
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     restore_ops = []
-    in_graph_mode = context.in_graph_mode()
+    building_graph = not context.executing_eagerly()
     for serialized_tensor in self.object_proto.attributes:
       saveable_object = saveables.get(serialized_tensor.name, None)
       if saveable_object is None:
@@ -215,7 +219,7 @@ class _CheckpointPosition(object):
         self._checkpoint.unused_attributes.setdefault(
             self.checkpointable, []).append(serialized_tensor.name)
         continue
-      if in_graph_mode:
+      if building_graph:
         existing_ops = self._checkpoint.restore_ops_by_name.get(
             serialized_tensor.name, None)
       else:
@@ -241,7 +245,7 @@ class _CheckpointPosition(object):
             saveable_index:saveable_index + num_specs]
         saveable_index += num_specs
         restore_op = saveable.restore(saveable_tensors, restored_shapes=None)
-        if in_graph_mode:
+        if building_graph:
           assert saveable.name not in self._checkpoint.restore_ops_by_name
           self._checkpoint.restore_ops_by_name[saveable.name] = restore_op
           restore_ops.append(restore_op)
@@ -384,7 +388,7 @@ class CheckpointableBase(object):
            "Checkpointable._add_variable called to create another with "
            "that name. Variable names must be unique within a Checkpointable "
            "object.") % (name,))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # If this is a variable with a single Tensor stored in the checkpoint, we
       # can set that value as an initializer rather than initializing and then
       # assigning (when executing eagerly). This call returns None if there is

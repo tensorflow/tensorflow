@@ -209,6 +209,7 @@ class ShapeUtil {
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the lhs and rhs shapes have the same element type.
@@ -610,6 +611,22 @@ class ShapeUtil {
     }
 
     return Status::OK();
+  }
+
+  // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
+  struct IndexIterationSpace {
+    std::vector<int64> index_base;
+    std::vector<int64> index_count;
+    std::vector<int64> index_incr;
+  };
+
+  template <typename FnTy>
+  static Status ForEachIndexWithStatus(
+      const Shape& shape, const IndexIterationSpace& iteration_space,
+      FnTy&& function) {
+    return ShapeUtil::ForEachIndexWithStatus(
+        shape, iteration_space.index_base, iteration_space.index_count,
+        iteration_space.index_incr, std::forward<FnTy>(function));
   }
 
   template <typename FnType>

@@ -27,6 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 class Tests(test.TestCase):
@@ -55,6 +56,21 @@ class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
+  def testFastpathExecute_ResourceVariableMatMulCorrectResponse(self):
+    ctx = context.context()
+    a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+    m = resource_variable_ops.ResourceVariable(a_2_by_2)
+    x = pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", None, None, m, m, "transpose_a",
+        False, "transpose_b", False)
+    y = pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2, a_2_by_2,
+        "transpose_a", False, "transpose_b", False)
+
+    self.assertAllEqual(x, y)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
   def testFastpathExecute_TapeWrite(self):
     ctx = context.context()
     with backprop.GradientTape(persistent=True) as tape:
@@ -64,6 +80,21 @@ class Tests(test.TestCase):
           ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2,
           a_2_by_2, "transpose_a", False, "transpose_b", False)
     dz_dy = tape.gradient(z, [a_2_by_2])[0]
+    self.assertAllEqual(dz_dy.numpy(),
+                        constant_op.constant(4.0, shape=[2, 2]).numpy())
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_ResourceVariableTapeWrite(self):
+    ctx = context.context()
+    with backprop.GradientTape(persistent=True) as tape:
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      m = resource_variable_ops.ResourceVariable(a_2_by_2)
+      tape.watch(m)
+      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
+          ctx._handle, ctx.device_name, "MatMul", None, None, m, m,
+          "transpose_a", False, "transpose_b", False)
+    dz_dy = tape.gradient(z, [m])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
 
@@ -138,7 +169,7 @@ class Tests(test.TestCase):
   def testFastpathExecute_InvalidInputs(self):
     a_2_by_2 = random_ops.random_uniform((2, 2))
     ctx = context.context()
-    assert not ctx.in_graph_mode(
+    assert ctx.executing_eagerly(
     ), "The prototype doesn't contain C code for graph construction"
     ctx_handle = ctx._handle  # pylint: disable=protected-access
 

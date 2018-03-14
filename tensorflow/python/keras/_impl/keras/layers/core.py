@@ -124,7 +124,7 @@ class Dropout(tf_core_layers.Dropout, Layer):
       training = K.learning_phase()
     output = super(Dropout, self).call(inputs, training=training)
     # EagerTensor object has no attribute _uses_learning_phase
-    if not context.in_eager_mode() and training is K.learning_phase():
+    if not context.executing_eagerly() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 

@@ -48,6 +48,7 @@
 ## Graph collections
 
 @@add_to_collection
+@@add_to_collections
 @@get_collection
 @@get_collection_ref
 @@GraphKeys

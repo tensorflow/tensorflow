@@ -166,14 +166,10 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
-        params.stats_aggregator_getter = [ctx]() {
-          return ctx->stats_aggregator();
-        };
+        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
         params.lib = ctx->lib();
         params.function_library = ctx->function_library();
-        params.allocator_getter = [ctx](AllocatorAttributes attrs) {
-          return ctx->allocator(attrs);
-        };
+        params.allocator_getter = ctx->allocator_getter();
         IteratorContext threadpool_ctx(params);
         return input_impl_->GetNext(&threadpool_ctx, out_tensors,
                                     end_of_sequence);

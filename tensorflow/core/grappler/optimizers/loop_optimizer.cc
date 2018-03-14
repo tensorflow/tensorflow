@@ -46,54 +46,61 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-Status RemoveStackOps(const GraphDef& graph, GraphDef* optimized_graph) {
-  SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
+std::vector<int> GetStackPushNodesToConvert(const SimpleGraphView& graph_view,
+                                            int stack_node_idx) {
+  VLOG(1) << "Stack node: " << graph_view.graph()->node(stack_node_idx).name();
   const std::unordered_set<string> op_types_to_traverse(
-      {"Stack", "StackV2", "Enter", "Switch", "RefSwitch", "Identity"});
-  std::set<int> nodes_to_delete;
-  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
-    const NodeDef& node = graph.node(node_idx);
-    if (IsStackOp(node)) {
-      std::set<int> nodes_found;
-      graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &nodes_found);
-      bool found_pop = false;
-      bool found_unexpected = false;
-      for (int found_idx : nodes_found) {
-        const NodeDef& node = graph.node(found_idx);
-        if (IsStackPushOp(node) || IsStackOp(node) || IsStackCloseOp(node)) {
-          continue;
-        } else if (IsStackPopOp(node)) {
-          found_pop = true;
-        } else {
-          // Don't modify the graph if we found an unexpected op. There may be
-          // a pop hiding behind it.
-          found_unexpected = true;
-        }
-      }
-      if (!found_unexpected && !found_pop) {
-        VLOG(1) << "Found stack node with no pop: " << node.DebugString();
-        // Remove all pushes.
-        for (int found_idx : nodes_found) {
-          const NodeDef& node = graph.node(found_idx);
-          if (IsStackPushOp(node)) {
-            nodes_to_delete.insert(found_idx);
-          }
-        }
-      }
+      {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
+       "Identity", "RefIdentity"});
+  std::vector<int> nodes_to_convert;
+  std::set<int> fanout;
+  graph_view.DepthFirstSearch(op_types_to_traverse, stack_node_idx, &fanout);
+  for (int fanout_idx : fanout) {
+    const NodeDef& fanout_node = graph_view.graph()->node(fanout_idx);
+    VLOG(1) << "Fanout " << fanout_idx << " : " << fanout_node.name();
+    if (IsStackPushOp(fanout_node)) {
+      nodes_to_convert.push_back(fanout_idx);
+    } else if (IsStackOp(fanout_node) || IsStackCloseOp(fanout_node) ||
+               op_types_to_traverse.find(fanout_node.op()) !=
+                   op_types_to_traverse.end()) {
+      continue;
+    } else if (!IsStackPopOp(fanout_node) ||
+               !graph_view.outputs(fanout_idx).empty()) {
+      // The node is either a stack pop with consumers or something unexpected
+      // so we leave the graph alone.
+      nodes_to_convert.clear();
+      break;
     }
   }
+  return nodes_to_convert;
+}
+
+Status RemoveStackOps(const GraphDef& graph, GraphDef* optimized_graph) {
   *optimized_graph = graph;
-  if (!nodes_to_delete.empty()) {
-    int last = optimized_graph->node_size() - 1;
-    for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend();
-         ++it) {
-      const int node_to_delete = *it;
-      optimized_graph->mutable_node()->SwapElements(node_to_delete, last);
-      --last;
+  NodeMap node_map(optimized_graph);
+  SimpleGraphView graph_view;
+  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
+  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
+    if (IsStackOp(graph.node(node_idx))) {
+      for (int push_node_idx :
+           GetStackPushNodesToConvert(graph_view, node_idx)) {
+        // We found push nodes without corresponding pops. Convert them to
+        // Identity passing the data through and add a control dependency from
+        // the op supplying the stack handle.
+        NodeDef* push_node = optimized_graph->mutable_node(push_node_idx);
+        VLOG(1) << "Converting " << push_node_idx << " : "
+                << push_node->DebugString();
+        if (push_node->attr().count("swap_memory") != 0) {
+          push_node->mutable_attr()->erase("swap_memory");
+        }
+        push_node->set_op("Identity");
+        push_node->mutable_input()->SwapElements(0, 1);
+        const string ctrl_dep = ConstantFolding::AddControlDependency(
+            push_node->input(1), optimized_graph, &node_map);
+        push_node->set_input(1, ctrl_dep);
+        VLOG(1) << "After converting: " << push_node->DebugString();
+      }
     }
-    optimized_graph->mutable_node()->DeleteSubrange(last + 1,
-                                                    nodes_to_delete.size());
   }
   return Status::OK();
 }
@@ -458,7 +465,6 @@ Status LoopOptimizer::LoopInvariantNodeMotion() {
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   TF_RETURN_IF_ERROR(RemoveStackOps(item.graph, optimized_graph));
-  
   optimized_graph_ = optimized_graph;
 
   // Set up helper data structures.
@@ -468,6 +474,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                                &frame_map_, &num_frames));
 
   TF_RETURN_IF_ERROR(LoopInvariantNodeMotion());
+  return Status::OK();
 }
 
 void LoopOptimizer::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,

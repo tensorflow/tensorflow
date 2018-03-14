@@ -913,6 +913,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 py_test(

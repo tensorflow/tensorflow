@@ -52,6 +52,7 @@ xla_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:session_proto",
     ],
 )

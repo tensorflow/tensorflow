@@ -115,7 +115,7 @@ class Layer(checkpointable.CheckpointableBase):
     # Provides information about which inputs are compatible with the layer.
     self.input_spec = None
 
-    if activity_regularizer and context.in_eager_mode():
+    if activity_regularizer and context.executing_eagerly():
       raise ValueError(
           ('Activity regularization is not supported when executing eagerly. '
            'Got activity_regularizer=%s') % (activity_regularizer,))
@@ -127,12 +127,12 @@ class Layer(checkpointable.CheckpointableBase):
     # return tensors. When using graph execution, _losses is a list of ops.
     self._losses = []
     self._reuse = kwargs.get('_reuse')
-    self._graph = ops.get_default_graph()
+    self._graph = None  # Will be set at build time.
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    call_fn_args = estimator_util.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in call_fn_args or
+    self._call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
-    self._call_has_scope_arg = 'scope' in call_fn_args
+    self._call_has_scope_arg = 'scope' in self._call_fn_args
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -228,7 +228,7 @@ class Layer(checkpointable.CheckpointableBase):
 
   @property
   def updates(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.updates not supported in Eager mode.')
     if not self.trainable and not self.stateful:
       return []
@@ -260,7 +260,7 @@ class Layer(checkpointable.CheckpointableBase):
         have is available at runtime.
         A step counter might fall into this category.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return  # Updates already applied when in eager mode.
 
     updates = _to_list(updates)
@@ -286,7 +286,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('`get_updates_for()` not supported in Eager mode.')
 
     # Updates disabled if layer is not trainable and not explicitly stateful.
@@ -317,7 +317,7 @@ class Layer(checkpointable.CheckpointableBase):
     Returns:
       A list of tensors.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # _losses may only contain variable regularization losses when executing
       # eagerly, and they have been saved as lambdas to be executed when
       # requested.
@@ -355,7 +355,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # TODO(fchollet): it should be possible (and highly desirable) to support
       # `add_loss` in eager mode. This allows great convenience and flexibility
       # in defining custom losses on the fly (e.g. in VAEs).
@@ -389,7 +389,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
 
     if inputs is None:
@@ -509,7 +509,7 @@ class Layer(checkpointable.CheckpointableBase):
     # will occur; it should be None if and only if initialization will take
     # place in the eager context.
     init_graph = None
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       default_graph = ops.get_default_graph()
       if default_graph.building_function:
         with ops.init_scope():
@@ -517,7 +517,7 @@ class Layer(checkpointable.CheckpointableBase):
           # will be lifted; if initialization ops will be lifted into
           # the eager context, then there is nothing to retrieve, since variable
           # collections are not supported when eager execution is enabled.
-          if context.in_graph_mode():
+          if not context.executing_eagerly():
             init_graph = ops.get_default_graph()
             existing_variables = set(tf_variables.global_variables())
       else:
@@ -624,16 +624,17 @@ class Layer(checkpointable.CheckpointableBase):
     self._set_scope(kwargs.pop('scope', None))
     input_list = nest.flatten(inputs)
 
-    in_graph_mode = context.in_graph_mode()
+    build_graph = not context.executing_eagerly()
     in_deferred_mode = isinstance(input_list[0], _DeferredTensor)
     # Ensure the Layer, if being reused, is working with inputs from
     # the same graph as where it was created.
-    if in_graph_mode:
+    if build_graph:
       try:
-        ops._get_graph_from_inputs(input_list, graph=self.graph)  # pylint: disable=protected-access
+        # Set layer's "graph" at build time
+        self._graph = ops._get_graph_from_inputs(input_list, graph=self._graph)  # pylint: disable=protected-access
       except ValueError as e:
         raise ValueError('Input graph and Layer graph are not the same: %s' % e)
-    if in_graph_mode or in_deferred_mode:
+    if build_graph or in_deferred_mode:
       user_kwargs = copy.copy(kwargs)
 
     # Handle Keras mask propagation from previous layer to current layer.
@@ -641,8 +642,9 @@ class Layer(checkpointable.CheckpointableBase):
     if (not hasattr(self, '_compute_previous_mask') or
         self._compute_previous_mask):
       previous_mask = _collect_previous_mask(inputs)
-      if ('mask' in estimator_util.fn_args(self.call) and
-          'mask' not in kwargs and
+      if not hasattr(self, '_call_fn_args'):
+        self._call_fn_args = estimator_util.fn_args(self.call)
+      if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not _is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
         # to __call__, hence we set previous_mask as the default value.
@@ -667,13 +669,14 @@ class Layer(checkpointable.CheckpointableBase):
     with scope_context_manager as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         if not self.built:
-          if not in_graph_mode:
+          if not build_graph:
             # Activity regularization is currently unsupported in Eager mode.
             if self._activity_regularizer:
-              raise ValueError('activity_regularizer currently unsupported in '
-                               'Eager mode. Found an activity_regularizer in '
-                               '%s(%s).' % (self.__class__.__name__, self))
-          if not in_graph_mode and not in_deferred_mode:
+              raise ValueError(
+                  'activity_regularizer currently unsupported with '
+                  'eager execution enabled. Found an activity_regularizer in '
+                  '%s(%s).' % (self.__class__.__name__, self))
+          if not build_graph and not in_deferred_mode:
             # TODO(agarwal): support _keras_history in Eager mode.
             for x in input_list:
               if hasattr(x, '_keras_history'):
@@ -698,11 +701,13 @@ class Layer(checkpointable.CheckpointableBase):
           # TODO(agarwal): Fix the sub-classes and avoid this complexity.
           call_has_scope_arg = self._call_has_scope_arg
         except AttributeError:
-          call_has_scope_arg = 'scope' in estimator_util.fn_args(self.call)
+          self._call_fn_args = estimator_util.fn_args(self.call)
+          self._call_has_scope_arg = 'scope' in self._call_fn_args
+          call_has_scope_arg = self._call_has_scope_arg
         if call_has_scope_arg:
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
-        if in_graph_mode or in_deferred_mode:
+        if build_graph or in_deferred_mode:
           self._assert_input_compatibility(inputs)
 
         if not in_deferred_mode:
@@ -726,7 +731,7 @@ class Layer(checkpointable.CheckpointableBase):
           if len(outputs) == 1:
             outputs = outputs[0]
 
-        if in_graph_mode:
+        if build_graph:
           # Apply activity regularization.
           # Note that it should be applied every time the layer creates a new
           # output, since it is output-specific.
@@ -748,7 +753,7 @@ class Layer(checkpointable.CheckpointableBase):
             else:
               outputs._keras_mask = output_mask  # pylint: disable=protected-access
 
-    if in_graph_mode:
+    if build_graph:
       # If all input tensors have history metadata,
       # we update the output tensors
       # with corresponding history metadata, thus eventually allowing to use
@@ -771,7 +776,7 @@ class Layer(checkpointable.CheckpointableBase):
       # Update global default collections.
       _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
 
-    if in_deferred_mode or in_graph_mode:
+    if in_deferred_mode or build_graph:
       if _have_all_keras_metadata(inputs):
         # Add an inbound node to the layer, so it can keep track of this call.
         # This updates the layer history of the output tensor(s).
@@ -783,7 +788,7 @@ class Layer(checkpointable.CheckpointableBase):
 
   @property
   def graph(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.graph not supported in Eager mode.')
     return self._graph
 
@@ -887,7 +892,7 @@ class Layer(checkpointable.CheckpointableBase):
         mode.
         ValueError: If the index provided does not match any node.
     """
-    assert context.in_graph_mode()
+    assert not context.executing_eagerly()
     if not self._inbound_nodes:
       raise RuntimeError('The layer has never been called '
                          'and thus has no defined ' + attr_name + '.')
@@ -917,7 +922,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           'Layer.get_input_shape_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'input_shapes',
@@ -939,7 +944,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           'Layer.get_output_shape_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'output_shapes',
@@ -960,7 +965,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.get_input_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'input_tensors',
                                              'input')
@@ -980,7 +985,7 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.get_output_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'output_tensors',
                                              'output')
@@ -1003,7 +1008,7 @@ class Layer(checkpointable.CheckpointableBase):
       RuntimeError: If called in Eager mode.
       AttributeError: If no inbound nodes are found.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.input not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name +
@@ -1025,7 +1030,7 @@ class Layer(checkpointable.CheckpointableBase):
         layers.
       RuntimeError: if called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.output not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name + ' has no inbound nodes.')
@@ -1047,7 +1052,7 @@ class Layer(checkpointable.CheckpointableBase):
         AttributeError: if the layer has no defined input_shape.
         RuntimeError: if called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.input_shape not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
@@ -1108,7 +1113,7 @@ class Layer(checkpointable.CheckpointableBase):
         AttributeError: if the layer has no defined output shape.
         RuntimeError: if called in Eager mode.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError('Layer.output_shape not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
@@ -1466,7 +1471,7 @@ def _to_list(x):
 
 
 def _add_elements_to_collection(elements, collection_list):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('Using collections from Layers not supported in Eager '
                        'mode. Tried to add %s to %s' % (elements,
                                                         collection_list))

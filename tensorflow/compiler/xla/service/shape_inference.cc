@@ -169,11 +169,11 @@ bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
 tensorflow::Status ExpectNotTupleOrOpaque(const Shape& shape,
                                           tensorflow::StringPiece op_type) {
   if (ShapeUtil::IsTuple(shape)) {
-    return InvalidArgument("Expected non-tuple argument for %s. Got: %s",
+    return InvalidArgument("Expected non-tuple argument for %s, but got %s.",
                            op_type.ToString().c_str(),
                            ShapeUtil::HumanString(shape).c_str());
   } else if (ShapeUtil::IsOpaque(shape)) {
-    return InvalidArgument("Expected non-opaque argument for %s. Got: %s",
+    return InvalidArgument("Expected non-opaque argument for %s, but got %s.",
                            op_type.ToString().c_str(),
                            ShapeUtil::HumanString(shape).c_str());
   } else {
@@ -193,8 +193,10 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   const Shape& accumulator_shape = reducer_shape.result();
   if (ShapeUtil::Rank(accumulator_shape) != 0) {
-    return Unimplemented(
-        "Reduction function currently must have rank-0 result.");
+    return InvalidArgument(
+        "Reduction function must have rank 0 (rank %lld reduction function "
+        "given).",
+        ShapeUtil::Rank(accumulator_shape));
   }
 
   // Check that the accumulator can be passed in as the first argument.
@@ -235,8 +237,8 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(accumulator_shape,
                                                 reducer_shape.parameters(1))) {
     return InvalidArgument(
-        "Reduction function's second parameter shape currently must "
-        "match the result shape. Got %s vs %s",
+        "Reduction function's second parameter shape must "
+        "match the result shape, but got %s vs %s.",
         ShapeUtil::HumanString(reducer_shape.parameters(1)).c_str(),
         ShapeUtil::HumanString(accumulator_shape).c_str());
   }
@@ -258,29 +260,29 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   for (int64 i = 0; i < window.dimensions_size(); ++i) {
     const auto& dim = window.dimensions(i);
     if (dim.size() <= 0) {
-      return InvalidArgument("Window has a non-positive dimension. Window: %s",
+      return InvalidArgument("Window %s has a non-positive dimension.",
                              window.DebugString().c_str());
     }
     if (dim.stride() <= 0) {
-      return InvalidArgument("Window has a non-positive stride. Window: %s",
+      return InvalidArgument("Window %s has a non-positive stride.",
                              window.DebugString().c_str());
     }
     if (!allow_negative_padding && dim.padding_low() < 0) {
-      return InvalidArgument("Window has a negative low padding. Window: %s",
+      return InvalidArgument("Window %s has a negative low padding.",
                              window.DebugString().c_str());
     }
     if (!allow_negative_padding && dim.padding_high() < 0) {
-      return InvalidArgument("Window has a negative high padding. Window: %s",
+      return InvalidArgument("Window %s has a negative high padding.",
                              window.DebugString().c_str());
     }
     if (dim.base_dilation() < 1) {
       return InvalidArgument(
-          "Window has a non-positive base area dilation factor. Window: %s",
+          "Window %s has a non-positive base area dilation factor.",
           window.DebugString().c_str());
     }
     if (dim.window_dilation() < 1) {
       return InvalidArgument(
-          "Window has a non-positive window dilation factor. Window: %s",
+          "Window %s has a non-positive window dilation factor.",
           window.DebugString().c_str());
     }
 
@@ -320,8 +322,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_CEIL:
       if (!ShapeUtil::ElementIsFloating(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating for floor/ceil "
-            "operation; got %s",
+            "Expected element type in shape to be floating for floor/ceil "
+            "operation; got %s.",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -333,8 +335,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       if (!ShapeUtil::ElementIsFloating(arg) &&
           !ShapeUtil::ElementIsComplex(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating or complex for "
-            "sin/cos/exp/log/tanh operation; got %s",
+            "Expected element type in shape to be floating or complex for "
+            "sin/cos/exp/log/tanh operation; got %s.",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -342,8 +344,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_IMAG:
       if (!ShapeUtil::ElementIsComplex(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be complex for real/imag "
-            "operation; got %s",
+            "Expected element type in shape to be complex for real/imag "
+            "operation; got %s.",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return ShapeUtil::ChangeElementType(arg, F32);
@@ -363,8 +365,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       if (arg.element_type() != PRED &&
           !primitive_util::IsIntegralType(arg.element_type())) {
         return InvalidArgument(
-            "expected pred or an integral element type in argument to not "
-            "operation; got %s",
+            "Expected pred or an integral element type in argument to Not "
+            "operation; got %s.",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -372,8 +374,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_IS_FINITE:
       if (!ShapeUtil::ElementIsFloating(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating point for IsFinite "
-            "operation; got %s",
+            "Expected element type in shape to be floating point for IsFinite "
+            "operation; got %s.",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return ShapeUtil::ChangeElementType(arg, PRED);
@@ -389,10 +391,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const int64 dimension) {
   if (arg_shapes.empty()) {
-    return InvalidArgument("Concatenate expects at least one argument");
+    return InvalidArgument("Concatenate expects at least one argument.");
   }
   if (dimension < 0 || dimension >= ShapeUtil::Rank(*arg_shapes[0])) {
-    return InvalidArgument("dimension to concatenate along out of bounds: %lld",
+    return InvalidArgument("Concatenate dimension out of bounds: %lld.",
                            dimension);
   }
   const Shape* arg_shape = nullptr;
@@ -408,14 +410,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
       return InvalidArgument(
           "Cannot concatenate arrays with different ranks: %lld (%s) vs %lld "
-          "(%s)",
+          "(%s).",
           ShapeUtil::Rank(*arg_shape),
           ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
           ShapeUtil::HumanString(*shape).c_str());
     }
     if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shape, *shape)) {
       return InvalidArgument(
-          "cannot concatenate arrays with different element types: %s vs %s",
+          "Cannot concatenate arrays with different element types: %s vs %s.",
           PrimitiveType_Name(arg_shape->element_type()).c_str(),
           PrimitiveType_Name(shape->element_type()).c_str());
     }
@@ -428,9 +430,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                      // concatenating.
         }
         return InvalidArgument(
-            "cannot concatenate arrays that differ in dimensions other than "
+            "Cannot concatenate arrays that differ in dimensions other than "
             "the one being concatenated (the other array dimensions must be "
-            "the same): %s vs %s in dimension %lld",
+            "the same): %s vs %s in dimension %lld.",
             ShapeUtil::HumanString(*arg_shape).c_str(),
             ShapeUtil::HumanString(*shape).c_str(), dimension);
       }
@@ -452,7 +454,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   if (primitive_util::IsComplexType(old_element_type) &&
       !primitive_util::IsComplexType(new_element_type)) {
     return Unimplemented(
-        "Unsupported conversion from complex to real type: %s => %s",
+        "Conversion from complex to real type %s => %s is not implemented.",
         ShapeUtil::HumanString(operand_shape).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
@@ -461,7 +463,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     // future, by recursing into the tuple elements to check all sub-conversions
     // are valid. For now we just reject them, though.
     return InvalidArgument(
-        "cannot convert from or to tuple type; requested conversion: %s => %s",
+        "Convert does not allow tuples, so cannot convert from %s to %s.",
         ShapeUtil::HumanString(operand_shape).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
@@ -474,24 +476,23 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   auto old_element_type = operand_shape.element_type();
   if (primitive_util::IsComplexType(old_element_type) !=
       primitive_util::IsComplexType(new_element_type)) {
-    return Unimplemented(
-        "Unsupported conversion between real and complex types: %s => %s",
-        ShapeUtil::HumanString(operand_shape).c_str(),
-        PrimitiveType_Name(new_element_type).c_str());
+    return InvalidArgument("Conversion from complex to real type %s => %s.",
+                           ShapeUtil::HumanString(operand_shape).c_str(),
+                           PrimitiveType_Name(new_element_type).c_str());
   }
   if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
     // are valid. For now we just reject them, though.
     return InvalidArgument(
-        "cannot convert from or to tuple type; requested conversion: %s => %s",
+        "Cannot convert from or to tuple type; requested conversion: %s => %s.",
         ShapeUtil::HumanString(operand_shape).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
   if (primitive_util::BitWidth(old_element_type) !=
       primitive_util::BitWidth(new_element_type)) {
     return InvalidArgument(
-        "cannot bitcast types with different bit-widths: %s => %s",
+        "Cannot bitcast types with different bit-widths: %s => %s.",
         PrimitiveType_Name(old_element_type).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
@@ -504,20 +505,20 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     const int mantissa_bits) {
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
     return InvalidArgument(
-        "expected element type in shape to be floating point for "
-        "ReducePrecision operation; got %s",
+        "Expected element type in shape to be floating point for "
+        "ReducePrecision operation; got %s.",
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
   if (exponent_bits < 1) {
     // One exponent bit is necessary to distinguish 0 from infinity.  Having
     // no exponent bits doesn't produce a sensible number, so we require at
     // least one.
-    return InvalidArgument("expected exponent_bits >= 1; got %d",
+    return InvalidArgument("Expected exponent_bits >= 1; got %d.",
                            exponent_bits);
   }
   if (mantissa_bits < 0) {
     // A number with no mantissa bits is still meaningful, however.
-    return InvalidArgument("expected non-negative mantissa_bits; got %d",
+    return InvalidArgument("Expected non-negative mantissa_bits; got %d.",
                            mantissa_bits);
   }
   return operand_shape;
@@ -528,23 +529,23 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     const PaddingConfig& padding_config) {
   if (ShapeUtil::IsTuple(operand_shape)) {
     return InvalidArgument(
-        "pad operation does not support tuple-shape operands");
+        "Pad operation does not support tuple-shape operands.");
   }
   if (!ShapeUtil::IsScalar(padding_value_shape)) {
     return InvalidArgument(
-        "pad operation does not support non-scalar padding values");
+        "Pad operation does not support non-scalar padding values.");
   }
   if (ShapeUtil::Rank(operand_shape) != padding_config.dimensions_size()) {
     return InvalidArgument(
         "The rank of the operand and the padding configuration do not match: "
-        "%s vs %s",
+        "%s vs %s.",
         ShapeUtil::HumanString(operand_shape).c_str(),
         padding_config.ShortDebugString().c_str());
   }
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(operand_shape,
                                                      padding_value_shape)) {
     return InvalidArgument(
-        "the element types of the operands to pad do not match");
+        "The element types of the operands to Pad do not match.");
   }
   std::vector<int64> dimensions(ShapeUtil::Rank(operand_shape));
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
@@ -605,7 +606,7 @@ Status ValidateDotDimensionNumbers(
                      lhs_batch_dimensions) ||
       !dims_in_range(ShapeUtil::Rank(rhs), rhs_contracting_dimensions,
                      rhs_batch_dimensions)) {
-    return InvalidArgument("A dimension number is out of range in dot: %s",
+    return InvalidArgument("A dimension number is out of range in Dot: %s.",
                            dimension_numbers.DebugString().c_str());
   }
 
@@ -623,7 +624,7 @@ Status ValidateDotDimensionNumbers(
 
   if (!dims_unique(lhs_contracting_dimensions, lhs_batch_dimensions) ||
       !dims_unique(rhs_contracting_dimensions, rhs_batch_dimensions)) {
-    return InvalidArgument("A dimension number is not unique in dot: %s",
+    return InvalidArgument("A dimension number is not unique in Dot: %s.",
                            dimension_numbers.DebugString().c_str());
   }
 
@@ -641,8 +642,7 @@ Status ValidateDotDimensionNumbers(
       rhs_non_contracting_non_batch_dims < 0 ||
       rhs_non_contracting_non_batch_dims > 1) {
     return InvalidArgument(
-        "batch and contracting dimension number mismatch "
-        "with rank ");
+        "Batch and contracting dimension number mismatch with rank.");
   }
 
   // Check that batch dimension numbers are ordered before all others, and
@@ -654,7 +654,7 @@ Status ValidateDotDimensionNumbers(
       !std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
                   rhs_batch_dimensions.begin())) {
     return InvalidArgument(
-        "batch dimension numbers must precede non-batch dimensions and be"
+        "Batch dimension numbers must precede non-batch dimensions and be"
         "monotonically increasing.");
   }
 
@@ -671,22 +671,22 @@ Status ValidateDotDimensionNumbers(
 
   auto fail = [lhs, rhs](const string& addendum) -> Status {
     string message = tensorflow::strings::Printf(
-        "cannot infer shape for dot operation: %s <dot> %s",
+        "Cannot infer shape for dot operation: %s <dot> %s.",
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str());
     if (!addendum.empty()) {
-      message += ": " + addendum;
+      message += " " + addendum;
     }
     return InvalidArgument("%s", message.c_str());
   };
 
   // Check if both element types are the same.
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
-    return fail("element types do not match");
+    return fail("Element types do not match.");
   }
 
   if ((ShapeUtil::Rank(lhs) < 1) || (ShapeUtil::Rank(rhs) < 1)) {
-    return fail("dot only supports rank 1 or above.");
+    return fail("Dot only supports rank 1 or above.");
   }
 
   // Validate basic properties of dot dimension numbers.
@@ -696,7 +696,7 @@ Status ValidateDotDimensionNumbers(
   if (dimension_numbers.lhs_contracting_dimensions_size() !=
           dimension_numbers.rhs_contracting_dimensions_size() ||
       dimension_numbers.lhs_contracting_dimensions_size() != 1) {
-    return fail("must specify one contracting dimension for both lhs and rhs.");
+    return fail("Must specify one contracting dimension for both lhs and rhs.");
   }
 
   // Check that contracting dimension sizes match.
@@ -706,13 +706,13 @@ Status ValidateDotDimensionNumbers(
       dimension_numbers.rhs_contracting_dimensions(0);
   if (lhs.dimensions(lhs_contracting_dimension) !=
       rhs.dimensions(rhs_contracting_dimension)) {
-    return fail("contracting dimension sizes do not match.");
+    return fail("Contracting dimension sizes do not match.");
   }
 
   // Check that number of batch dimensions match.
   if (dimension_numbers.lhs_batch_dimensions_size() !=
       dimension_numbers.rhs_batch_dimensions_size()) {
-    return fail("must the same number of batch dimensions for lhs and rhs.");
+    return fail("Must the same number of batch dimensions for lhs and rhs.");
   }
 
   // Check that batch dimension numbers and sizes match.
@@ -721,7 +721,7 @@ Status ValidateDotDimensionNumbers(
             dimension_numbers.rhs_batch_dimensions(i) ||
         lhs.dimensions(dimension_numbers.lhs_batch_dimensions(i)) !=
             rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i))) {
-      return fail("batch dimension numbers and sizes must match for lhs/rhs.");
+      return fail("Batch dimension numbers and sizes must match for lhs/rhs.");
     }
   }
 
@@ -770,10 +770,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     } else if (rhs.dimensions(i) == 1) {
       output_dimensions[i] = lhs.dimensions(i);
     } else {
-      return InvalidArgument("binary op %s with incompatible shapes: %s and %s",
-                             BinaryOperation_Name(operation).c_str(),
-                             ShapeUtil::HumanString(lhs).c_str(),
-                             ShapeUtil::HumanString(rhs).c_str());
+      return InvalidArgument(
+          "Binary op %s with incompatible shapes: %s and %s.",
+          BinaryOperation_Name(operation).c_str(),
+          ShapeUtil::HumanString(lhs).c_str(),
+          ShapeUtil::HumanString(rhs).c_str());
     }
   }
   return ShapeUtil::MakeShape(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
@@ -788,15 +789,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
     // See b/25177275 for more details.
-    return InvalidArgument("automatic shape inference not supported: %s and %s",
+    return InvalidArgument("Automatic shape inference not supported: %s and %s",
                            ShapeUtil::HumanString(smaller_shape).c_str(),
                            ShapeUtil::HumanString(larger_shape).c_str());
   } else if (broadcast_dimensions.size() != ShapeUtil::Rank(smaller_shape)) {
     return InvalidArgument(
-        "size of broadcast_dimensions has to match lower-rank operand's "
+        "Size of broadcast_dimensions has to match lower-rank operand's "
         "rank; "
         " lower-rank operand's rank is %lld, size of broadcast_dimensions is "
-        "%zu",
+        "%zu.",
         ShapeUtil::Rank(smaller_shape), broadcast_dimensions.size());
   }
 
@@ -846,13 +847,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     int64 dimension_to_match = broadcast_dimensions.at(i);
     if (dimension_to_match < 0) {
       return InvalidArgument(
-          "broadcast dimension number (%lld) cannot be negative",
+          "Broadcast dimension number (%lld) cannot be negative.",
           dimension_to_match);
     }
     if (dimension_to_match >= larger_shape.dimensions_size()) {
       return InvalidArgument(
-          "broadcast dimension number (%lld) too large; higher-rank "
-          "operand has rank %d",
+          "Broadcast dimension number (%lld) too large; higher-rank "
+          "operand has rank %d.",
           dimension_to_match, larger_shape.dimensions_size());
     }
     int64 small_dimension_size = smaller_shape.dimensions(i);
@@ -863,7 +864,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     if (small_dimension_size != large_dimension_size &&
         small_dimension_size != 1 && large_dimension_size != 1) {
       return InvalidArgument(
-          "broadcast dimension %d mismatch: %lld != %lld; %s and %s", i,
+          "Broadcast dimension %d mismatch: %lld != %lld; %s and %s.", i,
           small_dimension_size, large_dimension_size,
           ShapeUtil::HumanString(smaller_shape).c_str(),
           ShapeUtil::HumanString(larger_shape).c_str());
@@ -872,7 +873,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     // order.
     if (i > 0 && broadcast_dimensions.at(i - 1) >= dimension_to_match) {
       return InvalidArgument(
-          "broadcast dimensions order is wrong: %lld comes after %lld",
+          "Broadcast dimensions order is wrong: %lld comes after %lld.",
           dimension_to_match, broadcast_dimensions.at(i - 1));
     }
 
@@ -892,7 +893,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
-        "binary op %s with different element types: %s and %s",
+        "Binary op %s with different element types: %s and %s.",
         BinaryOperation_Name(operation).c_str(),
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str());
@@ -904,8 +905,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     if (!broadcast_dimensions.empty() &&
         broadcast_dimensions != identity_dims) {
       return InvalidArgument(
-          "broadcast dimensions field must either be not set or be the "
-          "identity on binary operations with operands of the same rank");
+          "Broadcast dimensions field must either be not set or be the "
+          "identity on binary operations with operands of the same rank.");
     }
   }
 
@@ -979,8 +980,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case BINOP_COMPLEX: {
       if (!ShapeUtil::ElementIsFloating(lhs)) {
         return InvalidArgument(
-            "expected element type in shape to be floating for complex compose "
-            "operation; got %s",
+            "Expected element type in shape to be floating for complex compose "
+            "operation; got %s.",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       TF_ASSIGN_OR_RETURN(const Shape& shape,
@@ -989,7 +990,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       if (lhs.element_type() == F32 && rhs.element_type() == F32) {
         return ShapeUtil::ChangeElementType(shape, C64);
       } else {
-        return Unimplemented("complex component type not supported");
+        return Unimplemented("Complex component type is not implemented.");
       }
     }
     case BINOP_AND:
@@ -997,8 +998,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       if (lhs.element_type() != PRED &&
           !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
-            "expected pred or integral type in argument to and/or operation; "
-            "got %s",
+            "Expected pred or integral type in argument to and/or operation; "
+            "got %s.",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
@@ -1016,7 +1017,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
     default:
       return Unimplemented(
-          "not yet implemented; infer binary op shape: %s; lhs: %s; rhs: %s",
+          "Binary op shape inference: %s; lhs: %s; rhs: %s is not implemented.",
           BinaryOperation_Name(operation).c_str(),
           lhs.ShortDebugString().c_str(), rhs.ShortDebugString().c_str());
   }
@@ -1041,7 +1042,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
     default:
-      return InvalidArgument("unknown operation %s",
+      return InvalidArgument("Unknown operation %s.",
                              TernaryOperation_Name(operation).c_str());
   }
 }
@@ -1072,7 +1073,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return result;
     }
     default:
-      return InvalidArgument("unknown operation %s",
+      return InvalidArgument("Unknown operation %s.",
                              VariadicOperation_Name(operation).c_str());
   }
 }
@@ -1082,7 +1083,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const ProgramShape& to_apply,
     tensorflow::gtl::ArraySlice<int64> dimensions) {
   if (arg_shapes.empty()) {
-    return InvalidArgument("Map expects at least one argument");
+    return InvalidArgument("Map expects at least one argument.");
   }
 
   // All arguments must have the same shape.
@@ -1113,7 +1114,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
     return InvalidArgument(
         "Map operation requires all operands to have the same shape; got: "
-        "%s",
+        "%s.",
         Join(pieces, ", ").c_str());
   }
 
@@ -1122,7 +1123,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (dimensions.size() != arg_shape->dimensions_size()) {
     return InvalidArgument(
         "Map applied to a subset of dimensions currently not supported: "
-        "arg_dimension_size: %d, requested_map_dimensions_size: %zu",
+        "arg_dimension_size: %d, requested_map_dimensions_size: %zu.",
         arg_shape->dimensions_size(), dimensions.size());
   }
 
@@ -1130,7 +1131,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int i = 0; i < dimensions.size(); ++i) {
     if (dimensions[i] != i) {
       return InvalidArgument(
-          "Map requires monotonically increasing dimension numbers, found: %s ",
+          "Map requires monotonically increasing dimension numbers; got: %s.",
           Join(dimensions, ", ").c_str());
     }
   }
@@ -1139,7 +1140,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (arg_shapes.size() != to_apply.parameters_size()) {
     return InvalidArgument(
         "Map applied function arity must match number of arguments; got: "
-        "arity: %d, arguments: %zu",
+        "arity: %d, arguments: %zu.",
         to_apply.parameters_size(), arg_shapes.size());
   }
 
@@ -1147,8 +1148,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const Shape& output_shape = to_apply.result();
   if (!ShapeUtil::IsScalar(output_shape)) {
     return InvalidArgument(
-        "mapped computation's result has to be a scalar; "
-        "got: %s",
+        "Mapped computation's result has to be a scalar; got: %s.",
         ShapeUtil::HumanString(output_shape).c_str());
   }
 
@@ -1157,16 +1157,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
     if (!ShapeUtil::IsScalar(parameter_shape)) {
       return InvalidArgument(
-          "mapped computation's parameter has to be a scalar; "
-          "got parameter %d shape: %s",
+          "Mapped computation's parameter has to be a scalar; "
+          "got parameter %d shape: %s.",
           i, ShapeUtil::HumanString(parameter_shape).c_str());
     }
 
     if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(parameter_shape,
                                                        *arg_shape)) {
       return InvalidArgument(
-          "mapped computation's parameter type has to match argument element "
-          "type; got parameter %d shape: %s, argument shape: %s",
+          "Mapped computation's parameter type has to match argument element "
+          "type; got parameter %d shape: %s, argument shape: %s.",
           i, ShapeUtil::HumanString(parameter_shape).c_str(),
           ShapeUtil::HumanString(*arg_shape).c_str());
     }
@@ -1197,21 +1197,21 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected feature_index of batch-norm-training to be "
         "smaller than the rank of operand_shape; "
-        "got feature_index %lld, and rank %lld",
+        "got feature_index %lld, and rank %lld.",
         feature_index, ShapeUtil::Rank(operand_shape));
   }
 
   if (feature_index < 0) {
     return InvalidArgument(
         "Expected feature_index of batch-norm-training to "
-        "be a non-negative number, got %lld",
+        "be a non-negative number, got %lld.",
         feature_index);
   }
 
   if (ShapeUtil::Rank(operand_shape) < 1) {
     return InvalidArgument(
         "Expected the rank of operand to "
-        "batch-norm-training to be at least 1; got %lld",
+        "batch-norm-training to be at least 1; got %lld.",
         ShapeUtil::Rank(operand_shape));
   }
 
@@ -1232,7 +1232,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
     return InvalidArgument(
         "The operand to batch-norm-training must have a floating point "
-        "element type, but the shape is %s",
+        "element type, but the shape is %s.",
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
@@ -1241,7 +1241,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-training, "
         "but the shape of offset factor is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(offset_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1251,7 +1251,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-training, "
         "but the shape of scale factor is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(scale_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1264,7 +1264,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of offset factor should be the same as feature count,"
         "but the size of offset factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
@@ -1272,7 +1272,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of scale factor should be the same as feature count,"
         "but the size of scale factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
@@ -1307,21 +1307,21 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected feature_index of batch-norm-inference to be "
         "smaller than the rank of operand_shape; "
-        "got feature_index %lld, and rank %lld",
+        "got feature_index %lld, and rank %lld.",
         feature_index, ShapeUtil::Rank(operand_shape));
   }
 
   if (feature_index < 0) {
     return InvalidArgument(
         "Expected feature_index of batch-norm-inference to "
-        "be a non-negative number, got %lld",
+        "be a non-negative number, got %lld.",
         feature_index);
   }
 
   if (ShapeUtil::Rank(operand_shape) < 1) {
     return InvalidArgument(
         "Expected the rank of operand to "
-        "batch-norm-inference to be at least 1; got %lld",
+        "batch-norm-inference to be at least 1; got %lld.",
         ShapeUtil::Rank(operand_shape));
   }
 
@@ -1342,7 +1342,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
     return InvalidArgument(
         "The operand to batch-norm-inference must have a floating point "
-        "element type, but the shape is %s",
+        "element type, but the shape is %s.",
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
@@ -1352,7 +1352,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
         "but the shape of offset factor is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(offset_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1363,7 +1363,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
         "but the shape of scale factor is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(scale_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1374,7 +1374,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
         "but the shape of mean is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(mean_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1385,7 +1385,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
         "but the shape of variance is %s "
-        "and the shape of operand is %s",
+        "and the shape of operand is %s.",
         PrimitiveType_Name(mean_shape.element_type()).c_str(),
         PrimitiveType_Name(variance_shape.element_type()).c_str());
   }
@@ -1398,7 +1398,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of offset factor should be the same as feature count,"
         "but the size of offset factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
@@ -1406,7 +1406,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of scale factor should be the same as feature count,"
         "but the size of scale factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
@@ -1414,7 +1414,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of mean should be the same as feature count,"
         "but the size of mean is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
@@ -1422,7 +1422,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of variance should be the same as feature count,"
         "but the size of variance is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(variance_shape, 0), feature_count);
   }
 
@@ -1455,7 +1455,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected feature_index of batch-norm-grad to be "
         "smaller than the rank of operand_shape; "
-        "got feature_index %lld, and rank %lld",
+        "got feature_index %lld, and rank %lld.",
         feature_index, ShapeUtil::Rank(operand_shape));
   }
 
@@ -1463,7 +1463,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected operand_shape of batch-norm-grad to have the same rank as"
         " output_grad_shape; got rank(oprand_shape) %lld, and"
-        " rank(output_grad_shape) %lld",
+        " rank(output_grad_shape) %lld.",
         ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(output_grad_shape));
   }
 
@@ -1491,14 +1491,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
     return InvalidArgument(
         "The operand to batch-norm-grad must have a floating point "
-        "element type, but the shape is %s",
+        "element type, but the shape is %s.",
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
   if (!ShapeUtil::ElementIsFloating(output_grad_shape)) {
     return InvalidArgument(
         "The output_grad to batch-norm-grad must have a floating point "
-        "element type, but the shape is %s",
+        "element type, but the shape is %s.",
         PrimitiveType_Name(output_grad_shape.element_type()).c_str());
   }
 
@@ -1507,7 +1507,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of output_grad is %s "
-        "and the element type of operand is %s",
+        "and the element type of operand is %s.",
         PrimitiveType_Name(output_grad_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1517,7 +1517,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of scale factor is %s "
-        "and the element type of operand is %s",
+        "and the element type of operand is %s.",
         PrimitiveType_Name(scale_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1527,7 +1527,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of mean is %s "
-        "and the element type of operand is %s",
+        "and the element type of operand is %s.",
         PrimitiveType_Name(mean_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1537,7 +1537,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of mean is %s "
-        "and the element type of operand is %s",
+        "and the element type of operand is %s.",
         PrimitiveType_Name(mean_shape.element_type()).c_str(),
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
@@ -1551,7 +1551,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of mean should be the same as feature count,"
         "but the size of offset factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
@@ -1559,7 +1559,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of scale factor should be the same as feature count,"
         "but the size of scale factor is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
@@ -1567,7 +1567,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "The size of variance should be the same as feature count,"
         "but the size of variance is %lld "
-        "and the feature count is %lld",
+        "and the feature count is %lld.",
         ShapeUtil::GetDimension(var_shape, 0), feature_count);
   }
 
@@ -1578,7 +1578,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InvalidArgument(
           "The bounds of operand shape should be the same as output_grad's,"
           "but the bound of operand_shape at dimension %lld is %lld "
-          "and the bound of output_grad_shape is %lld",
+          "and the bound of output_grad_shape is %lld.",
           i, ShapeUtil::GetDimension(operand_shape, i),
           ShapeUtil::GetDimension(output_grad_shape, i));
     }
@@ -1596,7 +1596,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
-        "Convolution with different element types: %s and %s",
+        "Convolution with different element types: %s and %s.",
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str());
   }
@@ -1612,21 +1612,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (window.dimensions_size() != num_spatial_dims) {
     return InvalidArgument(
         "Window must have same number of dimensions as dimension numbers.\n"
-        "Window: %s\nDimension numbers: %s",
+        "Window: %s\nDimension numbers: %s.",
         window.DebugString().c_str(), dnums.DebugString().c_str());
   }
 
   const int num_dims = num_spatial_dims + 2;
   if (ShapeUtil::Rank(lhs) != num_dims) {
     return InvalidArgument(
-        "The LHS argument to a convolution should have rank %d.\n"
-        "lhs: %s",
+        "The LHS argument to a convolution should have rank %d; lhs: %s.",
         num_dims, ShapeUtil::HumanString(lhs).c_str());
   }
   if (ShapeUtil::Rank(rhs) != num_dims) {
     return InvalidArgument(
-        "The RHS argument to a convolution should have rank %d.\n"
-        "lhs: %s",
+        "The RHS argument to a convolution should have rank %d; lhs: %s.",
         num_dims, ShapeUtil::HumanString(lhs).c_str());
   }
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
@@ -1663,26 +1661,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       !std::all_of(window_dnums.begin(), window_dnums.end(), in_range) ||
       !std::all_of(output_dnums.begin(), output_dnums.end(), in_range)) {
     return InvalidArgument(
-        "A dimension number is out of range in convolution: %s",
+        "A dimension number is out of range in convolution: %s.",
         dnums.DebugString().c_str());
   }
 
   if (input_dnums != expected_dnums) {
     return InvalidArgument(
         "Input dimensions of convolution must contain each dimension exactly "
-        "once: %s",
+        "once: %s.",
         dnums.DebugString().c_str());
   }
   if (window_dnums != expected_dnums) {
     return InvalidArgument(
         "Window dimensions of convolution must contain each dimension exactly "
-        "once: %s",
+        "once: %s.",
         dnums.DebugString().c_str());
   }
   if (output_dnums != expected_dnums) {
     return InvalidArgument(
         "Output dimensions of convolution must contain each dimension exactly "
-        "once: %s",
+        "once: %s.",
         dnums.DebugString().c_str());
   }
 
@@ -1706,7 +1704,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Expected LHS feature dimension (value %lld) to match RHS "
         "input feature dimension (value %lld); got <conv>(%s, %s)\n"
-        "Dimension numbers: {%s}",
+        "Dimension numbers: {%s}.",
         input_features, kernel_input_features,
         ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str(), dnums.DebugString().c_str());
@@ -1720,7 +1718,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Window dimensions do not match RHS shape:\n\t"
         "RHS shape: %s\n\t"
         "Window: {%s}\n\t"
-        "Dimension numbers: {%s}",
+        "Dimension numbers: {%s}.",
         ShapeUtil::HumanString(rhs).c_str(), window.ShortDebugString().c_str(),
         dnums.ShortDebugString().c_str());
   }
@@ -1748,8 +1746,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const tensorflow::gtl::ArraySlice<int64> fft_length) {
   const int64 fft_rank = fft_length.size();
   if (fft_rank < 1 || fft_rank > 3) {
-    return InvalidArgument("FFT only supports ranks 1-3, but got %lld",
-                           fft_rank);
+    return InvalidArgument("FFT only supports ranks 1-3; got %lld.", fft_rank);
   }
 #define RET_CHECK_RANK(x)                              \
   if (x.dimensions_size() < fft_rank) {                \
@@ -1762,7 +1759,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case FFT:
     case IFFT:
       if (in.element_type() != C64) {
-        return InvalidArgument("%s requires C64 input type, found %s",
+        return InvalidArgument("%s requires C64 input type, found %s.",
                                FftType_Name(fft_type).c_str(),
                                PrimitiveType_Name(in.element_type()).c_str());
       }
@@ -1770,7 +1767,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return in;
     case RFFT: {
       if (in.element_type() != F32) {
-        return InvalidArgument("RFFT requires F32 input type, found %s",
+        return InvalidArgument("RFFT requires F32 input type, found %s.",
                                PrimitiveType_Name(in.element_type()).c_str());
       }
       RET_CHECK_RANK(in);
@@ -1779,7 +1776,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
             fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
-              "dimension %lld is %lld and should be %lld",
+              "dimension %lld is %lld and should be %lld.",
               in.dimensions_size() - fft_rank + i,
               in.dimensions(in.dimensions_size() - fft_rank + i),
               fft_length[i]);
@@ -1792,7 +1789,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
     case IRFFT: {
       if (in.element_type() != C64) {
-        return InvalidArgument("IRFFT requires C64 input type, found %s",
+        return InvalidArgument("IRFFT requires C64 input type, found %s.",
                                PrimitiveType_Name(in.element_type()).c_str());
       }
       RET_CHECK_RANK(in);
@@ -1802,7 +1799,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
             fft_length[i]) {
           return InvalidArgument(
               "IRFFT requires all but one innermost dimensions match "
-              "fft_length, but dimension %lld is %lld and should be %lld",
+              "fft_length, but dimension %lld is %lld and should be %lld.",
               in.dimensions_size() - fft_rank + i,
               in.dimensions(in.dimensions_size() - fft_rank + i),
               fft_length[i]);
@@ -1812,7 +1809,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
           fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
-            "dimension %d is %lld and should be %lld",
+            "dimension %d is %lld and should be %lld.",
             in.dimensions_size() - 1, in.dimensions(in.dimensions_size() - 1),
             fft_length[fft_rank - 1] / 2 + 1);
       }
@@ -1850,8 +1847,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dimension : dimensions_to_reduce) {
     if (dimension >= ShapeUtil::Rank(arg) || dimension < 0) {
       return InvalidArgument(
-          "attempting to reduce out-of-bounds dimension %lld in shape %s",
-          dimension, ShapeUtil::HumanString(arg).c_str());
+          "Reducing out-of-bounds dimension %lld in shape %s.", dimension,
+          ShapeUtil::HumanString(arg).c_str());
     }
   }
   TF_RETURN_IF_ERROR(
@@ -1891,30 +1888,30 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // Check if the select function has a proper shape of (T,T) -> PRED.
   if (select_shape.parameters_size() != 2) {
     return InvalidArgument(
-        "select function must take 2 parameters, but "
+        "Select function must take 2 parameters, but "
         "takes %d parameter(s).",
         select_shape.parameters_size());
   }
   const Shape& select_result_shape = select_shape.result();
   if (!ShapeUtil::Compatible(select_result_shape,
                              ShapeUtil::MakeShape(PRED, {}))) {
-    return Unimplemented("select function must have rank-0 PRED result.");
+    return InvalidArgument("Select function must have rank-0 PRED result.");
   }
   const Shape& operand_element_shape =
       ShapeUtil::MakeShape(operand_shape.element_type(), {});
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(operand_element_shape,
                                                 select_shape.parameters(0))) {
     return InvalidArgument(
-        "select function's first parameter shape currently must "
-        "match the operand element shape. Got %s vs %s",
+        "Select function's first parameter shape currently must "
+        "match the operand element shape, but got %s vs %s.",
         ShapeUtil::HumanString(select_shape.parameters(0)).c_str(),
         ShapeUtil::HumanString(operand_element_shape).c_str());
   }
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(operand_element_shape,
                                                 select_shape.parameters(1))) {
     return InvalidArgument(
-        "select function's second parameter shape currently must "
-        "match the operand element shape. Got %s vs %s",
+        "Select function's second parameter shape currently must "
+        "match the operand element shape, but got %s vs %s.",
         ShapeUtil::HumanString(select_shape.parameters(1)).c_str(),
         ShapeUtil::HumanString(operand_element_shape).c_str());
   }
@@ -1931,8 +1928,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(source_shape,
                                                 window_result_shape)) {
     return InvalidArgument(
-        "source shape does not match the shape of window-reduced operand: "
-        "source(%s), window-reduced operand(%s)",
+        "Source shape does not match the shape of window-reduced operand: "
+        "source(%s), window-reduced operand(%s).",
         ShapeUtil::HumanString(source_shape).c_str(),
         ShapeUtil::HumanString(window_result_shape).c_str());
   }
@@ -1946,7 +1943,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   auto error = [&](const string& message) {
     return InvalidArgument(
         "%s in slice operation; argument shape: %s; starts: {%s}; limits: "
-        "{%s}; strides: {%s}",
+        "{%s}; strides: {%s}.",
         message.c_str(), ShapeUtil::HumanString(arg).c_str(),
         Join(starts, ",").c_str(), Join(limits, ",").c_str(),
         Join(strides, ",").c_str());
@@ -1969,7 +1966,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (starts.size() != ShapeUtil::Rank(arg)) {
     return InvalidArgument(
-        "slice index count does not match argument rank: %zu vs %lld",
+        "Slice index count does not match argument rank: %zu vs %lld.",
         starts.size(), ShapeUtil::Rank(arg));
   }
 
@@ -1979,7 +1976,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     int64 limit_index = limits[dimension];
     int64 stride = strides[dimension];
     if (start_index < 0) {
-      return InvalidArgument("negative start index to slice: %lld",
+      return InvalidArgument("Negative start index to slice: %lld.",
                              start_index);
     }
     if (limit_index > arg.dimensions(dimension)) {
@@ -1999,7 +1996,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                  limit_index, start_index));
     }
     if (stride <= 0) {
-      return InvalidArgument("stride (%lld) must be positive", stride);
+      return InvalidArgument("Stride (%lld) must be positive.", stride);
     }
     sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
@@ -2023,20 +2020,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (ShapeUtil::Rank(start_indices_shape) != 1) {
     return InvalidArgument(
-        "dynamic slice start indices of rank %lld must be rank1.",
+        "Dynamic slice start indices of rank %lld must be rank1.",
         ShapeUtil::Rank(start_indices_shape));
   }
 
   if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
     return InvalidArgument(
-        "dynamic slice start indices must be of integral type.");
+        "Dynamic slice start indices must be of integral type.");
   }
 
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic slice start number of dimensions %lld (%s) must match rank "
-        "%lld of slice input (%s)",
+        "Dynamic slice start number of dimensions %lld (%s) must match rank "
+        "%lld of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
         ShapeUtil::Rank(operand_shape),
         ShapeUtil::HumanString(operand_shape).c_str());
@@ -2044,7 +2041,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (slice_sizes.size() != ShapeUtil::Rank(operand_shape)) {
     return InvalidArgument(
-        "dynamic slice index count does not match argument rank: %zu vs %lld",
+        "Dynamic slice index count does not match argument rank: %zu vs %lld.",
         slice_sizes.size(), ShapeUtil::Rank(operand_shape));
   }
 
@@ -2052,12 +2049,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
     if (slice_dim_size < 0) {
-      return InvalidArgument("negative size index to dynamic slice: %lld",
+      return InvalidArgument("Negative size index to dynamic slice: %lld.",
                              slice_dim_size);
     }
     if (slice_dim_size > input_dim_size) {
       return InvalidArgument(
-          "slice dim size %lld greater than dynamic slice dimension: %lld",
+          "Slice dim size %lld greater than dynamic slice dimension: %lld.",
           slice_dim_size, input_dim_size);
     }
     VLOG(2) << tensorflow::strings::Printf("slice_sizes[%lld] = %lld", dim,
@@ -2086,20 +2083,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (ShapeUtil::Rank(start_indices_shape) != 1) {
     return InvalidArgument(
-        "dynamic update slice start indices of rank %lld must be rank1.",
+        "Dynamic update slice start indices of rank %lld must be rank1.",
         ShapeUtil::Rank(start_indices_shape));
   }
 
   if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
     return InvalidArgument(
-        "dynamic update slice start indices must be of integral type.");
+        "Dynamic update slice start indices must be of integral type.");
   }
 
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic slice start number of dimensions %lld (%s) must match rank "
-        "%lld of slice input (%s)",
+        "Dynamic update slice start number of dimensions %lld (%s) must match "
+        "rank %lld of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
         ShapeUtil::Rank(operand_shape),
         ShapeUtil::HumanString(operand_shape).c_str());
@@ -2107,16 +2104,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (ShapeUtil::Rank(update_shape) != ShapeUtil::Rank(operand_shape)) {
     return InvalidArgument(
-        "dynamic update slice update rank does not match argument rank: "
-        "%lld vs %lld",
+        "Dynamic update slice update rank does not match argument rank: "
+        "%lld vs %lld.",
         ShapeUtil::Rank(update_shape), ShapeUtil::Rank(operand_shape));
   }
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(operand_shape,
                                                      update_shape)) {
     return InvalidArgument(
-        "dynamic update slice update element type does not match argument. "
-        "operand.element_type: %s vs update.element_type: %s",
+        "Dynamic update slice update element type does not match argument. "
+        "operand.element_type: %s vs update.element_type: %s.",
         PrimitiveType_Name(operand_shape.element_type()).c_str(),
         PrimitiveType_Name(update_shape.element_type()).c_str());
   }
@@ -2126,12 +2123,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const int64 update_dim_size = update_shape.dimensions(dim);
     if (update_dim_size < 0) {
       return InvalidArgument(
-          "size index %lld to dynamic update slice must be >= 0",
+          "Size index %lld to dynamic update slice must be >= 0.",
           update_dim_size);
     }
     if (update_dim_size > input_dim_size) {
       return InvalidArgument(
-          "update dim size %lld greater than dynamic slice dimension: %lld",
+          "Update dim size %lld greater than dynamic slice dimension: %lld.",
           update_dim_size, input_dim_size);
     }
     VLOG(2) << tensorflow::strings::Printf("update_sizes[%lld] = %lld", dim,
@@ -2151,7 +2148,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dimension : dimensions) {
     if (dimension >= ShapeUtil::Rank(operand_shape) || dimension < 0) {
       return InvalidArgument(
-          "one of the reverse dimensions (%lld) is out-of-bounds in shape %s",
+          "One of the reverse dimensions (%lld) is out-of-bounds in shape %s.",
           dimension, ShapeUtil::HumanString(operand_shape).c_str());
     }
   }
@@ -2162,14 +2159,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& arg, int64 index) {
   if (!ShapeUtil::IsTuple(arg)) {
     return InvalidArgument(
-        "cannot infer shape: attempting to index into non-tuple: %s",
+        "Cannot infer shape: attempting to index into non-tuple: %s.",
         ShapeUtil::HumanString(arg).c_str());
   }
 
   if (index >= arg.tuple_shapes_size()) {
     return InvalidArgument(
-        "cannot infer shape: attempt to index out of tuple bounds: %lld "
-        ">= %d in shape %s",
+        "Cannot infer shape: attempt to index out of tuple bounds: %lld "
+        ">= %d in shape %s.",
         index, arg.tuple_shapes_size(), ShapeUtil::HumanString(arg).c_str());
   }
 
@@ -2181,17 +2178,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& init) {
   // Check the number of parameters for given computations.
   if (condition.parameters_size() != 1) {
-    return InvalidArgument("condition must take 1 arguments; got %d",
+    return InvalidArgument("Condition must take 1 arguments; got %d.",
                            condition.parameters_size());
   }
   if (body.parameters_size() != 1) {
-    return InvalidArgument("body must take 1 arguments; got %d",
+    return InvalidArgument("Body must take 1 arguments; got %d.",
                            body.parameters_size());
   }
 
   auto shape_string = [&]() {
     return tensorflow::strings::Printf(
-        "condition: %s; body: %s; init: %s",
+        "Condition: %s; body: %s; init: %s.",
         ShapeUtil::HumanString(condition).c_str(),
         ShapeUtil::HumanString(body).c_str(),
         ShapeUtil::HumanString(init).c_str());
@@ -2199,15 +2196,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   // Check the shapes of computation parameters and return types.
   if (!ShapeUtil::ShapeIs(condition.result(), PRED, {})) {
-    return InvalidArgument("condition must return a boolean; got %s",
+    return InvalidArgument("Condition must return a boolean; got %s.",
                            shape_string().c_str());
   }
   if (!ShapeUtil::Compatible(body.result(), condition.parameters(0)) ||
       !ShapeUtil::Compatible(body.result(), body.parameters(0)) ||
       !ShapeUtil::Compatible(body.result(), init)) {
     return InvalidArgument(
-        "the parameter of condition and body, the result of the body, and init "
-        "must all have the same shape; got %s",
+        "The parameter of condition and body, the result of the body, and init "
+        "must all have the same shape; got %s.",
         shape_string().c_str());
   }
 
@@ -2219,7 +2216,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& false_operand, const ProgramShape& true_computation,
     const ProgramShape& false_computation) {
   if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
-    return InvalidArgument("predicate must be a boolean; got %s.",
+    return InvalidArgument("Predicate must be a boolean; got %s.",
                            ShapeUtil::HumanString(predicate).c_str());
   }
 
@@ -2302,8 +2299,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
     return InvalidArgument(
-        "reshape operation has mismatched element counts: from=%lld (%s) "
-        "to=%lld (%s)",
+        "Reshape operation has mismatched element counts: from=%lld (%s) "
+        "to=%lld (%s).",
         ShapeUtil::ElementsIn(operand), ShapeUtil::HumanString(operand).c_str(),
         ShapeUtil::ElementsIn(inferred_shape),
         ShapeUtil::HumanString(inferred_shape).c_str());
@@ -2351,7 +2348,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(max, "clamp max"));
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
       !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument("clamp op with different operand types: %s, %s, %s",
+    return InvalidArgument("Clamp with different operand types: %s, %s, %s.",
                            ShapeUtil::HumanString(min).c_str(),
                            ShapeUtil::HumanString(operand).c_str(),
                            ShapeUtil::HumanString(max).c_str());
@@ -2372,7 +2369,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
   }
   return Unimplemented(
-      "not yet implemented: %s, %s <clamp> %s", min.ShortDebugString().c_str(),
+      "%s, %s <clamp> %s is not implemented.", min.ShortDebugString().c_str(),
       max.ShortDebugString().c_str(), operand.ShortDebugString().c_str());
 }
 
@@ -2391,25 +2388,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
   if (!compatible) {
     return InvalidArgument(
-        "operands to select must be the same shape; got %s and %s",
+        "Operands to select must be the same shape; got %s and %s.",
         ShapeUtil::HumanString(on_true).c_str(),
         ShapeUtil::HumanString(on_false).c_str());
   }
   if (pred.element_type() != PRED) {
     return InvalidArgument(
-        "select's pred operand must have PRED element type; got %s",
+        "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
-  if (ShapeUtil::SameDimensions(pred, on_true) || ShapeUtil::Rank(pred) == 0) {
+  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+      ShapeUtil::Rank(pred) == 0) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.
     return ShapeUtil::ChangeElementType(
         on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
   } else {
-    return Unimplemented(
-        "select operation with non-scalar predicate with dimensionality "
-        " different from the other operands: %s",
+    return InvalidArgument(
+        "Select operation with non-scalar predicate with dimensionality "
+        " different from the other operands: %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
 }
@@ -2427,7 +2425,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "
         "arity: %d, arguments: %zu; computation signature: %s; argument "
-        "shapes: [%s]",
+        "shapes: [%s].",
         to_apply.parameters_size(), arg_shapes.size(),
         computation_signature.c_str(), argument_shapes.c_str());
   }
@@ -2439,7 +2437,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     if (!ShapeUtil::Compatible(arg_shape, param_shape)) {
       return InvalidArgument(
           "Call parameter must match argument; got parameter %d shape: %s, "
-          "argument shape: %s",
+          "argument shape: %s.",
           i, ShapeUtil::HumanString(param_shape).c_str(),
           ShapeUtil::HumanString(arg_shape).c_str());
     }
@@ -2454,14 +2452,14 @@ static Status ValidateGatherDimensionNumbers(
     const GatherDimensionNumbers& dim_numbers) {
   if (!c_is_sorted(dim_numbers.output_window_dims())) {
     return InvalidArgument(
-        "Output window dimensions in gather op must be ascending; got: %s",
+        "Output window dimensions in gather op must be ascending; got: %s.",
         Join(dim_numbers.output_window_dims(), ", ").c_str());
   }
 
   if (c_adjacent_find(dim_numbers.output_window_dims()) !=
       dim_numbers.output_window_dims().end()) {
     return InvalidArgument(
-        "Output window dimensions in gather op must not repeat; got: %s",
+        "Output window dimensions in gather op must not repeat; got: %s.",
         Join(dim_numbers.output_window_dims(), ", ").c_str());
   }
 
@@ -2474,7 +2472,7 @@ static Status ValidateGatherDimensionNumbers(
     if (window_index < 0 || window_index >= output_shape_rank) {
       return InvalidArgument(
           "Window index %d in gather op is out of bounds; got %lld, but should "
-          "have been in [0,%lld)",
+          "have been in [0,%lld).",
           i, window_index, output_shape_rank);
     }
   }
@@ -2496,7 +2494,7 @@ static Status ValidateGatherDimensionNumbers(
         gather_dim_to_input_dim >= input_shape.dimensions_size()) {
       return InvalidArgument(
           "Invalid gather_dims_to_operand_dims mapping; domain is [0, %d), "
-          "got: %d->%lld",
+          "got: %d->%lld.",
           input_shape.dimensions_size(), i, gather_dim_to_input_dim);
     }
   }
@@ -2511,7 +2509,7 @@ static Status ValidateGatherDimensionNumbers(
       sorted_gather_dims_to_operand_dims.end()) {
     return InvalidArgument(
         "Repeated dimensions are not allowed in gather_dims_to_operand_dims; "
-        "got: %s",
+        "got: %s.",
         Join(dim_numbers.gather_dims_to_operand_dims(), ", ").c_str());
   }
 
@@ -2519,7 +2517,7 @@ static Status ValidateGatherDimensionNumbers(
     if (elided_dim < 0 || elided_dim >= input_shape.dimensions_size()) {
       return InvalidArgument(
           "Invalid elided_window_dims set in gather op; valid range is [0, "
-          "%d), got: %lld",
+          "%d), got: %lld.",
           input_shape.dimensions_size(), elided_dim);
     }
   }
@@ -2534,7 +2532,7 @@ static Status ValidateGatherDimensionNumbers(
       dim_numbers.elided_window_dims().end()) {
     return InvalidArgument(
         "Repeated dimensions not allowed in elided_window_dims in gather op; "
-        "got: %s",
+        "got: %s.",
         Join(dim_numbers.elided_window_dims(), ", ").c_str());
   }
 
@@ -2552,7 +2550,7 @@ static Status ValidateGatherDimensionNumbers(
 
   if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
     return InvalidArgument(
-        "Gather indices parameter must be an integral tensor; got %s",
+        "Gather indices parameter must be an integral tensor; got %s.",
         ShapeUtil::HumanString(gather_indices_shape).c_str());
   }
 
@@ -2586,7 +2584,7 @@ static Status ValidateGatherDimensionNumbers(
   if (window_bounds.size() != input_shape.dimensions_size()) {
     return InvalidArgument(
         "Gather op must have one window bound for every input dimension; got: "
-        "len(window_bounds)=%lu, input_shape.rank=%d",
+        "len(window_bounds)=%lu, input_shape.rank=%d.",
         window_bounds.size(), input_shape.dimensions_size());
   }
 
@@ -2596,7 +2594,7 @@ static Status ValidateGatherDimensionNumbers(
     return InvalidArgument(
         "All components of the window index in a gather op must either be a "
         "output window index or explicitly elided; got len(window_bounds)=%lu, "
-        "output_window_bounds=%s, elided_window_bounds=%s",
+        "output_window_bounds=%s, elided_window_bounds=%s.",
         window_bounds.size(),
         Join(gather_dim_numbers.output_window_dims(), ",").c_str(),
         Join(gather_dim_numbers.elided_window_dims(), ",").c_str());
@@ -2609,7 +2607,7 @@ static Status ValidateGatherDimensionNumbers(
       return InvalidArgument(
           "Window bound at index %d in gather op is out of range, must be "
           "within "
-          "[0, %lld), got %lld",
+          "[0, %lld), got %lld.",
           i, corresponding_input_bound + 1, window_bound);
     }
   }
@@ -2618,7 +2616,7 @@ static Status ValidateGatherDimensionNumbers(
     if (window_bounds[gather_dim_numbers.elided_window_dims(i)] != 1) {
       return InvalidArgument(
           "Gather op can only elide window indices with bound 1, but bound is "
-          "%lld for index %lld at position %d",
+          "%lld for index %lld at position %d.",
           window_bounds[gather_dim_numbers.elided_window_dims(i)],
           gather_dim_numbers.elided_window_dims(i), i);
     }

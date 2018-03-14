@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -25,12 +28,150 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import deprecation
 
 
+def make_batched_features_dataset(file_pattern,
+                                  batch_size,
+                                  features,
+                                  reader=core_readers.TFRecordDataset,
+                                  reader_args=None,
+                                  num_epochs=None,
+                                  shuffle=True,
+                                  shuffle_buffer_size=10000,
+                                  shuffle_seed=None,
+                                  prefetch_buffer_size=1,
+                                  reader_num_threads=1,
+                                  parser_num_threads=2,
+                                  sloppy_ordering=False):
+  """Returns a `Dataset` of feature dictionaries from `Example` protos.
+
+  Example:
+
+  ```
+  serialized_examples = [
+    features {
+      feature { key: "age" value { int64_list { value: [ 0 ] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "code", "art" ] } } }
+    },
+    features {
+      feature { key: "age" value { int64_list { value: [] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "sports" ] } } }
+    }
+  ]
+  ```
+
+  We can use arguments:
+
+  ```
+  features: {
+    "age": FixedLenFeature([], dtype=tf.int64, default_value=-1),
+    "gender": FixedLenFeature([], dtype=tf.string),
+    "kws": VarLenFeature(dtype=tf.string),
+  }
+  ```
+
+  And the expected output is:
+
+  ```python
+  {
+    "age": [[0], [-1]],
+    "gender": [["f"], ["f"]],
+    "kws": SparseTensor(
+      indices=[[0, 0], [0, 1], [1, 0]],
+      values=["code", "art", "sports"]
+      dense_shape=[2, 2]),
+  }
+  ```
+
+  Args:
+    file_pattern: List of files or patterns of file paths containing
+      `Example` records. See `tf.gfile.Glob` for pattern rules.
+    batch_size: An int representing the number of consecutive elements of this
+      dataset to combine in a single batch.
+    features: A `dict` mapping feature keys to `FixedLenFeature` or
+      `VarLenFeature` values. See `tf.parse_example`.
+    reader: A function or class that can be
+      called with a `filenames` tensor and (optional) `reader_args` and returns
+      a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
+    reader_args: Additional arguments to pass to the reader class.
+    num_epochs: Integer specifying the number of times to read through the
+      dataset. If None, cycles through the dataset forever. Defaults to `None`.
+    shuffle: A boolean, indicates whether the input should be shuffled. Defaults
+      to `True`.
+    shuffle_buffer_size: Buffer size of the ShuffleDataset. A large capacity
+      ensures better shuffling but would increase memory usage and startup time.
+    shuffle_seed: Randomization seed to use for shuffling.
+    prefetch_buffer_size: Number of feature batches to prefetch in order to
+      improve performance. Recommended value is the number of batches consumed
+      per training step (default is 1).
+    reader_num_threads: Number of threads used to read `Example` records. If >1,
+      the results will be interleaved.
+    parser_num_threads: Number of threads to use for parsing `Example` tensors
+      into a dictionary of `Feature` tensors.
+    sloppy_ordering: If `True`, reading performance will be improved at
+      the cost of non-deterministic ordering. If `False`, the order of elements
+      produced is deterministic prior to shuffling (elements are still
+      randomized if `shuffle=True`. Note that if the seed is set, then order
+      of elements after shuffling is deterministic). Defaults to `False`.
+
+  Returns:
+    A dataset of `dict` elements. Each `dict` maps feature keys to
+    `Tensor` or `SparseTensor` objects.
+  """
+  # Create dataset of all matching filenames
+  if shuffle:
+    dataset = dataset_ops.Dataset.list_files(file_pattern, shuffle=True)
+  else:
+    # TODO(b/73959787): Use Dataset.list_files() once ordering is deterministic.
+    filenames = _get_file_names(file_pattern, shuffle)
+    dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
+
+  # Read `Example` records from files as tensor objects.
+  if reader_args is None:
+    reader_args = []
+
+  # Read files sequentially (if reader_num_threads=1) or in parallel
+  dataset = dataset.apply(
+      interleave_ops.parallel_interleave(
+          lambda filename: reader(filename, *reader_args),
+          cycle_length=reader_num_threads,
+          sloppy=sloppy_ordering))
+
+  # Extract values if the `Example` tensors are stored as key-value tuples.
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda _, v: v)
+
+  # Apply dataset repeat and shuffle transformations.
+  repeat_dataset = (num_epochs != 1)
+  if repeat_dataset and shuffle:
+    # Used fused shuffle_and_repeat operation for better performance
+    dataset = dataset.apply(
+        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
+                                       shuffle_seed))
+  elif repeat_dataset:
+    dataset = dataset.repeat(num_epochs)
+  elif shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+
+  dataset = dataset.batch(batch_size)
+
+  # Parse `Example` tensors to a dictionary of `Feature` tensors.
+  dataset = dataset.map(
+      lambda x: parsing_ops.parse_example(x, features),
+      num_parallel_calls=parser_num_threads)
+  dataset = dataset.prefetch(prefetch_buffer_size)
+  return dataset
+
+
+@deprecation.deprecated(None,
+                        "Use `tf.contrib.data.make_batched_features_dataset`")
 def read_batch_features(file_pattern,
                         batch_size,
                         features,
-                        reader,
+                        reader=core_readers.TFRecordDataset,
                         reader_args=None,
                         randomize_input=True,
                         num_epochs=None,
@@ -84,43 +225,38 @@ def read_batch_features(file_pattern,
       dataset to combine in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
-    reader: A function or class that can be called with a `filenames` tensor
-      and (optional) `reader_args` and returns a `Dataset` of Examples.
+    reader: A function or class that can be
+      called with a `filenames` tensor and (optional) `reader_args` and returns
+      a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
     reader_args: Additional arguments to pass to the reader class.
     randomize_input: Whether the input should be randomized.
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever.
-    capacity: Capacity of the ShuffleDataset. A large capacity ensures better
+    capacity: Buffer size of the ShuffleDataset. A large capacity ensures better
       shuffling but would increase memory usage and startup time.
-
   Returns:
     A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
-  filenames = _get_file_names(file_pattern, randomize_input)
-  if reader_args:
-    dataset = reader(filenames, *reader_args)
-  else:
-    dataset = reader(filenames)
-  if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda _, v: v)
-  if num_epochs != 1:
-    dataset = dataset.repeat(num_epochs)
-  if randomize_input:
-    dataset = dataset.shuffle(capacity)
-  dataset = dataset.batch(batch_size)
-  dataset = dataset.map(lambda x: parsing_ops.parse_example(x, features))
-  dataset = dataset.prefetch(1)
+  dataset = make_batched_features_dataset(
+      file_pattern,
+      batch_size,
+      features,
+      reader=reader,
+      reader_args=reader_args,
+      shuffle=randomize_input,
+      num_epochs=num_epochs,
+      shuffle_buffer_size=capacity)
   iterator = dataset.make_one_shot_iterator()
   outputs = iterator.get_next()
   return outputs
 
 
-def _get_file_names(file_pattern, randomize_input):
+def _get_file_names(file_pattern, shuffle):
   """Parse list of file names from pattern, optionally shuffled.
 
   Args:
     file_pattern: File glob pattern, or list of glob patterns.
-    randomize_input: Whether to shuffle the order of file names.
+    shuffle: Whether to shuffle the order of file names.
 
   Returns:
     List of file names matching `file_pattern`.
@@ -141,7 +277,7 @@ def _get_file_names(file_pattern, randomize_input):
     raise ValueError("No files match %s." % file_pattern)
 
   # Sort files so it will be deterministic for unit tests.
-  if not randomize_input:
+  if not shuffle:
     file_names = sorted(file_names)
   return file_names
 

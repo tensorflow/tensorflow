@@ -38,6 +38,23 @@ using tensorflow::strings::Printf;
 
 namespace {
 
+struct FastPathOpExecInfo {
+  TFE_Context* ctx;
+  const char* device_name;
+  // The op def of the main op being executed.
+  const tensorflow::OpDef* op_def;
+
+  bool run_callbacks;
+  bool run_post_exec_callbacks;
+  bool run_gradient_callback;
+
+  // The op name of the main op being executed.
+  PyObject* name;
+  // The op type name of the main op being executed.
+  PyObject* op_name;
+  PyObject* callbacks;
+};
+
 #define PARSE_VALUE(fn_name, type, check_fn, parse_fn)                       \
   bool fn_name(const string& key, PyObject* py_value, TF_Status* status,     \
                type* value) {                                                \
@@ -76,6 +93,34 @@ Py_ssize_t TensorShapeNumDims(PyObject* value) {
   return size;
 }
 
+bool IsInteger(PyObject* py_value) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_Check(py_value);
+#else
+  return PyInt_Check(py_value);
+#endif
+}
+
+bool ParseDimensionValue(const string& key, PyObject* py_value,
+                         TF_Status* status, int64_t* value) {
+  if (IsInteger(py_value)) {
+    return ParseInt64Value(key, py_value, status, value);
+  }
+
+  tensorflow::Safe_PyObjectPtr dimension_value(
+      PyObject_GetAttrString(py_value, "_value"));
+  if (dimension_value == nullptr) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Expecting a Dimension for attr ", key,
+                                    ", got ", py_value->ob_type->tp_name)
+            .c_str());
+    return false;
+  }
+
+  return ParseInt64Value(key, dimension_value.get(), status, value);
+}
+
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
                       const char** value) {
   if (PyBytes_Check(py_value)) {
@@ -102,14 +147,6 @@ bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
   return true;
 }
 
-bool IsInteger(PyObject* py_value) {
-#if PY_MAJOR_VERSION >= 3
-  return PyLong_Check(py_value);
-#else
-  return PyInt_Check(py_value);
-#endif
-}
-
 // The passed in py_value is expected to be an object of the python type
 // dtypes.DType or an int.
 bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
@@ -118,18 +155,18 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
     return ParseIntValue(key, py_value, status, value);
   }
 
-  PyObject* py_type_enum = PyObject_GetAttrString(py_value, "_type_enum");
+  tensorflow::Safe_PyObjectPtr py_type_enum(
+      PyObject_GetAttrString(py_value, "_type_enum"));
   if (py_type_enum == nullptr) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Expecting a DType.dtype for attr ", key,
+                                    ", got ", py_value->ob_type->tp_name)
+            .c_str());
     return false;
   }
 
-  if (!ParseIntValue(key, py_type_enum, status, value)) {
-    Py_DECREF(py_type_enum);
-    return false;
-  }
-
-  Py_DECREF(py_type_enum);
-  return true;
+  return ParseIntValue(key, py_type_enum.get(), status, value);
 }
 
 bool SetOpAttrList(
@@ -147,11 +184,11 @@ bool SetOpAttrList(
   const int num_values = PySequence_Size(py_list);
   if (attr_list_sizes != nullptr) (*attr_list_sizes)[key] = num_values;
 
-#define PARSE_LIST(c_type, parse_fn)                                \
-  std::unique_ptr<c_type[]> values(new c_type[num_values]);         \
-  for (int i = 0; i < num_values; ++i) {                            \
-    auto py_value = PySequence_ITEM(py_list, i);                    \
-    if (!parse_fn(key, py_value, status, &values[i])) return false; \
+#define PARSE_LIST(c_type, parse_fn)                                      \
+  std::unique_ptr<c_type[]> values(new c_type[num_values]);               \
+  for (int i = 0; i < num_values; ++i) {                                  \
+    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));   \
+    if (!parse_fn(key, py_value.get(), status, &values[i])) return false; \
   }
 
   if (type == TF_ATTR_STRING) {
@@ -176,9 +213,9 @@ bool SetOpAttrList(
     // dims across all the input lists.
     int total_dims = 0;
     for (int i = 0; i < num_values; ++i) {
-      auto py_value = PySequence_ITEM(py_list, i);
-      if (py_value != Py_None) {
-        if (!PySequence_Check(py_value)) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (py_value.get() != Py_None) {
+        if (!PySequence_Check(py_value.get())) {
           TF_SetStatus(
               status, TF_INVALID_ARGUMENT,
               tensorflow::strings::StrCat(
@@ -187,7 +224,7 @@ bool SetOpAttrList(
                   .c_str());
           return false;
         }
-        const auto size = TensorShapeNumDims(py_value);
+        const auto size = TensorShapeNumDims(py_value.get());
         if (size >= 0) {
           total_dims += size;
         }
@@ -201,12 +238,12 @@ bool SetOpAttrList(
     std::unique_ptr<int[]> num_dims(new int[num_values]);
     int64_t* offset = buffer.get();
     for (int i = 0; i < num_values; ++i) {
-      auto py_value = PySequence_ITEM(py_list, i);
-      if (py_value == Py_None) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (py_value.get() == Py_None) {
         dims[i] = nullptr;
         num_dims[i] = -1;
       } else {
-        const auto size = TensorShapeNumDims(py_value);
+        const auto size = TensorShapeNumDims(py_value.get());
         if (size == -1) {
           dims[i] = nullptr;
           num_dims[i] = -1;
@@ -215,10 +252,12 @@ bool SetOpAttrList(
         dims[i] = offset;
         num_dims[i] = size;
         for (int j = 0; j < size; ++j) {
-          auto inner_py_value = PySequence_ITEM(py_value, j);
-          if (inner_py_value == Py_None) {
+          tensorflow::Safe_PyObjectPtr inner_py_value(
+              PySequence_ITEM(py_value.get(), j));
+          if (inner_py_value.get() == Py_None) {
             *offset = -1;
-          } else if (!ParseInt64Value(key, inner_py_value, status, offset)) {
+          } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
+                                          offset)) {
             return false;
           }
           ++offset;
@@ -239,21 +278,12 @@ bool SetOpAttrList(
   return true;
 }
 
-// This is only declared here since GetFunc makes a recursive call to
-// SetOpAttrScalarDefault.
-void SetOpAttrScalarDefault(
-    TFE_Context* ctx, TFE_Op* op, const tensorflow::AttrValue& default_value,
-    const char* attr_name,
-    tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
-    TF_Status* status);
-
 TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    SetOpAttrScalarDefault(ctx, func_op, attr.second, attr.first.data(),
-                           nullptr, status);
+    SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
   }
   return func_op;
@@ -399,10 +429,12 @@ bool SetOpAttrScalar(
       }
       std::unique_ptr<int64_t[]> dims(new int64_t[num_dims]);
       for (int i = 0; i < num_dims; ++i) {
-        auto inner_py_value = PySequence_ITEM(py_value, i);
-        if (inner_py_value == Py_None) {
+        tensorflow::Safe_PyObjectPtr inner_py_value(
+            PySequence_ITEM(py_value, i));
+        if (inner_py_value.get() == Py_None) {
           dims[i] = -1;
-        } else if (!ParseInt64Value(key, inner_py_value, status, &dims[i])) {
+        } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
+                                        &dims[i])) {
           return false;
         }
       }
@@ -453,57 +485,9 @@ void SetOpAttrScalarDefault(
     const char* attr_name,
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
-  switch (default_value.value_case()) {
-    case tensorflow::AttrValue::kS:
-      TFE_OpSetAttrString(op, attr_name, default_value.s().data());
-      break;
-    case tensorflow::AttrValue::kI:
-      TFE_OpSetAttrInt(op, attr_name, static_cast<int64_t>(default_value.i()));
-      (*attr_list_sizes)[attr_name] = default_value.i();
-      break;
-    case tensorflow::AttrValue::kF:
-      TFE_OpSetAttrFloat(op, attr_name, default_value.f());
-      break;
-    case tensorflow::AttrValue::kB:
-      TFE_OpSetAttrBool(op, attr_name, default_value.b());
-      break;
-    case tensorflow::AttrValue::kType:
-      TFE_OpSetAttrType(op, attr_name,
-                        static_cast<TF_DataType>(default_value.type()));
-      break;
-    case tensorflow::AttrValue::kShape: {
-      const auto& tensor_shape = default_value.shape();
-      if (tensor_shape.unknown_rank()) {
-        TFE_OpSetAttrShape(op, attr_name, nullptr, -1, status);
-      } else {
-        const auto num_dims = tensor_shape.dim_size();
-        std::unique_ptr<int64_t[]> dims(new int64_t[num_dims]);
-        for (int i = 0; i < num_dims; ++i) {
-          dims[i] = tensor_shape.dim(i).size();
-        }
-        TFE_OpSetAttrShape(op, attr_name, dims.get(), num_dims, status);
-      }
-    } break;
-    case tensorflow::AttrValue::kFunc: {
-      const auto func_op = GetFunc(ctx, default_value.func(), status);
-      if (TF_GetCode(status) != TF_OK) return;
-      // TODO(nareshmodi): TFE_OpSetAttrFunction and TFE_OpSetAttrFunctionList
-      // require TFE_Op* and just convert it internally a NameAttrValue, so
-      // consider adding an overload to the C API to make this case easier.
-      TFE_OpSetAttrFunction(op, attr_name, func_op);
-    } break;
-    case tensorflow::AttrValue::kList:
-      TF_FALLTHROUGH_INTENDED;
-    case tensorflow::AttrValue::kTensor:
-      TF_FALLTHROUGH_INTENDED;
-    case tensorflow::AttrValue::kPlaceholder:
-      TF_FALLTHROUGH_INTENDED;
-    case tensorflow::AttrValue::VALUE_NOT_SET:
-      TF_SetStatus(
-          status, TF_UNIMPLEMENTED,
-          tensorflow::strings::StrCat("Unable to get setfor default value: ",
-                                      default_value.DebugString())
-              .data());
+  SetOpAttrValueScalar(ctx, op, default_value, attr_name, status);
+  if (default_value.value_case() == tensorflow::AttrValue::kI) {
+    (*attr_list_sizes)[attr_name] = default_value.i();
   }
 }
 
@@ -580,6 +564,8 @@ PyObject* fallback_exception_class = nullptr;
 // Python function that returns a backward_function.
 PyObject* backward_function_getter = nullptr;
 
+PyTypeObject* resource_variable_type = nullptr;
+
 tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
 tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
 
@@ -628,11 +614,28 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
                     "TFE_Py_RegisterExceptionClass: "
                     "Registered class should be subclass of Exception.");
     return nullptr;
-  } else {
-    Py_INCREF(e);
-    exception_class = e;
-    Py_RETURN_NONE;
   }
+
+  Py_INCREF(e);
+  exception_class = e;
+  Py_RETURN_NONE;
+}
+
+PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e) {
+  if (!PyType_Check(e)) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "TFE_Py_RegisterResourceVariableType: Need to register a type.");
+    return nullptr;
+  }
+
+  if (resource_variable_type != nullptr) {
+    Py_DECREF(resource_variable_type);
+  }
+
+  Py_INCREF(e);
+  resource_variable_type = reinterpret_cast<PyTypeObject*>(e);
+  Py_RETURN_NONE;
 }
 
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e) {
@@ -1009,7 +1012,14 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = EagerTensor_id(tensor);
-    return tensorflow::eager::TapeTensor{id, t->t.dtype(), t->t.shape()};
+    const tensorflow::Tensor* tensor = nullptr;
+    const tensorflow::Status status = t->Tensor(&tensor);
+    if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+      return tensorflow::eager::TapeTensor{id, t->dtype,
+                                           tensorflow::TensorShape({})};
+    } else {
+      return tensorflow::eager::TapeTensor{id, t->dtype, tensor->shape()};
+    }
   }
   tensorflow::int64 id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
@@ -1375,8 +1385,12 @@ PyObject* GetPythonObjectFromString(const char* s) {
 #endif
 }
 
-bool CheckEagerTensors(PyObject* seq, int start_index,
-                       const tensorflow::OpDef& op_def) {
+bool CheckResourceVariable(PyObject* item) {
+  return PyObject_TypeCheck(item, resource_variable_type);
+}
+
+bool CheckInputsOk(PyObject* seq, int start_index,
+                   const tensorflow::OpDef& op_def) {
   for (int i = 0; i < op_def.input_arg_size(); i++) {
     PyObject* item = PyTuple_GET_ITEM(seq, i + start_index);
     if (!op_def.input_arg(i).number_attr().empty() ||
@@ -1384,78 +1398,17 @@ bool CheckEagerTensors(PyObject* seq, int start_index,
       // This item should be a list input.
       if (!PyList_Check(item)) return false;
       for (Py_ssize_t j = 0; j < PyList_Size(item); j++) {
-        if (!EagerTensor_CheckExact(PyList_GET_ITEM(item, j))) return false;
+        PyObject* inner_item = PyList_GET_ITEM(item, j);
+        if (!EagerTensor_CheckExact(inner_item) &&
+            !CheckResourceVariable(inner_item)) {
+          return false;
+        }
       }
-    } else if (!EagerTensor_CheckExact(item)) {
+    } else if (!EagerTensor_CheckExact(item) && !CheckResourceVariable(item)) {
       return false;
     }
   }
 
-  return true;
-}
-
-// Adds input and type attr to the op, and to the list of flattened
-// inputs/attrs.
-bool AddInputToOp(PyObject* input, const tensorflow::OpDef::ArgDef* input_arg,
-                  std::vector<PyObject*>* flattened_attrs,
-                  std::vector<PyObject*>* flattened_inputs, TFE_Op* op,
-                  TF_Status* status) {
-  TFE_TensorHandle* input_handle = EagerTensor_Handle(input);
-  if (input_arg != nullptr && !input_arg->type_attr().empty()) {
-    auto dtype = TFE_TensorHandleDataType(input_handle);
-    TFE_OpSetAttrType(op, input_arg->type_attr().data(), dtype);
-    if (flattened_attrs != nullptr) {
-      flattened_attrs->push_back(
-          GetPythonObjectFromString(input_arg->type_attr().data()));
-      flattened_attrs->push_back(PyLong_FromLong(dtype));
-    }
-  }
-
-  if (flattened_inputs != nullptr) {
-    flattened_inputs->push_back(input);
-  }
-  TFE_OpAddInput(op, input_handle, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-    return false;
-  }
-  return true;
-}
-
-const tensorflow::OpDef* GetOpDef(PyObject* py_op_name) {
-  const char* op_name = TFE_GetPythonString(py_op_name);
-  if (op_name == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a string for op_name, got %s instead",
-                           py_op_name->ob_type->tp_name)
-                        .c_str());
-    return nullptr;
-  }
-
-  const tensorflow::OpRegistrationData* op_reg_data = nullptr;
-  const tensorflow::Status lookup_status =
-      tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (MaybeRaiseExceptionFromStatus(lookup_status, nullptr)) {
-    return nullptr;
-  }
-  return &op_reg_data->op_def;
-}
-
-const char* GetDeviceName(PyObject* py_device_name) {
-  if (py_device_name != Py_None) {
-    return TFE_GetPythonString(py_device_name);
-  }
-  return nullptr;
-}
-
-bool RaiseIfNotPyList(PyObject* list, const string& attr_name) {
-  if (!PyList_Check(list)) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a list for attr %s, got %s instead",
-                           attr_name.data(), list->ob_type->tp_name)
-                        .data());
-
-    return false;
-  }
   return true;
 }
 
@@ -1583,7 +1536,6 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
       break;
     }
   }
-
   if (!should_record) Py_RETURN_NONE;
 
   string c_op_name = TFE_GetPythonString(op_name);
@@ -1617,50 +1569,212 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   Py_RETURN_NONE;
 }
 
-bool RunCallbacks(bool run_gradient_callback, bool run_post_exec_callbacks,
-                  const tensorflow::OpDef* op_def, PyObject* args,
-                  const std::vector<PyObject*>& flattened_inputs,
-                  const std::vector<PyObject*>& flattened_attrs,
-                  PyObject* flattened_result, PyObject* op_name, PyObject* name,
-                  PyObject* callbacks) {
-  tensorflow::Safe_PyObjectPtr inputs =
-      tensorflow::make_safe(PyTuple_New(flattened_inputs.size()));
+void MaybeWatchVariable(PyObject* input) {
+  DCHECK(CheckResourceVariable(input));
+  DCHECK(PyObject_HasAttrString(input, "_trainable"));
+
+  tensorflow::Safe_PyObjectPtr trainable(
+      PyObject_GetAttrString(input, "_trainable"));
+  if (trainable.get() == Py_False) return;
+  TFE_Py_TapeSetWatchVariable(input);
+}
+
+bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
+                    PyObject* input, tensorflow::Safe_PyObjectPtr* output,
+                    TF_Status* status) {
+  MaybeWatchVariable(input);
+
+  TFE_Op* op = TFE_NewOp(parent_op_exec_info.ctx, "ReadVariableOp", status);
+  auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
+  // Set dtype
+  DCHECK(PyObject_HasAttrString(input, "_dtype"));
+  tensorflow::Safe_PyObjectPtr dtype(PyObject_GetAttrString(input, "_dtype"));
+  int value;
+  if (!ParseTypeValue("_dtype", dtype.get(), status, &value)) {
+    return false;
+  }
+  TFE_OpSetAttrType(op, "dtype", static_cast<TF_DataType>(value));
+
+  TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
+  // Get handle
+  tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(input, "_handle"));
+  if (!EagerTensor_CheckExact(handle.get())) return false;
+  TFE_OpAddInput(op, EagerTensor_Handle(handle.get()), status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
+  int num_retvals = 1;
+  TFE_TensorHandle* output_handle;
+  TFE_Execute(op, &output_handle, &num_retvals, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+
+  // Always create the py object (and correctly DECREF it) from the returned
+  // value, else the data will leak.
+  output->reset(EagerTensorFromHandle(output_handle));
+
+  // TODO(nareshmodi): Should we run post exec callbacks here?
+  if (parent_op_exec_info.run_gradient_callback) {
+    tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(1));
+    PyTuple_SET_ITEM(inputs.get(), 0, handle.release());
+
+    tensorflow::Safe_PyObjectPtr outputs(PyTuple_New(1));
+    Py_INCREF(output->get());  // stay alive after since tuple steals.
+    PyTuple_SET_ITEM(outputs.get(), 0, output->get());
+
+    if (!RecordGradient(GetPythonObjectFromString("ReadVariableOp"),
+                        inputs.get(), Py_None, outputs.get(), Py_None)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Supports only 2 cases at the moment:
+//  i) input is an EagerTensor
+//  ii) input is a ResourceVariable - in this case, the is_variable param is set
+//  to true.
+bool ConvertToTensor(const FastPathOpExecInfo& op_exec_info, PyObject* input,
+                     tensorflow::Safe_PyObjectPtr* output_handle,
+                     TF_Status* status) {
+  if (CheckResourceVariable(input)) {
+    return ReadVariableOp(op_exec_info, input, output_handle, status);
+  }
+
+  Py_INCREF(input);
+  output_handle->reset(input);
+
+  return true;
+}
+
+// Adds input and type attr to the op, and to the list of flattened
+// inputs/attrs.
+bool AddInputToOp(const FastPathOpExecInfo& op_exec_info, PyObject* input,
+                  const tensorflow::OpDef::ArgDef* input_arg,
+                  std::vector<tensorflow::Safe_PyObjectPtr>* flattened_attrs,
+                  std::vector<tensorflow::Safe_PyObjectPtr>* flattened_inputs,
+                  TFE_Op* op, TF_Status* status) {
+  // py_eager_tensor's ownership is transferred to flattened_inputs if it is
+  // required, else the object is destroyed and DECREF'd when the object goes
+  // out of scope in this function.
+  tensorflow::Safe_PyObjectPtr py_eager_tensor = nullptr;
+
+  if (!ConvertToTensor(op_exec_info, input, &py_eager_tensor, status)) {
+    return false;
+  }
+
+  TFE_TensorHandle* input_handle = EagerTensor_Handle(py_eager_tensor.get());
+
+  if (input_arg != nullptr && !input_arg->type_attr().empty()) {
+    auto dtype = TFE_TensorHandleDataType(input_handle);
+    TFE_OpSetAttrType(op, input_arg->type_attr().data(), dtype);
+    if (flattened_attrs != nullptr) {
+      flattened_attrs->emplace_back(
+          GetPythonObjectFromString(input_arg->type_attr().data()));
+      flattened_attrs->emplace_back(PyLong_FromLong(dtype));
+    }
+  }
+
+  if (flattened_inputs != nullptr) {
+    flattened_inputs->emplace_back(std::move(py_eager_tensor));
+  }
+
+  TFE_OpAddInput(op, input_handle, status);
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+    return false;
+  }
+
+  return true;
+}
+
+const tensorflow::OpDef* GetOpDef(PyObject* py_op_name) {
+  const char* op_name = TFE_GetPythonString(py_op_name);
+  if (op_name == nullptr) {
+    PyErr_SetString(PyExc_TypeError,
+                    Printf("expected a string for op_name, got %s instead",
+                           py_op_name->ob_type->tp_name)
+                        .c_str());
+    return nullptr;
+  }
+
+  const tensorflow::OpRegistrationData* op_reg_data = nullptr;
+  const tensorflow::Status lookup_status =
+      tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  if (MaybeRaiseExceptionFromStatus(lookup_status, nullptr)) {
+    return nullptr;
+  }
+  return &op_reg_data->op_def;
+}
+
+const char* GetDeviceName(PyObject* py_device_name) {
+  if (py_device_name != Py_None) {
+    return TFE_GetPythonString(py_device_name);
+  }
+  return nullptr;
+}
+
+bool RaiseIfNotPyList(PyObject* list, const string& attr_name) {
+  if (!PyList_Check(list)) {
+    PyErr_SetString(PyExc_TypeError,
+                    Printf("expected a list for attr %s, got %s instead",
+                           attr_name.data(), list->ob_type->tp_name)
+                        .data());
+
+    return false;
+  }
+  return true;
+}
+
+bool RunCallbacks(
+    const FastPathOpExecInfo& op_exec_info, PyObject* args,
+    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_inputs,
+    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_attrs,
+    PyObject* flattened_result) {
+  if (!op_exec_info.run_callbacks) return true;
+
+  tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(flattened_inputs.size()));
   for (int i = 0; i < flattened_inputs.size(); i++) {
-    PyObject* input = flattened_inputs[i];
+    PyObject* input = flattened_inputs[i].get();
     Py_INCREF(input);
     PyTuple_SET_ITEM(inputs.get(), i, input);
   }
 
   int num_non_inferred_attrs = PyTuple_GET_SIZE(args) -
-                               op_def->input_arg_size() -
+                               op_exec_info.op_def->input_arg_size() -
                                kFastPathExecuteInputStartIndex;
   int num_attrs = flattened_attrs.size() + num_non_inferred_attrs;
-  tensorflow::Safe_PyObjectPtr attrs =
-      tensorflow::make_safe(PyTuple_New(num_attrs));
+  tensorflow::Safe_PyObjectPtr attrs(PyTuple_New(num_attrs));
 
   for (int i = 0; i < num_non_inferred_attrs; i++) {
-    auto* attr = PyTuple_GET_ITEM(
-        args, kFastPathExecuteInputStartIndex + op_def->input_arg_size() + i);
+    auto* attr =
+        PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex +
+                                   op_exec_info.op_def->input_arg_size() + i);
     Py_INCREF(attr);
     PyTuple_SET_ITEM(attrs.get(), i, attr);
   }
   for (int i = num_non_inferred_attrs; i < num_attrs; i++) {
-    // Not INCREFing anything in flattened_attrs as each of those is a new
-    // reference, so allow the attrs tuple to steal the reference.
-    PyTuple_SET_ITEM(attrs.get(), i,
-                     flattened_attrs.at(i - num_non_inferred_attrs));
+    PyObject* attr_or_name =
+        flattened_attrs.at(i - num_non_inferred_attrs).get();
+    Py_INCREF(attr_or_name);
+    PyTuple_SET_ITEM(attrs.get(), i, attr_or_name);
   }
 
-  if (run_gradient_callback) {
-    RecordGradient(op_name, inputs.get(), attrs.get(), flattened_result, name);
+  if (op_exec_info.run_gradient_callback) {
+    if (!RecordGradient(op_exec_info.op_name, inputs.get(), attrs.get(),
+                        flattened_result, op_exec_info.name)) {
+      return false;
+    }
   }
 
-  if (run_post_exec_callbacks) {
-    tensorflow::Safe_PyObjectPtr callback_args = tensorflow::make_safe(
-        Py_BuildValue("OOOOO", op_name, inputs.get(), attrs.get(),
-                      flattened_result, name));
-    for (Py_ssize_t i = 0; i < PyList_Size(callbacks); i++) {
-      PyObject* callback_fn = PyList_GET_ITEM(callbacks, i);
+  if (op_exec_info.run_post_exec_callbacks) {
+    tensorflow::Safe_PyObjectPtr callback_args(
+        Py_BuildValue("OOOOO", op_exec_info.op_name, inputs.get(), attrs.get(),
+                      flattened_result, op_exec_info.name));
+    for (Py_ssize_t i = 0; i < PyList_Size(op_exec_info.callbacks); i++) {
+      PyObject* callback_fn = PyList_GET_ITEM(op_exec_info.callbacks, i);
       if (!PyCallable_Check(callback_fn)) {
         PyErr_SetString(
             PyExc_TypeError,
@@ -1695,14 +1809,30 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
+  FastPathOpExecInfo op_exec_info;
+
+  op_exec_info.ctx = reinterpret_cast<TFE_Context*>(
       PyCapsule_GetPointer(PyTuple_GET_ITEM(args, 0), nullptr));
-  const char* device_name = GetDeviceName(PyTuple_GET_ITEM(args, 1));
-  PyObject* op_name = PyTuple_GET_ITEM(args, 2);
-  const tensorflow::OpDef* op_def = GetOpDef(op_name);
-  if (op_def == nullptr) return nullptr;
-  PyObject* name = PyTuple_GET_ITEM(args, 3);
-  PyObject* callbacks = PyTuple_GET_ITEM(args, 4);
+  op_exec_info.device_name = GetDeviceName(PyTuple_GET_ITEM(args, 1));
+  op_exec_info.op_name = PyTuple_GET_ITEM(args, 2);
+  op_exec_info.op_def = GetOpDef(op_exec_info.op_name);
+  if (op_exec_info.op_def == nullptr) return nullptr;
+  op_exec_info.name = PyTuple_GET_ITEM(args, 3);
+  op_exec_info.callbacks = PyTuple_GET_ITEM(args, 4);
+
+  const tensorflow::OpDef* op_def = op_exec_info.op_def;
+
+  // TODO(nareshmodi): Add a benchmark for the fast-path with gradient callbacks
+  // (similar to benchmark_tf_gradient_function_*). Also consider using an
+  // InlinedVector for flattened_attrs and flattened_inputs if the benchmarks
+  // point out problems with heap allocs.
+  op_exec_info.run_gradient_callback =
+      !*ThreadTapeIsStopped() && !GetTapeSet()->empty();
+  op_exec_info.run_post_exec_callbacks =
+      op_exec_info.callbacks != Py_None &&
+      PyList_Size(op_exec_info.callbacks) > 0;
+  op_exec_info.run_callbacks = op_exec_info.run_gradient_callback ||
+                               op_exec_info.run_post_exec_callbacks;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
     PyErr_SetString(
@@ -1715,7 +1845,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  if (!CheckEagerTensors(args, kFastPathExecuteInputStartIndex, *op_def)) {
+  if (!CheckInputsOk(args, kFastPathExecuteInputStartIndex, *op_def)) {
     RaiseFallbackException(
         "This function does not handle the case of the path where "
         "all inputs are not already EagerTensors.");
@@ -1723,7 +1853,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   TF_Status* status = TF_NewStatus();
-  TFE_Op* op = TFE_NewOp(ctx, op_def->name().c_str(), status);
+  TFE_Op* op = TFE_NewOp(op_exec_info.ctx, op_def->name().c_str(), status);
   auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     TF_DeleteStatus(status);
     TFE_DeleteOp(op);
@@ -1750,8 +1880,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     // OpRegistrationData.
     for (const auto& attr : op_def->attr()) {
       if (attr_name == attr.name()) {
-        SetOpAttrWithDefaults(ctx, op, attr, attr_name.data(), py_attr_value,
-                              &attr_list_sizes, status);
+        SetOpAttrWithDefaults(op_exec_info.ctx, op, attr, attr_name.data(),
+                              py_attr_value, &attr_list_sizes, status);
 
         if (TF_GetCode(status) != TF_OK) {
           RaiseFallbackException(TF_Message(status));
@@ -1763,33 +1893,28 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     }
   }
 
-  TFE_OpSetDevice(op, device_name, status);
+  TFE_OpSetDevice(op, op_exec_info.device_name, status);
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return nullptr;
   }
 
-  // TODO(nareshmodi): Add a benchmark for the fast-path with gradient callbacks
-  // (similar to benchmark_tf_gradient_function_*). Also consider using an
-  // InlinedVector for flattened_attrs and flattened_inputs if the benchmarks
-  // point out problems with heap allocs.
-  bool run_gradient_callback =
-      !*ThreadTapeIsStopped() && !GetTapeSet()->empty();
-  bool run_post_exec_callbacks =
-      callbacks != Py_None && PyList_Size(callbacks) > 0;
-  bool run_callbacks = run_gradient_callback || run_post_exec_callbacks;
   // Flat attrs and inputs as required by the record_gradient call. The attrs
   // here only contain inferred attrs (non-inferred attrs are added directly
   // from the input args).
-  // All items in flattened_attrs contain new references.
-  // All items in flattened_inputs contain borrowed references.
+  // All items in flattened_attrs and flattened_inputs contain
+  // Safe_PyObjectPtr - any time something steals a reference to this, it must
+  // INCREF.
   // TODO(nareshmodi): figure out why PyList_New/PyList_Append don't work
   // directly.
-  std::unique_ptr<std::vector<PyObject*>> flattened_attrs = nullptr;
-  std::unique_ptr<std::vector<PyObject*>> flattened_inputs = nullptr;
+  std::unique_ptr<std::vector<tensorflow::Safe_PyObjectPtr>> flattened_attrs =
+      nullptr;
+  std::unique_ptr<std::vector<tensorflow::Safe_PyObjectPtr>> flattened_inputs =
+      nullptr;
 
-  if (run_callbacks) {
-    flattened_attrs.reset(new std::vector<PyObject*>);
-    flattened_inputs.reset(new std::vector<PyObject*>);
+  // TODO(nareshmodi): Encapsulate callbacks information into a struct.
+  if (op_exec_info.run_callbacks) {
+    flattened_attrs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
+    flattened_inputs.reset(new std::vector<tensorflow::Safe_PyObjectPtr>);
   }
 
   // Add inferred attrs and inputs.
@@ -1809,16 +1934,16 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       Py_ssize_t len = PyList_Size(input);
 
       TFE_OpSetAttrInt(op, input_arg.number_attr().data(), len);
-      if (run_callbacks) {
-        flattened_attrs->push_back(
+      if (op_exec_info.run_callbacks) {
+        flattened_attrs->emplace_back(
             GetPythonObjectFromString(input_arg.number_attr().data()));
-        flattened_attrs->push_back(PyLong_FromLong(len));
+        flattened_attrs->emplace_back(PyLong_FromLong(len));
       }
       attr_list_sizes[input_arg.number_attr()] = len;
 
       if (len > 0) {
         // First item adds the type attr.
-        if (!AddInputToOp(PyList_GET_ITEM(input, 0), &input_arg,
+        if (!AddInputToOp(op_exec_info, PyList_GET_ITEM(input, 0), &input_arg,
                           flattened_attrs.get(), flattened_inputs.get(), op,
                           status)) {
           return nullptr;
@@ -1826,7 +1951,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
         for (Py_ssize_t j = 1; j < len; j++) {
           // Since the list is homogeneous, we don't need to re-add the attr.
-          if (!AddInputToOp(PyList_GET_ITEM(input, j), nullptr /* input_arg */,
+          if (!AddInputToOp(op_exec_info, PyList_GET_ITEM(input, j),
+                            nullptr /* input_arg */,
                             nullptr /* flattened_attrs */,
                             flattened_inputs.get(), op, status)) {
             return nullptr;
@@ -1840,12 +1966,20 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       Py_ssize_t len = PyList_Size(input);
       tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
       PyObject* py_attr_value = nullptr;
-      if (run_callbacks) {
+      if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
       }
       for (Py_ssize_t j = 0; j < len; j++) {
         PyObject* py_input = PyList_GET_ITEM(input, j);
-        TFE_TensorHandle* input_handle = EagerTensor_Handle(py_input);
+        tensorflow::Safe_PyObjectPtr py_eager_tensor;
+        if (!ConvertToTensor(op_exec_info, py_input, &py_eager_tensor,
+                             status)) {
+          return nullptr;
+        }
+
+        TFE_TensorHandle* input_handle =
+            EagerTensor_Handle(py_eager_tensor.get());
+
         attr_value[j] = TFE_TensorHandleDataType(input_handle);
 
         TFE_OpAddInput(op, input_handle, status);
@@ -1853,22 +1987,23 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
           return nullptr;
         }
 
-        if (run_callbacks) {
-          flattened_inputs->push_back(py_input);
+        if (op_exec_info.run_callbacks) {
+          flattened_inputs->emplace_back(std::move(py_eager_tensor));
 
           PyTuple_SET_ITEM(py_attr_value, j, PyLong_FromLong(attr_value[j]));
         }
       }
-      if (run_callbacks) {
-        flattened_attrs->push_back(GetPythonObjectFromString(attr_name.data()));
-        flattened_attrs->push_back(py_attr_value);
+      if (op_exec_info.run_callbacks) {
+        flattened_attrs->emplace_back(
+            GetPythonObjectFromString(attr_name.data()));
+        flattened_attrs->emplace_back(py_attr_value);
       }
       TFE_OpSetAttrTypeList(op, attr_name.data(), attr_value.data(),
                             attr_value.size());
       attr_list_sizes[attr_name] = len;
     } else {
       // The item is a single item.
-      if (!AddInputToOp(input, &input_arg, flattened_attrs.get(),
+      if (!AddInputToOp(op_exec_info, input, &input_arg, flattened_attrs.get(),
                         flattened_inputs.get(), op, status)) {
         return nullptr;
       }
@@ -1892,27 +2027,27 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   Py_BEGIN_ALLOW_THREADS;
   TFE_Execute(op, retvals.data(), &num_retvals, status);
   Py_END_ALLOW_THREADS;
+
   if (TF_GetCode(status) != TF_OK) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
     TF_SetStatus(status, TF_GetCode(status),
-                 tensorflow::strings::StrCat(TF_Message(status), " [Op:",
-                                             TFE_GetPythonString(op_name), "]")
+                 tensorflow::strings::StrCat(
+                     TF_Message(status),
+                     " [Op:", TFE_GetPythonString(op_exec_info.op_name), "]")
                      .c_str());
 
     MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;
   }
 
-  PyObject* flat_result = PyList_New(num_retvals);
+  tensorflow::Safe_PyObjectPtr flat_result(PyList_New(num_retvals));
   for (int i = 0; i < num_retvals; ++i) {
-    PyList_SET_ITEM(flat_result, i, EagerTensorFromHandle(retvals[i]));
+    PyList_SET_ITEM(flat_result.get(), i, EagerTensorFromHandle(retvals[i]));
   }
 
-  if (run_callbacks &&
-      !RunCallbacks(run_gradient_callback, run_post_exec_callbacks, op_def,
-                    args, *flattened_inputs, *flattened_attrs, flat_result,
-                    op_name, name, callbacks)) {
+  if (!RunCallbacks(op_exec_info, args, *flattened_inputs, *flattened_attrs,
+                    flat_result.get())) {
     return nullptr;
   }
 
@@ -1924,11 +2059,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   if (op_def->output_arg_size() == 1) {
     if (!op_def->output_arg(0).number_attr().empty() ||
         !op_def->output_arg(0).type_list_attr().empty()) {
-      return flat_result;
+      return flat_result.release();
     } else {
-      auto* result = PyList_GET_ITEM(flat_result, 0);
+      auto* result = PyList_GET_ITEM(flat_result.get(), 0);
       Py_INCREF(result);
-      Py_DECREF(flat_result);
       return result;
     }
   }
@@ -1941,7 +2075,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       int list_length = attr_list_sizes[op_def->output_arg(i).number_attr()];
       PyObject* inner_list = PyList_New(list_length);
       for (int j = 0; j < list_length; j++) {
-        PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+        PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
         Py_INCREF(obj);
         PyList_SET_ITEM(inner_list, j, obj);
       }
@@ -1950,18 +2084,17 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       int list_length = attr_list_sizes[op_def->output_arg(i).type_list_attr()];
       PyObject* inner_list = PyList_New(list_length);
       for (int j = 0; j < list_length; j++) {
-        PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+        PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
         Py_INCREF(obj);
         PyList_SET_ITEM(inner_list, j, obj);
       }
       PyList_SET_ITEM(result, i, inner_list);
     } else {
-      PyObject* obj = PyList_GET_ITEM(flat_result, flat_result_index++);
+      PyObject* obj = PyList_GET_ITEM(flat_result.get(), flat_result_index++);
       Py_INCREF(obj);
       PyList_SET_ITEM(result, i, obj);
     }
   }
-  Py_DECREF(flat_result);
   return result;
 }
 

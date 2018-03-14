@@ -91,7 +91,7 @@ class SaverTest(test.TestCase):
       v2_init = v2.insert("k1", 30.0)
 
       # Initialize all variables
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate([variables.global_variables_initializer(), v2_init])
 
         # Check that the parameter nodes have been initialized.
@@ -119,7 +119,7 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Assert that the variables are not initialized.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertEqual(
             len(variables.report_uninitialized_variables().eval()), 2)
         self.assertEqual(0, len(v2.keys().eval()))
@@ -142,7 +142,7 @@ class SaverTest(test.TestCase):
       v2_init = v2_2.insert("k1000", 3000.0)
 
       # Check that the parameter nodes have been initialized.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         init_all_op = [variables.global_variables_initializer(), v2_init]
         self.evaluate(init_all_op)
         # TODO(xpan): Why _mutable_hash_table_v2 doesn't create empty
@@ -251,16 +251,34 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0",
                                                  name="v")
-      if context.in_graph_mode():
-        self.evaluate(variables.global_variables_initializer())
-      else:
+      if context.executing_eagerly():
         sess = None
+      else:
+        self.evaluate(variables.global_variables_initializer())
       save = saver_module.Saver([v])
       save.save(sess, save_path)
 
       save2 = saver_module.Saver([v])
       save2.restore(sess, save_path)
       self.assertEquals(self.evaluate(v), [1])
+
+  def testNoAdditionalOpsAddedBySaverForResourceVariablesOutsideSaveScope(self):
+    with ops_lib.Graph().as_default() as g:
+      v = resource_variable_ops.ResourceVariable(1.0, name="v")
+      with ops_lib.name_scope("saver1"):
+        saver_module.Saver()
+      with ops_lib.name_scope("saver2"):
+        saver_module.Saver({"name": v})
+    ops_in_saver1_scope_but_not_save_scope = [
+        op for op in g.get_operations()
+        if (op.name.startswith("saver1/") and
+            not op.name.startswith("saver1/save/"))]
+    self.assertEqual(ops_in_saver1_scope_but_not_save_scope, [])
+    ops_in_saver2_scope_but_not_save_scope = [
+        op for op in g.get_operations()
+        if (op.name.startswith("saver2/") and
+            not op.name.startswith("saver2/save/"))]
+    self.assertEqual(ops_in_saver2_scope_but_not_save_scope, [])
 
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
@@ -499,7 +517,7 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       var = resource_variable_ops.ResourceVariable(var_value, name=var_name)
       save = saver_module.Saver({var_name: var})
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.evaluate(var.initializer)
       val = save.save(sess, save_path)
       self.assertEqual(save_path, val)
@@ -659,11 +677,11 @@ class SaverTest(test.TestCase):
             {
                 var._shared_name: var
             }, pad_step_number=pad_step_number)
-        if context.in_graph_mode():
+        if context.executing_eagerly():
+          sess = None
+        else:
           self.evaluate(var.initializer)
           sess = ops_lib.get_default_session()
-        else:
-          sess = None
         if use_tensor:
           global_step = constant_op.constant(global_step_int)
           val = save.save(sess, save_path, global_step=global_step)
@@ -1041,6 +1059,77 @@ class MaxToKeepTest(test.TestCase):
     self.assertEqual(checkpoint_state.all_model_checkpoint_paths,
                      all_model_checkpoint_paths)
 
+  def testMaxToKeepEager(self):
+    with context.eager_mode():
+      save_dir = self._get_test_dir("max_to_keep_non_sharded")
+
+      v = variable_scope.variable(10.0, name="v")
+      save = saver_module.Saver({"v": v}, max_to_keep=2)
+      self.evaluate(variables.global_variables_initializer())
+      if not context.executing_eagerly():
+        self.assertEqual([], save.last_checkpoints)
+
+      s1 = save.save(None, os.path.join(save_dir, "s1"))
+      self.assertEqual([s1], save.last_checkpoints)
+      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertCheckpointState(
+          model_checkpoint_path=s1,
+          all_model_checkpoint_paths=[s1],
+          save_dir=save_dir)
+
+      s2 = save.save(None, os.path.join(save_dir, "s2"))
+      self.assertEqual([s1, s2], save.last_checkpoints)
+      self.assertTrue(saver_module.checkpoint_exists(s1))
+      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertCheckpointState(
+          model_checkpoint_path=s2,
+          all_model_checkpoint_paths=[s1, s2],
+          save_dir=save_dir)
+
+      s3 = save.save(None, os.path.join(save_dir, "s3"))
+      self.assertEqual([s2, s3], save.last_checkpoints)
+      self.assertFalse(saver_module.checkpoint_exists(s1))
+      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertTrue(saver_module.checkpoint_exists(s3))
+      self.assertCheckpointState(
+          model_checkpoint_path=s3,
+          all_model_checkpoint_paths=[s2, s3],
+          save_dir=save_dir)
+
+      # Create a second helper, identical to the first.
+      save2 = saver_module.Saver({"v": v}, max_to_keep=2)
+      save2.set_last_checkpoints(save.last_checkpoints)
+
+      # Exercise the first helper.
+
+      # Adding s2 again (old s2 is removed first, then new s2 appended)
+      s2 = save.save(None, os.path.join(save_dir, "s2"))
+      self.assertEqual([s3, s2], save.last_checkpoints)
+      self.assertFalse(saver_module.checkpoint_exists(s1))
+      self.assertTrue(saver_module.checkpoint_exists(s3))
+      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertCheckpointState(
+          model_checkpoint_path=s2,
+          all_model_checkpoint_paths=[s3, s2],
+          save_dir=save_dir)
+
+      # Adding s1 (s3 should now be deleted as oldest in list)
+      s1 = save.save(None, os.path.join(save_dir, "s1"))
+      self.assertEqual([s2, s1], save.last_checkpoints)
+      self.assertFalse(saver_module.checkpoint_exists(s3))
+      self.assertTrue(saver_module.checkpoint_exists(s2))
+      self.assertCheckpointState(
+          model_checkpoint_path=s1,
+          all_model_checkpoint_paths=[s2, s1],
+          save_dir=save_dir)
+
+      s2 = save2.save(None, os.path.join(save_dir, "s2"))
+      self.assertEqual([s3, s2], save2.last_checkpoints)
+      # Created by the first helper.
+      self.assertTrue(saver_module.checkpoint_exists(s1))
+      # Deleted by the first helper.
+      self.assertFalse(saver_module.checkpoint_exists(s3))
+
   def testNonSharded(self):
     save_dir = self._get_test_dir("max_to_keep_non_sharded")
 
@@ -1303,15 +1392,16 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
+  @test_util.run_in_graph_and_eager_modes()
   @test.mock.patch.object(saver_module, "time")
   def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
     with self.test_session() as sess:
-      v = variables.Variable([10.0], name="v")
+      v = variable_scope.variable([10.0], name="v")
       # Run the initializer NOW to avoid the 0.5s overhead of the first Run()
       # call, which throws the test timing off in fastbuild mode.
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       # Create a saver that will keep the last 2 checkpoints plus one every 0.7
       # seconds.
       start_time = time.time()
@@ -1389,7 +1479,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       v0 = variable_op(-1.0, name="v0")
       v1 = variable_op(-1.0, name="v1")
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with self.assertRaisesOpError("uninitialized"):
           self.evaluate(v0)
         with self.assertRaisesOpError("uninitialized"):
@@ -1399,7 +1489,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       save.restore(sess, save_path)
 
       # Check that the parameter nodes have been restored.
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.assertEqual(10.0, self.evaluate(v0))
         self.assertEqual(20.0, self.evaluate(v1))
 
@@ -1409,7 +1499,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       v0 = variable_op(-1.0, name="restore_prefix/v0")
       v1 = variable_op(-1.0, name="restore_prefix/v1")
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with self.assertRaisesOpError("uninitialized"):
           self.evaluate(v0)
         with self.assertRaisesOpError("uninitialized"):
@@ -2041,20 +2131,25 @@ class MetaGraphTest(test.TestCase):
     self._testGraphExtensionRestore(test_dir)
     self._testRestoreFromTrainGraphWithControlContext(test_dir)
 
-  def _testWhileLoopAndGradientSerDes(self, outer_body_fn):
-    # Build a while loop with `outer_body_fn`, export it, and verify that it can
-    # be imported and the gradient can be built and run correctly.
+  def _testGradientSerDes(self, graph_fn):
+    """Tests that gradients can be computed after exporting and importing.
 
+    Builds a graph, exports it, and verifies that it can be imported and the
+    gradient can be built and run correctly.
+
+    Args:
+      graph_fn: takes a single float Tensor argument as input, outputs a single
+        Tensor
+    """
     test_dir = self._get_test_dir("nested_control_flow")
     filename = os.path.join(test_dir, "metafile")
     saver_ckpt = os.path.join(test_dir, "saver.ckpt")
 
     # Create while loop using `outer_body_fn`.
     with ops_lib.Graph().as_default():
-      var = variables.Variable(0)
+      var = variables.Variable(0.0)
       var_name = var.name
-      _, output = control_flow_ops.while_loop(lambda i, x: i < 5, outer_body_fn,
-                                              [0, var])
+      output = graph_fn(var)
       output_name = output.name
       init_op = variables.global_variables_initializer()
 
@@ -2091,12 +2186,21 @@ class MetaGraphTest(test.TestCase):
         actual_grad_value = sess.run(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
+  def _testWhileLoopAndGradientSerDes(self, outer_body_fn):
+    # Build a while loop with `outer_body_fn`, export it, and verify that it can
+    # be imported and the gradient can be built and run correctly.
+    # pylint: disable=g-long-lambda
+    return self._testGradientSerDes(
+        lambda x: control_flow_ops.while_loop(
+            lambda i, y: i < 5, outer_body_fn, [0, x])[1])
+    # pylint: enable=g-long-lambda
+
   def testNestedWhileLoopsSerDes(self):
     # Test two simple nested while loops.
     def body(i, x):
       _, r = control_flow_ops.while_loop(lambda j, y: j < 3,
                                          lambda j, y: (j + 1, y + x),
-                                         [0, 0])
+                                         [0, 0.0])
       return i + 1, x + r
     self._testWhileLoopAndGradientSerDes(body)
 
@@ -2109,11 +2213,24 @@ class MetaGraphTest(test.TestCase):
           lambda: control_flow_ops.while_loop(
               lambda j, y: j < 3,
               lambda j, y: (j + 1, y + x),
-              [0, 0])[1],
+              [0, 0.0])[1],
           lambda: x)
       return i + 1, cond_result
     # pylint: enable=g-long-lambda
     self._testWhileLoopAndGradientSerDes(body)
+
+  def testNestedCondsSerDes(self):
+    # Test conds in a cond.
+    # pylint: disable=g-long-lambda
+    self._testGradientSerDes(lambda x: control_flow_ops.cond(
+        x > 0,
+        lambda: control_flow_ops.cond(x > 3,
+                                      lambda: array_ops.identity(x),
+                                      lambda: math_ops.multiply(x, 2.0)),
+        lambda: control_flow_ops.cond(x < -3,
+                                      lambda: constant_op.constant(1.0),
+                                      lambda: math_ops.multiply(x, -1.0))))
+    # pylint: enable=g-long-lambda
 
   def testStrippedOpListDef(self):
     with self.test_session():

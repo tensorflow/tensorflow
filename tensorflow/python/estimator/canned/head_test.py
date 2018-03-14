@@ -300,7 +300,12 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     features = {'x': values_2x3}
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'Dimensions must be equal'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'Shape mismatch: The shape of labels \(received \(3,\)\) should equal '
+        r'the shape of logits except for the last dimension '
+        r'\(received \(2, 3\)\)\.'
+    ):
       head.create_loss(
           features=features,
           mode=model_fn.ModeKeys.EVAL,
@@ -1558,7 +1563,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.74999905,
+        keys.AUC_PR: 1.,
     }
 
     # Assert spec contains expected tensors.
@@ -1636,7 +1641,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.75,
+        keys.AUC_PR: 1.,
     }
 
     # Assert predictions, loss, and metrics.
@@ -1741,7 +1746,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: 2./2,
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
-        keys.AUC_PR: 0.74999905,
+        keys.AUC_PR: 1.,
         keys.ACCURACY_AT_THRESHOLD % thresholds[0]: 1.,
         keys.PRECISION_AT_THRESHOLD % thresholds[0]: 1.,
         keys.RECALL_AT_THRESHOLD % thresholds[0]: 1.,
@@ -2188,7 +2193,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.LABEL_MEAN: expected_label_mean,
         keys.ACCURACY_BASELINE: 1 - expected_label_mean,
         keys.AUC: .45454565,
-        keys.AUC_PR: .21923049,
+        keys.AUC_PR: .6737757325172424,
     }
 
     # Assert spec contains expected tensors.
@@ -2487,7 +2492,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         # We cannot reliably calculate AUC with only 4 data points, but the
         # values should not change because of backwards-compatibility.
         keys.AUC: 0.5222,
-        keys.AUC_PR: 0.5119,
+        keys.AUC_PR: 0.7341,
     }
 
     tol = 1e-2

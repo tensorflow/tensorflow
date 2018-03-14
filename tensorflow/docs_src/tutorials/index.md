@@ -10,7 +10,7 @@ these tutorials.
 
 These tutorials cover different aspects of image recognition:
 
-  * @{$layers}, which introduces convolutional neural networks (CNNs) and
+  * @{$layers$MNIST}, which introduces convolutional neural networks (CNNs) and
     demonstrates how to build a CNN in TensorFlow.
   * @{$image_recognition}, which introduces the field of image recognition and
     uses a pre-trained model (Inception) for recognizing images.

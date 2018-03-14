@@ -174,19 +174,18 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = SimpleTestModel(num_classes=num_classes,
-                              use_dp=True,
-                              use_bn=True)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = SimpleTestModel(num_classes=num_classes,
+                            use_dp=True,
+                            use_bn=True)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_multi_io_workflow_with_np_arrays(self):
@@ -194,21 +193,20 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 1000
     input_dim = 50
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes,
-                               use_dp=True,
-                               use_bn=True)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = MultiIOTestModel(num_classes=num_classes,
+                             use_dp=True,
+                             use_bn=True)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x1 = np.ones((num_samples, input_dim))
-      x2 = np.ones((num_samples, input_dim))
-      y1 = np.zeros((num_samples, num_classes[0]))
-      y2 = np.zeros((num_samples, num_classes[1]))
+    x1 = np.ones((num_samples, input_dim))
+    x2 = np.ones((num_samples, input_dim))
+    y1 = np.zeros((num_samples, num_classes[0]))
+    y2 = np.zeros((num_samples, num_classes[1]))
 
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
   def test_single_io_workflow_with_tensors(self):
 
@@ -321,14 +319,13 @@ class ModelSubclassingTest(test.TestCase):
     x = np.ones((num_samples, input_dim))
     y = np.ones((num_samples, input_dim))
 
-    with self.test_session():
-      model = BNNet()
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      y_ref = model.predict(x)
+    model = BNNet()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    y_ref = model.predict(x)
 
-      model.train_on_batch(x, y)
-      y_new = model.predict(x)
-      self.assertGreater(np.sum(np.abs(y_ref - y_new)), 0.1)
+    model.train_on_batch(x, y)
+    y_new = model.predict(x)
+    self.assertGreater(np.sum(np.abs(y_ref - y_new)), 0.1)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_training_and_inference_behavior(self):
@@ -350,14 +347,13 @@ class ModelSubclassingTest(test.TestCase):
         x = self.dp(inputs)
         return self.dense(x)
 
-    with self.test_session():
-      model = DPNet()
-      x = np.ones((num_samples, input_dim))
-      y = model.predict(x)
-      self.assertEqual(np.sum(y), np.sum(x))
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      loss = model.train_on_batch(x, y)
-      self.assertGreater(loss, 0.1)
+    model = DPNet()
+    x = np.ones((num_samples, input_dim))
+    y = model.predict(x)
+    self.assertEqual(np.sum(y), np.sum(x))
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    loss = model.train_on_batch(x, y)
+    self.assertGreater(loss, 0.1)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_training_methods(self):
@@ -373,21 +369,20 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
-      model.fit({'input_1': x1, 'input_2': x2},
-                {'output_1': y1, 'output_2': y2},
-                epochs=2, batch_size=32)
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
-                validation_data=([x1, x2], [y1, y2]))
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    model.fit({'input_1': x1, 'input_2': x2},
+              {'output_1': y1, 'output_2': y2},
+              epochs=2, batch_size=32)
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
+              validation_data=([x1, x2], [y1, y2]))
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.train_on_batch([x1, x2], [y1, y2])
-      model.train_on_batch({'input_1': x1, 'input_2': x2},
-                           {'output_1': y1, 'output_2': y2})
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.train_on_batch([x1, x2], [y1, y2])
+    model.train_on_batch({'input_1': x1, 'input_2': x2},
+                         {'output_1': y1, 'output_2': y2})
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def test_inference_methods(self):
@@ -402,17 +397,16 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.evaluate([x1, x2], [y1, y2])
-      model.test_on_batch([x1, x2], [y1, y2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.evaluate([x1, x2], [y1, y2])
+    model.test_on_batch([x1, x2], [y1, y2])
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.predict([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.predict([x1, x2])
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.predict_on_batch([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.predict_on_batch([x1, x2])
 
   @test_util.run_in_graph_and_eager_modes()
   def test_trainable_mutation(self):
@@ -435,26 +429,25 @@ class ModelSubclassingTest(test.TestCase):
     y1 = np.zeros((num_samples, num_classes[0]))
     y2 = np.zeros((num_samples, num_classes[1]))
 
-    with self.test_session():
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
-      y_ref_1, y_ref_2 = model.predict([x1, x2])
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
+    y_ref_1, y_ref_2 = model.predict([x1, x2])
 
-      fd, fname = tempfile.mkstemp('.h5')
-      model.save_weights(fname)
+    fd, fname = tempfile.mkstemp('.h5')
+    model.save_weights(fname)
 
-      model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
-      # need to build the model before loading weights
-      # (otherwise no weights to load)
-      model._set_inputs([x1, x2])
-      model.load_weights(fname)
+    model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
+    # need to build the model before loading weights
+    # (otherwise no weights to load)
+    model._set_inputs([x1, x2])
+    model.load_weights(fname)
 
-      y1, y2 = model.predict([x1, x2])
-      self.assertAllClose(y_ref_1, y1, atol=1e-5)
-      self.assertAllClose(y_ref_2, y2, atol=1e-5)
-      os.close(fd)
-      os.remove(fname)
+    y1, y2 = model.predict([x1, x2])
+    self.assertAllClose(y_ref_1, y1, atol=1e-5)
+    self.assertAllClose(y_ref_2, y2, atol=1e-5)
+    os.close(fd)
+    os.remove(fname)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_summary(self):
@@ -488,23 +481,22 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = NestedTestModel1(num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = NestedTestModel1(num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
-      self.assertEqual(len(model.non_trainable_weights),
-                       2 + len(model.test_net.non_trainable_weights))
-      self.assertEqual(len(model.trainable_weights),
-                       6 + len(model.test_net.trainable_weights))
+    self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
+    self.assertEqual(len(model.non_trainable_weights),
+                     2 + len(model.test_net.non_trainable_weights))
+    self.assertEqual(len(model.trainable_weights),
+                     6 + len(model.test_net.trainable_weights))
 
   @test_util.run_in_graph_and_eager_modes()
   def test_graph_nested_in_subclass(self):
@@ -512,23 +504,22 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = NestedTestModel2(num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = NestedTestModel2(num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
-      self.assertEqual(len(model.non_trainable_weights),
-                       2 + len(model.test_net.non_trainable_weights))
-      self.assertEqual(len(model.trainable_weights),
-                       6 + len(model.test_net.trainable_weights))
+    self.assertEqual(len(model.weights), 8 + len(model.test_net.weights))
+    self.assertEqual(len(model.non_trainable_weights),
+                     2 + len(model.test_net.non_trainable_weights))
+    self.assertEqual(len(model.trainable_weights),
+                     6 + len(model.test_net.trainable_weights))
 
   @test_util.run_in_graph_and_eager_modes()
   def test_subclass_nested_in_graph(self):
@@ -536,22 +527,21 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 100
     input_dim = 50
 
-    with self.test_session():
-      model = get_nested_model_3(input_dim=input_dim, num_classes=num_classes)
-      model.compile(loss='mse',
-                    optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    metrics=['acc'])
+    model = get_nested_model_3(input_dim=input_dim, num_classes=num_classes)
+    model.compile(loss='mse',
+                  optimizer=RMSPropOptimizer(learning_rate=0.001),
+                  metrics=['acc'])
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+    x = np.ones((num_samples, input_dim))
+    y = np.zeros((num_samples, num_classes))
 
-      model.fit(x, y, epochs=2, batch_size=32, verbose=0)
-      _ = model.evaluate(x, y, verbose=0)
+    model.fit(x, y, epochs=2, batch_size=32, verbose=0)
+    _ = model.evaluate(x, y, verbose=0)
 
-      self.assertEqual(len(model.weights), 16)
-      self.assertEqual(
-          len(model.non_trainable_weights), 4)
-      self.assertEqual(len(model.trainable_weights), 12)
+    self.assertEqual(len(model.weights), 16)
+    self.assertEqual(
+        len(model.non_trainable_weights), 4)
+    self.assertEqual(len(model.trainable_weights), 12)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_support_for_manual_training_arg(self):
@@ -575,14 +565,13 @@ class ModelSubclassingTest(test.TestCase):
         x = self.dp(inputs, training=training)
         return self.dense(x)
 
-    with self.test_session():
-      model = DPNet()
-      x = np.ones((10, 10))
-      y = model.predict(x)
-      self.assertEqual(np.sum(y), np.sum(x))
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      loss = model.train_on_batch(x, y)
-      self.assertGreater(loss, 0.1)
+    model = DPNet()
+    x = np.ones((10, 10))
+    y = model.predict(x)
+    self.assertEqual(np.sum(y), np.sum(x))
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+    loss = model.train_on_batch(x, y)
+    self.assertGreater(loss, 0.1)
 
 
 if __name__ == '__main__':

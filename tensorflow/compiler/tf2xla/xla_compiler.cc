@@ -674,6 +674,14 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
+  // Copy the host transfer metadata to the result.
+  for (const auto& send : host_compute_sends_) {
+    *result->host_compute_metadata.add_device_to_host() = send.second;
+  }
+  for (const auto& recv : host_compute_recvs_) {
+    *result->host_compute_metadata.add_host_to_device() = recv.second;
+  }
+
   // Tensorflow expects a major-to-minor order of results.
   xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
@@ -705,6 +713,61 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
+  return Status::OK();
+}
+
+namespace {
+
+void SetTransfer(const string& key, const std::vector<DataType>& types,
+                 const std::vector<TensorShape>& shapes,
+                 tf2xla::HostTransferMetadata* transfer) {
+  transfer->set_key(key);
+  CHECK(types.size() == shapes.size());
+  for (int i = 0; i < types.size(); ++i) {
+    tf2xla::TensorMetadata* metadata = transfer->add_metadata();
+    metadata->set_type(types[i]);
+    shapes[i].AsProto(metadata->mutable_shape());
+  }
+}
+
+}  // namespace
+
+Status XlaCompiler::SetDeviceToHostMetadata(
+    const string& key, const std::vector<DataType>& types,
+    const std::vector<TensorShape>& shapes) {
+  if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+  }
+  tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
+  SetTransfer(key, types, shapes, &transfer);
+  return Status::OK();
+}
+
+Status XlaCompiler::GetDeviceToHostShapes(
+    const string& key, std::vector<TensorShape>* shapes) const {
+  const auto iter = host_compute_sends_.find(key);
+  if (iter == host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "No host compute send shapes registered for key ", key);
+  }
+  shapes->clear();
+  for (int i = 0; i < iter->second.metadata_size(); ++i) {
+    TensorShape shape(iter->second.metadata(i).shape());
+    shapes->push_back(shape);
+  }
+  return Status::OK();
+}
+
+Status XlaCompiler::SetHostToDeviceMetadata(
+    const string& key, const std::vector<DataType>& types,
+    const std::vector<TensorShape>& shapes) {
+  if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
+    return errors::InvalidArgument(
+        "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+  }
+  tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
+  SetTransfer(key, types, shapes, &transfer);
   return Status::OK();
 }
 

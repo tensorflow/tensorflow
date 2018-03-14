@@ -237,7 +237,7 @@ class Layer(tf_base_layers.Layer):
     """
     # Actually call the layer (optionally building it).
     output = super(Layer, self).__call__(inputs, **kwargs)
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return output
 
     if hasattr(self, '_symbolic_set_inputs') and not self.inputs:

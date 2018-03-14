@@ -63,7 +63,7 @@ class XlaCompilationCache : public ResourceBase {
   // outputs.
   Status Compile(const XlaCompiler::Options& options,
                  const NameAttrList& function, int num_constant_args,
-                 const std::vector<OptionalTensor>& variable_args,
+                 const std::map<int, OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable,
@@ -105,7 +105,7 @@ class XlaCompilationCache : public ResourceBase {
 
   // Builds the signature for a compilation.
   Status BuildSignature(const NameAttrList& function, int num_constant_args,
-                        const std::vector<OptionalTensor>& variable_args,
+                        const std::map<int, OptionalTensor>& variable_args,
                         OpKernelContext* ctx, Signature* signature);
 
   // The value associated with a cache entry.

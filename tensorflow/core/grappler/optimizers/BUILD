@@ -144,6 +144,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
     ],
 )
@@ -247,6 +248,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
 
@@ -541,6 +543,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_oss",  # b/74111495
+        "notap",
     ],
     deps = [
         ":loop_optimizer",

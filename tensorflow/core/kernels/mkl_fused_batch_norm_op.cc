@@ -262,7 +262,6 @@ class MklFusedBatchNormOp : public OpKernel {
     }
 
     void MklCreateInputLayout(OpKernelContext* context) {
-      const Tensor& input = MklGetInput(context, 0);
       bool input_in_mkl_format = mkl_shape_input_shape.IsMklTensor();
       if (input_in_mkl_format) {
         mkl_lt_input =

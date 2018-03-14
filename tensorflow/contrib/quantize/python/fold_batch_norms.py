@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 
 
@@ -236,7 +237,7 @@ def _FindFusedBatchNorms(graph):
       # The batch variance used during forward and backward prop is biased,
       # i.e it is calculated as: V=sum(x(k)-mu)^2/N. For the moving average
       # calculation, the variance is corrected by the term N/N-1 (Bessel's
-      # correction). The variance tensor read from FuseBatchNorm has bessel's
+      # correction). The variance tensor read from FuseBatchNorm has Bessel's
       # correction applied, so we undo it here.
       scope, sep, _ = bn_op.name.rpartition('/')
       g = ops.get_default_graph()
@@ -305,7 +306,7 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
 
   Args:
     context: The scope under which we look for batch norm params
-    match: Object containg required batch norm tensors for correction
+    match: Object containing required batch norm tensors for correction
       computation.
     freeze_batch_norm_delay: Delay in steps at which computation switches
       from regular batch norm to frozen mean and variance.
@@ -502,14 +503,22 @@ def _GetBatchNormParams(graph, context, has_scaling):
   base_context = split_context[-1]
 
   oplist = graph.get_operations()
-  op_suffix_gamma = base_context + '/BatchNorm/gamma'
   op_suffix_mean = base_context + '/BatchNorm/moments/Squeeze'
   op_suffix_variance = base_context + '/BatchNorm/moments/Squeeze_1'
-  op_suffix_moving_variance = base_context + '/BatchNorm/moving_variance/read'
-  op_suffix_moving_mean = base_context + '/BatchNorm/moving_mean/read'
   op_suffix_epsilon = base_context + '/BatchNorm/batchnorm/add/y'
   op_suffix_bn_decay_mean = base_context + '/BatchNorm/AssignMovingAvg/decay'
   op_suffix_bn_decay_var = base_context + '/BatchNorm/AssignMovingAvg_1/decay'
+
+  if variable_scope.get_variable_scope().use_resource:
+    op_suffix_gamma = base_context + '/BatchNorm/gamma/Read/ReadVariableOp'
+    op_suffix_moving_variance = (
+        base_context + '/BatchNorm/moving_variance/Read/ReadVariableOp')
+    op_suffix_moving_mean = (
+        base_context + '/BatchNorm/moving_mean/Read/ReadVariableOp')
+  else:
+    op_suffix_gamma = base_context + '/BatchNorm/gamma'
+    op_suffix_moving_variance = base_context + '/BatchNorm/moving_variance/read'
+    op_suffix_moving_mean = base_context + '/BatchNorm/moving_mean/read'
 
   # Parse through list of ops to find relevant ops
   for op in oplist:
