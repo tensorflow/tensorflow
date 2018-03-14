@@ -553,9 +553,10 @@ void Execute_MatMul_CPU(bool async) {
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
-  TFE_TensorHandle* retvals[1] = {nullptr};
-  int num_retvals = 1;
+  TFE_TensorHandle* retvals[2] = {nullptr, nullptr};
+  int num_retvals = 2;
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
+  EXPECT_EQ(1, num_retvals);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteOp(matmul);
   TFE_DeleteTensorHandle(m);

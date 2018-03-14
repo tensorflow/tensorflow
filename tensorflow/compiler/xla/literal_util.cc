@@ -1023,6 +1023,36 @@ StatusOr<int64> Literal::GetIntegralAsS64(
   }
 }
 
+Status Literal::SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
+                                 int64 value) {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
+  switch (shape().element_type()) {
+    case PRED:
+      Set<bool>(multi_index, value);
+      break;
+    case U8:
+      Set<uint8>(multi_index, value);
+      break;
+    case S32:
+      Set<int32>(multi_index, value);
+      break;
+    case S64:
+      Set<int64>(multi_index, value);
+      break;
+    case U32:
+      Set<uint32>(multi_index, value);
+      break;
+    case U64:
+      Set<uint64>(multi_index, value);
+      break;
+    default:
+      return FailedPrecondition(
+          "Array element type is not integral: %s",
+          PrimitiveType_Name(shape().element_type()).c_str());
+  }
+  return Status::OK();
+}
+
 tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
     int64 sparse_element_number, const ShapeIndex& shape_index) const {
   const Piece& p = piece(shape_index);

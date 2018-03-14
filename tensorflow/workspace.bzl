@@ -481,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/197b6c81959a17be37035d4fe71b382023bff2f0.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/197b6c81959a17be37035d4fe71b382023bff2f0.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4f23838f56163df5291503f18c84a579961c313f.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/4f23838f56163df5291503f18c84a579961c313f.tar.gz",
       ],
-      sha256 = "e77a8715fbd5d3c049bc7707da236152faab50ee2b7cec5234a0737b72ddb52a",
-      strip_prefix = "llvm-197b6c81959a17be37035d4fe71b382023bff2f0",
+      sha256 = "ed4516ad56365d0c94b01db4e0331cc895848c5a90a5c8f3b38c96bc0ed872eb",
+      strip_prefix = "llvm-4f23838f56163df5291503f18c84a579961c313f",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -649,11 +649,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   java_import_external(
-      name = "javax_validation",
-      jar_sha256 = "e459f313ebc6db2483f8ceaad39af07086361b474fa92e40f442e8de5d9895dc",
+      name = "org_checkerframework_qual",
+      jar_sha256 = "a17501717ef7c8dda4dba73ded50c0d7cde440fd721acfeacbf19786ceac1ed6",
       jar_urls = [
-          "http://mirror.bazel.build/repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
-          "http://repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+          "http://mirror.bazel.build/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
+          "http://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
       ],
       licenses = ["notice"],  # Apache 2.0
   )

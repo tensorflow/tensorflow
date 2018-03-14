@@ -4016,7 +4016,6 @@ py_test(
         "no_cuda_on_cpu_tap",
         "no_oss",
         "no_windows",
-        "notap",
     ],
     deps = [
         ":client",
