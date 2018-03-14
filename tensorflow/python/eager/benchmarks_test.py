@@ -55,7 +55,7 @@ def c_tfe_py_fastpath_execute(a,
                               transpose_b=False,
                               name=None):
   ctx = context.context()
-  assert ctx.in_eager_mode(
+  assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
