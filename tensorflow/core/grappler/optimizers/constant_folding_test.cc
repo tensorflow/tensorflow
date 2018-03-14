@@ -199,13 +199,12 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
     Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
     Output concat =
-        ops::Concat(s.WithOpName("concat"),
-                    {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
-                     matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2},
-                    0);
+        ops::Stack(s.WithOpName("stack"),
+                   {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
+                    matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    item.fetch = {"concat", "matmul3", "matmul4"};
+    item.fetch = {"stack", "matmul3", "matmul4"};
 
     ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef output;
@@ -219,7 +218,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ones_name = strings::StrCat("ones", suffix);
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
-    EXPECT_EQ(28, output.node_size());
+    EXPECT_EQ(27, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -1825,19 +1824,19 @@ TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
     Output acc4 = fun(s.WithOpName("acc4"), {c1, y, c2});
     Output acc5 = fun(s.WithOpName("acc5"), {x, c1, c2});
     Output acc6 = fun(s.WithOpName("acc6"), {x, c1, y, c2});
-    Output concat = ops::Concat(s.WithOpName("concat"),
-                                {acc0, acc1, acc2, acc3, acc4, acc5, acc6}, 0);
+    Output stack = ops::Stack(s.WithOpName("stack"),
+                              {acc0, acc1, acc2, acc3, acc4, acc5, acc6});
 
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    item.fetch = {"concat"};
+    item.fetch = {"stack"};
 
     ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef output;
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
 
-    EXPECT_EQ(17, output.node_size());
+    EXPECT_EQ(16, output.node_size());
     for (const NodeDef& node : output.node()) {
       if (node.name() == "acc0") {
         EXPECT_EQ("Const", node.op());
@@ -1895,7 +1894,90 @@ TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
   }
 }
 
-TEST_F(ConstantFoldingTest, IdenticalN) {
+TEST_F(ConstantFoldingTest, PartialFolding_Concat) {
+  Scope s = Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output z = ops::Placeholder(s.WithOpName("z"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output axis = ops::Const(s.WithOpName("axis"), 0, {});
+  Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2, 2});
+  Output concat0 = ops::Concat(s.WithOpName("concat0"), {c1, c2, c1}, axis);
+  Output concat1 = ops::Concat(s.WithOpName("concat1"), {x, y, z}, axis);
+  Output concat2 = ops::Concat(s.WithOpName("concat2"), {c1, x, y}, axis);
+  Output concat3 = ops::Concat(s.WithOpName("concat3"), {c1, c2, z}, axis);
+  Output concat4 = ops::Concat(s.WithOpName("concat4"), {c1, y, c2}, axis);
+  Output concat5 = ops::Concat(s.WithOpName("concat5"), {x, c1, c2}, axis);
+  Output concat6 = ops::Concat(s.WithOpName("concat6"), {x, c1, y, c2}, axis);
+  Output concat7 = ops::Concat(s.WithOpName("concat7"), {x, y, c1, c2}, axis);
+  Output concat8 = ops::Concat(s.WithOpName("concat8"), {x, c1, c2, y}, axis);
+  Output concat9 = ops::Concat(s.WithOpName("concat9"), {c1, c2, x, y}, axis);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"concat0", "concat1", "concat2", "concat3", "concat4",
+                "concat5", "concat6", "concat7", "concat8", "concat9"};
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(21, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "concat0") {
+      EXPECT_EQ("Const", node.op());
+    } else if (node.name() == "concat3") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("ConstantFolding/concat3_partial_split_0", node.input(0));
+      EXPECT_EQ("z", node.input(1));
+      EXPECT_EQ("axis", node.input(2));
+    } else if (node.name() == "concat5") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("ConstantFolding/concat5_partial_split_1", node.input(1));
+      EXPECT_EQ("axis", node.input(2));
+    } else if (node.name() == "concat7") {
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("ConstantFolding/concat7_partial_split_2", node.input(2));
+      EXPECT_EQ("axis", node.input(3));
+    } else if (node.name() == "concat8") {
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("ConstantFolding/concat8_partial_split_1", node.input(1));
+      EXPECT_EQ("y", node.input(2));
+      EXPECT_EQ("axis", node.input(3));
+    } else if (node.name() == "concat9") {
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("ConstantFolding/concat9_partial_split_0", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("y", node.input(2));
+      EXPECT_EQ("axis", node.input(3));
+    } else if (StringPiece(node.name()).starts_with("ConstantFolding/")) {
+      EXPECT_EQ("Const", node.op());
+    } else {
+      EXPECT_EQ(item.graph.node(i).DebugString(), node.DebugString());
+    }
+  }
+
+  auto tensors_expected = EvaluateNodes(item.graph, {"concat0"});
+  auto tensors = EvaluateNodes(output, {"concat0"});
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output x = ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
                               ops::Placeholder::Shape(TensorShape({})));

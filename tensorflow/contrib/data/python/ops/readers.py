@@ -22,6 +22,7 @@ from tensorflow.contrib.data.python.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -29,6 +30,129 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
+
+_ACCEPTABLE_CSV_TYPES = (dtypes.float32, dtypes.float64, dtypes.int32,
+                         dtypes.int64, dtypes.string)
+
+
+def make_csv_dataset(
+    file_pattern,
+    batch_size,
+    column_keys,
+    column_defaults,
+    label_key=None,
+    field_delim=",",
+    use_quote_delim=True,
+    skip=0,
+    filter_fn=None,
+    num_epochs=None,
+    shuffle=True,
+    shuffle_buffer_size=10000,
+    shuffle_seed=None,
+    prefetch_buffer_size=1,
+):
+  """Reads CSV files into a dataset.
+
+  Reads CSV files into a dataset, where each element is a (features, labels)
+  tuple that corresponds to a batch of CSV rows. The features dictionary
+  maps feature column names to `Tensor`s containing the corresponding
+  feature data, and labels is a `Tensor` containing the batch's label data.
+
+  Args:
+    file_pattern: List of files or patterns of file paths containing CSV
+      records. See @{tf.gfile.Glob} for pattern rules.
+    batch_size: An int representing the number of consecutive elements of this
+      dataset to combine in a single batch.
+    column_keys: A list of strings that corresponds to the CSV columns, in
+      order. One per column of the input record.
+    column_defaults: A list of default values for the CSV fields. One item per
+      column of the input record. Each item in the list is either one of the
+      following dtypes: float32, float64, int32, int64, or string, or a
+      `Tensor` with one of the aforementioned types. One item per column of
+      the input record, with either scalar default value for that column if it
+      is required, or, if the column is required, an empty `Tensor` or a dtype.
+    label_key: A optional string corresponding to the label column. If provided,
+      the data for this column is returned as a separate `Tensor` from the
+      features dictionary, so that the dataset complies with the format expected
+      by a `tf.Estimator.train` or `tf.Estimator.evaluate` input function.
+    field_delim: An optional `string`. Defaults to `","`. Char delimiter to
+      separate fields in a record.
+    use_quote_delim: An optional bool. Defaults to `True`. If false, treats
+      double quotation marks as regular characters inside of the string fields.
+    skip: An integer that corresponds to the number of lines to skip at the
+      head of each CSV file. Defaults to 0.
+    filter_fn: A callable function that takes in a CSV string and returns a
+      boolean that corresponds to whether the record should be included. If
+      None, does not filter records.
+    num_epochs: An int specifying the number of times this dataset is repeated.
+      If None, cycles through the dataset forever.
+    shuffle: A bool that indicates whether the input should be shuffled.
+    shuffle_buffer_size: Buffer size to use for shuffling. A large buffer size
+      ensures better shuffling, but would increase memory usage and startup
+      time.
+    shuffle_seed: Randomization seed to use for shuffling.
+    prefetch_buffer_size: An int specifying the number of feature batches to
+      prefetch for performance improvement. Recommended value is the number of
+      batches consumed per training step.
+
+  Returns:
+    A dataset, where each element is a (features, labels) tuple that corresponds
+    to a batch of `batch_size` CSV rows. The features dictionary maps feature
+    column names to `Tensor`s containing the corresponding column data, and
+    labels is a `Tensor` containing the column data for the label column
+    specified by `label_key`.
+  """
+  filenames = _get_file_names(file_pattern, False)
+  column_defaults = [
+      constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+      for x in column_defaults
+  ]
+
+  dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
+  if label_key is not None:
+    assert label_key in column_keys
+
+  def filename_to_dataset(filename):
+    ds = core_readers.TextLineDataset(filename)
+    if skip > 0:
+      ds = ds.skip(skip)
+    if filter_fn is not None:
+      ds = ds.filter(filter_fn)
+    return ds
+
+  def decode_csv(line):
+    """Decodes csv line into features.
+
+    Args:
+      line: String tensor corresponding to one csv record.
+    Returns:
+      A dictionary of feature names to values for that particular record. If
+      label_key is provided, extracts the label feature to be returned as the
+      second element of the tuple.
+    """
+    columns = parsing_ops.decode_csv(
+        line,
+        column_defaults,
+        field_delim=field_delim,
+        use_quote_delim=use_quote_delim)
+    features = dict(zip(column_keys, columns))
+    if label_key is not None:
+      label = features.pop(label_key)
+      return features, label
+    return features
+
+  # TODO(rachelim): interleave records from files for better shuffling
+  dataset = dataset.flat_map(filename_to_dataset)
+  # TODO(rachelim): use fused shuffle_and_repeat for perf
+  if shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
+
+  dataset = dataset.batch(batch_size)
+  dataset = dataset.map(decode_csv)
+  dataset = dataset.prefetch(prefetch_buffer_size)
+  return dataset
 
 
 def make_batched_features_dataset(file_pattern,
@@ -162,6 +286,10 @@ def make_batched_features_dataset(file_pattern,
   dataset = dataset.map(
       lambda x: parsing_ops.parse_example(x, features),
       num_parallel_calls=parser_num_threads)
+
+  # TODO(rachelim): Add an optional label_key argument for extracting the label
+  # from the features dictionary, to comply with the type expected by the
+  # input_fn to a `tf.Estimator.train` or `tf.Estimator.evaluate` function.
   dataset = dataset.prefetch(prefetch_buffer_size)
   return dataset
 

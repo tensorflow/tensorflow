@@ -215,13 +215,13 @@ class PadOpTest(test.TestCase):
   def testIntTypes(self):
     # TODO(touts): Figure out why the padding tests do not work on GPU
     # for int types and rank > 2.
-    for t in [np.int32, np.int64]:
+    for t in [np.int8, np.int32, np.int64]:
       self._testAll(
           np.random.randint(-100, 100, (4, 4, 3)).astype(t),
           [[1, 0], [2, 3], [0, 2]], 0)
       self._testAll(
           np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
-          [[0, 0], [0, 0], [0, 0], [0, 0]], -1234)
+          [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
   def testFloatTypes(self):
     for t in [np.float32, np.float64]:

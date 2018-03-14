@@ -1116,7 +1116,7 @@ def _write_dict_to_summary(output_dir,
       try:
         summ = summary_pb2.Summary.FromString(dictionary[key])
         for i, _ in enumerate(summ.value):
-          summ.value[i].tag = key
+          summ.value[i].tag = '%s/%d' % (key, i)
         summary_proto.value.extend(summ.value)
       except message.DecodeError:
         logging.warn('Skipping summary for %s, cannot parse string to Summary.',

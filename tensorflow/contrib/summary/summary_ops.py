@@ -328,8 +328,12 @@ def summary_writer_function(name, tensor, function, family=None):
   Returns:
     The result of writing the summary.
   """
+  name_scope = ops.get_name_scope()
+  if name_scope:
+    # Add a slash to allow reentering the name scope.
+    name_scope += "/"
   def record():
-    with summary_op_util.summary_scope(
+    with ops.name_scope(name_scope), summary_op_util.summary_scope(
         name, family, values=[tensor]) as (tag, scope):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
