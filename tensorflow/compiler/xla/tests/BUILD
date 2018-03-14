@@ -672,6 +672,18 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "gather_operation_test",
+    srcs = ["gather_operation_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
 # Repeat dot_operation_runtime_test with single-threaded eigen.
 xla_test(
     name = "dot_operation_single_threaded_runtime_test",
