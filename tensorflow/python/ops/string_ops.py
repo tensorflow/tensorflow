@@ -85,7 +85,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
   indices, values, shape = gen_string_ops.string_split(
-      source, delimiter=delimiter, skip_empty=skip_empty, encoding=encoding)
+      source, delimiter=delimiter, skip_empty=skip_empty)
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
@@ -133,7 +133,7 @@ def string_split_utf8(source, delimiter=" ", skip_empty=True):  # pylint: disabl
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
-  indices, values, shape = gen_string_ops.string_utf8_split(
+  indices, values, shape = gen_string_ops.string_split_utf8(
       source, delimiter=delimiter, skip_empty=skip_empty)
   indices.set_shape([None, 2])
   values.set_shape([None])
