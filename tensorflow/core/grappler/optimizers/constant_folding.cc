@@ -752,7 +752,8 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
     return false;
   }
-  if (node.attr().count("_XlaCompile") > 0) {
+  if (node.attr().count("_XlaCompile") > 0 &&
+      node.attr().at("_XlaCompile").b()) {
     return false;
   }
 

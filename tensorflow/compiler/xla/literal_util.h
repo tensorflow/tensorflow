@@ -479,6 +479,11 @@ class Literal {
   StatusOr<int64> GetIntegralAsS64(
       tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Set(), but truncates `value` to the literal element type before storing.
+  // This literal must be an array.
+  Status SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
+                          int64 value);
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);

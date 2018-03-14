@@ -35,7 +35,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -558,6 +560,233 @@ class ReadBatchFeaturesTest(test.TestCase):
                   interleave_cycle_length=reader_num_threads)
               with self.assertRaises(errors.OutOfRangeError):
                 self._next_actual_batch(sess)
+
+
+class MakeCsvDatasetTest(test.TestCase):
+
+  COLUMN_TYPES = [
+      dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64, dtypes.string
+  ]
+  COLUMNS = ["col%d" % i for i in range(len(COLUMN_TYPES))]
+  LABEL = COLUMNS[0]
+
+  def setUp(self):
+    super(MakeCsvDatasetTest, self).setUp()
+    self._num_files = 2
+    self._num_records = 7
+    self._test_filenames = self._create_files()
+
+  def _csv_values(self, fileno, recordno):
+    return [
+        fileno,
+        recordno,
+        fileno * recordno * 0.5,
+        fileno * recordno + 0.5,
+        "record %d" % recordno if recordno % 2 == 1 else "",
+    ]
+
+  def _csv_record(self, fileno, recordno):
+    return ",".join(str(v) for v in self._csv_values(fileno, recordno))
+
+  def _create_files(self):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "csv_file%d.csv" % i)
+      filenames.append(fn)
+      f = open(fn, "w")
+      f.write(",".join(self.COLUMNS) + "\n")  # header line
+      for j in range(self._num_records):
+        f.write(self._csv_record(i, j) + "\n")
+        f.write("# Some comment goes here. Should be ignored!\n")
+      f.close()
+    return filenames
+
+  def _make_csv_dataset(self,
+                        filenames,
+                        defaults,
+                        label_key=LABEL,
+                        batch_size=1,
+                        num_epochs=1,
+                        shuffle=False,
+                        shuffle_seed=None):
+    return readers.make_csv_dataset(
+        filenames,
+        column_keys=self.COLUMNS,
+        column_defaults=defaults,
+        label_key=label_key,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        shuffle=shuffle,
+        shuffle_seed=shuffle_seed,
+        skip=1,
+        filter_fn=
+        lambda line: math_ops.not_equal(string_ops.substr(line, 0, 1), "#"),
+    )
+
+  def _next_actual_batch(self, file_indices, batch_size, num_epochs):
+    features = {col: list() for col in self.COLUMNS}
+    for _ in range(num_epochs):
+      for i in file_indices:
+        for j in range(self._num_records):
+          values = self._csv_values(i, j)
+          if not values[-1]:
+            values[-1] = "NULL"  # null values in csv are interpreted as default
+          values[-1] = values[-1].encode("utf-8")
+
+          # Regroup lists by column instead of row
+          for n, col in enumerate(self.COLUMNS):
+            features[col].append(values[n])
+          if len(list(features.values())[0]) == batch_size:
+            yield features
+            features = {col: list() for col in self.COLUMNS}
+
+  def _run_actual_batch(self, outputs, sess):
+    features, labels = sess.run(outputs)
+    batch = [features[k] for k in self.COLUMNS if k != self.LABEL]
+    batch.append(labels)
+    return batch
+
+  def _verify_records(
+      self,
+      sess,
+      dataset,
+      file_indices,
+      label_key=LABEL,
+      batch_size=1,
+      num_epochs=1,
+  ):
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    for expected_features in self._next_actual_batch(file_indices, batch_size,
+                                                     num_epochs):
+      actual_features = sess.run(get_next)
+
+      if label_key is not None:
+        expected_labels = expected_features.pop(label_key)
+        # Compare labels
+        self.assertAllEqual(expected_labels, actual_features[1])
+        actual_features = actual_features[0]  # Extract features dict from tuple
+
+      for k in expected_features.keys():
+        # Compare features
+        self.assertAllEqual(expected_features[k], actual_features[k])
+
+    with self.assertRaises(errors.OutOfRangeError):
+      sess.run(get_next)
+
+  def test_make_csv_dataset(self):
+    defaults = [
+        constant_op.constant([], dtype=d) for d in self.COLUMN_TYPES[:-1]
+    ]
+    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Basic test: read from file 0.
+        dataset = self._make_csv_dataset(self._test_filenames[0], defaults)
+        self._verify_records(sess, dataset, [0])
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Basic test: read from file 1.
+        dataset = self._make_csv_dataset(self._test_filenames[1], defaults)
+        self._verify_records(sess, dataset, [1])
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Read from both files.
+        dataset = self._make_csv_dataset(self._test_filenames, defaults)
+        self._verify_records(sess, dataset, range(self._num_files))
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Read from both files. Exercise the `batch` and `num_epochs` parameters
+        # of make_csv_dataset and make sure they work.
+        dataset = self._make_csv_dataset(
+            self._test_filenames, defaults, batch_size=2, num_epochs=10)
+        self._verify_records(
+            sess, dataset, range(self._num_files), batch_size=2, num_epochs=10)
+
+  def test_make_csv_dataset_with_no_label(self):
+    defaults = [
+        constant_op.constant([], dtype=d) for d in self.COLUMN_TYPES[:-1]
+    ]
+    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        # Read from both files. Make sure this works with no label key supplied.
+        dataset = self._make_csv_dataset(
+            self._test_filenames,
+            defaults,
+            batch_size=2,
+            num_epochs=10,
+            label_key=None)
+        self._verify_records(
+            sess,
+            dataset,
+            range(self._num_files),
+            batch_size=2,
+            num_epochs=10,
+            label_key=None)
+
+  def test_make_csv_dataset_with_types(self):
+    defaults = [d for d in self.COLUMN_TYPES[:-1]]
+    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = self._make_csv_dataset(self._test_filenames, defaults)
+        self._verify_records(sess, dataset, range(self._num_files))
+
+  def test_make_csv_dataset_with_shuffle(self):
+    total_records = self._num_files * self._num_records
+    defaults = [d for d in self.COLUMN_TYPES[:-1]]
+    defaults.append(constant_op.constant(["NULL"], dtype=dtypes.string))
+    for batch_size in [1, 2]:
+      with ops.Graph().as_default() as g:
+        with self.test_session(graph=g) as sess:
+          # Test that shuffling with the same seed produces the same result
+          dataset1 = self._make_csv_dataset(
+              self._test_filenames,
+              defaults,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          dataset2 = self._make_csv_dataset(
+              self._test_filenames,
+              defaults,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          outputs1 = dataset1.make_one_shot_iterator().get_next()
+          outputs2 = dataset2.make_one_shot_iterator().get_next()
+          for _ in range(total_records // batch_size):
+            batch1 = self._run_actual_batch(outputs1, sess)
+            batch2 = self._run_actual_batch(outputs2, sess)
+            for i in range(len(batch1)):
+              self.assertAllEqual(batch1[i], batch2[i])
+
+      with ops.Graph().as_default() as g:
+        with self.test_session(graph=g) as sess:
+          # Test that shuffling with a different seed produces different results
+          dataset1 = self._make_csv_dataset(
+              self._test_filenames,
+              defaults,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=5)
+          dataset2 = self._make_csv_dataset(
+              self._test_filenames,
+              defaults,
+              batch_size=batch_size,
+              shuffle=True,
+              shuffle_seed=6)
+          outputs1 = dataset1.make_one_shot_iterator().get_next()
+          outputs2 = dataset2.make_one_shot_iterator().get_next()
+          all_equal = False
+          for _ in range(total_records // batch_size):
+            batch1 = self._run_actual_batch(outputs1, sess)
+            batch2 = self._run_actual_batch(outputs2, sess)
+            for i in range(len(batch1)):
+              all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
+          self.assertFalse(all_equal)
 
 
 if __name__ == "__main__":

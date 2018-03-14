@@ -1269,10 +1269,10 @@ class EstimatorEvaluateTest(test.TestCase):
       _, _ = features, labels
       global_step = training.get_global_step()
 
-      image = array_ops.zeros([1, 3, 3, 1])
+      image = array_ops.zeros([5, 3, 3, 1])
       eval_metric_ops = {
-          'image': (summary.image('image', image, max_outputs=1),
-                    constant_op.constant(1))
+          'foo': (summary.image('image', image, max_outputs=3),
+                  constant_op.constant(1))
       }
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1292,10 +1292,10 @@ class EstimatorEvaluateTest(test.TestCase):
     writer_cache.FileWriterCache.clear()
 
     # Get last evaluation Event written.
-    if check_eventfile_for_keyword('image', os.path.join(est.model_dir,
-                                                         'eval')):
-      return
-    self.fail('{} should be part of reported summaries.'.format('image'))
+    for key in ['foo/0', 'foo/1', 'foo/2']:
+      self.assertTrue(
+          check_eventfile_for_keyword(key, os.path.join(est.model_dir, 'eval')),
+          '{} should be part of reported summaries.'.format(key))
 
 
 class EstimatorPredictTest(test.TestCase):

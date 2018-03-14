@@ -319,10 +319,22 @@ TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {
   (*serving_signature.mutable_outputs())["output"] = output;
   (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
 
+  // It should be able to dedup the input and output with same names.
+  TensorInfo input2, output2;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  output.set_name("z");
+  SignatureDef serving_signature2;
+  (*serving_signature.mutable_inputs())["input2"] = input2;
+  (*serving_signature.mutable_outputs())["output2"] = output2;
+  (*meta_graph.mutable_signature_def())["serving2"] = serving_signature2;
+
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
   ASSERT_TRUE(item != nullptr);
 
+  EXPECT_EQ(item->feed.size(), 1);
+  EXPECT_EQ(item->fetch.size(), 1);
   EXPECT_EQ(item->feed[0].first, "x");
   EXPECT_EQ(item->fetch[0], "z");
 }
@@ -352,6 +364,45 @@ TEST_F(GrapplerItemBuilderTest, FromGraphWithIncompleteSignatureDef) {
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
   ASSERT_TRUE(item == nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, FromGraphWithUnknownDimInSignatureInput) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto shape_1d = PartialTensorShape({-1});
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                            ops::Placeholder::Shape(shape_1d));
+  auto y = ops::Const(s.WithOpName("y"), static_cast<float>(1.0));
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  shape_1d.AsProto(input.mutable_tensor_shape());
+  output.set_name("z");
+
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  ItemConfig cfg;
+  cfg.placeholder_unknown_output_shape_dim = 64;
+  std::unique_ptr<GrapplerItem> item1 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item1 != nullptr);
+
+  ASSERT_EQ(item1->feed.size(), 1);
+  EXPECT_EQ(item1->feed[0].second.NumElements(), 64);
+
+  std::unique_ptr<GrapplerItem> item2 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item2 != nullptr);
+
+  ASSERT_EQ(item2->feed.size(), 1);
+  EXPECT_EQ(item2->feed[0].second.NumElements(), 1);
 }
 
 }  // namespace

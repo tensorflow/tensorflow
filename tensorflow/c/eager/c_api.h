@@ -285,7 +285,8 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
 //
 // 'retvals' must point to a pre-allocated array of TFE_TensorHandle* and
 // '*num_retvals' should be set to the size of this array. It is an error if
-// the number of outputs is different from *num_retvals.
+// the size of 'retvals' is less than the number of outputs. This call sets
+// *num_retvals to the number of outputs.
 //
 // If async execution is enabled, the call may simply enqueue the execution
 // and return "non-ready" handles in `retvals`. Note that any handles contained

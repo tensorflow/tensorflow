@@ -43,8 +43,8 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    shape = list(shape)
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+    shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
     batch_shape = shape[:-2]
@@ -261,8 +261,8 @@ class LinearOperatorScaledIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    shape = list(shape)
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+    shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
     batch_shape = shape[:-2]

@@ -1274,6 +1274,9 @@ class EagerVariableStore(object):
     # pylint: enable=protected-access
 
 
+# The argument list for get_variable must match arguments to get_local_variable.
+# So, if you are updating the arguments, also update arguments to
+# get_local_variable below.
 @tf_export("get_variable")
 def get_variable(name,
                  shape=None,
@@ -1385,15 +1388,32 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "GraphKeys.GLOBAL_VARIABLES")
 
 
-@functools.wraps(get_variable)
+# The argument list for get_local_variable must match arguments to get_variable.
+# So, if you are updating the arguments, also update arguments to get_variable.
 @tf_export("get_local_variable")
-def get_local_variable(*args, **kwargs):
-  kwargs["trainable"] = False
-  if "collections" in kwargs:
-    kwargs["collections"] += [ops.GraphKeys.LOCAL_VARIABLES]
+def get_local_variable(name,
+                       shape=None,
+                       dtype=None,
+                       initializer=None,
+                       regularizer=None,
+                       trainable=False,  # pylint: disable=unused-argument
+                       collections=None,
+                       caching_device=None,
+                       partitioner=None,
+                       validate_shape=True,
+                       use_resource=None,
+                       custom_getter=None,
+                       constraint=None):
+  if collections:
+    collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:
-    kwargs["collections"] = [ops.GraphKeys.LOCAL_VARIABLES]
-  return get_variable(*args, **kwargs)
+    collections = [ops.GraphKeys.LOCAL_VARIABLES]
+  return get_variable(
+      name, shape=shape, dtype=dtype, initializer=initializer,
+      regularizer=regularizer, trainable=False, collections=collections,
+      caching_device=caching_device, partitioner=partitioner,
+      validate_shape=validate_shape, use_resource=use_resource,
+      custom_getter=custom_getter, constraint=constraint)
 get_local_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing *local* variable or creates a new one.",
     "Behavior is the same as in `get_variable`, except that variables are\n"

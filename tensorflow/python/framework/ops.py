@@ -63,6 +63,7 @@ from tensorflow.python.util.tf_export import tf_export
 # in code or via the environment variable. This will be removed once all
 # functionality is supported and there's no performance penalty with it enabled.
 _USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "0") is not "0"
+_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "0") is not "0"
 
 
 def tensor_id(tensor):
@@ -369,7 +370,7 @@ class Tensor(_TensorLike):
 
     """
     graph = self._op._graph._c_graph # pylint: disable=protected-access
-    if graph:
+    if graph and _USE_C_SHAPES:
       with errors.raise_exception_on_not_ok_status() as status:
         num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
                                                   status)
@@ -466,9 +467,13 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if not self._op._graph._c_graph:  # pylint: disable=protected-access # ASIM
+    if not _USE_C_SHAPES:  # pylint: disable=protected-access
       self._shape_val = self._shape_val.merge_with(shape)
-      return
+
+    if not self._op._graph._c_graph: return
+
+    # Update C shape even if _USE_C_SHAPES = False, since we still want
+    # set_shape to be reflected in the C API graph for when we run it.
     if not isinstance(shape, tensor_shape.TensorShape):
       shape = tensor_shape.TensorShape(shape)
     dim_list = []
@@ -2490,7 +2495,7 @@ def _set_shapes_for_outputs(op):
 
 def set_shapes_for_outputs(op):
   """Set the shapes for op's outputs."""
-  if op._c_op:  # pylint: disable=protected-access
+  if op._c_op and _USE_C_SHAPES:  # pylint: disable=protected-access
     return _set_shapes_for_outputs_c_api(op)
   else:
     return _set_shapes_for_outputs(op)
@@ -3328,7 +3333,7 @@ class Graph(object):
     # always computes shape information (even for function calls, which the
     # original Python shape inference code doesn't handle). Deprecate the
     # compute_shapes argument.
-    if op._c_op or compute_shapes:  # pylint: disable=protected-access
+    if (op._c_op and _USE_C_SHAPES) or compute_shapes:  # pylint: disable=protected-access
       set_shapes_for_outputs(op)
     # TODO(b/XXXX): move to Operation.__init__ once _USE_C_API flag is removed.
     self._add_op(op)
@@ -4847,17 +4852,26 @@ def control_dependencies(control_inputs):
   See @{tf.Graph.control_dependencies}
   for more details.
 
+  When eager execution is enabled, any callable object in the `control_inputs`
+  list will be called.
+
   Args:
     control_inputs: A list of `Operation` or `Tensor` objects which
       must be executed or computed before running the operations
       defined in the context.  Can also be `None` to clear the control
-      dependencies.
+      dependencies. If eager execution is enabled, any callable object in the
+      `control_inputs` list will be called.
 
   Returns:
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
   if context.executing_eagerly():
+    if control_inputs:
+      # Excute any pending callables.
+      for control in control_inputs:
+        if callable(control):
+          control()
     return _NullContextmanager()
   else:
     return get_default_graph().control_dependencies(control_inputs)
@@ -5348,6 +5362,8 @@ def get_name_scope():
   Returns:
     A string representing the current name scope.
   """
+  if context.in_eager_mode():
+    return context.context().scope_name.rstrip("/")
   return get_default_graph().get_name_scope()
 
 

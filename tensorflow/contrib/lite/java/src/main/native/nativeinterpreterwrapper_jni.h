@@ -122,12 +122,24 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
  *  Method:
  *  Signature: (JII)[I
  *
- * It gets input dimensions if num_bytes matches number of bytes required by
- * the input, else returns null and throws IllegalArgumentException.
+ * Gets input dimensions. If num_bytes is non-negative, it will check whether
+ * num_bytes matches num of bytes required by the input, and return null and
+ * throw IllegalArgumentException if not.
  */
 JNIEXPORT jintArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
     JNIEnv* env, jclass clazz, jlong handle, jint input_idx, jint num_bytes);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)I
+ *
+ * Gets output dimensions.
+ */
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
