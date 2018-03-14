@@ -1133,8 +1133,9 @@ class Saver(object):
   the proliferation of checkpoint files on disk:
 
   * `max_to_keep` indicates the maximum number of recent checkpoint files to
-    keep.  As new files are created, older files are deleted.  If None or 0,
-    all checkpoint files are kept.  Defaults to 5 (that is, the 5 most recent
+    keep.  As new files are created, older files are deleted.   If None or 0,
+    no checkpoints are deleted from the filesystem but only the last one is
+    kept in the `checkpoint` file.  Defaults to 5 (that is, the 5 most recent
     checkpoint files are kept.)
 
   * `keep_checkpoint_every_n_hours`: In addition to keeping the most recent
