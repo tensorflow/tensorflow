@@ -195,7 +195,8 @@ class StringSplitOpTest(test.TestCase):
     with self.test_session() as sess:
       tokens = string_ops.string_split_utf8(strings, "#", skip_empty=False)
       indices, values, shape = sess.run(tokens)
-      self.assertAllEqual(values, expected)
+      self.assertAllEqual(values,
+                          [x.encode('utf-8') for x in expected])
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4],
                                     [0, 5], [0, 6], [0, 7], [0, 8]])
       self.assertAllEqual(shape, [1, 9])
@@ -203,7 +204,8 @@ class StringSplitOpTest(test.TestCase):
     with self.test_session() as sess:
       tokens = string_ops.string_split_utf8(strings, "#")
       indices, values, shape = sess.run(tokens)
-      self.assertAllEqual(values, [x for x in expected if x])
+      self.assertAllEqual(values,
+                          [x.encode('utf-8') for x in expected if x])
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2]])
       self.assertAllEqual(shape, [1, 3])
 
