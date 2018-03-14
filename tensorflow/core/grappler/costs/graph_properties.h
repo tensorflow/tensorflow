@@ -64,6 +64,8 @@ class GraphProperties {
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
+  void ClearInputProperties(const string& node_name);
+  void ClearOutputProperties(const string& node_name);
 
   static void FillTensorPropertiesFromContext(
       const shape_inference::ShapeHandle&, const DataType&,
