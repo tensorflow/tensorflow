@@ -29,6 +29,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@bucket_by_sequence_length
 @@dense_to_sparse_batch
 @@enumerate_dataset
+@@rolling_window
 @@group_by_window
 @@ignore_errors
 @@make_batched_features_dataset
@@ -60,6 +61,7 @@ from tensorflow.contrib.data.python.ops.batching import padded_batch_and_drop_re
 from tensorflow.contrib.data.python.ops.batching import unbatch
 from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
+from tensorflow.contrib.data.python.ops.rolling_ops import rolling_window
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.get_single_element import get_single_element
 from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
