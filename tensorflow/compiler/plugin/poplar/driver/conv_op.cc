@@ -373,13 +373,13 @@ ConvBiasApply(poplar::Graph &graph,
   const HloInstruction* root =
       inst->to_apply()->root_instruction();
 
-  // Find the deltas
-  poplar::Tensor deltas;
-  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 0));
-
   // Find the biases
   poplar::Tensor biases;
-  TF_ASSIGN_OR_RETURN(biases, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(biases, FindInstructionInput(tensor_map, inst, 0));
+
+  // Find the deltas
+  poplar::Tensor deltas;
+  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 1));
 
   // Find the learning rate constant
   const auto& literal = root->operand(1)->operand(0)->operand(0)->literal();
