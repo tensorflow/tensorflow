@@ -207,6 +207,19 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const Array<int64>& tile_assignment() const { return tile_assignment_; }
 
+  // Return a new sharding that can apply to the given new shape.
+  // If this sharding is tile-maximal, the returned sharding will be the same as
+  // this sharding. If this sharding is not tile-maximal, the returned
+  // sharding's tile size will differ:
+  //   - Non-sharded dimensions will be adapted to be the same as `new_shape`;
+  //     tile_dimension(i) = new_shape.dimensions(i);
+  //   - Sharded dimensions will be kept the same unless `transform` is supplied
+  //     in which case tile_dimension(i) = transform(i, tile_dimension(i));
+  // REQUIRES: !IsTuple().
+  HloSharding TransformShardedTileShape(
+      const Shape& new_shape,
+      const std::function<int64(int64, int64)>& transform = nullptr) const;
+
  private:
   HloSharding()
       : replicated_(true),

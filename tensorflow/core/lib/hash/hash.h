@@ -64,13 +64,6 @@ struct hash<T*> {
 };
 
 template <>
-struct hash<bfloat16> {
-  size_t operator()(const bfloat16& t) const {
-    return std::hash<float>()(static_cast<float>(t));
-  }
-};
-
-template <>
 struct hash<string> {
   size_t operator()(const string& s) const {
     return static_cast<size_t>(Hash64(s));
@@ -83,6 +76,7 @@ struct hash<StringPiece> {
     return static_cast<size_t>(Hash64(sp.data(), sp.size()));
   }
 };
+using StringPieceHasher = ::tensorflow::hash<StringPiece>;
 
 template <typename T, typename U>
 struct hash<std::pair<T, U>> {

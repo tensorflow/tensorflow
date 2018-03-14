@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.InputLayer')
 class InputLayer(base_layer.Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 

@@ -173,6 +173,12 @@ class HloModuleGroupMetadata {
     return companion_sets_;
   }
 
+  // Returns all channels in the module group.
+  const std::vector<Channel>& channels() const { return channels_; }
+
+  // Returns the maximum channel id used in the module group.
+  int64 max_channel_id() const { return max_channel_id_; }
+
  private:
   Status Build();
 
@@ -220,6 +226,9 @@ class HloModuleGroupMetadata {
 
   // Map from channel ids to the index in channels_.
   tensorflow::gtl::FlatMap<int64, int64> channel_id_map_;
+
+  // The maximum channel id used in the module group.
+  int64 max_channel_id_ = -1;
 
   // The modules that this metadata was built from.
   const std::vector<HloModule*>& modules_;

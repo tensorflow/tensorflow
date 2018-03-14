@@ -303,12 +303,12 @@ def _swish_grad(features, grad):
 # @Defun decorator with noinline=True so that sigmoid(features) is re-computed
 # during backprop, and we can free the sigmoid(features) expression immediately
 # after use during the forward pass.
+@tf_export("nn.swish")
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
     func_name="swish",
     noinline=True)
-@tf_export("nn.swish")
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
