@@ -1678,6 +1678,9 @@ xla_test(
 xla_test(
     name = "fusion_test",
     srcs = ["fusion_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",

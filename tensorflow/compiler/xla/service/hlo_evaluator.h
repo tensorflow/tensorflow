@@ -162,6 +162,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCall(HloInstruction* call) override;
 
+  Status HandleFusion(HloInstruction* fusion) override;
+
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;

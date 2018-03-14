@@ -875,7 +875,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          return std::fmax(low, std::fmin(value, high));
+          return std::fmin(high, std::fmax(value, low));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -2160,6 +2160,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
+  CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
@@ -2853,6 +2854,37 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
           .ConsumeValueOrDie();
 
   evaluated_[call] = std::move(result);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  // Attach cloned computation to an empty HLO module so the existing ones are
+  // not modified.
+  HloModule empty_hlo_module("EmptyModuleForFusion");
+  auto cloned_fused_computation =
+      fusion->fused_instructions_computation()->Clone(
+          /*suffix=*/"clone_with_layout", &empty_hlo_module);
+  for (auto* instruction : cloned_fused_computation->instructions()) {
+    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+  }
+  auto readded_computation =
+      empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
+
+  auto operands = fusion->operands();
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator
+          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[fusion] = std::move(result);
   return Status::OK();
 }
 
