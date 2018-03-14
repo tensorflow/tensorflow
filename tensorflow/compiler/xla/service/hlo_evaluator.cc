@@ -1637,11 +1637,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 Literal::CreateR0<ReturnT>(*selected_val);
 
             const std::vector<const Literal*> args = {
-                curr_val_literal.get(), selected_val_literal.get()};
+                selected_val_literal.get(), curr_val_literal.get()};
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*select, args)
                     .ConsumeValueOrDie();
-            bool selected = computed_result->Get<bool>({});
+            bool selected = !computed_result->Get<bool>({});
             if (selected) {
               selected_val = curr_val;
               selected_index = operand_index;

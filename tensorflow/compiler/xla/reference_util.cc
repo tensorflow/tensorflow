@@ -472,7 +472,7 @@ ReferenceUtil::SelectAndScatter4DGePlus(
                       i3_base + i3_win < operand.n4()) {
                     float tmp = operand(i0_base + i0_win, i1_base + i1_win,
                                         i2_base + i2_win, i3_base + i3_win);
-                    if (tmp >= val) {
+                    if (tmp > val) {
                       val = tmp;
                       scatter_0 = i0_base + i0_win;
                       scatter_1 = i1_base + i1_win;
