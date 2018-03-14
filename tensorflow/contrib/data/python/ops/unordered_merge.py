@@ -21,6 +21,7 @@ from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disa
 from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework.tensor_shape import TensorShape
 
 
 def unordered_merge(datasets):
@@ -60,10 +61,16 @@ def unordered_merge(datasets):
     datasets: An iterable(such as list or tuple) of datasets.
 
   Returns:
-    A `Dataset`.
+    A merged `Dataset`.
   """
   return UnorderedMergeDataset(datasets)
 
+def _shapes_to_list(shapes):
+  if TensorShape == type(shapes):
+    return shapes.as_list()
+  flat_shapes = nest.flatten(shapes)
+  list_shapes = [_shapes_to_list(s) for s in flat_shapes]
+  return nest.pack_sequence_as(shapes, list_shapes)
 
 class UnorderedMergeDataset(dataset_ops.Dataset):
   """A merged `Dataset` of its input datasets without garantee of data order."""
@@ -72,15 +79,24 @@ class UnorderedMergeDataset(dataset_ops.Dataset):
     """See `unordered_merge()` for details."""
     super(UnorderedMergeDataset, self).__init__()
     self._datasets = list(datasets)
+
     for ds in self._datasets:
       if not isinstance(ds, dataset_ops.Dataset):
         message = ("The argument to `unordered_merge()` must be an iterable of datasets.")
         raise TypeError(message)
-      if self._datasets[0].output_shapes != ds.output_shapes:
-        message = ("The shapes of `datasets` must be same.")
+
+    shapes0 = _shapes_to_list(self._datasets[0].output_shapes)
+    types0  = self._datasets[0].output_types
+
+    for ds in self._datasets:
+      current_shapes = _shapes_to_list(ds.output_shapes)
+      if shapes0 != current_shapes:
+        message = ("The shapes of `datasets` {}, {} must be same.".format(shapes0, current_shapes))
         raise TypeError(message)
-      if self._datasets[0].output_types != ds.output_types:
-        message = ("The types of `datasets` must be same.")
+      current_types = ds.output_types
+      if types0 != current_types:
+        message = ("The types of `datasets` {}, {} must be same.".format(types0, current_types))
+        raise TypeError(message)
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
