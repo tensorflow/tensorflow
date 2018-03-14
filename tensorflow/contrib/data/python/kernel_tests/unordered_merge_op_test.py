@@ -20,96 +20,124 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.contrib.data.python.ops import unordered_merge
-from tensorflow.python.framework import dtypes
+from tensorflow.contrib.data.python.ops import unordered_merge, grouping
+from tensorflow.python.framework import dtypes, errors
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops, math_ops
 from tensorflow.python.platform import test
 
 
 class UnorderedMergeDatasetTest(test.TestCase):
+  def testUnorderedMergeDatasetErrorArgument(self):
+    error_arg_ok = False
+    try:
+      dataset = unordered_merge.unordered_merge([1, 2, 3])
+    except TypeError as e:
+        error_arg_ok = True
+        if(e.args[0].find('argument')):
+          error_arg_ok = True
+    except Exception:
+      pass
+    else:
+      pass
+    self.assertEqual(error_arg_ok, True)
 
-  def testUnorderedMergeDataset(self):
-    component_placeholders = [
+  def testUnorderedMergeDatasetErrorDtype(self):
+    #TODO: rearrange
+    #placeholders = [
+    #    array_ops.placeholder(dtypes.int64),
+    #    array_ops.placeholder(dtypes.float32)
+    #]
+
+    #datasets = [dataset_ops.Dataset.from_tensor_slices(p)
+    #            for p in placeholders]
+    #datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
+    #new_datasets = []
+    #for i in range(3):
+    #  new_datasets.append(datasets[0].shard(4, i).apply(
+    #      grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
+    #new_datasets.append(datasets[1].batch(4))
+    ds1 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
+    ds2 = dataset_ops.Dataset.range(5).map(
+            lambda x: math_ops.cast(x, dtypes.float32)).shuffle(5)
+    new_datasets = []
+    for i in range(3):
+      new_datasets.append(ds1.shard(4, i).apply(
+          grouping.group_by_window(
+              lambda x: x % 2, lambda _, xs: xs.batch(4), 4)))
+    new_datasets.append(ds2.batch(4))
+
+    # for checking messages
+    error_types_ok = False
+    try:
+      dataset = unordered_merge.unordered_merge(new_datasets)
+    except TypeError as e:
+        if(e.args[0].find('types')):
+          error_types_ok = True
+    except Exception as e:
+      self.assertEqual(e, True)
+      pass
+    self.assertEqual(error_types_ok, True)
+
+  def testUnorderedMergeDatasetErrorShape(self):
+    #TODO: rearrange
+    placeholders = [
         array_ops.placeholder(dtypes.int64),
         array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.float64)
+        array_ops.placeholder(dtypes.int64),
+        array_ops.placeholder(dtypes.int64),
+        array_ops.placeholder(dtypes.int64)
     ]
 
-    datasets = tuple([
-        dataset_ops.Dataset.from_tensor_slices(component_placeholder)
-        for component_placeholder in component_placeholders
-    ])
-    unordered_merged = unordered_merge.unordered_merge(datasets)
+    #datasets = [dataset_ops.Dataset.from_tensor_slices(p)
+    #            for p in placeholders]
+    #datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
+    
+    #new_datasets = []
+    #for i in range(3):
+    #  new_datasets.append(datasets[0].shard(4, i).apply(
+    #    grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
+    #new_datasets.append(datasets[1])
 
-    iterator = unordered_merged.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+     
+    ds1 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
+    ds2 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
+    datasets = []
+    for i in range(3):
+      datasets.append(ds1.shard(4, i).apply(
+          grouping.group_by_window(
+              lambda x: x % 2, lambda _, xs: xs.batch(4), 4)))
+    datasets.append(ds2)
 
-    with self.test_session() as sess:
-      equal_length_components = [
-          np.tile(np.array([[1], [2], [3], [4]]), 20),
-          np.tile(np.array([[12], [13], [14], [15]]), 22),
-          np.array([37.0, 38.0, 39.0, 40.0])
-      ]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, equal_length_components)})
-      for i in range(4):
-        results = sess.run(get_next)
-        for component, result_component in zip(
-            equal_length_components, results):
-          self.assertAllEqual(component[i], result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    error_shapes_ok = False
+    try:
+      dataset = unordered_merge.unordered_merge(datasets)
+    except TypeError as e:
+        if(e.args[0].find('shapes')):
+          error_shapes_ok = True
+    except Exception:
+      pass
+    self.assertEqual(error_shapes_ok, True)
 
-      variable_length_components = [[1, 2, 3, 4], [1, 2, 3, 4, 5], [1.0, 2.0]]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, variable_length_components)})
-      for i in range(2):
-        results = sess.run(get_next)
-        for component, result_component in zip(
-            variable_length_components, results):
-          self.assertAllEqual(component[i], result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    new_datasets = []
+    for i in range(3):
+      new_datasets.append(ds1.shard(4, i).apply(
+        grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
+    dsX = dataset_ops.Dataset.zip(tuple([ds1, ds2]))
+    new_datasets.append(dsX.shard(4, 3).apply(
+        grouping.group_by_window(lambda x, y: x % 2, lambda _, xs: xs.batch(4), 4)))
 
-  def testNestedUnorderedMergeDataset(self):
-    component_placeholders = [
-        array_ops.placeholder(dtypes.int64, shape=[4, 20]),
-        array_ops.placeholder(dtypes.int64, shape=[4, 22]),
-        array_ops.placeholder(dtypes.float64, shape=[4])
-    ]
+    error_shapes_ok = False
+    try:
+      dataset = unordered_merge.unordered_merge(new_datasets)
+    except TypeError as e:
+        if(e.args[0].find('shapes')):
+          error_shapes_ok = True
+    except Exception:
+      pass
+    self.assertEqual(error_shapes_ok, True)
 
-    datasets = [
-        dataset_ops.Dataset.from_tensor_slices(component_placeholder)
-        for component_placeholder in component_placeholders
-    ]
-    unordered_merged = unordered_merge.unordered_merge((datasets[0], (datasets[1], datasets[2])))
-
-    iterator = unordered_merged.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    self.assertEqual([20], get_next[0].shape)
-    self.assertEqual([22], get_next[1][0].shape)
-    self.assertEqual([], get_next[1][1].shape)
-
-    with self.test_session() as sess:
-      equal_length_components = [
-          np.tile(np.array([[1], [2], [3], [4]]), 20),
-          np.tile(np.array([[12], [13], [14], [15]]), 22),
-          np.array([37.0, 38.0, 39.0, 40.0])
-      ]
-      sess.run(init_op, feed_dict={ph: value for ph, value in zip(
-          component_placeholders, equal_length_components)})
-      for i in range(4):
-        result1, (result2, result3) = sess.run(get_next)
-        self.assertAllEqual(equal_length_components[0][i], result1)
-        self.assertAllEqual(equal_length_components[1][i], result2)
-        self.assertAllEqual(equal_length_components[2][i], result3)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
+  #TODO: add normal cases
 
 if __name__ == "__main__":
   test.main()
