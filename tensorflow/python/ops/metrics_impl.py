@@ -2074,7 +2074,10 @@ def sensitivity(labels,
                 metrics_collections=None,
                 updates_collections=None,
                 name=None):
-  """Same as `tensorflow.metrics.recall`"""
+  """Same as `tensorflow.metrics.recall`
+  
+  For additional information about specificity and sensitivity, see the
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity"""
   return recall(labels, predictions, weights, metrics_collections,
                 updates_collections, name or "sensitivity")
 
@@ -2097,6 +2100,9 @@ def specificity(labels,
   `update_op` weights each prediction by the corresponding value in `weights`.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  For additional information about specificity and sensitivity, see the
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 
   Args:
     labels: The ground truth values, a `Tensor` whose dimensions must match
