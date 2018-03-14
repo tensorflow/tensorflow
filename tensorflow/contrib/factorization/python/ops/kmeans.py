@@ -105,7 +105,7 @@ class _InitializeClustersHook(session_run_hook.SessionRunHook):
         logging.info(e)
 
 
-def _parse_tensor_or_dict(features):
+def _parse_features_if_necessary(features):
   """Helper function to convert the input points into a usable format.
 
   Args:
@@ -166,7 +166,7 @@ class _ModelFn(object):
     # input_points is a single Tensor. Therefore, the sharding functionality
     # in clustering_ops is unused, and some of the values below are lists of a
     # single item.
-    input_points = _parse_tensor_or_dict(features)
+    input_points = _parse_features_if_necessary(features)
 
     # Let N = the number of input_points.
     # all_distances: A list of one matrix of shape (N, num_clusters). Each value

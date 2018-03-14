@@ -226,6 +226,28 @@ class KMeansTest(KMeansTestBase):
     self._infer_helper(kmeans, clusters, 10)
     self._infer_helper(kmeans, clusters, 1)
 
+  def test_parse_features(self):
+    """Tests the various behaviours of kmeans._parse_features_if_necessary."""
+
+    # No-op if a tensor is passed in.
+    features = constant_op.constant(self.points)
+    parsed_features = kmeans_lib._parse_features_if_necessary(features)
+    self.assertAllEqual(features, parsed_features)
+
+    # A dict is transformed into a tensor.
+    feature_dict = {
+        'x': [[point[0]] for point in self.points],
+        'y': [[point[1]] for point in self.points]
+    }
+    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(feature_dict)
+    # Perform a sanity check.
+    self.assertEqual(features.shape, parsed_feature_dict.shape)
+    self.assertEqual(features.dtype, parsed_feature_dict.dtype)
+    # Then check that running the tensor yields the original list of points.
+    with self.test_session() as sess:
+      parsed_points = sess.run(parsed_feature_dict)
+      self.assertAllEqual(self.points, parsed_points)
+
 
 class KMeansTestMultiStageInit(KMeansTestBase):
 
@@ -394,7 +416,6 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     true_assignments = [0] * 2 + [1] * 2 + [2] * 8
     true_score = len(points) - np.tensordot(
         normalize(points), true_centers[true_assignments])
-
     kmeans = kmeans_lib.KMeansClustering(
         3,
         initial_clusters=self.initial_clusters,
