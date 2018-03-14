@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import gzip
 import os
-import sys
 import zlib
 
 import numpy as np
@@ -41,9 +40,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
-
-
-PY3 = sys.version_info[0] == 3
 
 
 class TextLineDatasetTestBase(test.TestCase):
