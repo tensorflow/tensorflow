@@ -164,6 +164,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleWhile(HloInstruction* while_hlo) override;
 
+  Status HandleSelect(HloInstruction* select) override;
+
  private:
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be

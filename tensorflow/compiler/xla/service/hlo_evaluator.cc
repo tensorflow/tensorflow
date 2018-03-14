@@ -896,6 +896,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleSelect(HloInstruction* select) override {
+    CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
     CHECK(!ShapeUtil::IsTuple(select->shape()));
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
         [](bool pred, ReturnT on_true, ReturnT on_false) {
@@ -2106,13 +2107,15 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: U16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: U16.");
   });
   typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
   typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
   typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: S16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: S16.");
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
@@ -2126,11 +2129,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] = MakeUnique<TypedVisitor<bfloat16, float>>(this);
+
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: TUPLE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVistor: unhandled primitive type: TUPLE.");
   });
   typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: OPAQUE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: OPAQUE.");
   });
 }
 
@@ -2876,6 +2882,26 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();
+}
+
+Status HloEvaluator::HandleSelect(HloInstruction* select) {
+  const auto& pred = GetEvaluatedLiteralFor(select->operand(0));
+  const auto& on_true = GetEvaluatedLiteralFor(select->operand(1));
+  const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
+
+  // If predicate is of scalar type, no element-wise selection would be needed.
+  // This would also handle output array of tuple types as the DefaultAction
+  // would go through the TypedVisitor which doesn't handle tuples.
+  if (ShapeUtil::IsScalar(pred.shape())) {
+    if (pred.Get<bool>({})) {
+      evaluated_[select] = on_true.CloneToUnique();
+    } else {
+      evaluated_[select] = on_false.CloneToUnique();
+    }
+    return Status::OK();
+  }
+
+  return DefaultAction(select);
 }
 
 Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
