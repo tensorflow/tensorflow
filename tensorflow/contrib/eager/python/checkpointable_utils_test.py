@@ -23,6 +23,7 @@ import six
 
 from tensorflow.contrib.eager.python import checkpointable_utils
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -522,6 +523,35 @@ class CheckpointingTests(test.TestCase):
     named_variables, _ = checkpointable_utils._serialize_object_graph(root)
     name, = named_variables.keys()
     self.assertEqual(name, "..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE")
+
+  def testAnonymousVarsInInit(self):
+
+    class Model(training.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.w = resource_variable_ops.ResourceVariable(0.0)
+        self.b = resource_variable_ops.ResourceVariable(0.0)
+        self.vars = [self.w, self.b]
+
+      def call(self, x):
+        return x * self.w + self.b
+
+    with context.eager_mode():
+      model = Model()
+      optimizer = adam.AdamOptimizer(learning_rate=0.05)
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      checkpoint = checkpointable_utils.Checkpoint(
+          model=model, optimizer=optimizer)
+      for _ in range(2):
+        with backprop.GradientTape() as tape:
+          loss = (constant_op.constant(1.)
+                  - model(constant_op.constant(1.))) ** 2
+        grad = tape.gradient(loss, model.vars)
+        optimizer.apply_gradients(
+            [(g, v) for g, v in zip(grad, model.vars)])
+        checkpoint.save(checkpoint_prefix)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLateDependencyTracking(self):
