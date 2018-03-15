@@ -70,6 +70,7 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
+        ":checkpointable_utils",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
