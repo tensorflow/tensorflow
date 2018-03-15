@@ -13,8 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.metrics."""
-import tensorflow as tf
-from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import metrics
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 
 class SpecificityTest(test_util.TensorFlowTestCase):
@@ -24,11 +27,11 @@ class SpecificityTest(test_util.TensorFlowTestCase):
 
   def testSpecificity(self):
     with self.test_session(use_gpu=True) as sess:
-      labels = tf.placeholder(tf.float32, shape=(None,))
-      predictions = tf.placeholder(tf.float32, shape=(None,))
-      specificity, update_specificity = tf.metrics.specificity(
+      labels = array_ops.placeholder(dtypes_lib.float32, shape=(None,))
+      predictions = array_ops.placeholder(dtypes_lib.float32, shape=(None,))
+      specificity, update_specificity = metrics.specificity(
           labels, predictions)
-      sess.run(tf.local_variables_initializer())
+      sess.run(variables.local_variables_initializer())
 
       sess.run(update_specificity, feed_dict={
           labels: [1.0, 1.0],
@@ -52,4 +55,4 @@ class SpecificityTest(test_util.TensorFlowTestCase):
       self.assertEqual(s, 0.75)
 
 if __name__ == "__main__":
-  test.main()
+  googletest.main()

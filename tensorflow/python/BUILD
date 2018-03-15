@@ -2728,10 +2728,11 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/metrics_test.py"],
     additional_deps = [
+        ":array_ops",
         ":metrics",
+	":variables",
         ":framework_test_lib",
         ":platform_test",
-        ":variables",
     ],
 )
 
