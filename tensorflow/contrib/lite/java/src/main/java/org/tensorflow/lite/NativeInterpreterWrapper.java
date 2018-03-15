@@ -140,6 +140,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     useNNAPI(interpreterHandle, useNNAPI);
   }
 
+  void setNumThreads(int numRecommendedThreads) {
+    numThreads(interpreterHandle, numRecommendedThreads);
+  }
+
   /** Gets index of an input given its name. */
   int getInputIndex(String name) {
     if (inputsIndexes == null) {
@@ -307,6 +311,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native String[] getOutputNames(long interpreterHandle);
 
   private static native void useNNAPI(long interpreterHandle, boolean state);
+
+  private static native void numThreads(long interpreterHandle, int numRecommendedThreads);
 
   private static native long createErrorReporter(int size);
 
