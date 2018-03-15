@@ -48,7 +48,7 @@ def unordered_merge(datasets):
 
   # The shapes and types in `datasets` argument must be the same.
   unorderd_merge([a, b, d]) ==> TypeError
-  
+
   # sample usage:
   dataset = tf.data.Dataset.from_tensor_slices(tensors)
   datasets = [dataset.shard(10, i) for i in range(10)]
@@ -82,20 +82,23 @@ class UnorderedMergeDataset(dataset_ops.Dataset):
 
     for ds in self._datasets:
       if not isinstance(ds, dataset_ops.Dataset):
-        message = ("The argument to `unordered_merge()` must be an iterable of datasets.")
+        message = ("The argument to `unordered_merge()` "
+                   "must be an iterable of datasets.")
         raise TypeError(message)
 
     shapes0 = _shapes_to_list(self._datasets[0].output_shapes)
-    types0  = self._datasets[0].output_types
+    types0 = self._datasets[0].output_types
 
     for ds in self._datasets:
       current_shapes = _shapes_to_list(ds.output_shapes)
       if shapes0 != current_shapes:
-        message = ("The shapes of `datasets` {}, {} must be same.".format(shapes0, current_shapes))
+        message = ("The shapes of `datasets` {}, {} must be same."
+                   .format(shapes0, current_shapes))
         raise TypeError(message)
       current_types = ds.output_types
       if types0 != current_types:
-        message = ("The types of `datasets` {}, {} must be same.".format(types0, current_types))
+        message = ("The types of `datasets` {}, {} must be same."
+                   .format(types0, current_types))
         raise TypeError(message)
 
   def _as_variant_tensor(self):
@@ -117,5 +120,3 @@ class UnorderedMergeDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._datasets[0].output_types
-
-
