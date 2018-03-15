@@ -193,6 +193,12 @@ Status SetupTensorboardSqliteDb(Sqlite* db) {
       AND tag_name IS NOT NULL
   )sql"));
 
+  s.Update(Run(db, R"sql(
+    CREATE UNIQUE INDEX IF NOT EXISTS PluginNameIndex
+    ON Tags (plugin_name)
+    WHERE plugin_name IS NOT NULL
+  )sql"));
+
   // Runs are groups of Tags.
   //
   // Each Run usually represents a single attempt at training or testing
