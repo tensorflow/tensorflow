@@ -2724,6 +2724,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["ops/metrics_test.py"],
+    additional_deps = [
+        ":metrics",
+        ":framework_test_lib",
+        ":platform_test",
+        ":variables",
+    ],
+)
+
+cuda_py_test(
     name = "nn_batchnorm_test",
     size = "medium",
     srcs = ["ops/nn_batchnorm_test.py"],
