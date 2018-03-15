@@ -24,12 +24,26 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
-namespace tflite {
-namespace tensor_utils {
+#ifndef __ANDROID__
+#include <stdlib.h>
 
+namespace {
+float32x4_t* AlignedAlloc(unsigned count) {
+  void *ptr = nullptr;
+  int err = posix_memalign(&ptr, sizeof(float32x4_t), count * sizeof(float32x4_t));
+  return err == 0 ? (float32x4_t*)ptr : nullptr;
+}
+}
+#else
+namespace {
 float32x4_t* AlignedAlloc(unsigned count) {
   return (float32x4_t*)memalign(sizeof(float32x4_t), count * sizeof(float32x4_t));
 }
+}
+#endif
+
+namespace tflite {
+namespace tensor_utils {
 
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
