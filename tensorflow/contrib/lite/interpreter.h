@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
-#include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -275,12 +274,6 @@ class Interpreter {
   // contain new nodes that replace 1 more nodes.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
-  // WARNING: This is a deprecated interface and will be removed as soon as
-  // possible.  Please do not use it.
-  // TODO(impjdi): Remove this interface after resolving dependencies.
-  void set_model(const Model* model) { model_ = const_cast<Model*>(model); }
-  Model* model() const { return model_; }
-
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
@@ -509,11 +502,6 @@ class Interpreter {
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
-
-  // WARNING: This is a deprecated interface and will be removed as soon as
-  // possible.  Please do not use it.
-  // TODO(impjdi): Remove this interface after resolving dependencies.
-  Model* model_ = nullptr;
 };
 
 }  // namespace tflite
