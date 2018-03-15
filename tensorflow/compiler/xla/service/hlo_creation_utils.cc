@@ -23,8 +23,8 @@ namespace xla {
 using tensorflow::gtl::ArraySlice;
 using tensorflow::strings::StrCat;
 
-StatusOr<HloInstruction*> CreateBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
-                                          HloInstruction* rhs) {
+StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
+                                        HloInstruction* rhs) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape binary_op_shape,
@@ -33,9 +33,9 @@ StatusOr<HloInstruction*> CreateBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
       HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs));
 }
 
-StatusOr<HloInstruction*> CreatePadHlo(HloInstruction* operand,
-                                       HloInstruction* padding_value,
-                                       const PaddingConfig& padding_config) {
+StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
+                                     HloInstruction* padding_value,
+                                     const PaddingConfig& padding_config) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, padding_value->parent());
   TF_ASSIGN_OR_RETURN(
@@ -46,10 +46,10 @@ StatusOr<HloInstruction*> CreatePadHlo(HloInstruction* operand,
       pad_shape, operand, padding_value, padding_config));
 }
 
-StatusOr<HloInstruction*> CreateSliceHlo(HloInstruction* operand,
-                                         ArraySlice<int64> start_indices,
-                                         ArraySlice<int64> limit_indices,
-                                         ArraySlice<int64> strides) {
+StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
+                                       ArraySlice<int64> start_indices,
+                                       ArraySlice<int64> limit_indices,
+                                       ArraySlice<int64> strides) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape slice_shape, ShapeInference::InferSliceShape(
                                              operand->shape(), start_indices,
@@ -58,7 +58,7 @@ StatusOr<HloInstruction*> CreateSliceHlo(HloInstruction* operand,
       slice_shape, operand, start_indices, limit_indices, strides));
 }
 
-StatusOr<HloInstruction*> CreateConvolveHlo(
+StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers) {
   HloComputation* computation = lhs->parent();
@@ -70,8 +70,8 @@ StatusOr<HloInstruction*> CreateConvolveHlo(
       convolve_shape, lhs, rhs, window, dimension_numbers));
 }
 
-StatusOr<HloInstruction*> CreateTransposeHlo(HloInstruction* operand,
-                                             ArraySlice<int64> dimensions) {
+StatusOr<HloInstruction*> MakeTransposeHlo(HloInstruction* operand,
+                                           ArraySlice<int64> dimensions) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(
       Shape transpose_shape,
@@ -80,23 +80,23 @@ StatusOr<HloInstruction*> CreateTransposeHlo(HloInstruction* operand,
       HloInstruction::CreateTranspose(transpose_shape, operand, dimensions));
 }
 
-StatusOr<HloInstruction*> CreateReshapeHlo(const Shape& result_shape,
-                                           HloInstruction* operand) {
+StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
+                                         HloInstruction* operand) {
   HloComputation* computation = operand->parent();
   return computation->AddInstruction(
       HloInstruction::CreateReshape(result_shape, operand));
 }
 
-StatusOr<HloInstruction*> CreateReshapeHlo(
+StatusOr<HloInstruction*> MakeReshapeHlo(
     ArraySlice<int64> result_shape_dim_bounds, HloInstruction* operand) {
   Shape new_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                          result_shape_dim_bounds);
-  return CreateReshapeHlo(new_shape, operand);
+  return MakeReshapeHlo(new_shape, operand);
 }
 
-StatusOr<HloInstruction*> CreateDynamicSliceHlo(HloInstruction* operand,
-                                                HloInstruction* start_indices,
-                                                ArraySlice<int64> slice_sizes) {
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(HloInstruction* operand,
+                                              HloInstruction* start_indices,
+                                              ArraySlice<int64> slice_sizes) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, start_indices->parent());
   TF_ASSIGN_OR_RETURN(
@@ -107,7 +107,7 @@ StatusOr<HloInstruction*> CreateDynamicSliceHlo(HloInstruction* operand,
       dynamic_slice_shape, operand, start_indices, slice_sizes));
 }
 
-StatusOr<HloInstruction*> CreateDynamicUpdateSliceHlo(
+StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
     HloInstruction* operand, HloInstruction* update,
     HloInstruction* start_indices) {
   HloComputation* computation = operand->parent();
@@ -121,7 +121,7 @@ StatusOr<HloInstruction*> CreateDynamicUpdateSliceHlo(
       dynamic_update_slice_shape, operand, update, start_indices));
 }
 
-StatusOr<HloInstruction*> CreateBroadcastHlo(
+StatusOr<HloInstruction*> MakeBroadcastHlo(
     HloInstruction* operand, ArraySlice<int64> broadcast_dimensions,
     ArraySlice<int64> result_shape_bounds) {
   HloComputation* computation = operand->parent();
@@ -132,8 +132,8 @@ StatusOr<HloInstruction*> CreateBroadcastHlo(
       broadcast_shape, operand, broadcast_dimensions));
 }
 
-StatusOr<HloInstruction*> CreateGetTupleElementHlo(HloInstruction* operand,
-                                                   int64 index) {
+StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
+                                                 int64 index) {
   HloComputation* computation = operand->parent();
 
   TF_ASSIGN_OR_RETURN(
@@ -143,8 +143,8 @@ StatusOr<HloInstruction*> CreateGetTupleElementHlo(HloInstruction* operand,
       HloInstruction::CreateGetTupleElement(gte_shape, operand, index));
 }
 
-StatusOr<HloInstruction*> CreateConcatHlo(ArraySlice<HloInstruction*> operands,
-                                          int64 dimension) {
+StatusOr<HloInstruction*> MakeConcatHlo(ArraySlice<HloInstruction*> operands,
+                                        int64 dimension) {
   CHECK_GT(operands.size(), 0);
 
   HloComputation* computation = operands[0]->parent();
@@ -181,7 +181,7 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {
   Shape output_shape =
       ShapeUtil::MakeShape(operand_shape.element_type(), new_shape_dims);
 
-  return CreateReshapeHlo(output_shape, operand);
+  return MakeReshapeHlo(output_shape, operand);
 }
 
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
@@ -198,7 +198,7 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
             std::back_inserter(expanded_shape_dim_bounds));
   Shape new_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                          expanded_shape_dim_bounds);
-  return CreateReshapeHlo(new_shape, operand);
+  return MakeReshapeHlo(new_shape, operand);
 }
 
 StatusOr<HloInstruction*> ExpandLastDimIntoNDims(
@@ -216,7 +216,7 @@ StatusOr<HloInstruction*> ExpandLastDimIntoNDims(
   c_copy(expanded_dims, std::back_inserter(expanded_shape_dim_bounds));
   Shape new_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                          expanded_shape_dim_bounds);
-  return CreateReshapeHlo(new_shape, operand);
+  return MakeReshapeHlo(new_shape, operand);
 }
 
 StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
@@ -241,7 +241,7 @@ StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
   c_reverse(new_shape_dim_bounds);
   Shape output_shape =
       ShapeUtil::MakeShape(input_shape.element_type(), new_shape_dim_bounds);
-  return CreateReshapeHlo(output_shape, operand);
+  return MakeReshapeHlo(output_shape, operand);
 }
 
 StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
@@ -258,7 +258,7 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(operand->shape().element_type()))));
-  return CreatePadHlo(operand, zero, padding_config);
+  return MakePadHlo(operand, zero, padding_config);
 }
 
 StatusOr<HloInstruction*> BroadcastZeros(
@@ -267,8 +267,8 @@ StatusOr<HloInstruction*> BroadcastZeros(
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           MakeUnique<Literal>(Literal::Zero(element_type))));
-  return CreateBroadcastHlo(zero, /*broadcast_dimensions=*/{},
-                            /*result_shape_bounds=*/broadcast_dimensions);
+  return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
+                          /*result_shape_bounds=*/broadcast_dimensions);
 }
 
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
