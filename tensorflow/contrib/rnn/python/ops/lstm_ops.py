@@ -480,8 +480,7 @@ class LSTMBlockWrapper(base_layer.Layer):
     """Run this LSTM on inputs, starting from the given state.
 
     Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`
-        or a list of `time_len` tensors of shape `[batch_size, input_size]`.
+      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`.
       initial_state: a tuple `(initial_cell_state, initial_output)` with tensors
         of shape `[batch_size, self._num_units]`. If this is not provided, the
         cell is expected to create a zero initial state of type `dtype`.
