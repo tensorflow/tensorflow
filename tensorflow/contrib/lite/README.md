@@ -99,7 +99,7 @@ Similar to the Android demo app, there's an iOS camera app that uses exactly the
 
 This demo app requires a camera so it doesn't work with simulators. It need to be executed on a real iOS device. Follow the instructions to build and run the demo app:
 
-1.   Run `third_party/tensorflow/contrib/lite/examples/ios/download_models.sh` to download the model files used by the demo app.
+1.   Run `tensorflow/contrib/lite/examples/ios/download_models.sh` to download the model files used by the demo app.
 1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
 1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the workspace file.
 1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
