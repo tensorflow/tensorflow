@@ -849,6 +849,26 @@ class CheckpointingTests(test.TestCase):
         saver.save(checkpoint_prefix)
         self.assertEqual(before_ops, graph.get_operations())
 
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testCheckpointCleanup(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    obj = checkpointable.Checkpointable()
+    obj.var = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(checkpointable_utils.gather_initializers(obj))
+    saver = checkpointable_utils.Checkpoint(obj=obj)
+    for _ in range(10):
+      saver.save(checkpoint_prefix)
+    expected_filenames = ["checkpoint"]
+    for checkpoint_number in range(6, 11):
+      expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
+      expected_filenames.append(
+          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
+    six.assertCountEqual(
+        self,
+        expected_filenames,
+        os.listdir(checkpoint_directory))
+
   def testManyRestoresGraph(self):
     """Restores after the first should not modify the graph."""
     with context.graph_mode():
