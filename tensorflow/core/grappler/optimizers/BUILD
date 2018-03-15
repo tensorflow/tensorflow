@@ -538,13 +538,7 @@ cc_library(
 
 tf_cc_test(
     name = "loop_optimizer_test",
-    size = "small",
     srcs = ["loop_optimizer_test.cc"],
-    tags = [
-        "manual",
-        "no_oss",  # b/74111495
-        "notap",
-    ],
     deps = [
         ":loop_optimizer",
         "//tensorflow/cc:cc_ops",
