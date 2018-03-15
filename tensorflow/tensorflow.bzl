@@ -905,6 +905,14 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
+    enable_text_relocation_linkopt = select({
+          clean_dep("//tensorflow:darwin"): [],
+          "//conditions:default": ['-Wl,-z,notext'],})
+    if 'linkopts' in kwargs:
+      kwargs['linkopts'] += enable_text_relocation_linkopt
+    else:
+      kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
