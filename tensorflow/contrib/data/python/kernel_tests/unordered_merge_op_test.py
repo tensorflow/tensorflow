@@ -21,8 +21,7 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import unordered_merge, grouping
-from tensorflow.python.framework import dtypes, errors
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import dtypes, errors, tensor_shape
 from tensorflow.python.ops import array_ops, math_ops
 from tensorflow.python.platform import test
 
@@ -112,7 +111,9 @@ class UnorderedMergeDatasetTest(test.TestCase):
     self.assertEqual(error_shapes_ok2, True)
 
   def testUnorderedMergeDatasetNormalSimple(self):
-    dataset = dataset_ops.Dataset.range(1000)
+    DATA_NUM = 1000
+
+    dataset = dataset_ops.Dataset.range(DATA_NUM)
     datasets = [dataset.shard(10, i).shuffle(50) for i in range(10)]
     dataset = unordered_merge.unordered_merge(datasets)
     next_one_op = dataset.make_one_shot_iterator().get_next()
@@ -125,11 +126,61 @@ class UnorderedMergeDatasetTest(test.TestCase):
       except errors.OutOfRangeError:
         pass
     sorted_result = sorted(results)
-    expectation = list(range(1000))
+    expectation = list(range(DATA_NUM))
 
     self.assertEqual(sorted_result, expectation)
 
-  #TODO: add more complex normal cases
+  def testUnorderedMergeDatasetNormalDictionary(self):
+    DATA_LENGTHS = [4, 6, 9, 12, 18]
+    LCM = 36
+    DATA_NUM = 300
+
+    def gen():
+      for i in range(DATA_NUM):
+        for j in DATA_LENGTHS:
+          if i%j == 0:
+            yield [j] + [i+k for k in range(j)]
+
+    def code(tensor):
+      return {'key': tensor[0],
+              'value': array_ops.slice(tensor, [1], [-1])}
+
+    def key_fn(data):
+      return data['key']
+
+    def window_size_fn(key):
+      return math_ops.cast(LCM/key, dtypes.int64)
+
+    def reduce_fn(key, ds):
+      return ds.batch(window_size_fn(key))
+    
+    dataset = dataset_ops.Dataset.from_generator(gen, dtypes.int64,
+            tensor_shape.TensorShape([None])).map(code)
+    datasets = [dataset.shard(10, i) for i in range(10)]
+    datasets = [ds.apply(grouping.group_by_window(
+        key_fn, reduce_fn, window_size_func=window_size_fn))
+        for ds in datasets]
+    dataset = unordered_merge.unordered_merge(datasets)
+    next_one_op = dataset.make_one_shot_iterator().get_next()
+
+    result = dict()
+    for j in DATA_LENGTHS:
+      result[j] = []
+    with self.test_session() as session:
+      try:
+        while(True):
+          got = session.run(next_one_op)
+          for (i, key) in enumerate(got['key']):
+            result[key] += got['value'][i].tolist()
+      except errors.OutOfRangeError:
+        pass
+
+    for j in DATA_LENGTHS:
+      rem = DATA_NUM%j
+      n = DATA_NUM if rem==0 else DATA_NUM+j-rem
+      expectation = list(range(n))
+      self.assertEqual(expectation, sorted(result[j]))
+
 
 if __name__ == "__main__":
   test.main()
