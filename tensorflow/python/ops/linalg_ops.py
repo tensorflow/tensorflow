@@ -454,7 +454,7 @@ def norm(tensor,
 
   This function can compute several different vector norms (the 1-norm, the
   Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
-  matrix norms (Frobenius, 1-norm, and inf-norm).
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
@@ -465,7 +465,7 @@ def norm(tensor,
       Some restrictions apply:
         a) The Frobenius norm `fro` is not defined for vectors,
         b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
-           `np.inf` are supported.
+           `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
     axis: If `axis` is `None` (the default), the input is considered a vector
@@ -521,8 +521,7 @@ def norm(tensor,
         axis[0] == axis[1]):
       raise ValueError(
           "'axis' must be None, an integer, or a tuple of 2 unique integers")
-    # TODO(rmlarsen): Implement matrix 2-norm using tf.svd().
-    supported_matrix_norms = ['euclidean', 'fro', 1, np.inf]
+    supported_matrix_norms = ['euclidean', 'fro', 1, 2, np.inf]
     if ord not in supported_matrix_norms:
       raise ValueError("'ord' must be a supported matrix norm in %s, got %s" %
                        (supported_matrix_norms, ord))
@@ -539,10 +538,20 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
+    rank = len(tensor.get_shape().as_list())
+    axis = tuple(map(lambda i: i if i >= 0 else i + rank, axis))
+
     if ord in ['fro', 'euclidean', 2, 2.0]:
-      # TODO(rmlarsen): Move 2-norm to a separate clause once we support it for
-      # matrices.
-      result = math_ops.sqrt(
+      if is_matrix_norm and ord in [2, 2.0]:
+        axes = list(range(rank))
+        perm_before = list(filter(lambda i: i not in axis, axes)) + list(axis)
+        perm_after = list(map(lambda i: perm_before.index(i), axes))
+        result = array_ops.transpose(array_ops.expand_dims(math_ops.reduce_max(
+            gen_linalg_ops.svd(array_ops.transpose(tensor, perm=perm_before),
+                               compute_uv=False)[0], axis=-1, keepdims=True),
+            axis=-1), perm=perm_after)
+      else:
+        result = math_ops.sqrt(
           math_ops.reduce_sum(
               tensor * math_ops.conj(tensor), axis, keepdims=True))
     else:
