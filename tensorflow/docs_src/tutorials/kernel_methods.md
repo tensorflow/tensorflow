@@ -1,9 +1,9 @@
 # Improving Linear Models Using Explicit Kernel Methods
 
-Note: This document uses a deprecated version of ${tf.estimator},
-which has a ${tf.contrib.learn.estimator$different interface}.
+Note: This document uses a deprecated version of @{tf.estimator},
+which has a @{tf.contrib.learn.estimator$different interface}.
 It also uses other `contrib` methods whose
-${$version_compat#not_covered$API may not be stable}.
+@{$version_compat#not_covered$API may not be stable}.
 
 In this tutorial, we demonstrate how combining (explicit) kernel methods with
 linear models can drastically increase the latters' quality of predictions
