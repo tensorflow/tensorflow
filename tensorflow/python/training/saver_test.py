@@ -35,6 +35,7 @@ from google.protobuf import text_format
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
@@ -2165,7 +2166,13 @@ class MetaGraphTest(test.TestCase):
       # Build and run the gradients of the while loop. We use this below to
       # verify that the gradients are correct with an imported MetaGraphDef.
       grad = gradients_impl.gradients([output], [var])
-      with session.Session() as sess:
+      # Turn off constant folding to avoid breaking testNestedControlFlowSerDes.
+      # It appears that a missing control dependency in the gradient graph
+      # causes the fetch node to not be triggered.
+      no_constfold_config = config_pb2.ConfigProto()
+      no_constfold_config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      with session.Session(config=no_constfold_config) as sess:
         sess.run(init_op)
         expected_grad_value = sess.run(grad)
 
@@ -2182,7 +2189,7 @@ class MetaGraphTest(test.TestCase):
 
       init_op = variables.global_variables_initializer()
 
-      with session.Session() as sess:
+      with session.Session(config=no_constfold_config) as sess:
         sess.run(init_op)
         actual_grad_value = sess.run(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)

@@ -43,9 +43,9 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   item.fetch.push_back("d");
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(1, output.node_size());
@@ -89,9 +89,9 @@ TEST_F(ConstantFoldingTest, AddTree) {
   item.fetch = {"add_parent", "mul_parent", "addmul_parent"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // We expect the following rewrite(s) to occur:
@@ -525,9 +525,9 @@ TEST_F(ConstantFoldingTest, CreateConstNodes) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(24, output.node_size());
@@ -574,9 +574,9 @@ TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
   item.fetch.push_back("f");
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(2, output.node_size());
@@ -615,9 +615,9 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   item.fetch.push_back("e");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   std::vector<string> expected_nodes = {"dflt", "p1", "p2", "e"};
@@ -658,9 +658,9 @@ TEST_F(ConstantFoldingTest, ControlDependenciesEmptyFetch) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   std::vector<string> expected_nodes = {"dflt", "p1", "p2", "c",
@@ -715,9 +715,9 @@ TEST_F(ConstantFoldingTest, ControlDependenciesDeduplicate) {
   item.fetch.push_back("i2");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i2"};
@@ -789,9 +789,9 @@ TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
   }
 
   item.fetch = outputs;
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int constant_folded = 0;
@@ -827,9 +827,9 @@ TEST_F(ConstantFoldingTest, ShapeMaterialization) {
   item.fetch.push_back("p2");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -866,9 +866,9 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationEmptyFetch) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -920,9 +920,9 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   int found = 0;
   for (const auto& node : output.node()) {
@@ -978,9 +978,9 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN_MultipleOutputs) {
   item.fetch.push_back("ia");
   item.fetch.push_back("ib");
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -1039,9 +1039,9 @@ TEST_F(ConstantFoldingTest, SwitchNodesEmptyFetch) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   std::set<string> present_nodes = {"v_in",     "v_ctrl",
@@ -1117,9 +1117,9 @@ TEST_F(ConstantFoldingTest, SwitchNodes) {
 
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   std::set<string> present_nodes = {"v_in",     "v_ctrl",
                                     "switch",   "i",
@@ -1185,9 +1185,9 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found_nodes = 0;
@@ -1262,18 +1262,18 @@ TEST_F(ConstantFoldingTest, ShuffleReverseOnScalarRemoval) {
   item.fetch = {"out1", "out2"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef got;
-  Status status = fold.Optimize(nullptr, item, &got);
+  Status status = optimizer.Optimize(nullptr, item, &got);
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("in1", "VariableV2", {}, &want);
-  AddNode("in2", "VariableV2", {}, &want);
-  AddNode("s1", "Identity", {"in1"}, &want);
-  AddNode("s2", "Identity", {"in2", AsControlDependency("in1")}, &want);
-  AddNode("out1", "Add", {"s1", "s2"}, &want);
-  AddNode("out2", "Identity", {"s2"}, &want);
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("s1", "Identity", {"in1"}, {}, &want);
+  AddNode("s2", "Identity", {"in2", AsControlDependency("in1")}, {}, &want);
+  AddNode("out1", "Add", {"s1", "s2"}, {}, &want);
+  AddNode("out2", "Identity", {"s2"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -1295,21 +1295,21 @@ TEST_F(ConstantFoldingTest, SliceWithSameDimensionRemoval) {
     item.fetch = {"out"};
     TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-    ConstantFolding fold(nullptr /* cpu_device */);
+    ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef got;
-    Status status = fold.Optimize(nullptr, item, &got);
+    Status status = optimizer.Optimize(nullptr, item, &got);
     TF_EXPECT_OK(status);
 
     GraphDef want;
-    AddNode("in1", "VariableV2", {}, &want);
-    AddNode("in2", "VariableV2", {}, &want);
-    AddNode("begin", "Const", {}, &want);
-    AddNode("size", "Const", {}, &want);
+    AddNode("in1", "VariableV2", {}, {}, &want);
+    AddNode("in2", "VariableV2", {}, {}, &want);
+    AddNode("begin", "Const", {}, {}, &want);
+    AddNode("size", "Const", {}, {}, &want);
     AddNode("s1", "Identity",
             {"in1", AsControlDependency("begin"), AsControlDependency("size")},
-            &want);
-    AddNode("s2", "Slice", {"in2", "begin", "size"}, &want);
-    AddNode("out", "Add", {"s1", "s2"}, &want);
+            {}, &want);
+    AddNode("s2", "Slice", {"in2", "begin", "size"}, {}, &want);
+    AddNode("out", "Add", {"s1", "s2"}, {}, &want);
 
     CompareGraphs(want, got);
   }
@@ -1332,22 +1332,22 @@ TEST_F(ConstantFoldingTest, SliceWithSameDimensionRemoval) {
     item.fetch = {"out"};
     TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-    ConstantFolding fold(nullptr /* cpu_device */);
+    ConstantFolding optimizer(nullptr /* cpu_device */);
     GraphDef got;
-    Status status = fold.Optimize(nullptr, item, &got);
+    Status status = optimizer.Optimize(nullptr, item, &got);
     TF_EXPECT_OK(status);
 
     GraphDef want;
-    AddNode("in1", "VariableV2", {}, &want);
-    AddNode("in2", "VariableV2", {}, &want);
-    AddNode("begin1", "Const", {}, &want);
-    AddNode("begin2", "Const", {}, &want);
-    AddNode("size", "Const", {}, &want);
+    AddNode("in1", "VariableV2", {}, {}, &want);
+    AddNode("in2", "VariableV2", {}, {}, &want);
+    AddNode("begin1", "Const", {}, {}, &want);
+    AddNode("begin2", "Const", {}, {}, &want);
+    AddNode("size", "Const", {}, {}, &want);
     AddNode("s1", "Identity",
             {"in1", AsControlDependency("begin1"), AsControlDependency("size")},
-            &want);
-    AddNode("s2", "Slice", {"in2", "begin2", "size"}, &want);
-    AddNode("out", "Add", {"s1", "s2"}, &want);
+            {}, &want);
+    AddNode("s2", "Slice", {"in2", "begin2", "size"}, {}, &want);
+    AddNode("out", "Add", {"s1", "s2"}, {}, &want);
 
     CompareGraphs(want, got);
   }
@@ -1370,19 +1370,20 @@ TEST_F(ConstantFoldingTest, TileWithMultipliesBeingOne) {
   item.fetch = {"out"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef got;
-  Status status = fold.Optimize(nullptr, item, &got);
+  Status status = optimizer.Optimize(nullptr, item, &got);
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("in1", "VariableV2", {}, &want);
-  AddNode("in2", "VariableV2", {}, &want);
-  AddNode("multiplies1", "Const", {}, &want);
-  AddNode("multiplies2", "Const", {}, &want);
-  AddNode("t1", "Identity", {"in1", AsControlDependency("multiplies1")}, &want);
-  AddNode("t2", "Tile", {"in2", "multiplies2"}, &want);
-  AddNode("out", "Add", {"t1", "t2"}, &want);
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("multiplies1", "Const", {}, {}, &want);
+  AddNode("multiplies2", "Const", {}, {}, &want);
+  AddNode("t1", "Identity", {"in1", AsControlDependency("multiplies1")}, {},
+          &want);
+  AddNode("t2", "Tile", {"in2", "multiplies2"}, {}, &want);
+  AddNode("out", "Add", {"t1", "t2"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -1408,23 +1409,23 @@ TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   item.fetch = {"out"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef got;
-  Status status = fold.Optimize(nullptr, item, &got);
+  Status status = optimizer.Optimize(nullptr, item, &got);
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("in1", "VariableV2", {}, &want);
-  AddNode("in2", "VariableV2", {}, &want);
-  AddNode("paddings1", "Const", {}, &want);
-  AddNode("paddings2", "Const", {}, &want);
-  AddNode("c1", "Const", {}, &want);
-  AddNode("c2", "Const", {}, &want);
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("paddings1", "Const", {}, {}, &want);
+  AddNode("paddings2", "Const", {}, {}, &want);
+  AddNode("c1", "Const", {}, {}, &want);
+  AddNode("c2", "Const", {}, {}, &want);
   AddNode("p1", "Identity",
           {"in1", AsControlDependency("paddings1"), AsControlDependency("c1")},
-          &want);
-  AddNode("p2", "PadV2", {"in2", "paddings2", "c2"}, &want);
-  AddNode("out", "Add", {"p1", "p2"}, &want);
+          {}, &want);
+  AddNode("p2", "PadV2", {"in2", "paddings2", "c2"}, {}, &want);
+  AddNode("out", "Add", {"p1", "p2"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -1444,17 +1445,17 @@ TEST_F(ConstantFoldingTest, SqueezeWithAllDimesionsGreaterThanOne) {
   item.fetch = {"out"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef got;
-  Status status = fold.Optimize(nullptr, item, &got);
+  Status status = optimizer.Optimize(nullptr, item, &got);
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("in1", "VariableV2", {}, &want);
-  AddNode("in2", "VariableV2", {}, &want);
-  AddNode("s1", "Identity", {"in1"}, &want);
-  AddNode("s2", "Squeeze", {"in2"}, &want);
-  AddNode("out", "Add", {"s1", "s2"}, &want);
+  AddNode("in1", "VariableV2", {}, {}, &want);
+  AddNode("in2", "VariableV2", {}, {}, &want);
+  AddNode("s1", "Identity", {"in1"}, {}, &want);
+  AddNode("s2", "Squeeze", {"in2"}, {}, &want);
+  AddNode("out", "Add", {"s1", "s2"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -1475,9 +1476,9 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   item.fetch.push_back("s");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   bool found = false;
@@ -1534,9 +1535,9 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
   item.fetch = {"s1", "s2", "s3", "s4"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -1581,9 +1582,9 @@ TEST_F(ConstantFoldingTest, Packing) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // Make sure that the representation of the folded constant is space
@@ -1616,14 +1617,14 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // Run a second time to make sure the optimization is idempotent.
   item.graph.Swap(&output);
-  status = fold.Optimize(nullptr, item, &output);
+  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -1677,14 +1678,14 @@ TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch.push_back("reshape");
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // Run a second time to make sure the optimization is idempotent.
   item.graph.Swap(&output);
-  status = fold.Optimize(nullptr, item, &output);
+  status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   int found = 0;
@@ -1717,9 +1718,9 @@ TEST_F(ConstantFoldingTest, LargeConstant) {
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
   item.fetch.push_back("out");
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // Make sure the diag node hasn't been folded, since it would use too much
@@ -1756,9 +1757,9 @@ TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {
   item.fetch.push_back("id_true");
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(6, output.node_size());
@@ -1984,8 +1985,8 @@ TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
   Output c1 = ops::Const(scope.WithOpName("c1"), 1.0f, {2, 2});
   Output c2 = ops::Const(scope.WithOpName("c2"), 2.0f, {2, 2});
   auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {c1, x, c2});
-  auto id0 = ops::Identity(scope.WithOpName("id0"), id_n[1]);
-  auto id1 = ops::Identity(scope.WithOpName("id1"), id_n[0]);
+  auto id0 = ops::Identity(scope.WithOpName("id0"), id_n[0]);
+  auto id1 = ops::Identity(scope.WithOpName("id1"), id_n[1]);
   auto add0 = ops::Add(scope.WithOpName("add0"), id_n[0], id_n[1]);
   auto add1 = ops::Add(scope.WithOpName("add1"), id_n[0], id_n[2]);
 
@@ -1996,38 +1997,44 @@ TEST_F(ConstantFoldingTest, PartialFolding_IdentityN) {
   item.fetch.push_back("add0");
   item.fetch.push_back("add1");
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
-
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  LOG(INFO) << output.DebugString();
   TF_EXPECT_OK(status);
   EXPECT_EQ(8, output.node_size());
-  // id_n should remain unchanged.
-  EXPECT_EQ("id_n", output.node(3).name());
-  EXPECT_EQ(3, output.node(3).input_size());
-  EXPECT_EQ("c1", output.node(3).input(0));
-  EXPECT_EQ("x", output.node(3).input(1));
-  EXPECT_EQ("c2", output.node(3).input(2));
-  // id0 is unchanged.
-  EXPECT_EQ("id0", output.node(4).name());
-  EXPECT_EQ(1, output.node(4).input_size());
-  // id1 should have the constant input forwarded to it,
-  // and a control dependency from id_n.
-  EXPECT_EQ("id1", output.node(5).name());
-  EXPECT_EQ(2, output.node(5).input_size());
-  EXPECT_EQ("c1", output.node(5).input(0));
-  EXPECT_EQ("^id_n", output.node(5).input(1));
+  for (const auto& node : output.node()) {
+    // id_n should remain unchanged.
+    if (node.name() == "id_n") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("c1", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("c2", node.input(2));
+    }
+    // id0 should be constant folded, and a control dependency from id_n.
+    if (node.name() == "id0") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^id_n", node.input(0));
+    }
+    // id1 is unchanged.
+    if ("id1" == node.name()) {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("id_n:1", node.input(0));
+    }
 
-  EXPECT_EQ("add0", output.node(6).name());
-  EXPECT_EQ(2, output.node(6).input_size());
-  EXPECT_EQ("c1", output.node(6).input(0));
-  EXPECT_EQ("id_n:1", output.node(6).input(1));
-
-  EXPECT_EQ("add1", output.node(7).name());
-  EXPECT_EQ(3, output.node(7).input_size());
-  EXPECT_EQ("c1", output.node(7).input(0));
-  EXPECT_EQ("c2", output.node(7).input(1));
-  EXPECT_EQ("^id_n", output.node(7).input(2));
+    if ("add0" == node.name()) {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("c1", node.input(0));
+      EXPECT_EQ("id_n:1", node.input(1));
+    }
+    // add1 should bo constant folded and have a control dependency from id_n.
+    if ("add1" == node.name()) {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^id_n", node.input(0));
+    }
+  }
 }
 
 TEST_F(ConstantFoldingTest, TrivialPack) {
@@ -2043,11 +2050,10 @@ TEST_F(ConstantFoldingTest, TrivialPack) {
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
   item.fetch.push_back("stack");
 
-  ConstantFolding fold(nullptr /* cpu_device */);
+  ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
-  Status status = fold.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
   EXPECT_EQ(5, output.node_size());
   for (const auto& node : output.node()) {
     if (node.name() == "stack") {
@@ -2070,6 +2076,55 @@ TEST_F(ConstantFoldingTest, TrivialPack) {
   EXPECT_EQ(1, tensors_expected.size());
   EXPECT_EQ(1, tensors.size());
   EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
+}
+
+TEST_F(ConstantFoldingTest, Enter) {
+  GrapplerItem item;
+  AttrValue frame_name;
+  frame_name.set_s("foo");
+  AttrValue type;
+  type.set_type(DT_FLOAT);
+  AttrValue value;
+  Tensor value_tensor(DT_FLOAT, TensorShape({}));
+  value_tensor.flat<float>()(0) = 1;
+  value_tensor.AsProtoTensorContent(value.mutable_tensor());
+
+  GraphDef& graph = item.graph;
+  AddNode("x", "Placeholder", {}, {{"T", type}}, &graph);
+  AddNode("c1", "Const", {"^x"}, {{"value", value}, {"dtype", type}}, &graph);
+  AddNode("enter1", "Enter", {"x"}, {{"T", type}, {"frame_name", frame_name}},
+          &graph);
+  AddNode("enter2", "Enter", {"c1"}, {{"T", type}, {"frame_name", frame_name}},
+          &graph);
+  AddNode("id1", "Identity", {"enter1"}, {{"T", type}}, &graph);
+  AddNode("id2", "Identity", {"enter2"}, {{"T", type}}, &graph);
+  AddNode("id3", "Identity", {"enter2"}, {{"T", type}}, &graph);
+  item.fetch.push_back("id1");
+  item.fetch.push_back("id2");
+  item.fetch.push_back("id3");
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(7, output.node_size());
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "id1") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("enter1", node.input(0));
+    }
+    if (node.name() == "id2" || node.name() == "id3") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^enter2", node.input(0));
+    }
+  }
 }
 
 }  // namespace
