@@ -2492,10 +2492,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
@@ -2861,6 +2861,28 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         GetTensorDim(strides, data_format, 'C') == 1) {
       return true;
     }
+
+    return false;
+  }
+
+  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized 
+  // path. The unoptimized path is slow. Thus we dont rewrite the node 
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized 
+  // path is taken, i.e., eigen node is rewritten by MKl DNN node.
+  static bool LrnRewrite(const Node* n) {
+    CHECK_NOTNULL(n);
+
+    int depth_radius;
+    CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
+
+    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
+    // and use eigen node instead 
+    if (depth_radius == 2) {
+      return true;
+    }
+    VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
+            << "case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LRN " ; 
 
     return false;
   }
@@ -3528,11 +3550,13 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   string data_format;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
   TF_CHECK_OK(
@@ -3541,6 +3565,7 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
@@ -3778,12 +3803,14 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   DataType T_pred, T_succ;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
   bool use_cudnn_on_gnu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));

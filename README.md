@@ -22,6 +22,10 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
+Keep up to date with release announcements and security updates by
+subscribing to
+[announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
+
 ## Installation
 *See [Installing TensorFlow](https://www.tensorflow.org/get_started/os_setup.html) for instructions on how to install our release binaries or how to build from source.*
 

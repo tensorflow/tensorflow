@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -260,6 +260,16 @@ REGISTER_OP("FilterDataset")
 REGISTER_OP("BatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// TODO(mrry): move SlideDataset to contrib in the future.
+REGISTER_OP("SlideDataset")
+    .Input("input_dataset: variant")
+    .Input("window_size: int64")
+    .Input("stride: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")

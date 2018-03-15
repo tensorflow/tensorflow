@@ -267,7 +267,7 @@ def _InsertQuantOp(context,
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 
   Args:
-    context: Context w,here producer and consumer operations are nested.
+    context: Context where producer and consumer operations are nested.
     name: Name for the new quantization op within the context.
     producer: Producer operation of the pairs where quantization will be
       inserted.

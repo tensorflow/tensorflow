@@ -83,6 +83,7 @@ cc_library(
         "kernels/trt_engine_op.h",
     ],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
         ":trt_resources",
@@ -154,6 +155,7 @@ py_library(
     deps = [
         ":trt_convert_py",
         ":trt_ops_py",
+        "//tensorflow/python:errors",
     ],
 )
 
