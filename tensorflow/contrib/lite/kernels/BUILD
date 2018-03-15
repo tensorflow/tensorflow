@@ -270,6 +270,38 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "div_test",
+    size = "small",
+    srcs = ["div_test.cc"],
+    tags = [
+        "tflite_not_portable_ios_arm64",
+        "tflite_not_portable_ios_x86_64",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "sub_test",
+    size = "small",
+    srcs = ["sub_test.cc"],
+    tags = [
+        "tflite_not_portable_ios_arm64",
+        "tflite_not_portable_ios_x86_64",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "transpose_test",
     size = "small",
     srcs = ["transpose_test.cc"],
