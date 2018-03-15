@@ -27,6 +27,7 @@ from sklearn.cluster import KMeans as SklearnKMeans
 # pylint: disable=g-import-not-at-top
 from tensorflow.contrib.factorization.python.ops import kmeans as kmeans_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -226,20 +227,7 @@ class KMeansTest(KMeansTestBase):
     self._infer_helper(kmeans, clusters, 10)
     self._infer_helper(kmeans, clusters, 1)
 
-  def test_parse_features(self):
-    """Tests the various behaviours of kmeans._parse_features_if_necessary."""
-
-    # No-op if a tensor is passed in.
-    features = constant_op.constant(self.points)
-    parsed_features = kmeans_lib._parse_features_if_necessary(features)
-    self.assertAllEqual(features, parsed_features)
-
-    # A dict is transformed into a tensor.
-    feature_dict = {
-        'x': [[point[0]] for point in self.points],
-        'y': [[point[1]] for point in self.points]
-    }
-    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(feature_dict)
+  def _parse_feature_dict_helper(self, features, parsed_feature_dict):
     # Perform a sanity check.
     self.assertEqual(features.shape, parsed_feature_dict.shape)
     self.assertEqual(features.dtype, parsed_feature_dict.dtype)
@@ -247,6 +235,35 @@ class KMeansTest(KMeansTestBase):
     with self.test_session() as sess:
       parsed_points = sess.run(parsed_feature_dict)
       self.assertAllEqual(self.points, parsed_points)
+
+  def test_parse_features(self):
+    """Tests the various behaviours of kmeans._parse_features_if_necessary."""
+
+    # No-op if a tensor is passed in.
+    features = constant_op.constant(self.points)
+    parsed_features = kmeans_lib._parse_features_if_necessary(features, None)
+    self.assertAllEqual(features, parsed_features)
+
+    # All values from a feature dict are transformed into a tensor.
+    feature_dict = {
+        'x': [[point[0]] for point in self.points],
+        'y': [[point[1]] for point in self.points]
+    }
+    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(
+        feature_dict, None)
+    self._parse_feature_dict_helper(features, parsed_feature_dict)
+
+    # Only the feature_columns of a feature dict are transformed into a tensor.
+    feature_dict_with_extras = {
+        'foo': 'bar',
+        'x': [[point[0]] for point in self.points],
+        'baz': {'fizz': 'buzz'},
+        'y': [[point[1]] for point in self.points]
+    }
+    feature_columns = [fc.numeric_column(key='x'), fc.numeric_column(key='y')]
+    parsed_feature_dict = kmeans_lib._parse_features_if_necessary(
+        feature_dict_with_extras, feature_columns)
+    self._parse_feature_dict_helper(features, parsed_feature_dict)
 
 
 class KMeansTestMultiStageInit(KMeansTestBase):
