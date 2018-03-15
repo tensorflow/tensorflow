@@ -5095,11 +5095,12 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     try:
-      context.context_stack.push(default.building_function, default.as_default)
+      context.context().context_switches.push(default.building_function,
+                                              default.as_default)
       with super(_DefaultGraphStack, self).get_controller(default) as g:
         yield g
     finally:
-      context.context_stack.pop()
+      context.context().context_switches.pop()
 
 
 _default_graph_stack = _DefaultGraphStack()
@@ -5125,13 +5126,13 @@ def init_scope():
         graph function. Here, a context is defined as either a graph or an eager
         context. Every context switch, i.e., every installation of a graph as
         the default graph and every switch into eager mode, is logged in a
-        thread-local stack called the `context_stack`; the log entry for a
+        thread-local stack called `context_switches`; the log entry for a
         context switch is popped from the stack when the context is exited.
-        Entering an `init_scope` is equivalent to crawling up the
-        `context_stack`, finding the first context that is not building a graph
-        function, and entering it. A caveat is that if graph mode is enabled
-        but the default graph stack is empty, then entering an `init_scope`
-        will simply install a fresh graph as the default one.
+        Entering an `init_scope` is equivalent to crawling up
+        `context_switches`, finding the first context that is not building a
+        graph function, and entering it. A caveat is that if graph mode is
+        enabled but the default graph stack is empty, then entering an
+        `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
   """
@@ -5161,7 +5162,7 @@ def init_scope():
       outer_context = default_graph.as_default
     else:
       # Find a context that is not building a function.
-      for stack_entry in reversed(context.context_stack.stack):
+      for stack_entry in reversed(context.context().context_switches.stack):
         if not stack_entry.is_building_function:
           outer_context = stack_entry.enter_context_fn
           break
@@ -5278,13 +5279,6 @@ def enable_eager_execution(config=None, device_policy=None,
         config=config,
         device_policy=device_policy,
         execution_mode=execution_mode)
-    if context.context_stack.stack:
-      raise AssertionError("Invariant violated: The context stack must "
-                           "be empty when eager execution is enabled.")
-    # Log that eager execution has been enabled by pushing an entry onto the
-    # context stack; this entry won't ever be popped, as it's impossible to
-    # disable eager execution
-    context.context_stack.push(False, context.eager_mode)
   elif ((config is not None and config is not context._context._config) or
         (device_policy is not None and
          device_policy is not context._context._device_policy) or

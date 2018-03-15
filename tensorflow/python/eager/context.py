@@ -94,22 +94,32 @@ class _EagerContext(threading.local):
     self.execution_mode = None
 
 
-ContextStackEntry = collections.namedtuple(
-    "ContextStackEntry", ["is_building_function", "enter_context_fn"])
+ContextSwitch = collections.namedtuple(
+    "ContextSwitch", ["is_building_function", "enter_context_fn"])
 
 
-class ContextStack(threading.local):
+# `_ContextSwitchStack` is a `threading.local` to match the semantics of
+# ``DefaultGraphStack`, which is also a `threading.local`.
+class _ContextSwitchStack(threading.local):
   """A thread-local stack of context switches."""
 
-  def __init__(self):
-    super(ContextStack, self).__init__()
+  def __init__(self, eager):
+    super(_ContextSwitchStack, self).__init__()
     self.stack = []
+    if eager:
+      # Initialize the stack with a pointer to enter the eager context; this
+      # ensures that the fact that eager execution was enabled is propagated
+      # across threads, since (1) `enable_eager_execution` modifies a
+      # process-level flag (`_default_mode`) and (2) `__init__` is called each
+      # time a threading.local object is used in a separate thread.
+      self.push(is_building_function=False, enter_context_fn=eager_mode)
 
   def push(self, is_building_function, enter_context_fn):
     """Push metadata about a context switch onto the stack.
 
     A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context.
+    default graph, or entering the eager context. For each context switch,
+    we record whether or not the entered context is building a function.
 
     Args:
       is_building_function: (bool.) Whether the context is building a function.
@@ -118,15 +128,12 @@ class ContextStack(threading.local):
     """
 
     self.stack.append(
-        ContextStackEntry(is_building_function, enter_context_fn))
+        ContextSwitch(is_building_function, enter_context_fn))
 
   def pop(self):
     """Pop the stack."""
 
     self.stack.pop()
-
-
-context_stack = ContextStack()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -171,6 +178,7 @@ class Context(object):
      ValueError: If execution_mode is not valid.
     """
     self._eager_context = _EagerContext()
+    self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
     self._post_execution_callbacks = []
@@ -283,13 +291,16 @@ class Context(object):
     old_mode = ctx.mode
     ctx.mode = mode
     if mode == EAGER_MODE:
-      context_stack.push(False, eager_mode)
+      # Entering graph mode does not provide us with sufficient information to
+      # record a context switch; graph-based context switches are only logged
+      # when a graph is registered as the default graph.
+      self.context_switches.push(False, eager_mode)
     try:
       yield
     finally:
       ctx.mode = old_mode
       if mode == EAGER_MODE:
-        context_stack.pop()
+        self.context_switches.pop()
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
@@ -544,6 +555,11 @@ class Context(object):
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
+
+  @property
+  def context_switches(self):
+    """Returns a stack of context switches."""
+    return self._context_switches
 
 _context = None
 _context_lock = threading.Lock()

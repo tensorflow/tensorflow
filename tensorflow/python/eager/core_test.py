@@ -123,19 +123,18 @@ class TFETest(test_util.TensorFlowTestCase):
     # available, when no device is explicitly provided)
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
-  def testContextStackContainsEagerMode(self):
-    # Eager execution has been enabled, and no other context
-    # switch has occurred, so `context_stack` should contain
-    # exactly one entry.
-    self.assertEqual(len(context.context_stack.stack), 1)
-    stack_entry = context.context_stack.stack[0]
+  def testContextSwitchStackContainsEagerMode(self):
+    # Eager execution has been enabled, and no other context switch has
+    # occurred, so `context_switches` should contain exactly one entry.
+    self.assertEqual(len(context.context().context_switches.stack), 1)
+    switch = context.context().context_switches.stack[0]
 
     # The entry should log that eager mode was entered.
-    self.assertIs(stack_entry.enter_context_fn, context.eager_mode)
+    self.assertIs(switch.enter_context_fn, context.eager_mode)
 
     # It is not possible to build a graph function when eager execution
     # is enabled; the stack entry should reflect this fact.
-    self.assertFalse(stack_entry.is_building_function)
+    self.assertFalse(switch.is_building_function)
 
   def testInt32GPU(self):
     if not context.context().num_gpus():
