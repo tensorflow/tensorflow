@@ -1498,7 +1498,6 @@ REGISTER_OP("_MklConv2D")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 MKL version of Conv2D operator. Uses MKL DNN APIs to perform 2D convolution.
@@ -1517,7 +1516,6 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Doc(R"doc(
 Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
 does not perform anything. It is just created as an intermediate output of
@@ -1543,7 +1541,6 @@ REGISTER_OP("_MklConv2DWithBias")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Doc(R"doc(
 MKL version of Conv2D and BiasAdd operator. Uses MKL DNN APIs to perform
 2D convolution and add Bias to the output of convolution.
@@ -1566,7 +1563,6 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -1593,7 +1589,6 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_shape;
       // Fetch the data_format attribute, which may not exist.
@@ -1638,7 +1633,6 @@ REGISTER_OP("_MklConv2DBackpropFilterWithBias")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input_shape;
       // Fetch the data_format attribute, which may not exist.
@@ -1674,7 +1668,6 @@ REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Doc(R"doc(
 MKL version of Conv2DBackpropBias. Uses MKL DNN APIs to compute the
 gradients of convolution with respect to the bias.
@@ -1697,7 +1690,6 @@ REGISTER_OP("_MklConv2DBackpropInput")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));

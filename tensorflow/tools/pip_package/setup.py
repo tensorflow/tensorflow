@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.6.0'
+_VERSION = '1.6.0-rc1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -72,7 +72,7 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
+    'freeze_graph = tensorflow.python.tools.freeze_graph:main',
     'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
     'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// LSH Projection projects an input to a bit vector via locality sensitive
+// LSH Projection projects an input to a bit vector via locality senstive
 // hashing.
 //
 // Options:

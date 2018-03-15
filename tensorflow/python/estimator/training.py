@@ -128,16 +128,9 @@ class TrainSpec(
     """Creates a validated `TrainSpec` instance.
 
     Args:
-      input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
-            `Tensor` or a dictionary of string label name to `Tensor`.
-            
+      input_fn: Training input function returning a tuple of:
+          features - `Tensor` or dictionary of string feature name to `Tensor`.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
       max_steps: Int. Positive number of total steps for which to train model.
         If `None`, train forever. The training `input_fn` is not expected to
         generate `OutOfRangeError` or `StopIteration` exceptions. See the
@@ -192,16 +185,9 @@ class EvalSpec(
     """Creates a validated `EvalSpec` instance.
 
     Args:
-      input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
-            `Tensor` or a dictionary of string label name to `Tensor`.
-            
+      input_fn: Evaluation input function returning a tuple of:
+          features - `Tensor` or dictionary of string feature name to `Tensor`.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
       steps: Int. Positive number of steps for which to evaluate model. If
         `None`, evaluates until `input_fn` raises an end-of-input exception.
         See `Estimator.evaluate` for details.

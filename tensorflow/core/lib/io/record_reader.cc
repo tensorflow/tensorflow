@@ -205,9 +205,7 @@ Status RecordReader::SkipNBytes(uint64 offset) {
     if (options_.buffer_size > 0) {
       TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(offset));
     }
-#if !defined(IS_SLIM_BUILD)
   }
-#endif
   return Status::OK();
 }  // namespace io
 

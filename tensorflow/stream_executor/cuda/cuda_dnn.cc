@@ -274,8 +274,7 @@ CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 // clang-format off
 #if CUDNN_VERSION >= 7000
 #define CUDNN_DNN_ROUTINE_EACH_R7(__macro)                    \
-  __macro(cudnnSetConvolutionMathType)                        \
-  __macro(cudnnSetRNNMatrixMathType)
+  __macro(cudnnSetConvolutionMathType)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
@@ -581,19 +580,6 @@ static bool TensorOpMathEnabled() {
     bool is_disabled = false;
     TF_CHECK_OK(
         tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
-                                       /*default_val=*/false, &is_disabled));
-    return !is_disabled;
-  }();
-  return is_enabled;
-}
-
-// A helper function to decide whether to enable the TENSOR_OP_MATH math type
-// for RNNs.
-static bool RnnTensorOpMathEnabled() {
-  static bool is_enabled = [] {
-    bool is_disabled = false;
-    TF_CHECK_OK(
-        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH",
                                        /*default_val=*/false, &is_disabled));
     return !is_disabled;
   }();
@@ -1138,9 +1124,6 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
       SetFailure(cudnn_params_desc_->Status());
       return;
     }
-    if (data_type == CUDNN_DATA_HALF) {
-      set_use_tensor_op_math(true);
-    }
   }
   ~CudnnRnnDescriptor() override {
     if (rnn_desc_) {
@@ -1148,20 +1131,6 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
           wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
       CUDNN_RETURN_IF_FAIL(status, "Unable to destroy RNN descriptor");
     }
-  }
-  void set_use_tensor_op_math(bool use_tensor_op_math) {
-#if CUDNN_VERSION >= 7000
-    cudnnMathType_t math_type =
-        (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
-    if (RnnTensorOpMathEnabled()) {
-      cudnnStatus_t status =
-          wrap::cudnnSetRNNMatrixMathType(parent_, rnn_desc_, math_type);
-      if (status != CUDNN_STATUS_SUCCESS) {
-        LOG(FATAL) << "could not set cudnn RNN math type: "
-                   << ToString(status);
-      }
-    }
-#endif
   }
   cudnnRNNDescriptor_t handle() const {
     if (!ok()) return nullptr;

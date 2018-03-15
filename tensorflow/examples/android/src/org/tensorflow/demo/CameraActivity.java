@@ -351,10 +351,6 @@ public abstract class CameraActivity extends Activity
 
   protected void setFragment() {
     String cameraId = chooseCamera();
-    if (cameraId == null) {
-      Toast.makeText(this, "No Camera Detected", Toast.LENGTH_SHORT).show();
-      finish();
-    }
 
     Fragment fragment;
     if (useCamera2API) {
@@ -420,8 +416,7 @@ public abstract class CameraActivity extends Activity
 
   @Override
   public boolean onKeyDown(final int keyCode, final KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
-            || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
       debug = !debug;
       requestRender();
       onSetDebug(debug);

@@ -16,11 +16,12 @@
 #
 # Tests distributed TensorFlow on a locally running TF GRPC cluster.
 #
-# This script performs the following steps:
-# 1) Build the docker image capable of running distributed TensorFlow in docker.
+# This script peforms the following steps:
+# 1) Build the docker-in-docker (dind) image capable of running docker and
+#    Kubernetes (k8s) cluster inside.
 # 2) Run a container from the aforementioned image and start docker service
 #    in it
-# 3) Call a script to launch a distributed TensorFlow GRPC cluster inside the container
+# 3) Call a script to launch a k8s TensorFlow GRPC cluster inside the container
 #    and run the distributed test suite.
 #
 # Usage: local_test.sh <whl_file_location>
@@ -63,9 +64,15 @@ die() {
 
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"
+LOCAL_K8S_CACHE=${HOME}/kubernetes
 
-# Use TensorFlow v1.5.0 for Python 2.7 and CPU only as we set num_gpus to 0 in the below
-DEFAULT_WHL_FILE_LOCATION="https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl"
+# Helper function
+get_container_id_by_image_name() {
+    # Get the id of a container by image name
+    # Usage: get_docker_container_id_by_image_name <img_name>
+
+    docker ps | grep $1 | awk '{print $1}'
+}
 
 # Parse input arguments
 LEAVE_CONTAINER_RUNNING=0
@@ -77,8 +84,7 @@ SYNC_REPLICAS_FLAG=""
 
 WHL_FILE_LOCATION=${1}
 if [[ -z "${WHL_FILE_LOCATION}" ]]; then
-  WHL_FILE_LOCATION=${DEFAULT_WHL_FILE_LOCATION}
-  echo "use default whl file location"
+  die "whl file location is not specified"
 fi
 
 while true; do
@@ -115,7 +121,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get utility functions
 source ${DIR}/scripts/utils.sh
 
-# Build docker image for local distributed TensorFlow cluster.
+# Build docker-in-docker image for local k8s cluster.
 NO_CACHE_FLAG=""
 if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
    [[ "${TF_DIST_DOCKER_NO_CACHE}" != "0" ]]; then
