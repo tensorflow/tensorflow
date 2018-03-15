@@ -1662,6 +1662,7 @@ class Saver(object):
 
     if (not context.executing_eagerly() and
         not isinstance(sess, session.SessionInterface)):
+
       raise TypeError("'sess' must be a Session; %s" % sess)
 
     save_path_parent = os.path.dirname(save_path)
@@ -1766,6 +1767,7 @@ class Saver(object):
     """
     if self._is_empty:
       return
+
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
     logging.info("Restoring parameters from %s", save_path)
