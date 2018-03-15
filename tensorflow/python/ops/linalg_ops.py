@@ -546,14 +546,15 @@ def norm(tensor,
         axes = list(range(rank))
         perm_before = list(filter(lambda i: i not in axis, axes)) + list(axis)
         perm_after = list(map(lambda i: perm_before.index(i), axes))
-        result = array_ops.transpose(array_ops.expand_dims(math_ops.reduce_max(
-            gen_linalg_ops.svd(array_ops.transpose(tensor, perm=perm_before),
-                               compute_uv=False)[0], axis=-1, keepdims=True),
-            axis=-1), perm=perm_after)
+        result = array_ops.transpose(array_ops.expand_dims(
+            math_ops.reduce_max(gen_linalg_ops.svd(
+                array_ops.transpose(tensor, perm=perm_before),
+                compute_uv=False)[0], axis=-1, keepdims=True), axis=-1),
+                                     perm=perm_after)
       else:
         result = math_ops.sqrt(
-          math_ops.reduce_sum(
-              tensor * math_ops.conj(tensor), axis, keepdims=True))
+            math_ops.reduce_sum(
+                tensor * math_ops.conj(tensor), axis, keepdims=True))
     else:
       result = math_ops.abs(tensor)
       if ord == 1:
