@@ -2873,11 +2873,11 @@ class _OwnsAVariableSimple(checkpointable.CheckpointableBase):
 class _MirroringSaveable(
     saver_module.BaseSaverBuilder.ResourceVariableSaveable):
 
-  def __init__(self, primary_variable, mirrored_variable):
+  def __init__(self, primary_variable, mirrored_variable, name):
     self._primary_variable = primary_variable
     self._mirrored_variable = mirrored_variable
     super(_MirroringSaveable, self).__init__(
-        self._primary_variable, "", self._primary_variable.name)
+        self._primary_variable, "", name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -2897,10 +2897,12 @@ class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
         name="mirrored", initializer=15., use_resource=True)
 
   def _gather_saveables_for_checkpoint(self):
-    saveable = _MirroringSaveable(
-        primary_variable=self.non_dep_variable,
-        mirrored_variable=self.mirrored)
-    return {checkpointable.VARIABLE_VALUE_KEY: saveable}
+    def _saveable_factory(name=self.non_dep_variable.name):
+      return _MirroringSaveable(
+          primary_variable=self.non_dep_variable,
+          mirrored_variable=self.mirrored,
+          name=name)
+    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property

@@ -220,12 +220,16 @@ def _serialize_checkpointables(
     object_proto = object_graph_proto.nodes.add()
     object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
     object_name = object_names[checkpointable]
-    for name, saveable in (
+    for name, saveable_factory in (
         checkpointable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
       attribute = object_proto.attributes.add()
       attribute.name = name
       attribute.checkpoint_key = "%s/%s/%s" % (
           object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
+      if callable(saveable_factory):
+        saveable = saveable_factory(name=attribute.checkpoint_key)
+      else:
+        saveable = saveable_factory
       # Figure out the name-based Saver's name for this variable.
       saver_dict = saver_lib.BaseSaverBuilder.OpListToDict(
           [saveable], convert_variable_to_tensor=False)

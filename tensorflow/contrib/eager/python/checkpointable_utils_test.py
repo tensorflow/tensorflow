@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl.keras.engine import training
 from tensorflow.python.layers import core
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -152,6 +153,46 @@ class InterfaceTests(test.TestCase):
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
 
+class _MirroringSaveable(
+    core_saver.BaseSaverBuilder.ResourceVariableSaveable):
+
+  def __init__(self, primary_variable, mirrored_variable, name):
+    self._primary_variable = primary_variable
+    self._mirrored_variable = mirrored_variable
+    super(_MirroringSaveable, self).__init__(
+        self._primary_variable, "", name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    """Restore the same value into both variables."""
+    tensor, = restored_tensors
+    return control_flow_ops.group(
+        self._primary_variable.assign(tensor),
+        self._mirrored_variable.assign(tensor))
+
+
+class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
+  """A Checkpointable object which returns a more complex SaveableObject."""
+
+  def __init__(self):
+    self.non_dep_variable = variable_scope.get_variable(
+        name="non_dep_variable", initializer=6., use_resource=True)
+    self.mirrored = variable_scope.get_variable(
+        name="mirrored", initializer=15., use_resource=True)
+
+  def _gather_saveables_for_checkpoint(self):
+    def _saveable_factory(name=self.non_dep_variable.name):
+      return _MirroringSaveable(
+          primary_variable=self.non_dep_variable,
+          mirrored_variable=self.mirrored,
+          name=name)
+    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  # The Saver sorts by name before parsing, so we need a name property.
+  @property
+  def name(self):
+    return self.non_dep_variable.name
+
+
 class CheckpointingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -260,6 +301,36 @@ class CheckpointingTests(test.TestCase):
         serialized_graph.nodes[
             optimizer_node.slot_variables[0]
             .slot_variable_node_id].attributes[0].checkpoint_key)
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testMoreComplexSaveableReturned(self):
+    v = _OwnsMirroredVariables()
+    checkpoint = checkpointable_utils.Checkpoint(v=v)
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    self.evaluate(v.non_dep_variable.assign(42.))
+    save_path = checkpoint.save(prefix)
+    self.evaluate(v.non_dep_variable.assign(43.))
+    self.evaluate(v.mirrored.assign(44.))
+    checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+    self.assertEqual(42., self.evaluate(v.non_dep_variable))
+    self.assertEqual(42., self.evaluate(v.mirrored))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMoreComplexSaveableReturnedWithGlobalName(self):
+    # The same object can also be saved using the name-based saver.
+    v = _OwnsMirroredVariables()
+    saver = core_saver.Saver(var_list=[v])
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    self.evaluate(v.non_dep_variable.assign(42.))
+    with self.test_session() as sess:
+      save_path = saver.save(sess, prefix)
+      self.evaluate(v.non_dep_variable.assign(43.))
+      self.evaluate(v.mirrored.assign(44.))
+      saver.restore(sess, save_path)
+      self.assertEqual(42., self.evaluate(v.non_dep_variable))
+      self.assertEqual(42., self.evaluate(v.mirrored))
 
   @test_util.run_in_graph_and_eager_modes()
   def testSaveRestore(self):
