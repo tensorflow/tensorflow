@@ -55,6 +55,9 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Granular control for arithmetic optimizer stages
   struct ArithmeticOptimizerOptions {
+    // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
+    // Remove when all optimizers will be migrated to separate stages.
+    bool enable_try_simplify_and_replace = true;
     bool combine_add_to_addn = true;
     bool hoist_common_factor_out_of_aggregation = true;
     bool remove_inverse_transpose = true;
