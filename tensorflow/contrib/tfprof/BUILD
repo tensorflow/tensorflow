@@ -8,12 +8,27 @@ py_library(
     name = "tfprof",
     srcs = [
         "__init__.py",
+        "model_analyzer.py",
+        "tfprof_logger.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/contrib/tfprof/python/tools/tfprof:model_analyzer",
-        "//tensorflow/contrib/tfprof/python/tools/tfprof:tfprof_logger",
         "//tensorflow/python:util",
+        "//tensorflow/python/profiler:model_analyzer",
+        "//tensorflow/python/profiler:profile_context",
+        "//tensorflow/python/profiler:tfprof_logger",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -81,7 +81,8 @@ class SequenceQueueingStateSaverTest(test.TestCase):
           input_key=key,
           input_sequences=sequences,
           input_context=context,
-          initial_states=initial_states)
+          initial_states=initial_states,
+          capacity=100)
 
       initial_key_value_0, _ = sess.run((key, state_saver.prefetch_op))
       initial_key_value_1, _ = sess.run((key, state_saver.prefetch_op))
@@ -191,6 +192,55 @@ class SequenceQueueingStateSaverTest(test.TestCase):
                      sequences["seq1"]: np.random.rand(bad_padded_length, 5),
                      initial_states["state1"]: 1.0
                  })
+
+  def _testStateSaverFailsIfCapacityTooSmall(self, batch_size):
+    with self.test_session() as sess:
+      num_unroll = 2
+      length = array_ops.placeholder(dtypes.int32)
+      key = array_ops.placeholder(dtypes.string)
+      sequences = {
+          "seq1": array_ops.placeholder(
+              dtypes.float32, shape=(None, 5)),
+          "seq2": array_ops.placeholder(
+              dtypes.float32, shape=(None,))
+      }
+      context = {}
+      initial_states = {
+          "state1": array_ops.placeholder(
+              dtypes.float32, shape=())
+      }
+      state_saver = sqss.SequenceQueueingStateSaver(
+          batch_size=batch_size,
+          num_unroll=num_unroll,
+          input_length=length,
+          input_key=key,
+          input_sequences=sequences,
+          input_context=context,
+          initial_states=initial_states,
+          capacity=10)
+
+      sess.run([state_saver.prefetch_op],
+               feed_dict={
+                   length: 1,
+                   key: "key",
+                   sequences["seq1"]: np.random.rand(num_unroll, 5),
+                   sequences["seq2"]: np.random.rand(num_unroll),
+                   initial_states["state1"]: 1.0
+               })
+
+  def testStateSaverFailsIfCapacityTooSmallTensor(self):
+    batch_size_value = 32
+    batch_size = constant_op.constant(batch_size_value)
+    with self.assertRaisesOpError(
+        ".*capacity needs to be >= batch_size.*"):
+      self._testStateSaverFailsIfCapacityTooSmall(batch_size)
+
+  def testStateSaverFailsIfCapacityTooSmallInt(self):
+    batch_size = 32
+    with self.assertRaisesRegexp(
+        ValueError,
+        "capacity %d needs to be >= batch_size %d" % (10, batch_size)):
+      self._testStateSaverFailsIfCapacityTooSmall(batch_size)
 
   def testStateSaverFailsIfInconsistentPaddedLength(self):
     with self.test_session() as sess:

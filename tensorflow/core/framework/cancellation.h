@@ -36,7 +36,7 @@ namespace tensorflow {
 // CancellationManager::get_cancellation_token.
 typedef int64 CancellationToken;
 
-// A callback that is invoked when a step is cancelled.
+// A callback that is invoked when a step is canceled.
 //
 // NOTE(mrry): See caveats about CancelCallback implementations in the
 // comment for CancellationManager::RegisterCallback.
@@ -79,7 +79,7 @@ class CancellationManager {
   //     CancellationToken token = cm->get_cancellation_token();
   //     {
   //       mutex_lock(mu_);
-  //       already_cancelled = cm->RegisterCallback(
+  //       already_cancelled = !cm->RegisterCallback(
   //           [this, token]() { Cancel(token); });
   //       if (!already_cancelled) {
   //         // Issue asynchronous operation. Associate the pending operation

@@ -22,15 +22,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.summary import summary
 from tensorflow.python.training import input as input_ops
-from tensorflow.python.training import queue_runner
 
 __all__ = [
     'rejection_sample',
@@ -121,9 +117,18 @@ def rejection_sample(tensors,
               check_ops.assert_less_equal(cur_prob, 1.0)
           ], cur_prob),
           name='prob_with_checks')
-    keep_input = random_ops.random_uniform([]) < cur_prob
-    return _conditional_batch(
-        tensor_list, keep_input, batch_size, num_threads=queue_threads)
+    minibatch = input_ops.maybe_batch(
+        tensor_list,
+        keep_input=random_ops.random_uniform([]) < cur_prob,
+        batch_size=batch_size,
+        num_threads=queue_threads)
+
+    # Queues return a single tensor if the list of enqued tensors is one. Since
+    # we want the type to always be the same, always return a list.
+    if isinstance(minibatch, ops.Tensor):
+      minibatch = [minibatch]
+
+    return minibatch
 
 
 def stratified_sample(tensors,
@@ -145,7 +150,7 @@ def stratified_sample(tensors,
     tensors: List of tensors for data. All tensors are either one item or a
         batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
-        depending on enqueue_many. It is not a one-hot vector.
+        depending on `enqueue_many`. It is not a one-hot vector.
     target_probs: Target class proportions in batch. An object whose type has a
         registered Tensor conversion function.
     batch_size: Size of batch to be returned.
@@ -159,9 +164,10 @@ def stratified_sample(tensors,
         examples and for the final queue with the proper class proportions.
     name: Optional prefix for ops created by this function.
   Raises:
-    ValueError: enqueue_many is True and labels doesn't have a batch
-        dimension, or if enqueue_many is False and labels isn't a scalar.
-    ValueError: enqueue_many is True, and batch dimension on data and labels
+    ValueError: If `tensors` isn't iterable.
+    ValueError: `enqueue_many` is True and labels doesn't have a batch
+        dimension, or if `enqueue_many` is False and labels isn't a scalar.
+    ValueError: `enqueue_many` is True, and batch dimension on data and labels
         don't match.
     ValueError: if probs don't sum to one.
     ValueError: if a zero initial probability class has a nonzero target
@@ -183,7 +189,7 @@ def stratified_sample(tensors,
     # Run batch through network.
     ...
   """
-  with ops.name_scope(name, 'stratified_sample', tensors + [labels]):
+  with ops.name_scope(name, 'stratified_sample', list(tensors) + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
@@ -213,9 +219,8 @@ def stratified_sample(tensors,
             math_ops.logical_or(
                 math_ops.not_equal(init_probs, 0),
                 math_ops.equal(target_probs, 0))),
-        [
-            'All classes with zero initial probability must also have zero target '
-            'probability: ', init_probs, target_probs
+        ['All classes with zero initial probability must also have zero target '
+         'probability: ', init_probs, target_probs
         ])
     init_probs = control_flow_ops.with_dependencies([assert_op], init_probs)
 
@@ -244,11 +249,10 @@ def stratified_sample(tensors,
     # Set up second queue containing batches that have the desired class
     # proportions.
     cur_prob = array_ops.gather(accept_probs, label)
-    keep_input = random_ops.random_uniform([]) < cur_prob
-    batched = _conditional_batch(
+    batched = input_ops.maybe_batch(
         val_list + [label],
-        keep_input,
-        batch_size,
+        keep_input=random_ops.random_uniform([]) < cur_prob,
+        batch_size=batch_size,
         num_threads=threads_per_queue)
     return batched[:-1], batched[-1]
 
@@ -260,7 +264,7 @@ def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
   # slower convergence.
   if smoothing_constant <= 0:
     raise ValueError('smoothing_constant must be nonzero.')
-  num_examples_per_class_seen = variables.Variable(
+  num_examples_per_class_seen = variable_scope.variable(
       initial_value=[smoothing_constant] * num_classes,
       trainable=False,
       name='class_count',
@@ -416,54 +420,3 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   # Calculate list of acceptance probabilities.
   max_ratio = math_ops.reduce_max(ratio_l)
   return ratio_l / max_ratio
-
-
-def _conditional_batch(tensors, keep_input, batch_size, num_threads=10):
-  """Conditionally enqueue tensors based on accept_prob.
-
-  Specifically, enqueue the element if accept_prob > rand_unif([0, 1]).
-
-  Args:
-      tensors: List of tensors to enqueue.
-      keep_input: Bool. Whether to enqueue or not.
-      batch_size: Size of batch.
-      num_threads: Number of enqueueing threads.
-
-  Returns:
-      List of batched tensors.
-
-  Raises:
-      ValueError: `accept_prob` isn't 0D.
-  """
-  keep_input.get_shape().assert_has_rank(0)
-  # Determine shapes and types of to-be-enqueued-tensors.
-  shapes_list = []
-  dtypes_list = []
-  for tensor in tensors:
-    cur_shape = tensor.get_shape()
-    cur_shape.assert_is_fully_defined()
-    shapes_list.append(cur_shape)
-    dtypes_list.append(tensor.dtype)
-
-  final_q = data_flow_ops.FIFOQueue(
-      capacity=batch_size,
-      shapes=shapes_list,
-      dtypes=dtypes_list,
-      name='batched_queue')
-  summary.scalar('queue/%s/size' % final_q.name, final_q.size())
-
-  # Conditionally enqueue.
-  # Reshape enqueue op to match no_op's shape.
-  conditional_enqueue = control_flow_ops.cond(keep_input,
-                                              lambda: final_q.enqueue(tensors),
-                                              control_flow_ops.no_op)
-  queue_runner.add_queue_runner(
-      queue_runner.QueueRunner(final_q, [conditional_enqueue] * num_threads))
-
-  out_tensor = final_q.dequeue_many(batch_size)
-  # Queues return a single tensor if the list of enqued tensors is one. Since we
-  # want the type to be the same in all cases, always return a list.
-  if isinstance(out_tensor, ops.Tensor):
-    out_tensor = [out_tensor]
-
-  return out_tensor

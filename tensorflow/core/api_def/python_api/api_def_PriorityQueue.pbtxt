@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "PriorityQueue"
+  visibility: HIDDEN
+}

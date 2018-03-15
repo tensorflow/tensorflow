@@ -19,8 +19,8 @@ limitations under the License.
 
 // Contains ObjectModelBase declaration.
 
-#ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_
-#define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_
+#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_
+#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_
 
 #ifdef __RENDER_OPENGL__
 #include <GLES/gl.h>
@@ -55,9 +55,10 @@ class ObjectModelBase {
   virtual ~ObjectModelBase() {}
 
   // Called when the next step in an ongoing track occurs.
-  virtual void TrackStep(
-      const BoundingBox& position, const Image<uint8>& image,
-      const IntegralImage& integral_image, const bool authoritative) {}
+  virtual void TrackStep(const BoundingBox& position,
+                         const Image<uint8_t>& image,
+                         const IntegralImage& integral_image,
+                         const bool authoritative) {}
 
   // Called when an object track is lost.
   virtual void TrackLost() {}
@@ -98,4 +99,4 @@ class ObjectModel : public ObjectModelBase {
 
 }  // namespace tf_tracking
 
-#endif  // THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_DETECTION_OBJECT_MODEL_H_

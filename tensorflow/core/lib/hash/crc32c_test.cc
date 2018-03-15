@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace crc32c {
@@ -46,6 +48,12 @@ TEST(CRC, StandardResults) {
       0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   };
   ASSERT_EQ(0xd9963a56, Value(reinterpret_cast<char*>(data), sizeof(data)));
+
+  // Try unaligned sizes and offsets.
+  // Accelerated and unaccelerated code both produce these results.
+  ASSERT_EQ(0xdd1b19be, Value(reinterpret_cast<char*>(data), sizeof(data) - 7));
+  ASSERT_EQ(0x4930c4b1,
+            Value(reinterpret_cast<char*>(data) + 1, sizeof(data) - 4));
 }
 
 TEST(CRC, Values) { ASSERT_NE(Value("a", 1), Value("foo", 3)); }
@@ -61,6 +69,17 @@ TEST(CRC, Mask) {
   ASSERT_EQ(crc, Unmask(Mask(crc)));
   ASSERT_EQ(crc, Unmask(Unmask(Mask(Mask(crc)))));
 }
+
+static void BM_CRC(int iters, int len) {
+  std::string input(len, 'x');
+  uint32 h = 0;
+  for (int i = 0; i < iters; i++) {
+    h = Extend(h, input.data() + 1, len - 1);
+  }
+  testing::BytesProcessed(static_cast<int64>(iters) * len);
+  VLOG(1) << h;
+}
+BENCHMARK(BM_CRC)->Range(1, 256 * 1024);
 
 }  // namespace crc32c
 }  // namespace tensorflow

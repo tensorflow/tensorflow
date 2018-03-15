@@ -26,36 +26,56 @@ add_library(lib_proto STATIC IMPORTED )
 set_target_properties(lib_proto PROPERTIES IMPORTED_LOCATION
     ${PREBUILT_DIR}/protobuf/lib/libprotobuf.a)
 
+add_library(lib_nsync STATIC IMPORTED )
+set_target_properties(lib_nsync PROPERTIES IMPORTED_LOCATION
+    ${TARGET_NSYNC_LIB}/lib/libnsync.a)
+
 add_library(lib_tf STATIC IMPORTED )
 set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
         ${PREBUILT_DIR}/lib/libtensorflow-core.a)
 # Change to compile flags should be replicated into bazel build file
-# LINT.IfChange
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fno-rtti -fno-exceptions \
-                     -fpic -O2 -mfpu=neon -DTF_LEAN_BINARY \
+# TODO: Consider options other than -O2 for binary size.
+#       e.g. -Os for gcc, and -Oz for clang.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIS_SLIM_BUILD \
+                     -std=c++11 -fno-rtti -fno-exceptions \
+                     -O2 -Wno-narrowing -fomit-frame-pointer \
+                     -mfpu=neon -mfloat-abi=softfp -fPIE -fPIC \
+                     -ftemplate-depth=900 \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
-# LINT.ThenChange(//tensorflow/tensorflow.bzl)
 
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} \
                               -Wl,--allow-multiple-definition \
-                              -Wl,--whole-archive")
-
+                              -Wl,--whole-archive \
+                              -fPIE -pie -v")
 file(GLOB tensorflow_inference_sources
      ${CMAKE_CURRENT_SOURCE_DIR}/../jni/*.cc)
-add_library(tensorflow_inference SHARED ${tensorflow_inference_sources})
+file(GLOB java_api_native_sources
+     ${TENSORFLOW_ROOT_DIR}/tensorflow/java/src/main/native/*.cc)
+
+add_library(tensorflow_inference SHARED
+            ${tensorflow_inference_sources}
+            ${TENSORFLOW_ROOT_DIR}/tensorflow/c/tf_status_helper.cc
+            ${TENSORFLOW_ROOT_DIR}/tensorflow/c/checkpoint_reader.cc
+            ${TENSORFLOW_ROOT_DIR}/tensorflow/c/test_op.cc
+            ${TENSORFLOW_ROOT_DIR}/tensorflow/c/c_api.cc
+            ${java_api_native_sources})
 
 # Include libraries needed for hello-jni lib
 target_link_libraries(tensorflow_inference
                       android
+                      dl
                       log
                       m
                       z
                       lib_tf
-                      lib_proto)
+                      lib_proto
+                      lib_nsync)
+
 include_directories(
     ${PREBUILT_DIR}/proto
     ${PREBUILT_DIR}/protobuf/include
+    ${PREBUILT_DIR}/nsync/public
     ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/downloads/eigen
     ${TENSORFLOW_ROOT_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..)

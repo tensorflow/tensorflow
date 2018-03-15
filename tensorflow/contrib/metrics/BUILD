@@ -8,8 +8,10 @@ exports_files(["LICENSE"])
 
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:__subpackages__",
+    "//tensorflow:internal",
 ])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "metrics_py",
@@ -29,7 +31,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:histogram_ops",
         "//tensorflow/python:init_ops",
@@ -38,11 +39,11 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:sets",
-        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 
@@ -55,9 +56,6 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -71,8 +69,6 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -83,6 +79,7 @@ py_test(
     srcs = ["python/ops/metric_ops_test.py"],
     shard_count = 3,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":metrics_py",
         "//tensorflow/python:array_ops",
@@ -95,6 +92,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

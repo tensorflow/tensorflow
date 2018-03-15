@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include <sys/types.h>
+#include <zlib.h>
 #include <string>
 #include <utility>
 #include <vector>
@@ -89,11 +90,8 @@ void WarningHandler(png_structp png_ptr, png_const_charp msg) {
 void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   DecodeContext* const ctx = bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    if (!ctx->error_condition) {
-      VLOG(1) << "PNG read decoding error";
-      ctx->error_condition = true;
-    }
     memset(data, 0, length);
+    png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);
     ctx->data += length;
@@ -124,7 +122,8 @@ char* check_metadata_string(const string& s) {
 void CommonFreeDecode(DecodeContext* context) {
   if (context->png_ptr) {
     png_destroy_read_struct(&context->png_ptr,
-                            context->info_ptr ? &context->info_ptr : NULL, 0);
+                            context->info_ptr ? &context->info_ptr : nullptr,
+                            nullptr);
     context->png_ptr = nullptr;
     context->info_ptr = nullptr;
   }
@@ -149,10 +148,13 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   *width = static_cast<int>(context.width);
   CHECK_NOTNULL(height);
   *height = static_cast<int>(context.height);
-  if (components != NULL) {
+  if (components != nullptr) {
     switch (context.color_type) {
       case PNG_COLOR_TYPE_PALETTE:
-        *components = (context.info_ptr->valid & PNG_INFO_tRNS) ? 4 : 3;
+        *components =
+            (png_get_valid(context.png_ptr, context.info_ptr, PNG_INFO_tRNS))
+                ? 4
+                : 3;
         break;
       case PNG_COLOR_TYPE_GRAY:
         *components = 1;
@@ -171,13 +173,16 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
         break;
     }
   }
-  if (channel_bit_depth != NULL) {
+  if (channel_bit_depth != nullptr) {
     *channel_bit_depth = context.bit_depth;
   }
-  if (metadata != NULL) {
+  if (metadata != nullptr) {
     metadata->clear();
-    for (int i = 0; i < context.info_ptr->num_text; i++) {
-      const png_text& text = context.info_ptr->text[i];
+    png_textp text_ptr = nullptr;
+    int num_text = 0;
+    png_get_text(context.png_ptr, context.info_ptr, &text_ptr, &num_text);
+    for (int i = 0; i < num_text; i++) {
+      const png_text& text = text_ptr[i];
       metadata->push_back(std::make_pair(text.key, text.text));
     }
   }
@@ -189,8 +194,8 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
                       int desired_channel_bits, DecodeContext* context) {
   CHECK(desired_channel_bits == 8 || desired_channel_bits == 16)
       << "desired_channel_bits = " << desired_channel_bits;
-  CHECK(0 <= desired_channels && desired_channels <= 4) << "desired_channels = "
-                                                        << desired_channels;
+  CHECK(0 <= desired_channels && desired_channels <= 4)
+      << "desired_channels = " << desired_channels;
   context->error_condition = false;
   context->channels = desired_channels;
   context->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, context,
@@ -215,8 +220,8 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   png_set_read_fn(context->png_ptr, context, StringReader);
   png_read_info(context->png_ptr, context->info_ptr);
   png_get_IHDR(context->png_ptr, context->info_ptr, &context->width,
-               &context->height, &context->bit_depth, &context->color_type, 0,
-               0, 0);
+               &context->height, &context->bit_depth, &context->color_type,
+               nullptr, nullptr, nullptr);
   if (context->error_condition) {
     VLOG(1) << ": DecodePNG <- error during header parsing.";
     CommonFreeDecode(context);
@@ -228,9 +233,10 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     return false;
   }
   if (context->channels == 0) {  // Autodetect number of channels
-    context->channels = context->info_ptr->channels;
+    context->channels = png_get_channels(context->png_ptr, context->info_ptr);
   }
-  const bool has_tRNS = (context->info_ptr->valid & PNG_INFO_tRNS) != 0;
+  const bool has_tRNS =
+      (png_get_valid(context->png_ptr, context->info_ptr, PNG_INFO_tRNS)) != 0;
   const bool has_alpha = (context->color_type & PNG_COLOR_MASK_ALPHA) != 0;
   if ((context->channels & 1) == 0) {  // We desire alpha
     if (has_alpha) {                   // There is alpha
@@ -268,7 +274,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   const bool want_gray = (context->channels < 3);
   const bool is_gray = !(context->color_type & PNG_COLOR_MASK_COLOR);
   if (is_gray) {  // upconvert gray to 8-bit if needed.
-    if (context->bit_depth < 8) png_set_gray_1_2_4_to_8(context->png_ptr);
+    if (context->bit_depth < 8) {
+      png_set_expand_gray_1_2_4_to_8(context->png_ptr);
+    }
   }
   if (want_gray) {  // output is grayscale
     if (!is_gray)
@@ -297,11 +305,13 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
   for (int p = 0; p < context->num_passes; ++p) {
     png_bytep row = data;
     for (int h = context->height; h-- != 0; row += row_bytes) {
-      png_read_row(context->png_ptr, row, NULL);
+      png_read_row(context->png_ptr, row, nullptr);
     }
   }
 
-  context->info_ptr->valid |= PNG_INFO_IDAT;
+  // Marks iDAT as valid.
+  png_set_rows(context->png_ptr, context->info_ptr,
+               png_get_rows(context->png_ptr, context->info_ptr));
   png_read_end(context->png_ptr, context->info_ptr);
 
   // Clean up.
@@ -327,17 +337,17 @@ bool WriteImageToBuffer(
   if (width == 0 || height == 0) return false;
 
   png_string->resize(0);
-  png_infop info_ptr = NULL;
-  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,
+  png_infop info_ptr = nullptr;
+  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr,
                                                 ErrorHandler, WarningHandler);
-  if (png_ptr == NULL) return false;
+  if (png_ptr == nullptr) return false;
   if (setjmp(png_jmpbuf(png_ptr))) {
-    png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : NULL);
+    png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : nullptr);
     return false;
   }
   info_ptr = png_create_info_struct(png_ptr);
-  if (info_ptr == NULL) {
-    png_destroy_write_struct(&png_ptr, NULL);
+  if (info_ptr == nullptr) {
+    png_destroy_write_struct(&png_ptr, nullptr);
     return false;
   }
 
@@ -388,7 +398,7 @@ bool WriteImageToBuffer(
 
   png_byte* row = reinterpret_cast<png_byte*>(const_cast<void*>(image));
   for (; height--; row += row_bytes) png_write_row(png_ptr, row);
-  png_write_end(png_ptr, NULL);
+  png_write_end(png_ptr, nullptr);
 
   png_destroy_write_struct(&png_ptr, &info_ptr);
   return true;

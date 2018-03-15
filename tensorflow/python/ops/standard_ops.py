@@ -25,8 +25,11 @@ import sys as _sys
 # Imports the following modules so that @RegisterGradient get executed.
 from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
+from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import sparse_grad
+from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.util.all_util import remove_undocumented
@@ -41,11 +44,12 @@ from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
 from tensorflow.python.ops.confusion_matrix import confusion_matrix
 from tensorflow.python.ops.control_flow_ops import Assert
+from tensorflow.python.ops.control_flow_ops import case
+from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
-from tensorflow.python.ops.control_flow_ops import tuple
-from tensorflow.python.ops.control_flow_ops import cond
-from tensorflow.python.ops.control_flow_ops import case
+from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
+# pylint: enable=redefined-builtin
 from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *
@@ -56,6 +60,10 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.logging_ops import timestamp
+from tensorflow.python.ops.lookup_ops import initialize_all_tables
+from tensorflow.python.ops.lookup_ops import tables_initializer
+from tensorflow.python.ops.manip_ops import *
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -102,6 +110,7 @@ from tensorflow.python.ops import init_ops as _init_ops
 from tensorflow.python.ops import io_ops as _io_ops
 from tensorflow.python.ops import linalg_ops as _linalg_ops
 from tensorflow.python.ops import logging_ops as _logging_ops
+from tensorflow.python.ops import manip_ops as _manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops import numerics as _numerics
 from tensorflow.python.ops import parsing_ops as _parsing_ops
@@ -142,8 +151,9 @@ _allowed_symbols_math_ops = [
     "sub",  # use tf.subtract instead.
 
     # These are documented in nn.
-    # We are are not importing nn because it would create a circular dependency.
+    # We are not importing nn because it would create a circular dependency.
     "sigmoid",
+    "log_sigmoid",
     "tanh",
 ]
 
@@ -168,15 +178,14 @@ _allowed_symbols_array_ops = [
     ##  documentation section to reference.
     ## For re-exporting to tf.*:
     "constant",
-    "edit_distance",   # to-doc
+    "edit_distance",  # to-doc
     # From gen_array_ops:
-    "copy_host",       # to-doc
+    "copy_host",  # to-doc
     "immutable_const",  # to-doc
     "invert_permutation",  # to-doc
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",   # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
@@ -209,6 +218,7 @@ _allowed_symbols_gradients = [
     # Documented in training.py:
     # Not importing training.py to avoid complex graph dependencies.
     "AggregationMethod",
+    "custom_gradient",
     "gradients",  # tf.gradients = gradients.gradients
     "hessians",
 ]
@@ -223,7 +233,7 @@ _allowed_symbols_clip_ops = [
     "global_norm",
 ]
 
-_allowed_symbols_image_ops = [
+_allowed_symbols_logging_ops = [
     # Documented in training.py.
     # We are not importing training.py to avoid complex dependencies.
     "audio_summary",
@@ -253,41 +263,43 @@ _allowed_symbols = (_allowed_symbols_array_ops +
                     _allowed_symbols_clip_ops +
                     _allowed_symbols_control_flow_ops +
                     _allowed_symbols_functional_ops +
-                    _allowed_symbols_image_ops +
                     _allowed_symbols_gradients +
+                    _allowed_symbols_logging_ops +
                     _allowed_symbols_math_ops +
                     _allowed_symbols_variable_scope_ops +
                     _allowed_symbols_misc +
                     _allowed_symbols_partitioned_variables)
 
-remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__],
-                     _array_ops,
-                     _check_ops,
-                     _clip_ops,
-                     _confusion_matrix,
-                     _control_flow_ops,
-                     _constant_op,
-                     _data_flow_ops,
-                     _functional_ops,
-                     _gradients,
-                     _histogram_ops,
-                     _init_ops,
-                     _io_ops,
-                     _linalg_ops,
-                     _logging_ops,
-                     _math_ops,
-                     _numerics,
-                     _parsing_ops,
-                     _partitioned_variables,
-                     _random_ops,
-                     _script_ops,
-                     _session_ops,
-                     _sparse_ops,
-                     _special_math_ops,
-                     _state_ops,
-                     _string_ops,
-                     _template,
-                     _tensor_array_ops,
-                     _variable_scope,
-                     _variables,])
+remove_undocumented(__name__, _allowed_symbols, [
+    _sys.modules[__name__],
+    _array_ops,
+    _check_ops,
+    _clip_ops,
+    _confusion_matrix,
+    _control_flow_ops,
+    _constant_op,
+    _data_flow_ops,
+    _functional_ops,
+    _gradients,
+    _histogram_ops,
+    _init_ops,
+    _io_ops,
+    _linalg_ops,
+    _logging_ops,
+    _manip_ops,
+    _math_ops,
+    _numerics,
+    _parsing_ops,
+    _partitioned_variables,
+    _random_ops,
+    _script_ops,
+    _session_ops,
+    _sparse_ops,
+    _special_math_ops,
+    _state_ops,
+    _string_ops,
+    _template,
+    _tensor_array_ops,
+    _variable_scope,
+    _variables,
+])

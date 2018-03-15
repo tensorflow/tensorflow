@@ -21,20 +21,28 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
 class ExecutorOpts;
 class StepStatsCollector;
+class RendezvousMgrInterface;
+class DeviceMgr;
+struct WorkerSession;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -60,12 +68,16 @@ class StepStatsCollector;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env);
+  explicit GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr);
   ~GraphMgr();
 
-  // Registers a graph. Fills in "handle"
+  // Registers a graph. Fills in "handle". The registered graph retains a
+  // reference to cluster_flr to do cross process function calls.
   Status Register(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, string* handle);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options,
+                  DistributedFunctionLibraryRuntime* cluster_flr,
+                  string* handle);
 
   // Executes one step of a registered graph "handle".
   //
@@ -74,13 +86,16 @@ class GraphMgr {
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
-                    const ExecutorOpts& opts, StepStatsCollector* collector,
-                    CostGraphDef* cost_graph,
+                    WorkerSession* session, const ExecutorOpts& opts,
+                    StepStatsCollector* collector,
+                    MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 
   Status SendInputs(const int64 step_id, const NamedTensors& in);
   Status RecvOutputs(const int64 step_id, NamedTensors* out);
+  void RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+                        StatusCallback done);
 
   // Deregisters a graph.
   Status Deregister(const string& handle);
@@ -92,18 +107,18 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;
-    Device* device = nullptr;
-    Executor* root = nullptr;
-    FunctionLibraryRuntime* lib = nullptr;
+    Graph* graph = nullptr;                 // not owned.
+    Device* device = nullptr;               // not owned.
+    Executor* root = nullptr;               // not owned.
+    FunctionLibraryRuntime* lib = nullptr;  // not owned.
     // Build the cost model if this value is strictly positive.
     int64 build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
-    // TOOD(zhifengc): Keeps a copy of the original graph if the need arises.
-    // TOOD(zhifengc): Stats, updated by multiple runs potentially.
-    // TOOD(zhifengc): Dup-detection. Ensure step_id only run once.
+    // TODO(zhifengc): Keeps a copy of the original graph if the need arises.
+    // TODO(zhifengc): Stats, updated by multiple runs potentially.
+    // TODO(zhifengc): Dup-detection. Ensure step_id only run once.
     ~Item() override;
 
     // Session handle.
@@ -112,26 +127,30 @@ class GraphMgr {
     // Graph handle.
     string handle;
 
-    // The definition of the library is shared by all partitions.
-    FunctionLibraryDefinition* lib_def = nullptr;
-
+    std::unique_ptr<FunctionLibraryDefinition> lib_def;
+    // Owns the FunctionLibraryRuntime objects needed to execute functions, one
+    // per device.
+    std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
 
-    // Used to deresgister a cost model when cost model is requried in graph
+    // Used to deregister a cost model when cost model is required in graph
     // manager.
     GraphMgr* graph_mgr;
   };
 
-  // Not owned.
-  const WorkerEnv* worker_env_;
+  const WorkerEnv* worker_env_;  // Not owned.
+  DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;
 
   // Owned.
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
+
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
 
   // Table mapping graph handles to registered graphs.
   //
@@ -147,18 +166,20 @@ class GraphMgr {
                               CancellationManager* cancellation_manager,
                               StatusCallback done);
 
-  // Don't attempt to process cost models unless explicitely requested for at
+  // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.
   bool skip_cost_models_ = true;
 
   void BuildCostModel(Item* item, StepStatsCollector* collector,
                       CostGraphDef* cost_graph);
 
-  Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
-  Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
-
   Status InitItem(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, Item* item);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options,
+                  DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
+
+  Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
+                                         Graph* graph, Device* device);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
 };

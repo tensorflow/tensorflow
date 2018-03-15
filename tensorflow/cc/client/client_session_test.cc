@@ -23,7 +23,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
+namespace {
+
+using ops::Add;
+using ops::Const;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Sub;
 
 TEST(ClientSessionTest, Basic) {
   Scope root = Scope::NewRootScope();
@@ -49,7 +55,7 @@ TEST(ClientSessionTest, Feed) {
 
 TEST(ClientSessionTest, Extend) {
   Scope root = Scope::NewRootScope();
-  auto a = Placeholder(root, DT_INT32);
+  auto a = Placeholder(root, DT_INT32, Placeholder::Shape({2}));
   auto c = Add(root, a, {2, 2});
   ClientSession session(root);
   std::vector<Tensor> outputs;
@@ -89,4 +95,5 @@ TEST(ClientSessionTest, MultiThreaded) {
   test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({-1, 2}, {2}));
 }
 
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

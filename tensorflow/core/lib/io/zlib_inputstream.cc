@@ -32,12 +32,13 @@ ZlibInputStream::ZlibInputStream(
       z_stream_input_(new Bytef[input_buffer_capacity_]),
       z_stream_output_(new Bytef[output_buffer_capacity_]),
       zlib_options_(zlib_options),
-      z_stream_(new z_stream) {
+      z_stream_(new z_stream),
+      bytes_read_(0) {
   InitZlibBuffer();
 }
 
 ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     inflateEnd(z_stream_.get());
   }
 }
@@ -45,6 +46,7 @@ ZlibInputStream::~ZlibInputStream() {
 Status ZlibInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   InitZlibBuffer();
+  bytes_read_ = 0;
   return Status::OK();
 }
 
@@ -58,16 +60,14 @@ void ZlibInputStream::InitZlibBuffer() {
   z_stream_->avail_in = 0;
 
   int status = inflateInit2(z_stream_.get(), zlib_options_.window_bits);
-  if (status != Z_OK) {
-    LOG(FATAL) << "inflateInit failed with status " << status;
-    z_stream_.reset(NULL);
-  } else {
-    z_stream_->next_in = z_stream_input_.get();
-    z_stream_->next_out = z_stream_output_.get();
-    next_unread_byte_ = reinterpret_cast<char*>(z_stream_output_.get());
-    z_stream_->avail_in = 0;
-    z_stream_->avail_out = output_buffer_capacity_;
-  }
+
+  CHECK_EQ(status, Z_OK) << "inflateInit failed with status " << status;
+
+  z_stream_->next_in = z_stream_input_.get();
+  z_stream_->next_out = z_stream_output_.get();
+  next_unread_byte_ = reinterpret_cast<char*>(z_stream_output_.get());
+  z_stream_->avail_in = 0;
+  z_stream_->avail_out = output_buffer_capacity_;
 }
 
 Status ZlibInputStream::ReadFromStream() {
@@ -110,7 +110,7 @@ Status ZlibInputStream::ReadFromStream() {
   // possible that on the last read there isn't enough data in the stream to
   // fill up the buffer in which case input_stream_->ReadNBytes would return an
   // OutOfRange error.
-  if (data.size() == 0) {
+  if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {
@@ -129,6 +129,7 @@ size_t ZlibInputStream::ReadBytesFromCache(size_t bytes_to_read,
     result->append(next_unread_byte_, can_read_bytes);
     next_unread_byte_ += can_read_bytes;
   }
+  bytes_read_ += can_read_bytes;
   return can_read_bytes;
 }
 
@@ -172,15 +173,14 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
   return Status::OK();
 }
 
-// TODO(srbs): Implement this.
-int64 ZlibInputStream::Tell() const { return -1; }
+int64 ZlibInputStream::Tell() const { return bytes_read_; }
 
 Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_.get(), zlib_options_.flush_mode);
   if (error != Z_OK && error != Z_STREAM_END) {
     string error_string =
         strings::StrCat("inflate() failed with error ", error);
-    if (z_stream_->msg != NULL) {
+    if (z_stream_->msg != nullptr) {
       strings::StrAppend(&error_string, ": ", z_stream_->msg);
     }
     return errors::DataLoss(error_string);

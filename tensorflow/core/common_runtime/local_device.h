@@ -33,8 +33,8 @@ struct SessionOptions;
 // GPUDevice into more 'process-wide' abstractions.
 class LocalDevice : public Device {
  public:
-  LocalDevice(const SessionOptions& options, const DeviceAttributes& attributes,
-              Allocator* device_allocator);
+  LocalDevice(const SessionOptions& options,
+              const DeviceAttributes& attributes);
   ~LocalDevice() override;
 
  private:

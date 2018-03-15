@@ -46,7 +46,7 @@ class ProjectorApiTest(test.TestCase):
     writer = writer_lib.FileWriter(temp_dir)
     projector.visualize_embeddings(writer, config)
 
-    # Read the configuratin from disk and make sure it matches the original.
+    # Read the configurations from disk and make sure it matches the original.
     with gfile.GFile(os.path.join(temp_dir, 'projector_config.pbtxt')) as f:
       config2 = projector_config_pb2.ProjectorConfig()
       text_format.Parse(f.read(), config2)

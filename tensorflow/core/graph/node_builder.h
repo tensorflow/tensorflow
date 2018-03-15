@@ -49,13 +49,13 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int i = 0);
+    NodeOut(Node* n, int32 i = 0);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(StringPiece name, int i, DataType t);
+    NodeOut(StringPiece name, int32 i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
     NodeOut();
@@ -67,7 +67,7 @@ class NodeBuilder {
     // * an out-of-range index was passed to the NodeOut constructor.
     bool error;
     string name;
-    int index;
+    int32 index;
     DataType dt;
   };
 
@@ -120,7 +120,7 @@ class NodeBuilder {
   const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
-  static DataType SafeGetOutput(Node* node, int i, bool* error) {
+  static DataType SafeGetOutput(const Node* node, int i, bool* error) {
     if (node != nullptr && i >= 0 && i < node->num_outputs()) {
       *error = false;
       return node->output_type(i);
@@ -131,11 +131,11 @@ class NodeBuilder {
   }
 
   // If SafeGetOutput indicates a range error, add it to errors_.
-  void AddIndexError(Node* node, int i);
+  void AddIndexError(const Node* node, int i);
 
   // Set *dt and returns true if i is in range. Combines
   // SafeGetOutput() and AddIndexError().
-  bool GetOutputType(Node* node, int i, DataType* dt);
+  bool GetOutputType(const Node* node, int i, DataType* dt);
 
   NodeDefBuilder def_builder_;
   std::vector<NodeOut> inputs_;

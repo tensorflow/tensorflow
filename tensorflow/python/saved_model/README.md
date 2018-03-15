@@ -22,6 +22,8 @@ The following is a summary of the features in SavedModel:
       and outputs. This is called a `Signature`.
     * SavedModel uses [SignatureDefs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/meta_graph.proto)
       to allow generic support for signatures that may need to be saved with the graphs.
+    * For commonly used SignatureDefs in the context of TensorFlow Serving,
+      please see documentation [here](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/g3doc/signature_defs.md).
 * Support for `Assets`.
     * For cases where ops depend on external files for initialization, such as
       vocabularies, SavedModel supports this via `assets`.
@@ -91,7 +93,7 @@ with an asset of the same name, only the first version is retained.
 Each meta graph added to the SavedModel must be annotated with user specified
 tags. The tags provide a means to identify the specific meta graph to load and
 restore, along with the shared set of variables and assets. These tags
-typically annotate a MetaGraph with it's functionality (e.g. serving or
+typically annotate a MetaGraph with its functionality (e.g. serving or
 training), and possibly hardware specific aspects such as GPU.
 
 #### Usage
@@ -100,13 +102,13 @@ The typical usage of `builder` is as follows:
 ~~~python
 export_dir = ...
 ...
-builder = saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
-...
-builder.add_meta_graph_and_variables(sess,
-                                     [tag_constants.TRAINING],
-                                     signature_def_map=foo_signatures,
-                                     assets_collection=foo_assets)
+  ...
+  builder.add_meta_graph_and_variables(sess,
+                                       [tf.saved_model.tag_constants.TRAINING],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 with tf.Session(graph=tf.Graph()) as sess:
   ...
@@ -114,6 +116,35 @@ with tf.Session(graph=tf.Graph()) as sess:
 ...
 builder.save()
 ~~~
+
+#### Stripping Default valued attributes
+The SavedModelBuilder class allows users to control whether default-valued
+attributes must be stripped from the NodeDefs while adding a meta graph to the
+SavedModel bundle. Both `SavedModelBuilder.add_meta_graph_and_variables` and
+`SavedModelBuilder.add_meta_graph` methods accept a Boolean flag
+`strip_default_attrs` that controls this behavior.
+
+If `strip_default_attrs` is `False`, the exported MetaGraphDef will have the
+default valued attributes in all it's NodeDef instances. This can break forward
+compatibility with a sequence of events such as the following:
+
+* An existing Op (`Foo`) is updated to include a new attribute (`T`) with a
+  default (`bool`) at version 101.
+* A model producer (such as a Trainer) binary picks up this change
+  (version 101) to the OpDef and re-exports an existing model that uses Op `Foo`.
+* A model consumer (such as Tensorflow Serving) running an older binary
+  (version 100) doesn't have attribute `T` for Op `Foo`, but tries to import
+  this model. The model consumer doesn't recognize attribute `T` in a NodeDef
+  that uses Op `Foo` and therefore fails to load the model.
+
+By setting `strip_default_attrs` to `True`, the model producers can strip away
+any default valued attributes in the NodeDefs. This helps ensure that newly
+added attributes with defaults don't cause older model consumers to fail loading
+models regenerated with newer training binaries.
+
+TIP: If you care about forward compatibility, then set `strip_default_attrs`
+to `True` while using `SavedModelBuilder.add_meta_graph_and_variables` and
+`SavedModelBuilder.add_meta_graph`.
 
 ### Loader
 The SavedModel loader is implemented in C++ and Python.
@@ -130,7 +161,7 @@ the specific meta graph def, will be restored into the supplied session.
 export_dir = ...
 ...
 with tf.Session(graph=tf.Graph()) as sess:
-  loader.load(sess, [tag_constants.TRAINING], export_dir)
+  tf.saved_model.loader.load(sess, [tag_constants.TRAINING], export_dir)
   ...
 ~~~
 

@@ -38,9 +38,13 @@ struct OpRegistrationData {
  public:
   OpRegistrationData() {}
   OpRegistrationData(const OpDef& def) : op_def(def) {}
+  OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn,
+                     bool is_function = false)
+      : op_def(def), shape_inference_fn(fn), is_function_op(is_function) {}
 
   OpDef op_def;
   OpShapeInferenceFn shape_inference_fn;
+  bool is_function_op = false;
 };
 
 // Builder class passed to the REGISTER_OP() macro.
@@ -55,8 +59,10 @@ class OpDefBuilder {
   // (by convention only using capital letters for attrs that can be inferred)
   // <type> can be:
   //   "string", "int", "float", "bool", "type", "shape", or "tensor"
-  //   "numbertype", "realnumbertype", "quantizedtype", "{int32,int64}"
+  //   "numbertype", "realnumbertype", "quantizedtype"
   //       (meaning "type" with a restriction on valid values)
+  //   "{int32,int64}" or {realnumbertype,quantizedtype,string}"
+  //       (meaning "type" with a restriction containing unions of value types)
   //   "{\"foo\", \"bar\n baz\"}", or "{'foo', 'bar\n baz'}"
   //       (meaning "string" with a restriction on valid values)
   //   "list(string)", ..., "list(tensor)", "list(numbertype)", ...

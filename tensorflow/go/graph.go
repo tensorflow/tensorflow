@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -18,6 +20,25 @@ package tensorflow
 //
 // #include <stdlib.h>
 // #include <string.h>
+//
+// void TF_SetAttrShapeList_Helper(TF_OperationDescription* desc,
+//                                 const char* attr_name,
+//                                 const int64_t* flat_dims,
+//                                 const int* num_dims,
+//                                 int num_shapes) {
+//  const int64_t** dims =
+//    (const int64_t**)malloc(sizeof(const int64_t*) * num_shapes);
+//  int i = 0;
+//  for (i = 0; i < num_shapes; i++) {
+//    dims[i] = flat_dims;
+//    if (num_dims[i] > 0) {
+//      // flat_dims will be NULL iff num_shapes is 0 or all elements in num_dims are <= 0.
+//      flat_dims += num_dims[i];
+//    }
+//  }
+//  TF_SetAttrShapeList(desc, attr_name, dims, num_dims, num_shapes);
+//  free(dims);
+// }
 import "C"
 
 import (
@@ -112,6 +133,20 @@ func (g *Graph) Operation(name string) *Operation {
 	return &Operation{cop, g}
 }
 
+// Operations returns a list of all operations in the graph
+func (g *Graph) Operations() []Operation {
+	var pos C.size_t = 0
+	ops := []Operation{}
+	for {
+		cop := C.TF_GraphNextOperation(g.c, &pos)
+		if cop == nil {
+			break
+		}
+		ops = append(ops, Operation{cop, g})
+	}
+	return ops
+}
+
 // OpSpec is the specification of an Operation to be added to a Graph
 // (using Graph.AddOperation).
 type OpSpec struct {
@@ -138,7 +173,11 @@ type OpSpec struct {
 	// operation.
 	Attrs map[string]interface{}
 
-	// Other possible fields: Device, ColocateWith, ControlInputs.
+	// Operations that must be executed before executing the operation
+	// being added.
+	ControlDependencies []*Operation
+
+	// Other possible fields: Device, ColocateWith.
 }
 
 // AddOperation adds an operation to g.
@@ -162,8 +201,15 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			for i, v := range in {
 				list[i] = v.c()
 			}
-			C.TF_AddInputList(cdesc, &list[0], C.int(size))
+			if size > 0 {
+				C.TF_AddInputList(cdesc, &list[0], C.int(size))
+			} else {
+				C.TF_AddInputList(cdesc, nil, 0)
+			}
 		}
+	}
+	for _, in := range args.ControlDependencies {
+		C.TF_AddControlInput(cdesc, in.c)
 	}
 	status := newStatus()
 	for name, value := range args.Attrs {
@@ -179,11 +225,11 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			return nil, fmt.Errorf("%v (memory will be leaked)", err)
 		}
 	}
-	op := &Operation{
-		c: C.TF_FinishOperation(cdesc, status.c),
-		g: g,
+	c := C.TF_FinishOperation(cdesc, status.c)
+	if err := status.Err(); err != nil {
+		return nil, err
 	}
-	return op, status.Err()
+	return &Operation{c, g}, nil
 }
 
 func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, value interface{}) error {
@@ -202,7 +248,11 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 			list[i] = unsafe.Pointer(C.CString(s))
 			lens[i] = C.size_t(len(s))
 		}
-		C.TF_SetAttrStringList(cdesc, cAttrName, &list[0], &lens[0], C.int(size))
+		if size > 0 {
+			C.TF_SetAttrStringList(cdesc, cAttrName, &list[0], &lens[0], C.int(size))
+		} else {
+			C.TF_SetAttrStringList(cdesc, cAttrName, nil, nil, 0)
+		}
 		for _, s := range list {
 			C.free(s)
 		}
@@ -214,7 +264,11 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		for i, v := range value {
 			list[i] = C.int64_t(v)
 		}
-		C.TF_SetAttrIntList(cdesc, cAttrName, &list[0], C.int(size))
+		if size > 0 {
+			C.TF_SetAttrIntList(cdesc, cAttrName, &list[0], C.int(size))
+		} else {
+			C.TF_SetAttrIntList(cdesc, cAttrName, nil, 0)
+		}
 	case float32:
 		C.TF_SetAttrFloat(cdesc, cAttrName, C.float(value))
 	case []float32:
@@ -223,7 +277,11 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		for i, v := range value {
 			list[i] = C.float(v)
 		}
-		C.TF_SetAttrFloatList(cdesc, cAttrName, &list[0], C.int(size))
+		if size > 0 {
+			C.TF_SetAttrFloatList(cdesc, cAttrName, &list[0], C.int(size))
+		} else {
+			C.TF_SetAttrFloatList(cdesc, cAttrName, nil, 0)
+		}
 	case bool:
 		v := C.uchar(0)
 		if value {
@@ -238,11 +296,18 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 				list[i] = 1
 			}
 		}
-		C.TF_SetAttrBoolList(cdesc, cAttrName, &list[0], C.int(size))
+		if size > 0 {
+			C.TF_SetAttrBoolList(cdesc, cAttrName, &list[0], C.int(size))
+		} else {
+			C.TF_SetAttrBoolList(cdesc, cAttrName, nil, 0)
+		}
 	case DataType:
 		C.TF_SetAttrType(cdesc, cAttrName, C.TF_DataType(value))
 	case []DataType:
-		list := (*C.TF_DataType)(&value[0])
+		var list *C.TF_DataType
+		if len(value) > 0 {
+			list = (*C.TF_DataType)(&value[0])
+		}
 		C.TF_SetAttrTypeList(cdesc, cAttrName, list, C.int(len(value)))
 	case *Tensor:
 		C.TF_SetAttrTensor(cdesc, cAttrName, value.c, status.c)
@@ -255,16 +320,45 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		for i, v := range value {
 			list[i] = v.c
 		}
-		C.TF_SetAttrTensorList(cdesc, cAttrName, &list[0], C.int(size), status.c)
+		var plist **C.TF_Tensor
+		if size > 0 {
+			plist = &list[0]
+		}
+		C.TF_SetAttrTensorList(cdesc, cAttrName, plist, C.int(size), status.c)
 		if err := status.Err(); err != nil {
 			return fmt.Errorf("bad value for attribute %q: %v", name, err)
 		}
+	case Shape:
+		ndims := C.int(value.NumDimensions())
+		var dimsp *C.int64_t
+		if ndims > 0 {
+			dims := make([]C.int64_t, ndims)
+			for i, d := range value.dims {
+				dims[i] = C.int64_t(d)
+			}
+			dimsp = &dims[0]
+		}
+		C.TF_SetAttrShape(cdesc, cAttrName, dimsp, ndims)
+	case []Shape:
+		if len(value) == 0 {
+			C.TF_SetAttrShapeList(cdesc, cAttrName, nil, nil, 0)
+		} else {
+			var flatDims []C.int64_t
+			ndims := make([]C.int, len(value))
+			for i, s := range value {
+				nd := s.NumDimensions()
+				ndims[i] = C.int(nd)
+				for _, d := range s.dims {
+					flatDims = append(flatDims, C.int64_t(d))
+				}
+			}
+			var flatDimsp *C.int64_t
+			if len(flatDims) > 0 {
+				flatDimsp = &flatDims[0]
+			}
+			C.TF_SetAttrShapeList_Helper(cdesc, cAttrName, flatDimsp, &ndims[0], C.int(len(value)))
+		}
 	default:
-		// Shapes can be done, but will require that it be
-		// distinguishable from []int64. Which is fine, it
-		// probably makes sense to define a Shape type anyway,
-		// since that should handle partially known shapes as
-		// well and hide the special meaning of -1?
 		return fmt.Errorf("attribute %q has a type (%T) which is not valid for operation attributes", name, value)
 	}
 	return nil

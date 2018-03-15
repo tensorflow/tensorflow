@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "package",
     srcs = [
@@ -72,6 +74,18 @@ py_binary(
     name = "mnist_softmax",
     srcs = [
         "mnist_softmax.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "mnist_deep",
+    srcs = [
+        "mnist_deep.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

@@ -88,7 +88,7 @@ class Barrier : public ResourceBase {
   template <typename T>
   void TryInsertMany(const Tensor& keys, int component_index,
                      const Tensor& values, OpKernelContext* ctx,
-                     DoneCallback callback) {
+                     const DoneCallback& callback) {
     TensorShape element_shape = values.shape();
     OP_REQUIRES_ASYNC(
         ctx, keys.NumElements() == 0 || element_shape.num_elements() > 0,
@@ -111,13 +111,14 @@ class Barrier : public ResourceBase {
       mutex_lock lock(mu_);
       if (closed_) {
         OP_REQUIRES_ASYNC(
-            ctx, !cancel_pending_enqueues_ &&
-                     (num_inserted == 0 || !incomplete_.empty()),
+            ctx,
+            !cancel_pending_enqueues_ &&
+                (num_inserted == 0 || !incomplete_.empty()),
             errors::Cancelled(
                 "Barrier ", name_, " is closed.  Pending enqueues cancelled: ",
-                cancel_pending_enqueues_, ".  Number of new insertions: ",
-                num_inserted, ".  Number of incomplete keys: ",
-                incomplete_.size(), "."),
+                cancel_pending_enqueues_,
+                ".  Number of new insertions: ", num_inserted,
+                ".  Number of incomplete keys: ", incomplete_.size(), "."),
             callback);
       }
 
@@ -128,9 +129,10 @@ class Barrier : public ResourceBase {
 
       for (int i = 0; i < num_inserted; ++i) {
         OP_REQUIRES_OK_ASYNC(
-            ctx, InsertOneLocked<T>(ctx, keys, values, element_shape,
-                                    component_index, i, &ready_tuples,
-                                    &new_elements),
+            ctx,
+            InsertOneLocked<T>(ctx, keys, values, element_shape,
+                               component_index, i, &ready_tuples,
+                               &new_elements),
             callback);
       }
 
@@ -161,9 +163,11 @@ class Barrier : public ResourceBase {
         component_shape.InsertDim(0, insertion_size);
         Tensor component(ready_tuples[0][i].dtype(), component_shape);
         for (int b = 0; b < insertion_size; ++b) {
-          OP_REQUIRES_OK_ASYNC(ctx, QueueBase::CopyElementToSlice(
-                                        ready_tuples[b][i], &component, b),
-                               callback);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              batch_util::CopyElementToSlice(std::move(ready_tuples[b][i]),
+                                             &component, b),
+              callback);
         }
         insert_tuple.push_back(component);
       }
@@ -195,7 +199,8 @@ class Barrier : public ResourceBase {
   }
 
   void TryTakeMany(int num_elements, bool allow_small_batch, int64 timeout,
-                   OpKernelContext* ctx, IndicesKeysValuesCallback callback) {
+                   OpKernelContext* ctx,
+                   const IndicesKeysValuesCallback& callback) {
     int num_elements_to_deliver = num_elements;
     {
       mutex_lock lock(mu_);
@@ -247,7 +252,7 @@ class Barrier : public ResourceBase {
   }
 
   void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
-             DoneCallback callback) {
+             const DoneCallback& callback) {
     mutex_lock lock(mu_);
     // We're allowed to close twice if the first close wasn't a
     // cancel but the second one is.
@@ -314,8 +319,9 @@ class Barrier : public ResourceBase {
         return errors::Cancelled(
             "Barrier ", name_,
             " is closed, but attempted to insert a brand new key: ",
-            keys_vec(i), ".  Pending enqueues cancelled: ",
-            cancel_pending_enqueues_, ".  Insertion index: ", i,
+            keys_vec(i),
+            ".  Pending enqueues cancelled: ", cancel_pending_enqueues_,
+            ".  Insertion index: ", i,
             ".  Number of incomplete keys: ", incomplete_.size(), ".");
       }
     } else {
@@ -399,7 +405,8 @@ class Barrier : public ResourceBase {
   }
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
-                        DoneCallback callback) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                        const DoneCallback& callback)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // CloseQueueLocked may only be called with mu_ held.
     if (!cancel_pending_enqueues && queue_closed_) {
       callback();
@@ -411,7 +418,7 @@ class Barrier : public ResourceBase {
     }
     queue_closed_ = true;
     if (cancel_pending_enqueues) queue_cancelled_ = true;
-    if (!ready_queue_->closed()) {
+    if (!ready_queue_->is_closed()) {
       ready_queue_->Close(ctx, cancel_pending_enqueues, callback);
     }
   }
@@ -528,13 +535,14 @@ class InsertManyOp : public BarrierOpKernel {
     OP_REQUIRES_ASYNC(
         ctx, component_index_ < barrier->num_components(),
         errors::InvalidArgument("The component ID is out of range ",
-                                component_index_, " > num_components", " (= ",
-                                barrier->num_components(), ")"),
+                                component_index_, " > num_components",
+                                " (= ", barrier->num_components(), ")"),
         callback);
     OP_REQUIRES_OK_ASYNC(
-        ctx, ctx->MatchSignature({DT_STRING_REF, DT_STRING,
-                                  barrier->component_type(component_index_)},
-                                 {}),
+        ctx,
+        ctx->MatchSignature({DT_STRING_REF, DT_STRING,
+                             barrier->component_type(component_index_)},
+                            {}),
         callback);
 
     const Tensor* keys;

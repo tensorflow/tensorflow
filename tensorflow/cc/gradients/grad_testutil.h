@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#ifndef TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#define TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -22,14 +22,14 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-// Calls the gradient function registered for 'op', adding gradient operations
-// to the graph associated with 'scope'. Gradient outputs for each 'op' input
-// are returned in 'grad_outputs'.
-Status CallGradFunction(const Scope& scope, const ops::Operation& op,
-                        const std::vector<ops::Output>& grad_inputs,
-                        std::vector<ops::Output>* grad_outputs);
+/// Calls the gradient function registered for 'op', adding gradient operations
+/// to the graph associated with 'scope'. Gradient outputs for each 'op' input
+/// are returned in 'grad_outputs'.
+Status CallGradFunction(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs);
 
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#endif  // TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_

@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import utils
@@ -240,6 +233,15 @@ class CollectNamedOutputsTest(test.TestCase):
     self.assertEqual(end_points['a1'], t1)
     self.assertEqual(end_points['a21'], t2)
     self.assertEqual(end_points['a22'], t2)
+
+  def test_convert_collection_to_dict_clear_collection(self):
+    t1 = constant_op.constant(1.0, name='t1')
+    t2 = constant_op.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a21', t2)
+    utils.collect_named_outputs('end_points', 'a22', t2)
+    utils.convert_collection_to_dict('end_points', clear_collection=True)
+    self.assertEqual(ops.get_collection('end_points'), [])
 
 
 class NPositiveIntegersTest(test.TestCase):

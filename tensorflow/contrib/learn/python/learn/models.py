@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Various high level TF models."""
+"""Various high level TF models (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,8 +33,10 @@ from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Consider using a tf.estimator.LinearRegressor')
 def linear_regression_zero_init(x, y):
   """Linear regression subgraph with zero-value initial weights and bias.
 
@@ -43,6 +50,7 @@ def linear_regression_zero_init(x, y):
   return linear_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.LinearClassifier')
 def logistic_regression_zero_init(x, y):
   """Logistic regression subgraph with zero-value initial weights and bias.
 
@@ -56,6 +64,7 @@ def logistic_regression_zero_init(x, y):
   return logistic_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.')
 def linear_regression(x, y, init_mean=None, init_stddev=1.0):
   """Creates linear regression TensorFlow subgraph.
 
@@ -63,7 +72,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     x: tensor or placeholder for input features.
     y: tensor or placeholder for labels.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.
@@ -107,6 +116,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.')
 def logistic_regression(x,
                         y,
                         class_weight=None,
@@ -124,7 +134,7 @@ def logistic_regression(x,
                   will check if graph contains tensor `class_weight:0`.
                   If that is not provided either all ones are used.
     init_mean: the mean value to use for initialization.
-    init_stddev: the standard devation to use for initialization.
+    init_stddev: the standard deviation to use for initialization.
 
   Returns:
     Predictions and loss tensors.
@@ -203,6 +213,7 @@ def _reverse_seq(input_seq, lengths):
   return result
 
 
+@deprecated(None, 'Please consider `tf.nn.bidirectional_dynamic_rnn`.')
 def bidirectional_rnn(cell_fw,
                       cell_bw,
                       inputs,
@@ -274,15 +285,16 @@ def bidirectional_rnn(cell_fw,
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [
-      array_ops_.concat(1, [fw, bw]) for fw, bw in zip(output_fw, output_bw)
+      array_ops_.concat([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
   ]
 
-  return outputs, array_ops_.concat(1, [state_fw, state_bw])
+  return outputs, array_ops_.concat([state_fw, state_bw], 1)
 
 
 # End of TensorFlow 0.7
 
 
+@deprecated(None, 'Please consider tensorflow/tensor2tensor.')
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
                   target_predictor_fn, sequence_length, initial_state,
                   attn_length, attn_size, attn_vec_size):
@@ -331,27 +343,34 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     # TODO(ipolosukhin): state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
-      fw_cell = cell_fn(rnn_size)
-      bw_cell = cell_fn(rnn_size)
+      fw_cell = lambda: cell_fn(rnn_size)
+      bw_cell = lambda: cell_fn(rnn_size)
       # attach attention cells if specified
       if attn_length is not None:
-        fw_cell = contrib_rnn.AttentionCellWrapper(
-            fw_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
-        bw_cell = contrib_rnn.AttentionCellWrapper(
-            bw_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
+        def attn_fw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              fw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+
+        def attn_bw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              bw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_fw_cell = fw_cell
+        attn_bw_cell = bw_cell
+
       rnn_fw_cell = contrib_rnn.MultiRNNCell(
-          [fw_cell] * num_layers, state_is_tuple=False)
+          [attn_fw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # backward direction cell
       rnn_bw_cell = contrib_rnn.MultiRNNCell(
-          [bw_cell] * num_layers, state_is_tuple=False)
+          [attn_bw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(
           rnn_fw_cell,
@@ -362,16 +381,21 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
           initial_state_fw=initial_state,
           initial_state_bw=initial_state)
     else:
-      rnn_cell = cell_fn(rnn_size)
+      rnn_cell = lambda: cell_fn(rnn_size)
+
       if attn_length is not None:
-        rnn_cell = contrib_rnn.AttentionCellWrapper(
-            rnn_cell,
-            attn_length=attn_length,
-            attn_size=attn_size,
-            attn_vec_size=attn_vec_size,
-            state_is_tuple=False)
+        def attn_rnn_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              rnn_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_rnn_cell = rnn_cell
+
       cell = contrib_rnn.MultiRNNCell(
-          [rnn_cell] * num_layers, state_is_tuple=False)
+          [attn_rnn_cell() for _ in range(num_layers)], state_is_tuple=False)
       _, encoding = contrib_rnn.static_rnn(
           cell,
           x,

@@ -1,0 +1,84 @@
+path: "tensorflow.profiler.GraphNodeProto.InputShapesEntry"
+tf_class {
+  is_instance: "<class \'tensorflow.core.profiler.tfprof_output_pb2.InputShapesEntry\'>"
+  is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
+  member {
+    name: "DESCRIPTOR"
+    mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
+  }
+  member {
+    name: "Extensions"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "KEY_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "VALUE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member_method {
+    name: "ByteSize"
+  }
+  member_method {
+    name: "Clear"
+  }
+  member_method {
+    name: "ClearExtension"
+  }
+  member_method {
+    name: "ClearField"
+  }
+  member_method {
+    name: "CopyFrom"
+  }
+  member_method {
+    name: "DiscardUnknownFields"
+  }
+  member_method {
+    name: "FindInitializationErrors"
+  }
+  member_method {
+    name: "FromString"
+  }
+  member_method {
+    name: "HasExtension"
+  }
+  member_method {
+    name: "HasField"
+  }
+  member_method {
+    name: "IsInitialized"
+  }
+  member_method {
+    name: "ListFields"
+  }
+  member_method {
+    name: "MergeFrom"
+  }
+  member_method {
+    name: "MergeFromString"
+  }
+  member_method {
+    name: "ParseFromString"
+  }
+  member_method {
+    name: "RegisterExtension"
+  }
+  member_method {
+    name: "SerializePartialToString"
+  }
+  member_method {
+    name: "SerializeToString"
+  }
+  member_method {
+    name: "SetInParent"
+  }
+  member_method {
+    name: "WhichOneof"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

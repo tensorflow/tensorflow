@@ -17,17 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
+
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
-
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_string("error", "shape_mismatch", "Type of the error to generate "
-                    "(shape_mismatch | uninitialized_variable | no_error).")
-flags.DEFINE_boolean("debug", False,
-                     "Use debugger to track down bad values during training")
 
 
 def main(_):
@@ -45,7 +41,7 @@ def main(_):
   z = tf.matmul(m, v, name="z")
 
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
 
   if FLAGS.error == "shape_mismatch":
     print(sess.run(y, feed_dict={ph_float: np.array([[0.0], [1.0], [2.0]])}))
@@ -58,4 +54,27 @@ def main(_):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--error",
+      type=str,
+      default="shape_mismatch",
+      help="""\
+      Type of the error to generate (shape_mismatch | uninitialized_variable |
+      no_error).\
+      """)
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--debug",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use debugger to track down bad values during training")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

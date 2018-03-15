@@ -225,7 +225,7 @@ class LabeledTensorTest(test_util.Base):
     tensor = array_ops.placeholder(dtypes.string, [None])
     actual = core.LabeledTensor(tensor, ['x'])
     self.assertIsNone(actual.axes['x'].size)
-    self.assertIs(actual.axes['x'].value, tensor.get_shape()[0])
+    self.assertIsNone(actual.axes['x'].value.value)
 
   def test_eq(self):
     self.assertEqual(self.lt, self.lt)
@@ -243,6 +243,9 @@ class LabeledTensorTest(test_util.Base):
 
   def test_dtype(self):
     self.assertEqual(self.lt.dtype, self.lt.tensor.dtype)
+
+  def test_shape(self):
+    self.assertEqual(self.lt.shape, self.lt.tensor.shape)
 
   def test_get_shape(self):
     self.assertEqual(self.lt.get_shape(), self.lt.tensor.get_shape())
@@ -703,7 +706,7 @@ class CoreUnaryOpsTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
 
     self.ops = [
         ('abs', operator.abs, math_ops.abs, core.abs_function),
-        ('neg', operator.neg, math_ops.neg, core.neg),
+        ('neg', operator.neg, math_ops.negative, core.neg),
         # TODO(shoyer): add unary + to core TensorFlow
         ('pos', None, None, None),
         ('sign', None, math_ops.sign, core.sign),
@@ -780,8 +783,8 @@ class CoreBinaryOpsTest(Base, DocStringCheckMixin, BinaryOpsTestsMixin):
     # elementwise for LabeledTensor, either.
     self.ops = [
         ('add', operator.add, math_ops.add, core.add),
-        ('sub', operator.sub, math_ops.sub, core.sub),
-        ('mul', operator.mul, math_ops.mul, core.mul),
+        ('sub', operator.sub, math_ops.subtract, core.sub),
+        ('mul', operator.mul, math_ops.multiply, core.mul),
         ('div', operator.truediv, math_ops.div, core.div),
         ('mod', operator.mod, math_ops.mod, core.mod),
         ('pow', operator.pow, math_ops.pow, core.pow_function),

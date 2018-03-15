@@ -25,12 +25,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
@@ -62,23 +64,51 @@ typedef Eigen::GpuDevice GPUDevice;
       context, batch == out_backprop.dim_size(0),                              \
       errors::InvalidArgument(                                                 \
           label, ": input and out_backprop must have the same batch size"));   \
-  const int64 input_rows = input_shape.dim_size(1);                            \
-  const int64 input_cols = input_shape.dim_size(2);                            \
+  const int64 input_rows_raw = GetTensorDim(input_shape, data_format_, 'H');   \
+  OP_REQUIRES(                                                                 \
+      context,                                                                 \
+      FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),      \
+      errors::InvalidArgument("Input rows too large"));                        \
+  const int32 input_rows = static_cast<int32>(input_rows_raw);                 \
+  const int64 input_cols_raw = GetTensorDim(input_shape, data_format_, 'W');   \
+  OP_REQUIRES(                                                                 \
+      context,                                                                 \
+      FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),      \
+      errors::InvalidArgument("Input cols too large"));                        \
+  const int32 input_cols = static_cast<int32>(input_cols_raw);                 \
   const int64 filter_rows = filter_shape.dim_size(0);                          \
   const int64 filter_cols = filter_shape.dim_size(1);                          \
-  const int64 output_rows = out_backprop.dim_size(1);                          \
-  const int64 output_cols = out_backprop.dim_size(2);                          \
-  const int64 in_depth = input_shape.dim_size(3);                              \
+  const int64 output_rows_raw =                                                \
+      GetTensorDim(out_backprop.shape(), data_format_, 'H');                   \
+  OP_REQUIRES(                                                                 \
+      context,                                                                 \
+      FastBoundsCheck(output_rows_raw, std::numeric_limits<int32>::max()),     \
+      errors::InvalidArgument("Output rows too large"));                       \
+  const int32 output_rows = static_cast<int32>(output_rows_raw);               \
+  const int64 output_cols_raw =                                                \
+      GetTensorDim(out_backprop.shape(), data_format_, 'W');                   \
+  OP_REQUIRES(                                                                 \
+      context,                                                                 \
+      FastBoundsCheck(output_cols_raw, std::numeric_limits<int32>::max()),     \
+      errors::InvalidArgument("Output cols too large"));                       \
+  const int32 output_cols = static_cast<int32>(output_cols_raw);               \
+  const int64 in_depth = GetTensorDim(input_shape, data_format_, 'C');         \
   OP_REQUIRES(context, in_depth == filter_shape.dim_size(2),                   \
               errors::InvalidArgument(                                         \
                   label, ": input and filter must have the same in_depth"));   \
   const int64 depth_multiplier = filter_shape.dim_size(3);                     \
-  const int64 out_depth = out_backprop.dim_size(3);                            \
+  const int64 out_depth_raw =                                                  \
+      GetTensorDim(out_backprop.shape(), data_format_, 'C');                   \
+  OP_REQUIRES(                                                                 \
+      context,                                                                 \
+      FastBoundsCheck(out_depth_raw, std::numeric_limits<int32>::max()),       \
+      errors::InvalidArgument("Output depth too large"));                      \
+  const int32 out_depth = static_cast<int32>(out_depth_raw);                   \
   OP_REQUIRES(                                                                 \
       context, (depth_multiplier * in_depth) == out_depth,                     \
       errors::InvalidArgument(                                                 \
           label, ": depth_multiplier * in_depth not equal to out_depth"));     \
-  const auto stride = strides_[1];                                             \
+  const auto stride = stride_;                                                 \
   int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                \
   OP_REQUIRES_OK(context,                                                      \
                  GetWindowedOutputSize(input_rows, filter_rows, stride,        \
@@ -201,7 +231,8 @@ static void CopyOutputBackpropRegion(const DepthwiseArgs& args,
       }
       // Pad to vector-register width (if needed).
       for (int64 d = 0; d < pad_size; ++d) {
-        buffer[buf_base + vectorized_size + scalar_size + d] = 0;
+        buffer[buf_base + vectorized_size + scalar_size + d] =
+            static_cast<T>(0);
       }
     }
   }
@@ -267,7 +298,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
 
   for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
     // Reset accumulator.
-    auto vaccum = Eigen::internal::pset1<Packet>(0);
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       // Calculate index.
       const int64 index = i + j * padded_filter_inner_dim_size;
@@ -288,7 +319,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
   }
 
   if (output_scalar_size > 0) {
-    auto vaccum = Eigen::internal::pset1<Packet>(0);
+    auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
     for (int j = 0; j < filter_spatial_size; ++j) {
       const int64 index =
           output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -316,7 +347,7 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
   if (depth_multiplier > 1) {
     for (int64 d = 0; d < in_depth; ++d) {
       const int64 index = d * args.depth_multiplier;
-      T accum = 0;
+      T accum = static_cast<T>(0);
       for (int64 dm = 0; dm < dm_vectorized_size; dm += kPacketSize) {
         const auto v = Eigen::internal::ploadu<Packet>(out_buffer + index + dm);
         accum += Eigen::internal::predux(v);
@@ -331,19 +362,20 @@ static void ComputeBackpropInput(const DepthwiseArgs& args,
   }
 }
 
-// Kernels to compute the input backprop for depthwise convolution.
-template <typename Device, typename T>
-struct LaunchDepthwiseConvBackpropInputOp;
-
 // Computes the depthwise conv2d backprop input of 'out_backprop' by
 // 'depthwise_filter' and stores the result in 'in_backprop'.
 template <typename T>
 struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
   typedef typename Eigen::internal::packet_traits<T>::type Packet;
 
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs& args,
-                     const T* out_backprop, const T* depthwise_filter,
-                     T* in_backprop) {
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
+                  const T* out_backprop, const T* depthwise_filter,
+                  T* in_backprop, TensorFormat data_format) {
+    OP_REQUIRES(
+        ctx, data_format == FORMAT_NHWC,
+        errors::Unimplemented(
+            "Depthwise convolution on CPU is only supported for NHWC format"));
+
     static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
     // Pad 'depthwise_filter' to vector register width (if needed).
@@ -368,7 +400,7 @@ struct LaunchDepthwiseConvBackpropInputOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop input.
     auto shard = [&ctx, &args, &out_backprop, &filter_data, &in_backprop](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
       const int64 input_image_size =
@@ -479,25 +511,10 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-template <typename T>
-struct DepthwiseConv2dBackpropInputGPULaunch {
-  static void Run(const GPUDevice& d, const DepthwiseArgs args,
-                  const T* out_backprop, const T* filter, T* in_backprop);
-};
-
-template <typename T>
-struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs args,
-                     const T* out_backprop, const T* filter, T* in_backprop) {
-    const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    DepthwiseConv2dBackpropInputGPULaunch<T>().Run(d, args, out_backprop,
-                                                   filter, in_backprop);
-    auto stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(ctx, stream->ok(), errors::Internal("Launch of gpu kernel for "
-                                                    "DepthwiseConv2dBackpropInp"
-                                                    "utGPULaunch failed"));
-  }
-};
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
+                                                          Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA
 
@@ -511,12 +528,23 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
+
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    stride_ = GetTensorDim(strides_, data_format_, 'H');
+    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
+    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+
+    OP_REQUIRES(context, stride_ == stride_w,
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
     OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
+        context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
@@ -539,12 +567,10 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       input_shape.AddDim(in_sizes_data[i]);
     }
     const TensorShape& filter_shape = filter.shape();
-
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropInput");
     Tensor* in_backprop = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input_shape, &in_backprop));
-
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input_shape, &in_backprop));
     auto out_backprop_ptr = out_backprop.template flat<T>().data();
     auto filter_ptr = filter.template flat<T>().data();
     auto in_backprop_ptr = in_backprop->template flat<T>().data();
@@ -552,13 +578,16 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     if (input_shape.num_elements() == 0) {
       return;
     }
-    LaunchDepthwiseConvBackpropInputOp<Device, T>::launch(
-        context, args, out_backprop_ptr, filter_ptr, in_backprop_ptr);
+    LaunchDepthwiseConvBackpropInputOp<Device, T>()(
+        context, args, out_backprop_ptr, filter_ptr, in_backprop_ptr,
+        data_format_);
   }
 
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
+  int64 stride_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
 };
@@ -695,9 +724,14 @@ template <typename T>
 struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
   typedef typename Eigen::internal::packet_traits<T>::type Packet;
 
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs& args,
-                     const T* out_backprop, const T* input,
-                     T* filter_backprop) {
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
+                  const T* out_backprop, const T* input, T* filter_backprop,
+                  TensorFormat data_format) {
+    OP_REQUIRES(
+        ctx, data_format == FORMAT_NHWC,
+        errors::Unimplemented(
+            "Depthwise convolution on CPU is only supported for NHWC format"));
+
     static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
 
     const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
@@ -716,7 +750,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d backprop filter.
     auto shard = [&ctx, &args, &out_backprop, &input, &output_buffer_data](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
       const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
       const int64 padded_out_depth_size =
@@ -853,34 +887,10 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-template <typename T>
-struct DepthwiseConv2dBackpropFilterGPULaunch {
-  static void Run(const GPUDevice& d, const DepthwiseArgs args,
-                  const T* out_backprop, const T* input, T* filter_backprop);
-};
-
-template <typename T>
-struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs args,
-                     const T* out_backprop, const T* input,
-                     T* filter_backprop) {
-    const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    auto stream = ctx->op_device_context()->stream();
-
-    // Initialize the results to 0.
-    int num_filter_backprop =
-        args.filter_rows * args.filter_cols * args.out_depth;
-    perftools::gputools::DeviceMemoryBase filter_bp_ptr(filter_backprop,
-                                                        num_filter_backprop);
-    stream->ThenMemset32(&filter_bp_ptr, 0, num_filter_backprop * sizeof(T));
-
-    DepthwiseConv2dBackpropFilterGPULaunch<T>().Run(d, args, out_backprop,
-                                                    input, filter_backprop);
-    OP_REQUIRES(ctx, stream->ok(), errors::Internal("Launch of gpu kernel for "
-                                                    "DepthwiseConv2dBackpropFil"
-                                                    "terGPULaunch failed"));
-  }
-};
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
+                                                           Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA
 
@@ -894,12 +904,23 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, strides_[1] == strides_[2],
+
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    stride_ = GetTensorDim(strides_, data_format_, 'H');
+    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
+    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+
+    OP_REQUIRES(context, stride_ == stride_w,
                 errors::InvalidArgument(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
     OP_REQUIRES(
-        context, (strides_[0] == 1 && strides_[3] == 1),
+        context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
@@ -925,8 +946,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, filter_shape, &filter_backprop));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, filter_shape, &filter_backprop));
 
     auto out_backprop_ptr = out_backprop.template flat<T>().data();
     auto input_ptr = input.template flat<T>().data();
@@ -935,13 +956,16 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     if (filter_shape.num_elements() == 0) {
       return;
     }
-    LaunchDepthwiseConvBackpropFilterOp<Device, T>::launch(
-        context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr);
+    LaunchDepthwiseConvBackpropFilterOp<Device, T>()(
+        context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr,
+        data_format_);
   }
 
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  TensorFormat data_format_;
+  int64 stride_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
 };

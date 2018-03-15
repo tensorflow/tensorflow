@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
 
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/graph/graph.h"
@@ -24,7 +24,7 @@ namespace tensorflow {
 
 // Returns an error iff *g running on a single device of 'device_type'
 // has memory type mismatch for any edge's source and destination.
-Status ValidateMemoryTypes(DeviceType device_type, const Graph* g);
+Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g);
 
 // Updates '*g' so that every edge's source and destination has
 // compatible memory types by inserting proper HostSend/Recv and
@@ -35,14 +35,14 @@ Status ValidateMemoryTypes(DeviceType device_type, const Graph* g);
 // Returns OK if '*g' is updated properly (ValidateMemoryTypes(g) must
 // be OK). Otherwise, returns an error and '*g' may be in an
 // invalidate state and the caller should discard it.
-Status EnsureMemoryTypes(DeviceType device_type, const string& device_name,
-                         Graph* g);
+Status EnsureMemoryTypes(const DeviceType& device_type,
+                         const string& device_name, Graph* g);
 
 // Get the memory type for 'index'th output of node 'n' in graph 'g', when
 // running on 'device_type'.
-Status MemoryTypeForOutput(DeviceType device_type, const Graph* g,
+Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
                            const Node* n, int index, MemoryType* memory_type);
 
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_MEMORY_TYPES_H_

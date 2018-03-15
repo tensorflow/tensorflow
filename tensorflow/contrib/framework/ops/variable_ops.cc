@@ -19,7 +19,6 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
 
 REGISTER_OP("ZeroInitializer")
     .Input("ref: Ref(T)")
@@ -27,8 +26,8 @@ REGISTER_OP("ZeroInitializer")
     .Attr("T: realnumbertype")
     .SetAllowsUninitializedInput()
     .SetShapeFn([](InferenceContext* c) {
-        c->set_output(0, c->input(0));
-        return Status::OK();
+      c->set_output(0, c->input(0));
+      return Status::OK();
     })
     .Doc(R"doc(
 Initialize 'ref' with all zeros. This op requires that the tensor is not

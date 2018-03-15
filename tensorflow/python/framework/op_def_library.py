@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -33,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_contextlib
 
 
 def _Attr(op_def, name):
@@ -196,7 +195,12 @@ def _MakeShape(v, arg_name):
                         str(v))
         break
     return v
-  return tensor_shape.as_shape(v).as_proto()
+  try:
+    return tensor_shape.as_shape(v).as_proto()
+  except TypeError as e:
+    raise TypeError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+  except ValueError as e:
+    raise ValueError("Error converting %s to a TensorShape: %s" % (arg_name, e))
 
 
 def _MakeTensor(v, arg_name):
@@ -241,7 +245,7 @@ class _OpInfo(object):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def _MaybeColocateWith(inputs):
   """A context manager for (maybe) colocating with a list of input tensors.
 
@@ -267,6 +271,7 @@ class OpDefLibrary(object):
   def __init__(self):
     self._ops = {}
 
+  # pylint: disable=invalid-name
   def add_op(self, op_def):
     """Register an OpDef. May call apply_op with the name afterwards."""
     if not isinstance(op_def, op_def_pb2.OpDef):
@@ -319,6 +324,20 @@ class OpDefLibrary(object):
       TypeError: On some errors.
       ValueError: On some errors.
     """
+    output_structure, is_stateful, op = self._apply_op_helper(
+        op_type_name, name, **keywords)
+    if output_structure:
+      outputs = op.outputs
+      res = _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
+      if isinstance(res, list) and not res and is_stateful:
+        return op
+      else:
+        return res
+    else:
+      return op
+
+  def _apply_op_helper(self, op_type_name, name=None, **keywords):
+    """Implementation of apply_op that returns output_structure, op."""
     op_info = self._ops.get(op_type_name, None)
     if op_info is None:
       raise RuntimeError("Unrecognized Op name " + op_type_name)
@@ -329,7 +348,7 @@ class OpDefLibrary(object):
       # Need to flatten all the arguments into a list.
       # pylint: disable=protected-access
       g = ops._get_graph_from_inputs(_Flatten(keywords.values()))
-      # pyline: enable=protected-access
+      # pylint: enable=protected-access
     except AssertionError as e:
       raise RuntimeError(
           "Cannot determine graph for Op '%s' due to: %s"
@@ -500,8 +519,13 @@ class OpDefLibrary(object):
                    repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.internal_convert_to_tensor(
-                values, as_ref=input_arg.is_ref).dtype.name
+            try:
+              observed = ops.internal_convert_to_tensor(
+                  values, as_ref=input_arg.is_ref).dtype.name
+            except ValueError as err:
+              raise ValueError(
+                  "Tried to convert '%s' to a tensor and failed. Error: %s" %
+                  (input_name, err))
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
@@ -613,8 +637,8 @@ class OpDefLibrary(object):
         if input_arg.is_ref:
           if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
-                "Input '%s' of '%s' Op requires l-value input" %
-                (input_name, op_type_name))
+                ("'%s' Op requires that input '%s' be a mutable tensor "
+                 "(e.g.: a tf.Variable)") % (op_type_name, input_name))
           input_types.extend(types)
         else:
           input_types.extend(base_types)
@@ -761,12 +785,6 @@ class OpDefLibrary(object):
         op = g.create_op(op_type_name, inputs, output_types, name=scope,
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)
-        if output_structure:
-          outputs = op.outputs
-          res = _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
-          if isinstance(res, list) and not res and op_def.is_stateful:
-            return op
-          else:
-            return res
-        else:
-          return op
+      return output_structure, op_def.is_stateful, op
+
+# pylint: enable=invalid-name

@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import optimizers as optimizers_lib
@@ -68,7 +61,8 @@ class OptimizersTest(test.TestCase):
     optimizers = [
         "SGD", gradient_descent.GradientDescentOptimizer,
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1),
-        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr)
+        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr),
+        "Momentum"
     ]
     for optimizer in optimizers:
       with ops.Graph().as_default() as g:
@@ -108,6 +102,14 @@ class OptimizersTest(test.TestCase):
             optimizers_lib.optimize_loss(
                 loss, global_step, learning_rate=0.1, optimizer=optimizer)
 
+  def testBadSummaries(self):
+    with ops.Graph().as_default() as g, self.test_session(graph=g):
+      _, _, loss, global_step = _setup_model()
+      with self.assertRaises(ValueError):
+        optimizers_lib.optimize_loss(
+            loss, global_step, learning_rate=0.1, optimizer="SGD",
+            summaries=["loss", "bad_summary"])
+
   def testInvalidLoss(self):
     with ops.Graph().as_default() as g, self.test_session(graph=g):
       _, _, _, global_step = _setup_model()
@@ -124,7 +126,7 @@ class OptimizersTest(test.TestCase):
       var = variable_scope.get_variable(
           "test", [], initializer=init_ops.constant_initializer(10))
       loss = math_ops.abs(var * x)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         optimizers_lib.optimize_loss(
             loss,
             global_step=constant_op.constant(
@@ -175,7 +177,7 @@ class OptimizersTest(test.TestCase):
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
       # Due to randomness the following number may change if graph is different.
-      self.assertAlmostEqual(var_value, 8.5591021, 4)
+      self.assertAlmostEqual(var_value, 9.86912, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientNoiseWithClipping(self):
@@ -192,7 +194,7 @@ class OptimizersTest(test.TestCase):
       variables.global_variables_initializer().run()
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
-      self.assertAlmostEqual(var_value, 9.0, 4)
+      self.assertAlmostEqual(var_value, 9.86912, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientClip(self):
@@ -356,6 +358,30 @@ class OptimizersTest(test.TestCase):
         self.assertEqual(9.5, var.eval())
         self.assertEqual(20, update_var.eval())
         self.assertEqual(1, global_step.eval())
+
+  def testUpdateOpNoIncrementGlobalStep(self):
+    optimizers = [
+        "SGD", gradient_descent.GradientDescentOptimizer,
+        gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
+    ]
+    for optimizer in optimizers:
+      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+        x, var, loss, global_step = _setup_model()
+        update_var = variable_scope.get_variable(
+            "update", [], initializer=init_ops.constant_initializer(10))
+        update_op = state_ops.assign(update_var, 20)
+        train = optimizers_lib.optimize_loss(
+            loss,
+            global_step,
+            learning_rate=0.1,
+            optimizer=optimizer,
+            update_ops=[update_op],
+            increment_global_step=False)
+        variables.global_variables_initializer().run()
+        session.run(train, feed_dict={x: 5})
+        self.assertEqual(9.5, var.eval())
+        self.assertEqual(20, update_var.eval())
+        self.assertEqual(0, global_step.eval())
 
   def testUpdateOpWithNoOpDecay(self):
     optimizers = [

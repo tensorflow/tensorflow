@@ -55,7 +55,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
+import sys
 
 from google.protobuf import text_format
 
@@ -63,22 +65,10 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.platform import app
-from tensorflow.python.platform import flags as flags_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.tools import optimize_for_inference_lib
 
-flags = flags_lib
-FLAGS = flags.FLAGS
-flags.DEFINE_string("input", "", """TensorFlow 'GraphDef' file to load.""")
-flags.DEFINE_string("output", "", """File to save the output graph to.""")
-flags.DEFINE_string("input_names", "", """Input node names, comma separated.""")
-flags.DEFINE_string("output_names", "",
-                    """Output node names, comma separated.""")
-flags.DEFINE_boolean("frozen_graph", True,
-                     """If true, the input graph is a binary frozen GraphDef
-                     file; if false, it is a text GraphDef proto file.""")
-flags.DEFINE_integer("placeholder_type_enum", dtypes.float32.as_datatype_enum,
-                     """The AttrValue enum to use for placeholders.""")
+FLAGS = None
 
 
 def main(unused_args):
@@ -87,7 +77,7 @@ def main(unused_args):
     return -1
 
   input_graph_def = graph_pb2.GraphDef()
-  with gfile.Open(FLAGS.input, "r") as f:
+  with gfile.Open(FLAGS.input, "rb") as f:
     data = f.read()
     if FLAGS.frozen_graph:
       input_graph_def.ParseFromString(data)
@@ -109,5 +99,48 @@ def main(unused_args):
   return 0
 
 
+def parse_args():
+  """Parses command line arguments."""
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--input",
+      type=str,
+      default="",
+      help="TensorFlow \'GraphDef\' file to load.")
+  parser.add_argument(
+      "--output",
+      type=str,
+      default="",
+      help="File to save the output graph to.")
+  parser.add_argument(
+      "--input_names",
+      type=str,
+      default="",
+      help="Input node names, comma separated.")
+  parser.add_argument(
+      "--output_names",
+      type=str,
+      default="",
+      help="Output node names, comma separated.")
+  parser.add_argument(
+      "--frozen_graph",
+      nargs="?",
+      const=True,
+      type="bool",
+      default=True,
+      help="""\
+      If true, the input graph is a binary frozen GraphDef
+      file; if false, it is a text GraphDef proto file.\
+      """)
+  parser.add_argument(
+      "--placeholder_type_enum",
+      type=int,
+      default=dtypes.float32.as_datatype_enum,
+      help="The AttrValue enum to use for placeholders.")
+  return parser.parse_known_args()
+
+
 if __name__ == "__main__":
-  app.run()
+  FLAGS, unparsed = parse_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

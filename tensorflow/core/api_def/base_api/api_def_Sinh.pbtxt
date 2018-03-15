@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Sinh"
+  summary: "Computes hyperbolic sine of x element-wise."
+}

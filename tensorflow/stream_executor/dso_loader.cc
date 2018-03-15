@@ -33,6 +33,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
+#if !defined(PLATFORM_GOOGLE)
+#include "cuda/cuda_config.h"
+#endif
+
 namespace perftools {
 namespace gputools {
 namespace internal {
@@ -78,18 +82,37 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                   GetCudaDriverLibraryPath()),
       dso_handle);
 #else
-  return GetDsoHandle(
+  port::Status status = GetDsoHandle(
       FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", "1"),
                   GetCudaDriverLibraryPath()),
       dso_handle);
+#if defined(__APPLE__)
+  // On Mac OS X, CUDA sometimes installs libcuda.dylib instead of
+  // libcuda.1.dylib.
+  return status.ok() ? status : GetDsoHandle(
+     FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", ""),
+                 GetCudaDriverLibraryPath()),
+     dso_handle);
+#else
+  return status;
+#endif
 #endif
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
+#if defined(ANDROID_TEGRA)
+  // On Android devices the CUDA version number is not added to the library
+  // name.
+  return GetDsoHandle(
+      FindDsoPath(port::Env::Default()->FormatLibraryFileName("cupti", ""),
+                  GetCudaCuptiLibraryPath()),
+      dso_handle);
+#else
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cupti", GetCudaVersion()),
                                   GetCudaCuptiLibraryPath()),
                       dso_handle);
+#endif
 }
 
 static mutex& GetRpathMutex() {
@@ -113,9 +136,13 @@ static mutex& GetRpathMutex() {
   port::Status s =
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
+#if !defined(PLATFORM_WINDOWS)
+    char* ld_library_path = getenv("LD_LIBRARY_PATH");
+#endif
     LOG(INFO) << "Couldn't open CUDA library " << path
 #if !defined(PLATFORM_WINDOWS)
-              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH")
+              << ". LD_LIBRARY_PATH: "
+              << (ld_library_path != nullptr ? ld_library_path : "")
 #endif
     ;
     return port::Status(port::error::FAILED_PRECONDITION,

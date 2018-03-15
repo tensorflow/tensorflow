@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#ifndef TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#define TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
 
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
@@ -42,7 +42,7 @@ namespace swig {
 // This is temporary code to be used during the migration
 // from python shape inference functions to C++ shape inference functions.
 std::vector<string> RunCppShapeInference(
-    const string& serialized_node_def,
+    int graph_def_version, const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
@@ -51,4 +51,4 @@ std::vector<string> RunCppShapeInference(
 }  // namespace swig
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#endif  // TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_

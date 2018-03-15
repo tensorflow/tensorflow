@@ -87,7 +87,7 @@ inline bool RefCounted::Unref() const {
   DCHECK_GT(ref_.load(), 0);
   // If ref_==1, this object is owned only by the caller. Bypass a locked op
   // in that case.
-  if (ref_.load(std::memory_order_acquire) == 1 || ref_.fetch_sub(1) == 1) {
+  if (RefCountIsOne() || ref_.fetch_sub(1) == 1) {
     // Make DCHECK in ~RefCounted happy
     DCHECK((ref_.store(0), true));
     delete this;

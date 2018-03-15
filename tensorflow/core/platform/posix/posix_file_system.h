@@ -56,6 +56,8 @@ class PosixFileSystem : public FileSystem {
   Status GetFileSize(const string& fname, uint64* size) override;
 
   Status RenameFile(const string& src, const string& target) override;
+
+  Status CopyFile(const string& src, const string& target) override;
 };
 
 Status IOError(const string& context, int err_number);

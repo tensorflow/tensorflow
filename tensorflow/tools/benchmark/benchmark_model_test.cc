@@ -61,8 +61,12 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
                                                   &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
   stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
+  int64 time;
+  int64 num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
-      0.0, 10, {input}, {output_name}, session.get(), stats.get()));
+      0.0, 10, 0.0, {input}, {output_name}, {}, session.get(), stats.get(),
+      &time, &num_runs));
+  ASSERT_EQ(num_runs, 10);
 }
 
 }  // namespace

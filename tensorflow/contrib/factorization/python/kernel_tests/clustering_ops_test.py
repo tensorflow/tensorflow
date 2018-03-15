@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
@@ -56,6 +49,63 @@ class KmeansPlusPlusInitializationTest(test.TestCase):
                                                    [101., 1.],
                                                    [101., 1.]],
           atol=1.0)
+
+  def testBasic(self):
+    for seed in range(100):
+      self.runTestWithSeed(seed)
+
+
+class KMC2InitializationTest(test.TestCase):
+
+  def runTestWithSeed(self, seed):
+    with self.test_session():
+      distances = np.zeros(1000).astype(np.float32)
+      distances[6] = 10e7
+      distances[4] = 10e3
+
+      sampled_point = clustering_ops.kmc2_chain_initialization(distances, seed)
+      self.assertEquals(sampled_point.eval(), 6)
+      distances[6] = 0.0
+      sampled_point = clustering_ops.kmc2_chain_initialization(distances, seed)
+      self.assertEquals(sampled_point.eval(), 4)
+
+  def testBasic(self):
+    for seed in range(100):
+      self.runTestWithSeed(seed)
+
+
+class KMC2InitializationLargeTest(test.TestCase):
+
+  def setUp(self):
+    self._distances = np.zeros(1001)
+    self._distances[500] = 100.0
+    self._distances[1000] = 50.0
+
+  def testBasic(self):
+    with self.test_session():
+      counts = {}
+      seed = 0
+      for i in range(50):
+        sample = clustering_ops.kmc2_chain_initialization(
+            self._distances, seed + i).eval()
+        counts[sample] = counts.get(sample, 0) + 1
+      self.assertEquals(len(counts), 2)
+      self.assertTrue(500 in counts)
+      self.assertTrue(1000 in counts)
+      self.assertGreaterEqual(counts[500], 5)
+      self.assertGreaterEqual(counts[1000], 5)
+
+
+class KMC2InitializationCornercaseTest(test.TestCase):
+
+  def setUp(self):
+    self._distances = np.zeros(10)
+
+  def runTestWithSeed(self, seed):
+    with self.test_session():
+      sampled_point = clustering_ops.kmc2_chain_initialization(
+          self._distances, seed)
+      self.assertEquals(sampled_point.eval(), 0)
 
   def testBasic(self):
     for seed in range(100):
@@ -125,7 +175,7 @@ class NearestCentersLargeTest(test.TestCase):
     # Tile points and expected results to reach requested size (num_points)
     (self._points, self._expected_nearest_neighbor_indices,
      self._expected_nearest_neighbor_squared_distances) = (
-         np.tile(x, (num_points / points_per_tile, 1))
+         np.tile(x, (int(num_points / points_per_tile), 1))
          for x in (points, expected_nearest_neighbor_indices,
                    expected_nearest_neighbor_squared_distances))
 

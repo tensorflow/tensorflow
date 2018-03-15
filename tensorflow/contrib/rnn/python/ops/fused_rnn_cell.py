@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.contrib.rnn.python.ops import core_rnn as contrib_rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 
@@ -116,12 +115,13 @@ class FusedRNNCellAdaptor(FusedRNNCell):
     else:  # non-dynamic rnn
       if not is_list:
         inputs = array_ops.unstack(inputs)
-      outputs, state = contrib_rnn.static_rnn(self._cell,
-                                              inputs,
-                                              initial_state=initial_state,
-                                              dtype=dtype,
-                                              sequence_length=sequence_length,
-                                              scope=scope)
+      outputs, state = rnn.static_rnn(
+          self._cell,
+          inputs,
+          initial_state=initial_state,
+          dtype=dtype,
+          sequence_length=sequence_length,
+          scope=scope)
       if not is_list:
         # Convert outputs back to tensor
         outputs = array_ops.stack(outputs)

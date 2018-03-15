@@ -15,9 +15,42 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 
+#include "tensorflow/core/lib/core/errors.h"
+
 namespace tensorflow {
 
+// static
 DebuggerStateFactory* DebuggerStateRegistry::factory_ = nullptr;
+
+// static
+DebugGraphDecoratorFactory* DebugGraphDecoratorRegistry::factory_ = nullptr;
+
+const string SummarizeDebugTensorWatches(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches) {
+  std::ostringstream oss;
+
+  for (const DebugTensorWatch& watch : watches) {
+    string tensor_name =
+        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    if (watch.tolerate_debug_op_creation_failures()) {
+      oss << "(TOL)";  // Shorthand for "tolerate".
+    }
+    oss << tensor_name << "|";
+
+    for (const string& debug_op : watch.debug_ops()) {
+      oss << debug_op << ",";
+    }
+
+    oss << "@";
+    for (const string& debug_url : watch.debug_urls()) {
+      oss << debug_url << ",";
+    }
+
+    oss << ";";
+  }
+
+  return oss.str();
+}
 
 // static
 void DebuggerStateRegistry::RegisterFactory(
@@ -27,11 +60,38 @@ void DebuggerStateRegistry::RegisterFactory(
 }
 
 // static
-std::unique_ptr<DebuggerStateInterface> DebuggerStateRegistry::CreateState(
-    const DebugOptions& debug_options) {
-  return (factory_ == nullptr || *factory_ == nullptr)
-             ? nullptr
-             : (*factory_)(debug_options);
+Status DebuggerStateRegistry::CreateState(
+    const DebugOptions& debug_options,
+    std::unique_ptr<DebuggerStateInterface>* state) {
+  if (factory_ == nullptr || *factory_ == nullptr) {
+    return errors::Internal(
+        "Creation of debugger state failed. "
+        "It appears that TFDBG is not linked in this TensorFlow build.");
+  } else {
+    *state = (*factory_)(debug_options);
+    return Status::OK();
+  }
+}
+
+// static
+void DebugGraphDecoratorRegistry::RegisterFactory(
+    const DebugGraphDecoratorFactory& factory) {
+  delete factory_;
+  factory_ = new DebugGraphDecoratorFactory(factory);
+}
+
+// static
+Status DebugGraphDecoratorRegistry::CreateDecorator(
+    const DebugOptions& options,
+    std::unique_ptr<DebugGraphDecoratorInterface>* decorator) {
+  if (factory_ == nullptr || *factory_ == nullptr) {
+    return errors::Internal(
+        "Creation of graph decorator failed. "
+        "It appears that TFDBG is not linked in this TensorFlow build.");
+  } else {
+    *decorator = (*factory_)(options);
+    return Status::OK();
+  }
 }
 
 }  // end namespace tensorflow

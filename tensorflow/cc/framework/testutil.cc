@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/testutil.h"
 
+#include <utility>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/default_device.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace test {
 
 void GetTensors(const Scope& scope, OutputList tensors,
@@ -32,7 +32,21 @@ void GetTensors(const Scope& scope, OutputList tensors,
 
 void GetTensor(const Scope& scope, Output tensor, Tensor* out) {
   std::vector<Tensor> outputs;
-  GetTensors(scope, {tensor}, &outputs);
+  GetTensors(scope, {std::move(tensor)}, &outputs);
+  *out = outputs[0];
+}
+
+void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
+                const OutputList& tensors, std::vector<Tensor>* out) {
+  ClientSession session(scope);
+  TF_CHECK_OK(session.Run(assign_vars, nullptr));
+  TF_CHECK_OK(session.Run(tensors, out));
+}
+
+void GetTensor(const Scope& scope, const std::vector<Output>& assign_vars,
+               Output tensor, Tensor* out) {
+  std::vector<Tensor> outputs;
+  GetTensors(scope, assign_vars, {std::move(tensor)}, &outputs);
   *out = outputs[0];
 }
 

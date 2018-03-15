@@ -211,9 +211,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.abs(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
-      return self._options['symmetric_l1_regularization'] * sum
+      return self._options['symmetric_l1_regularization'] * math_ops.add_n(sums)
 
   def _l2_loss(self, l2):
     """Computes the (un-normalized) l2 loss of the model."""
@@ -225,9 +224,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.square(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
-      return l2 * sum / 2.0
+      return l2 * math_ops.add_n(sums) / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
@@ -238,10 +236,10 @@ class SdcaModel(object):
     with name_scope('sdca/prediction'):
       sparse_variables = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
-      result = 0.0
+      result_sparse = 0.0
       for sfc, sv in zip(examples['sparse_features'], sparse_variables):
         # TODO(sibyl-Aix6ihai): following does not take care of missing features.
-        result += math_ops.segment_sum(
+        result_sparse += math_ops.segment_sum(
             math_ops.multiply(
                 array_ops.gather(sv, sfc.feature_indices), sfc.feature_values),
             sfc.example_indices)
@@ -249,12 +247,14 @@ class SdcaModel(object):
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
 
+      result_dense = 0.0
       for i in range(len(dense_variables)):
-        result += math_ops.matmul(dense_features[i],
-                                  array_ops.expand_dims(dense_variables[i], -1))
+        result_dense += math_ops.matmul(dense_features[i],
+                                        array_ops.expand_dims(
+                                            dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
-    return array_ops.reshape(result, [-1])
+    return array_ops.reshape(result_dense, [-1]) + result_sparse
 
   def predictions(self, examples):
     """Add operations to compute predictions by the model.
@@ -307,7 +307,7 @@ class SdcaModel(object):
           sparse_features_values.append(sf.feature_values)
 
       # pylint: disable=protected-access
-      example_ids_hashed = gen_sdca_ops._sdca_fprint(
+      example_ids_hashed = gen_sdca_ops.sdca_fprint(
           internal_convert_to_tensor(self._examples['example_ids']))
       # pylint: enable=protected-access
       example_state_data = self._hashtable.lookup(example_ids_hashed)
@@ -328,7 +328,7 @@ class SdcaModel(object):
           sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
 
       # pylint: disable=protected-access
-      esu, sfw, dfw = gen_sdca_ops._sdca_optimizer(
+      esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
           sparse_example_indices,
           sparse_feature_indices,
           sparse_features_values,
@@ -390,7 +390,7 @@ class SdcaModel(object):
           with ops.device(var.device):
             # pylint: disable=protected-access
             update_ops.append(
-                gen_sdca_ops._sdca_shrink_l1(
+                gen_sdca_ops.sdca_shrink_l1(
                     self._convert_n_to_tensor(
                         [var], as_ref=True),
                     l1=self._symmetric_l1_regularization(),
@@ -456,10 +456,10 @@ class SdcaModel(object):
           dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
-        return math_ops.reduce_sum(
-            math_ops.multiply(
-                sigmoid_cross_entropy_with_logits(predictions, labels),
-                weights)) / math_ops.reduce_sum(weights)
+        return math_ops.reduce_sum(math_ops.multiply(
+            sigmoid_cross_entropy_with_logits(labels=labels,
+                                              logits=predictions),
+            weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to

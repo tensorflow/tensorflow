@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_RPC_RENDEZVOUS_MGR_H_
 
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
-#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+class DeviceMgr;
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.
 // All tensors sent by this worker are buffered in a RendezvousMgr
@@ -46,13 +47,9 @@ class RpcRendezvousMgr : public BaseRendezvousMgr {
   explicit RpcRendezvousMgr(const WorkerEnv* env);
 
  protected:
-  BaseRemoteRendezvous* Create(int64 step_id,
-                               const WorkerEnv* worker_env) override;
+  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env);
 
  private:
-  // Private cache_ that allows us to reuse WorkerInterface objects.
-  std::unique_ptr<WorkerCacheInterface> cache_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRendezvousMgr);
 };
 

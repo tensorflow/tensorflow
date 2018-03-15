@@ -85,7 +85,7 @@ class TraceTest(test.TestCase):
     trace_info = trace.TraceInfo()
 
     with gfile.Open(self._temp_trace_json) as f:
-      text = f.read().decode('utf-8')
+      text = f.read()
     json_format.Parse(text, trace_info)
 
     return trace_info

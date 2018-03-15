@@ -18,24 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import random
 import threading
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 
 
+@test_util.with_c_api
 class TestUtilTest(test_util.TensorFlowTestCase):
 
   def test_assert_ops_in_graph(self):
@@ -76,6 +82,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     else:
       print("GoogleCuda is disabled")
 
+  def testIsMklEnabled(self):
+    # This test doesn't assert anything.
+    # It ensures the py wrapper function is generated correctly.
+    if test_util.IsMklEnabled():
+      print("MKL is enabled")
+    else:
+      print("MKL is disabled")
+
   def testAssertProtoEqualsStr(self):
 
     graph_str = "node { name: 'w1' op: 'params' }"
@@ -87,6 +101,34 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     # test original comparison
     self.assertProtoEquals(graph_def, graph_def)
+
+  def testAssertProtoEqualsAny(self):
+    # Test assertProtoEquals with a protobuf.Any field.
+    meta_graph_def_str = """
+    meta_info_def {
+      meta_graph_version: "outer"
+      any_info {
+        [type.googleapis.com/tensorflow.MetaGraphDef] {
+          meta_info_def {
+            meta_graph_version: "inner"
+          }
+        }
+      }
+    }
+    """
+    meta_graph_def_outer = meta_graph_pb2.MetaGraphDef()
+    meta_graph_def_outer.meta_info_def.meta_graph_version = "outer"
+    meta_graph_def_inner = meta_graph_pb2.MetaGraphDef()
+    meta_graph_def_inner.meta_info_def.meta_graph_version = "inner"
+    meta_graph_def_outer.meta_info_def.any_info.Pack(meta_graph_def_inner)
+    self.assertProtoEquals(meta_graph_def_str, meta_graph_def_outer)
+    self.assertProtoEquals(meta_graph_def_outer, meta_graph_def_outer)
+
+    # Check if the assertion failure message contains the content of
+    # the inner proto.
+    with self.assertRaisesRegexp(AssertionError,
+                                 r'meta_graph_version: "inner"'):
+      self.assertProtoEquals("", meta_graph_def_outer)
 
   def testNDArrayNear(self):
     a1 = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -151,11 +193,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("IntOutput", "name")
+        node_def_orig = ops._NodeDef("IntOutput", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
@@ -168,7 +212,77 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
-      self.assertAllClose(7, 8)
+      self.assertAllClose(7, 7 + 1e-5)
+
+  def testAllCloseDictToNonDict(self):
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose(1, {"a": 1})
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
+
+  def testAllCloseDicts(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+
+    # Identity.
+    self.assertAllClose(expected, expected)
+    self.assertAllClose(expected, dict(expected))
+
+    # With each item removed.
+    for k in expected:
+      actual = dict(expected)
+      del actual[k]
+      with self.assertRaisesRegexp(AssertionError, r"mismatched keys"):
+        self.assertAllClose(expected, actual)
+
+    # With each item changed.
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
+    with self.assertRaisesRegexp(AssertionError, r"Shape mismatch"):
+      self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
+    c_copy = np.array(c)
+    c_copy[1, 1, 1] += 1e-5
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
+
+  def testAllCloseListOfNamedtuples(self):
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["x", "y"])
+    l1 = [
+        my_named_tuple(x=np.array([[2.3, 2.5]]), y=np.array([[0.97, 0.96]])),
+        my_named_tuple(x=np.array([[3.3, 3.5]]), y=np.array([[0.98, 0.99]]))
+    ]
+    l2 = [
+        ([[2.3, 2.5]], [[0.97, 0.96]]),
+        ([[3.3, 3.5]], [[0.98, 0.99]]),
+    ]
+    self.assertAllClose(l1, l2)
+
+  def testAllCloseNestedStructure(self):
+    a = {"x": np.ones((3, 2, 4)) * 7, "y": (2, [{"nested": {"m": 3, "n": 4}}])}
+    self.assertAllClose(a, a)
+
+    b = copy.deepcopy(a)
+    self.assertAllClose(a, b)
+
+    # Test mismatched values
+    b["y"][1][0]["nested"]["n"] = 4.2
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+      self.assertAllClose(a, b)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -184,8 +298,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertArrayNear(a, b, 0.001)
 
   def testForceGPU(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Cannot assign a device to node"):
+    with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):
         # this relies on us not having a GPU implementation for assert, which
         # seems sensible
@@ -193,7 +306,63 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         y = [15]
         control_flow_ops.Assert(x, y).run()
 
+  def testAssertAllCloseAccordingToType(self):
+    # test plain int
+    self.assertAllCloseAccordingToType(1, 1, rtol=1e-8, atol=1e-8)
+
+    # test float64
+    self.assertAllCloseAccordingToType(
+        np.asarray([1e-8], dtype=np.float64),
+        np.asarray([2e-8], dtype=np.float64),
+        rtol=1e-8, atol=1e-8
+    )
+
+    with (self.assertRaises(AssertionError)):
+      self.assertAllCloseAccordingToType(
+          np.asarray([1e-7], dtype=np.float64),
+          np.asarray([2e-7], dtype=np.float64),
+          rtol=1e-8, atol=1e-8
+      )
+
+    # test float32
+    self.assertAllCloseAccordingToType(
+        np.asarray([1e-7], dtype=np.float32),
+        np.asarray([2e-7], dtype=np.float32),
+        rtol=1e-8, atol=1e-8,
+        float_rtol=1e-7, float_atol=1e-7
+    )
+
+    with (self.assertRaises(AssertionError)):
+      self.assertAllCloseAccordingToType(
+          np.asarray([1e-6], dtype=np.float32),
+          np.asarray([2e-6], dtype=np.float32),
+          rtol=1e-8, atol=1e-8,
+          float_rtol=1e-7, float_atol=1e-7
+      )
+
+    # test float16
+    self.assertAllCloseAccordingToType(
+        np.asarray([1e-4], dtype=np.float16),
+        np.asarray([2e-4], dtype=np.float16),
+        rtol=1e-8, atol=1e-8,
+        float_rtol=1e-7, float_atol=1e-7,
+        half_rtol=1e-4, half_atol=1e-4
+    )
+
+    with (self.assertRaises(AssertionError)):
+      self.assertAllCloseAccordingToType(
+          np.asarray([1e-3], dtype=np.float16),
+          np.asarray([2e-3], dtype=np.float16),
+          rtol=1e-8, atol=1e-8,
+          float_rtol=1e-7, float_atol=1e-7,
+          half_rtol=1e-4, half_atol=1e-4
+      )
+
   def testRandomSeed(self):
+    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # after setup).
+    # TODO(skyewm): remove this when C API is permanently enabled.
+    self.setUp()
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
@@ -208,6 +377,97 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+
+@test_util.with_c_api
+class GarbageCollectionTest(test_util.TensorFlowTestCase):
+
+  def test_no_reference_cycle_decorator(self):
+
+    class ReferenceCycleTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_garbage_created
+      def test_has_cycle(self):
+        a = []
+        a.append(a)
+
+      @test_util.assert_no_garbage_created
+      def test_has_no_cycle(self):
+        pass
+
+    with self.assertRaises(AssertionError):
+      ReferenceCycleTest().test_has_cycle()
+
+    ReferenceCycleTest().test_has_no_cycle()
+
+  def test_no_leaked_tensor_decorator(self):
+
+    class LeakedTensorTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.])
+
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.])
+
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
+
+  def test_no_new_objects_decorator(self):
+
+    class LeakedObjectTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+        inner_self.accumulation = []
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_leak(self):
+        self.accumulation.append([1.])
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_no_leak(self):
+        self.not_accumulating = [1.]
+
+    with self.assertRaises(AssertionError):
+      LeakedObjectTest().test_has_leak()
+
+    LeakedObjectTest().test_has_no_leak()
 
 if __name__ == "__main__":
   googletest.main()

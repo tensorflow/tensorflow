@@ -18,23 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("OpError", "errors.OpError")
 class OpError(Exception):
   """A generic error that is raised when TensorFlow execution fails.
 
   Whenever possible, the session will raise a more specific subclass
   of `OpError` from the `tf.errors` module.
-
-  @@op
-  @@node_def
   """
 
   def __init__(self, node_def, op, message, error_code):
@@ -64,9 +63,9 @@ class OpError(Exception):
 
     *N.B.* If the failed op was synthesized at runtime, e.g. a `Send`
     or `Recv` op, there will be no corresponding
-    [`Operation`](../../api_docs/python/framework.md#Operation)
+    @{tf.Operation}
     object.  In that case, this will return `None`, and you should
-    instead use the [`OpError.node_def`](#OpError.node_def) to
+    instead use the @{tf.OpError.node_def} to
     discover information about the op.
 
     Returns:
@@ -136,33 +135,56 @@ class OpError(Exception):
 
 
 OK = error_codes_pb2.OK
+tf_export("errors.OK").export_constant(__name__, "OK")
 CANCELLED = error_codes_pb2.CANCELLED
+tf_export("errors.CANCELLED").export_constant(__name__, "CANCELLED")
 UNKNOWN = error_codes_pb2.UNKNOWN
+tf_export("errors.UNKNOWN").export_constant(__name__, "UNKNOWN")
 INVALID_ARGUMENT = error_codes_pb2.INVALID_ARGUMENT
+tf_export("errors.INVALID_ARGUMENT").export_constant(__name__,
+                                                     "INVALID_ARGUMENT")
 DEADLINE_EXCEEDED = error_codes_pb2.DEADLINE_EXCEEDED
+tf_export("errors.DEADLINE_EXCEEDED").export_constant(__name__,
+                                                      "DEADLINE_EXCEEDED")
 NOT_FOUND = error_codes_pb2.NOT_FOUND
+tf_export("errors.NOT_FOUND").export_constant(__name__, "NOT_FOUND")
 ALREADY_EXISTS = error_codes_pb2.ALREADY_EXISTS
+tf_export("errors.ALREADY_EXISTS").export_constant(__name__, "ALREADY_EXISTS")
 PERMISSION_DENIED = error_codes_pb2.PERMISSION_DENIED
+tf_export("errors.PERMISSION_DENIED").export_constant(__name__,
+                                                      "PERMISSION_DENIED")
 UNAUTHENTICATED = error_codes_pb2.UNAUTHENTICATED
+tf_export("errors.UNAUTHENTICATED").export_constant(__name__, "UNAUTHENTICATED")
 RESOURCE_EXHAUSTED = error_codes_pb2.RESOURCE_EXHAUSTED
+tf_export("errors.RESOURCE_EXHAUSTED").export_constant(__name__,
+                                                       "RESOURCE_EXHAUSTED")
 FAILED_PRECONDITION = error_codes_pb2.FAILED_PRECONDITION
+tf_export("errors.FAILED_PRECONDITION").export_constant(__name__,
+                                                        "FAILED_PRECONDITION")
 ABORTED = error_codes_pb2.ABORTED
+tf_export("errors.ABORTED").export_constant(__name__, "ABORTED")
 OUT_OF_RANGE = error_codes_pb2.OUT_OF_RANGE
+tf_export("errors.OUT_OF_RANGE").export_constant(__name__, "OUT_OF_RANGE")
 UNIMPLEMENTED = error_codes_pb2.UNIMPLEMENTED
+tf_export("errors.UNIMPLEMENTED").export_constant(__name__, "UNIMPLEMENTED")
 INTERNAL = error_codes_pb2.INTERNAL
+tf_export("errors.INTERNAL").export_constant(__name__, "INTERNAL")
 UNAVAILABLE = error_codes_pb2.UNAVAILABLE
+tf_export("errors.UNAVAILABLE").export_constant(__name__, "UNAVAILABLE")
 DATA_LOSS = error_codes_pb2.DATA_LOSS
+tf_export("errors.DATA_LOSS").export_constant(__name__, "DATA_LOSS")
 
 
 # pylint: disable=line-too-long
+@tf_export("errors.CancelledError")
 class CancelledError(OpError):
   """Raised when an operation or step is cancelled.
 
   For example, a long-running operation (e.g.
-  [`queue.enqueue()`](../../api_docs/python/io_ops.md#QueueBase.enqueue) may be
+  @{tf.QueueBase.enqueue} may be
   cancelled by running another operation (e.g.
-  [`queue.close(cancel_pending_enqueues=True)`](../../api_docs/python/io_ops.md#QueueBase.close),
-  or by [closing the session](../../api_docs/python/client.md#Session.close).
+  @{tf.QueueBase.close},
+  or by @{tf.Session.close}.
   A step that is running such a long-running operation will fail by raising
   `CancelledError`.
 
@@ -175,6 +197,7 @@ class CancelledError(OpError):
 # pylint: enable=line-too-long
 
 
+@tf_export("errors.UnknownError")
 class UnknownError(OpError):
   """Unknown error.
 
@@ -192,14 +215,15 @@ class UnknownError(OpError):
     super(UnknownError, self).__init__(node_def, op, message, error_code)
 
 
+@tf_export("errors.InvalidArgumentError")
 class InvalidArgumentError(OpError):
   """Raised when an operation receives an invalid argument.
 
   This may occur, for example, if an operation is receives an input
   tensor that has an invalid value or shape. For example, the
-  [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul) op will raise this
+  @{tf.matmul} op will raise this
   error if it receives an input that is not a matrix, and the
-  [`tf.reshape()`](../../api_docs/python/array_ops.md#reshape) op will raise
+  @{tf.reshape} op will raise
   this error if the new shape does not match the number of elements in the input
   tensor.
 
@@ -212,6 +236,7 @@ class InvalidArgumentError(OpError):
                                                INVALID_ARGUMENT)
 
 
+@tf_export("errors.DeadlineExceededError")
 class DeadlineExceededError(OpError):
   """Raised when a deadline expires before an operation could complete.
 
@@ -226,11 +251,12 @@ class DeadlineExceededError(OpError):
                                                 DEADLINE_EXCEEDED)
 
 
+@tf_export("errors.NotFoundError")
 class NotFoundError(OpError):
   """Raised when a requested entity (e.g., a file or directory) was not found.
 
   For example, running the
-  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  @{tf.WholeFileReader.read}
   operation could raise `NotFoundError` if it receives the name of a file that
   does not exist.
 
@@ -242,11 +268,12 @@ class NotFoundError(OpError):
     super(NotFoundError, self).__init__(node_def, op, message, NOT_FOUND)
 
 
+@tf_export("errors.AlreadyExistsError")
 class AlreadyExistsError(OpError):
   """Raised when an entity that we attempted to create already exists.
 
   For example, running an operation that saves a file
-  (e.g. [`tf.train.Saver.save()`](../../api_docs/python/train.md#Saver.save))
+  (e.g. @{tf.train.Saver.save})
   could potentially raise this exception if an explicit filename for an
   existing file was passed.
 
@@ -259,11 +286,12 @@ class AlreadyExistsError(OpError):
                                              ALREADY_EXISTS)
 
 
+@tf_export("errors.PermissionDeniedError")
 class PermissionDeniedError(OpError):
   """Raised when the caller does not have permission to run an operation.
 
   For example, running the
-  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  @{tf.WholeFileReader.read}
   operation could raise `PermissionDeniedError` if it receives the name of a
   file for which the user does not have the read file permission.
 
@@ -276,6 +304,7 @@ class PermissionDeniedError(OpError):
                                                 PERMISSION_DENIED)
 
 
+@tf_export("errors.UnauthenticatedError")
 class UnauthenticatedError(OpError):
   """The request does not have valid authentication credentials.
 
@@ -290,6 +319,7 @@ class UnauthenticatedError(OpError):
                                                UNAUTHENTICATED)
 
 
+@tf_export("errors.ResourceExhaustedError")
 class ResourceExhaustedError(OpError):
   """Some resource has been exhausted.
 
@@ -305,11 +335,12 @@ class ResourceExhaustedError(OpError):
                                                  RESOURCE_EXHAUSTED)
 
 
+@tf_export("errors.FailedPreconditionError")
 class FailedPreconditionError(OpError):
   """Operation was rejected because the system is not in a state to execute it.
 
   This exception is most commonly raised when running an operation
-  that reads a [`tf.Variable`](../../api_docs/python/state_ops.md#Variable)
+  that reads a @{tf.Variable}
   before it has been initialized.
 
   @@__init__
@@ -321,13 +352,14 @@ class FailedPreconditionError(OpError):
                                                   FAILED_PRECONDITION)
 
 
+@tf_export("errors.AbortedError")
 class AbortedError(OpError):
   """The operation was aborted, typically due to a concurrent action.
 
   For example, running a
-  [`queue.enqueue()`](../../api_docs/python/io_ops.md#QueueBase.enqueue)
+  @{tf.QueueBase.enqueue}
   operation may raise `AbortedError` if a
-  [`queue.close()`](../../api_docs/python/io_ops.md#QueueBase.close) operation
+  @{tf.QueueBase.close} operation
   previously ran.
 
   @@__init__
@@ -338,13 +370,14 @@ class AbortedError(OpError):
     super(AbortedError, self).__init__(node_def, op, message, ABORTED)
 
 
+@tf_export("errors.OutOfRangeError")
 class OutOfRangeError(OpError):
   """Raised when an operation iterates past the valid input range.
 
   This exception is raised in "end-of-file" conditions, such as when a
-  [`queue.dequeue()`](../../api_docs/python/io_ops.md#QueueBase.dequeue)
+  @{tf.QueueBase.dequeue}
   operation is blocked on an empty queue, and a
-  [`queue.close()`](../../api_docs/python/io_ops.md#QueueBase.close)
+  @{tf.QueueBase.close}
   operation executes.
 
   @@__init__
@@ -356,12 +389,13 @@ class OutOfRangeError(OpError):
                                           OUT_OF_RANGE)
 
 
+@tf_export("errors.UnimplementedError")
 class UnimplementedError(OpError):
   """Raised when an operation has not been implemented.
 
   Some operations may raise this error when passed otherwise-valid
   arguments that it does not currently support. For example, running
-  the [`tf.nn.max_pool()`](../../api_docs/python/nn.md#max_pool) operation
+  the @{tf.nn.max_pool} operation
   would raise this error if pooling was requested on the batch dimension,
   because this is not yet supported.
 
@@ -374,6 +408,7 @@ class UnimplementedError(OpError):
                                              UNIMPLEMENTED)
 
 
+@tf_export("errors.InternalError")
 class InternalError(OpError):
   """Raised when the system experiences an internal error.
 
@@ -388,6 +423,7 @@ class InternalError(OpError):
     super(InternalError, self).__init__(node_def, op, message, INTERNAL)
 
 
+@tf_export("errors.UnavailableError")
 class UnavailableError(OpError):
   """Raised when the runtime is currently unavailable.
 
@@ -402,11 +438,12 @@ class UnavailableError(OpError):
                                            UNAVAILABLE)
 
 
+@tf_export("errors.DataLossError")
 class DataLossError(OpError):
   """Raised when unrecoverable data loss or corruption is encountered.
 
   For example, this may be raised by running a
-  [`tf.WholeFileReader.read()`](../../api_docs/python/io_ops.md#WholeFileReader)
+  @{tf.WholeFileReader.read}
   operation, if the file is truncated while it is being read.
 
   @@__init__
@@ -440,10 +477,12 @@ _EXCEPTION_CLASS_TO_CODE = dict((
     (class_, code) for (code, class_) in _CODE_TO_EXCEPTION_CLASS.items()))
 
 
+@tf_export("errors.exception_type_from_error_code")
 def exception_type_from_error_code(error_code):
   return _CODE_TO_EXCEPTION_CLASS[error_code]
 
 
+@tf_export("errors.error_code_from_exception_type")
 def error_code_from_exception_type(cls):
   return _EXCEPTION_CLASS_TO_CODE[cls]
 
@@ -457,15 +496,27 @@ def _make_specific_exception(node_def, op, message, error_code):
     return UnknownError(node_def, op, message, error_code)
 
 
-@contextlib.contextmanager
-def raise_exception_on_not_ok_status():
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    yield status
-    if pywrap_tensorflow.TF_GetCode(status) != 0:
-      raise _make_specific_exception(
-          None, None,
-          compat.as_text(pywrap_tensorflow.TF_Message(status)),
-          pywrap_tensorflow.TF_GetCode(status))
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+# Named like a function for backwards compatibility with the
+# @tf_contextlib.contextmanager version, which was switched to a class to avoid
+# some object creation overhead.
+@tf_export("errors.raise_exception_on_not_ok_status")  # pylint: disable=invalid-name
+class raise_exception_on_not_ok_status(object):
+  """Context manager to check for C API status."""
+
+  def __enter__(self):
+    self.status = c_api_util.ScopedTFStatus()
+    return self.status.status
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    try:
+      if c_api.TF_GetCode(self.status.status) != 0:
+        raise _make_specific_exception(
+            None, None,
+            compat.as_text(c_api.TF_Message(self.status.status)),
+            c_api.TF_GetCode(self.status.status))
+    # Delete the underlying status object from memory otherwise it stays alive
+    # as there is a reference to status from this from the traceback due to
+    # raise.
+    finally:
+      del self.status
+    return False  # False values do not suppress exceptions

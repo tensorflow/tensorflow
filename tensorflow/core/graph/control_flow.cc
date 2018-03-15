@@ -24,23 +24,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
+Status BuildControlFlowInfo(const Graph* g,
+                            std::vector<ControlFlowInfo>* info) {
   info->clear();
   info->resize(g->num_node_ids());
 
   std::vector<const Node*> parent_nodes;
   parent_nodes.resize(g->num_node_ids());
 
-  Node* src_node = g->source_node();
+  const Node* src_node = g->source_node();
   ControlFlowInfo& src_info = (*info)[src_node->id()];
   src_info.frame = src_node;
   src_info.parent_frame = src_node;
 
   string frame_name;
-  std::deque<Node*> ready;
+  std::deque<const Node*> ready;
   ready.push_back(src_node);
   while (!ready.empty()) {
-    Node* curr_node = ready.front();
+    const Node* curr_node = ready.front();
     ready.pop_front();
     const ControlFlowInfo& curr_info = (*info)[curr_node->id()];
     const Node* frame = curr_info.frame;
@@ -56,7 +57,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
     }
 
     for (const Edge* out_edge : curr_node->out_edges()) {
-      Node* out = out_edge->dst();
+      const Node* out = out_edge->dst();
       int out_id = out->id();
       ControlFlowInfo* out_info = &(*info)[out_id];
       const Node* out_parent = out_info->parent_frame;
@@ -88,7 +89,7 @@ Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info) {
           out_info->frame = out;
           out_info->parent_frame = frame;
           TF_RETURN_IF_ERROR(
-              GetNodeAttr(out->def(), "frame_name", &out_info->frame_name));
+              GetNodeAttr(out->attrs(), "frame_name", &out_info->frame_name));
           if (out_info->frame_name.empty()) {
             return errors::InvalidArgument("The Enter node ", out->name(),
                                            " must have a frame name.");

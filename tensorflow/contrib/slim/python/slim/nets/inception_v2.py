@@ -170,7 +170,7 @@ def inception_v2_base(inputs,
               depth(32), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -205,7 +205,7 @@ def inception_v2_base(inputs,
               depth(64), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -233,7 +233,7 @@ def inception_v2_base(inputs,
         with variable_scope.variable_scope('Branch_2'):
           branch_2 = layers_lib.max_pool2d(
               net, [3, 3], stride=2, scope='MaxPool_1a_3x3')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -268,7 +268,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -303,7 +303,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -338,7 +338,7 @@ def inception_v2_base(inputs,
               depth(96), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -374,7 +374,7 @@ def inception_v2_base(inputs,
               depth(96), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -402,7 +402,7 @@ def inception_v2_base(inputs,
         with variable_scope.variable_scope('Branch_2'):
           branch_2 = layers_lib.max_pool2d(
               net, [3, 3], stride=2, scope='MaxPool_1a_3x3')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -437,7 +437,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -473,7 +473,7 @@ def inception_v2_base(inputs,
               depth(128), [1, 1],
               weights_initializer=trunc_normal(0.1),
               scope='Conv2d_0b_1x1')
-        net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+        net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if end_point == final_endpoint:
           return net, end_points
@@ -495,7 +495,9 @@ def inception_v2(inputs,
   Constructs an Inception v2 network for classification as described in
   http://arxiv.org/abs/1502.03167.
 
-  The default image size used to train this network is 224x224.
+  The recommended image size used to train this network is 224x224. For image
+  sizes that differ substantially, it is recommended to use inception_v2_base()
+  and connect custom final layers to the output.
 
   Args:
     inputs: a tensor of shape [batch_size, height, width, channels].
@@ -510,8 +512,12 @@ def inception_v2(inputs,
       usage will be to set this value in (0, 1) to reduce the number of
       parameters or computation cost of the model.
     prediction_fn: a function to get predictions out of logits.
-    spatial_squeeze: if True, logits is of shape is [B, C], if false logits is
+    spatial_squeeze: if True, logits is of shape [B, C], if false logits is
         of shape [B, 1, 1, C], where B is batch_size and C is number of classes.
+        Note that input image sizes other than 224x224 might lead to different
+        spatial dimensions, and hence cannot be squeezed. In this event,
+        it is best to set spatial_squeeze as False, and perform a reduce_mean
+        over the resulting spatial dimensions with sizes exceeding 1.
     reuse: whether or not the network and its variables should be reused. To be
       able to reuse 'scope' must be given.
     scope: Optional variable_scope.
@@ -523,8 +529,7 @@ def inception_v2(inputs,
       activation.
 
   Raises:
-    ValueError: if final_endpoint is not set to one of the predefined values,
-                or depth_multiplier <= 0
+    ValueError: if depth_multiplier <= 0.
   """
   if depth_multiplier <= 0:
     raise ValueError('depth_multiplier is not greater than zero.')

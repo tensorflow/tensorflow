@@ -58,16 +58,25 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     # routine.
     input_graph_path = os.path.join(self.get_temp_dir(), input_graph_name)
     input_binary = False
-    input_node_names = "wanted_input_node"
     output_binary = True
     output_node_names = "output_node"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
-                                             output_graph_path, output_binary,
-                                             input_node_names,
-                                             output_node_names,
-                                             dtypes.float32.as_datatype_enum)
+    def strip(input_node_names):
+      strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
+                                               output_graph_path, output_binary,
+                                               input_node_names,
+                                               output_node_names,
+                                               dtypes.float32.as_datatype_enum)
+
+    with self.assertRaises(KeyError):
+      strip("does_not_exist")
+
+    with self.assertRaises(ValueError):
+      strip("wanted_input_node:0")
+
+    input_node_names = "wanted_input_node"
+    strip(input_node_names)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.

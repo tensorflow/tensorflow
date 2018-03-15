@@ -24,6 +24,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -31,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -46,46 +48,46 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testTwoDeviceFunctions(self):
     with ops.Graph().as_default() as g:
-      var_0 = gen_state_ops._variable(
+      var_0 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_0",
           container="",
           shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_1 = gen_state_ops._variable(
+        var_1 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_1",
             container="",
             shared_name="")
-      var_2 = gen_state_ops._variable(
+      var_2 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_2",
           container="",
           shared_name="")
-      var_3 = gen_state_ops._variable(
+      var_3 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="var_3",
           container="",
           shared_name="")
       with g.device(test_device_func_pin_variable_to_cpu):
-        var_4 = gen_state_ops._variable(
+        var_4 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_4",
             container="",
             shared_name="")
         with g.device("/device:GPU:0"):
-          var_5 = gen_state_ops._variable(
+          var_5 = gen_state_ops.variable(
               shape=[1],
               dtype=dtypes.float32,
               name="var_5",
               container="",
               shared_name="")
-        var_6 = gen_state_ops._variable(
+        var_6 = gen_state_ops.variable(
             shape=[1],
             dtype=dtypes.float32,
             name="var_6",
@@ -105,9 +107,9 @@ class DeviceFunctionsTest(test.TestCase):
       var_0 = variables.Variable(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
         var_1 = variables.Variable(1)
-        with ops.device(lambda op: "/gpu:0"):
+        with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.Variable(2)
-        with ops.device("/gpu:0"):  # Implicit merging device function.
+        with ops.device("/device:GPU:0"):  # Implicit merging device function.
           var_3 = variables.Variable(3)
 
     self.assertDeviceEqual(var_0.device, None)
@@ -187,18 +189,32 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
 
-  def testConvertVariablesToConsts(self):
+  def testExtractSubGraphWithInvalidDestNodes(self):
+    graph_def = graph_pb2.GraphDef()
+    n1 = graph_def.node.add()
+    n1.name = "n1"
+    with self.assertRaisesRegexp(TypeError, "must be a list"):
+      graph_util.extract_sub_graph(graph_def, "n1")
+
+  def testConvertVariablesToConstsWithFunctions(self):
+    @function.Defun(dtypes.float32)
+    def plus_one(x):
+      return x + 1.0
+
     with ops.Graph().as_default():
       variable_node = variables.Variable(1.0, name="variable_node")
       _ = variables.Variable(1.0, name="unused_variable_node")
+      defun_node = plus_one(variable_node)
       output_node = math_ops_lib.multiply(
-          variable_node, 2.0, name="output_node")
+          defun_node, 2.0, name="output_node")
+
       with session.Session() as sess:
         init = variables.initialize_variables([variable_node])
         sess.run(init)
         output = sess.run(output_node)
-        self.assertNear(2.0, output, 0.00001)
+        self.assertNear(4.0, output, 0.00001)
         variable_graph_def = sess.graph.as_graph_def()
+
         # First get the constant_graph_def when variable_names_whitelist is set,
         # note that if variable_names_whitelist is not set an error will be
         # thrown because unused_variable_node is not initialized.
@@ -207,33 +223,66 @@ class DeviceFunctionsTest(test.TestCase):
             variable_graph_def, ["output_node"],
             variable_names_whitelist=set(["variable_node"]))
 
-        # Then initialize the unused variable, and get another
-        # constant_graph_def when variable_names_whitelist is not set.
-        sess.run(variables.global_variables_initializer())
-        constant_graph_def_without_variable_whitelist = (
-            graph_util.convert_variables_to_constants(sess, variable_graph_def,
-                                                      ["output_node"]))
+        self.assertEqual(variable_graph_def.library,
+                         constant_graph_def.library)
 
-        # The unused variable should be cleared so the two graphs should be
-        # equivalent.
-        self.assertEqual(
-            str(constant_graph_def),
-            str(constant_graph_def_without_variable_whitelist))
+  def testConvertVariablesToConsts(self):
+    self._test_variable_to_const_conversion(use_resource=False)
 
-        # Test variable name black list. This should result in the variable not
-        # being a const.
-        sess.run(variables.global_variables_initializer())
-        constant_graph_def_with_blacklist = (
-            graph_util.convert_variables_to_constants(
-                sess,
-                variable_graph_def, ["output_node"],
-                variable_names_blacklist=set(["variable_node"])))
-        variable_node = None
-        for node in constant_graph_def_with_blacklist.node:
-          if node.name == "variable_node":
-            variable_node = node
-        self.assertIsNotNone(variable_node)
-        self.assertEqual(variable_node.op, "VariableV2")
+  def testConvertResourceVariablesToConsts(self):
+    self._test_variable_to_const_conversion(use_resource=True)
+
+  def _test_variable_to_const_conversion(self, use_resource):
+    with ops.Graph().as_default():
+      with variable_scope.variable_scope("", use_resource=use_resource):
+        variable_node = variable_scope.get_variable(
+            "variable_node", initializer=1.0)
+        another_variable = variable_scope.get_variable(
+            "unused_variable_node", initializer=1.0)
+        output_node = math_ops_lib.multiply(
+            variable_node, 2.0, name="output_node")
+        with session.Session() as sess:
+          sess.run(variable_node.initializer)
+          output = sess.run(output_node)
+          self.assertNear(2.0, output, 0.00001)
+          variable_graph_def = sess.graph.as_graph_def()
+          # First get the constant_graph_def when variable_names_whitelist is
+          # set, note that if variable_names_whitelist is not set an error will
+          # be thrown because unused_variable_node is not initialized.
+          constant_graph_def = graph_util.convert_variables_to_constants(
+              sess,
+              variable_graph_def, ["output_node"],
+              variable_names_whitelist=set(["variable_node"]))
+
+          # Then initialize the unused variable, and get another
+          # constant_graph_def when variable_names_whitelist is not set.
+          sess.run(another_variable.initializer)
+          constant_graph_def_without_variable_whitelist = (
+              graph_util.convert_variables_to_constants(
+                  sess, variable_graph_def, ["output_node"]))
+
+          # The unused variable should be cleared so the two graphs should be
+          # equivalent.
+          self.assertEqual(
+              str(constant_graph_def),
+              str(constant_graph_def_without_variable_whitelist))
+
+          # Test variable name black list. This should result in the variable
+          # not being a const.
+          constant_graph_def_with_blacklist = (
+              graph_util.convert_variables_to_constants(
+                  sess,
+                  variable_graph_def, ["output_node"],
+                  variable_names_blacklist=set(["variable_node"])))
+          variable_node = None
+          for node in constant_graph_def_with_blacklist.node:
+            if node.name == "variable_node":
+              variable_node = node
+          self.assertIsNotNone(variable_node)
+          if use_resource:
+            self.assertEqual(variable_node.op, "VarHandleOp")
+          else:
+            self.assertEqual(variable_node.op, "VariableV2")
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
@@ -241,8 +290,9 @@ class DeviceFunctionsTest(test.TestCase):
       _ = importer.import_graph_def(constant_graph_def, name="")
       self.assertEqual(4, len(constant_graph_def.node))
       for node in constant_graph_def.node:
-        self.assertNotEqual("Variable", node.op)
-        self.assertNotEqual("VariableV2", node.op)
+        self.assertNotIn(
+            node.op,
+            ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
       with session.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         output = sess.run(output_node)
@@ -317,6 +367,29 @@ class DeviceFunctionsTest(test.TestCase):
 
     output = graph_util.remove_training_nodes(graph_def)
     self.assertProtoEquals(expected_output, output)
+
+  def testRemoveIdentityChains(self):
+    """Check that chains of Identity nodes are correctly pruned.
+
+    Create a chain of four nodes, A, B, C, and D where A inputs B, B inputs C,
+    and C inputs D. Nodes B and C are "Identity" and should be pruned, resulting
+    in the nodes A and D, where A inputs D.
+    """
+    graph_def = graph_pb2.GraphDef()
+    graph_def.node.extend([
+        self.create_node_def("Aop", "A", ["B"]), self.create_node_def(
+            "Identity", "B", ["C"]), self.create_node_def(
+                "Identity", "C", ["D"]), self.create_node_def("Dop", "D", [])
+    ])
+
+    expected_graph_def = graph_pb2.GraphDef()
+    expected_graph_def.node.extend([
+        self.create_node_def("Aop", "A", ["D"]), self.create_node_def(
+            "Dop", "D", [])
+    ])
+
+    self.assertProtoEquals(expected_graph_def,
+                           graph_util.remove_training_nodes(graph_def))
 
 
 if __name__ == "__main__":

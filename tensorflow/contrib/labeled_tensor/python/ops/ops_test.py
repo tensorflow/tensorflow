@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test as test_lib
 
 
@@ -118,6 +119,13 @@ class SelectTest(Base):
   def test_scalars(self):
     select_lt = ops.select(self.original_lt, {'x': 1, 'channel': 'green'})
     golden_lt = core.LabeledTensor(self.tensor[1, 1, :, :], [self.a2, self.a3])
+    self.assertLabeledTensorsEqual(select_lt, golden_lt)
+
+  def test_tuple(self):
+    original_lt = core.LabeledTensor(constant_op.constant([5, 6]),
+                                     [('x', [(1, 2), (3, 4)])])
+    select_lt = ops.select(original_lt, {'x': (1, 2)})
+    golden_lt = core.LabeledTensor(constant_op.constant(5), [])
     self.assertLabeledTensorsEqual(select_lt, golden_lt)
 
   def test_invalid_input(self):
@@ -476,6 +484,33 @@ class MapFnTest(Base):
                         self.original_lt)
     slice_lt = core.slice_function(self.original_lt, {'channel': 1})
     self.assertLabeledTensorsEqual(map_lt, slice_lt)
+
+  def test_string(self):
+
+    def fn(entry_lt):
+      op = string_ops.string_join([entry_lt, 'world'])
+      return core.LabeledTensor(op, [])
+
+    tensor_lt = ops.constant(['hi', 'bye'], axes=['batch'])
+    map_lt = ops.map_fn(fn, tensor_lt)
+    golden_lt = ops.constant(['hiworld', 'byeworld'], axes=['batch'])
+
+    self.assertLabeledTensorsEqual(map_lt, golden_lt)
+
+
+class FoldlTest(Base):
+
+  def test_name(self):
+    foldl_lt = ops.foldl(core.add, self.original_lt,
+                         core.slice_function(self.original_lt, {'x': 0}))
+    self.assertIn('lt_foldl', foldl_lt.name)
+
+  def test_sum(self):
+    initializer_lt = ops.constant([0, 10], axes=['y'])
+    tensor_lt = ops.constant([[1, 2], [3, 4], [5, 6]], axes=['x', 'y'])
+    foldl_lt = ops.foldl(core.add, tensor_lt, initializer_lt)
+    golden_lt = ops.constant([9, 22], axes=['y'])
+    self.assertLabeledTensorsEqual(foldl_lt, golden_lt)
 
 
 class SqueezeTest(Base):
@@ -928,7 +963,7 @@ class WhereTest(Base):
     where_lt = ops.where(condition, x, y)
 
     golden_lt = core.LabeledTensor(
-        array_ops.concat_v2([array_ops.ones(3), array_ops.zeros(2)], 0), ['x'])
+        array_ops.concat([array_ops.ones(3), array_ops.zeros(2)], 0), ['x'])
     self.assertLabeledTensorsEqual(where_lt, golden_lt)
 
   def test_mismatched_axes(self):

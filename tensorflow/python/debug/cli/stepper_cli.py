@@ -22,11 +22,13 @@ import argparse
 import numpy as np  # pylint: disable=unused-import
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.debug import stepper
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import stepper
+
+RL = debugger_cli_common.RichLine
 
 
 class NodeStepperCLI(object):
@@ -39,7 +41,7 @@ class NodeStepperCLI(object):
   STATE_CONT = "H"
 
   # State where an intermediate dump of the tensor is available.
-  STATE_INTERMEDIATE = "I"
+  STATE_DUMPED_INTERMEDIATE = "I"
 
   # State where the element is already overridden.
   STATE_OVERRIDDEN = "O"
@@ -51,6 +53,8 @@ class NodeStepperCLI(object):
   # this NodeStepperCLI instance.
   STATE_DIRTY_VARIABLE = "D"
 
+  STATE_UNFEEDABLE = "U"
+
   NEXT_NODE_POINTER_STR = "-->"
 
   _MESSAGE_TEMPLATES = {
@@ -59,6 +63,24 @@ class NodeStepperCLI(object):
       "MULTIPLE_TENSORS":
           "Node %s has more than one output tensor. "
           "Please use full tensor name.",
+  }
+
+  _UPDATED_ATTRIBUTE = "bold"
+
+  _STATE_COLORS = {
+      STATE_CONT: cli_shared.COLOR_GREEN,
+      STATE_DIRTY_VARIABLE: cli_shared.COLOR_MAGENTA,
+      STATE_DUMPED_INTERMEDIATE: cli_shared.COLOR_BLUE,
+      STATE_OVERRIDDEN: cli_shared.COLOR_YELLOW,
+      STATE_IS_PLACEHOLDER: cli_shared.COLOR_CYAN,
+      STATE_UNFEEDABLE: cli_shared.COLOR_RED,
+  }
+
+  _FEED_COLORS = {
+      stepper.NodeStepper.FEED_TYPE_CLIENT: cli_shared.COLOR_WHITE,
+      stepper.NodeStepper.FEED_TYPE_HANDLE: cli_shared.COLOR_GREEN,
+      stepper.NodeStepper.FEED_TYPE_OVERRIDE: cli_shared.COLOR_YELLOW,
+      stepper.NodeStepper.FEED_TYPE_DUMPED_INTERMEDIATE: cli_shared.COLOR_BLUE,
   }
 
   def __init__(self, node_stepper):
@@ -95,6 +117,14 @@ class NodeStepperCLI(object):
         "target_name",
         type=str,
         help="Name of the Tensor or Op to continue to.")
+    ap.add_argument(
+        "-i",
+        "--invalidate_from_updated_variables",
+        dest="invalidate_from_updated_variables",
+        action="store_true",
+        help="Whether to invalidate the cached "
+             "tensor handles and intermediate tensor handles affected "
+             "by Variable updates in this continue call.")
     ap.add_argument(
         "-r",
         "--restore_variable_values",
@@ -209,6 +239,7 @@ class NodeStepperCLI(object):
       verbose = True
 
     handle_node_names = self._node_stepper.handle_node_names()
+    intermediate_tensor_names = self._node_stepper.intermediate_tensor_names()
     override_names = self._node_stepper.override_names()
     dirty_variable_names = [
         dirty_variable.split(":")[0]
@@ -216,41 +247,31 @@ class NodeStepperCLI(object):
     ]
 
     lines = []
-    font_attr_segs = {}
     if verbose:
       lines.extend(
           ["Topologically-sorted transitive input(s) and fetch(es):", ""])
 
-    line_counter = len(lines)
     for i, element_name in enumerate(self._sorted_nodes):
       if i < index_range[0] or i >= index_range[1]:
         continue
 
-      font_attr_segs[line_counter] = []
-
       # TODO(cais): Use fixed-width text to show node index.
-      node_prefix = "(%d / %d)" % (i + 1, len(self._sorted_nodes))
       if i == self._next:
-        node_prefix = "  " + self.NEXT_NODE_POINTER_STR + node_prefix
-        font_attr_segs[line_counter].append((0, 3, "bold"))
+        node_prefix = RL("  ") + RL(self.NEXT_NODE_POINTER_STR, "bold")
       else:
-        node_prefix = "     " + node_prefix
+        node_prefix = RL("     ")
 
-      node_prefix += "  ["
-      labels, label_font_attr_segs = self._get_status_labels(
+      node_prefix += "(%d / %d)" % (i + 1, len(self._sorted_nodes)) + "  ["
+      node_prefix += self._get_status_labels(
           element_name,
           handle_node_names,
+          intermediate_tensor_names,
           override_names,
-          dirty_variable_names,
-          len(node_prefix))
-      node_prefix += labels
-      font_attr_segs[line_counter].extend(label_font_attr_segs)
+          dirty_variable_names)
 
       lines.append(node_prefix + "] " + element_name)
-      line_counter += 1
 
-    output = debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
     if verbose:
       output.extend(self._node_status_label_legend())
@@ -260,9 +281,9 @@ class NodeStepperCLI(object):
   def _get_status_labels(self,
                          element_name,
                          handle_node_names,
+                         intermediate_tensor_names,
                          override_names,
-                         dirty_variable_names,
-                         offset):
+                         dirty_variable_names):
     """Get a string of status labels for a graph element.
 
     A status label indicates that a node has a certain state in this
@@ -276,65 +297,47 @@ class NodeStepperCLI(object):
       element_name: (str) name of the graph element.
       handle_node_names: (list of str) Names of the nodes of which the output
         tensors' handles are available.
+      intermediate_tensor_names: (list of str) Names of the intermediate tensor
+        dumps generated from the graph element.
       override_names: (list of str) Names of the tensors of which the values
         are overridden.
       dirty_variable_names: (list of str) Names of the dirty variables.
-      offset: (int) Initial offset of the font attribute segments.
 
     Returns:
-      (str) The string made of status labels that currently apply to the graph
-        element.
-      (list of tuples) The font attribute segments, with offset applied.
+      (RichLine) The rich text string of status labels that currently apply to
+        the graph element.
     """
 
-    stat_string = ""
-    font_attr_segs = []
-    position = offset
+    status = RL()
 
     node_name = element_name.split(":")[0]
-    if node_name in self._placeholders:
-      stat_string += "P"
-      font_attr_segs.append((position, position + 1, "cyan"))
-    else:
-      stat_string += " "
-    position += 1
+    status += (RL(self.STATE_IS_PLACEHOLDER,
+                  self._STATE_COLORS[self.STATE_IS_PLACEHOLDER])
+               if node_name in self._placeholders else " ")
+    status += (RL(self.STATE_UNFEEDABLE,
+                  self._STATE_COLORS[self.STATE_UNFEEDABLE])
+               if not self._node_stepper.is_feedable(str(element_name))
+               else " ")
+    status += (RL(self.STATE_CONT, self._STATE_COLORS[self.STATE_CONT])
+               if element_name in handle_node_names else " ")
 
-    if self._node_stepper.is_feedable(str(element_name)):
-      stat_string += " "
-    else:
-      stat_string += "U"
-      font_attr_segs.append((position, position + 1, "red"))
-    position += 1
-
-    if element_name in handle_node_names:
-      stat_string += "H"
-      font_attr_segs.append((position, position + 1, "green"))
-    else:
-      stat_string += " "
-    position += 1
+    intermediate_node_names = [
+        tensor_name.split(":")[0] for tensor_name in intermediate_tensor_names]
+    status += (RL(self.STATE_DUMPED_INTERMEDIATE,
+                  self._STATE_COLORS[self.STATE_DUMPED_INTERMEDIATE])
+               if element_name in intermediate_node_names else " ")
 
     slots = self._node_stepper.output_slots_in_closure(element_name)
-    has_override = False
-    for slot in slots:
-      if element_name + ":%d" % slot in override_names:
-        has_override = True
-        break
+    has_override = any(element_name + ":%d" % slot in override_names
+                       for slot in slots)
+    status += (RL(self.STATE_OVERRIDDEN,
+                  self._STATE_COLORS[self.STATE_OVERRIDDEN])
+               if has_override else " ")
+    status += (RL(self.STATE_DIRTY_VARIABLE,
+                  self._STATE_COLORS[self.STATE_DIRTY_VARIABLE])
+               if element_name in dirty_variable_names else " ")
 
-    if has_override:
-      stat_string += "O"
-      font_attr_segs.append((position, position + 1, "yellow"))
-    else:
-      stat_string += " "
-    position += 1
-
-    if element_name in dirty_variable_names:
-      stat_string += self.STATE_DIRTY_VARIABLE
-      font_attr_segs.append((position, position + 1, "magenta"))
-    else:
-      stat_string += " "
-    position += 1
-
-    return stat_string, font_attr_segs
+    return status
 
   def _node_status_label_legend(self):
     """Get legend for node-status labels.
@@ -343,40 +346,34 @@ class NodeStepperCLI(object):
       (debugger_cli_common.RichTextLines) Legend text.
     """
 
-    lines = []
-    font_attr_segs = {}
-
-    line_counter = 0
-    lines.append("")
-    lines.append("Legend:")
-    line_counter += 2
-
-    lines.append("  P - Placeholder")
-    font_attr_segs[line_counter] = [(2, 3, "cyan")]
-    line_counter += 1
-
-    lines.append("  U - Unfeedable")
-    font_attr_segs[line_counter] = [(2, 3, "red")]
-    line_counter += 1
-
-    lines.append(
-        "  H - Already continued-to; Tensor handle available from output "
-        "slot(s)"
-    )
-    font_attr_segs[line_counter] = [(2, 3, "green")]
-    line_counter += 1
-
-    lines.append("  O - Has overriding (injected) tensor value")
-    font_attr_segs[line_counter] = [(2, 3, "yellow")]
-    line_counter += 1
-
-    lines.append(
-        "  D - Dirty variable: Variable already updated this node stepper.")
-    font_attr_segs[line_counter] = [(2, 3, "magenta")]
-    line_counter += 1
-
-    return debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
+    return debugger_cli_common.rich_text_lines_from_rich_line_list([
+        "",
+        "Legend:",
+        (RL("  ") +
+         RL(self.STATE_IS_PLACEHOLDER,
+            self._STATE_COLORS[self.STATE_IS_PLACEHOLDER]) +
+         " - Placeholder"),
+        (RL("  ") +
+         RL(self.STATE_UNFEEDABLE,
+            self._STATE_COLORS[self.STATE_UNFEEDABLE]) +
+         " - Unfeedable"),
+        (RL("  ") +
+         RL(self.STATE_CONT,
+            self._STATE_COLORS[self.STATE_CONT]) +
+         " - Already continued-to; Tensor handle available from output "
+         "slot(s)"),
+        (RL("  ") +
+         RL(self.STATE_DUMPED_INTERMEDIATE,
+            self._STATE_COLORS[self.STATE_DUMPED_INTERMEDIATE]) +
+         " - Unfeedable"),
+        (RL("  ") +
+         RL(self.STATE_OVERRIDDEN,
+            self._STATE_COLORS[self.STATE_OVERRIDDEN]) +
+         " - Has overriding (injected) tensor value"),
+        (RL("  ") +
+         RL(self.STATE_DIRTY_VARIABLE,
+            self._STATE_COLORS[self.STATE_DIRTY_VARIABLE]) +
+         " - Dirty variable: Variable already updated this node stepper.")])
 
   def cont(self, args, screen_info=None):
     """Continue-to action on the graph."""
@@ -395,40 +392,18 @@ class NodeStepperCLI(object):
 
     cont_result = self._node_stepper.cont(
         parsed.target_name,
+        invalidate_from_updated_variables=(
+            parsed.invalidate_from_updated_variables),
         restore_variable_values=parsed.restore_variable_values)
     self._completed_nodes.add(parsed.target_name.split(":")[0])
 
-    feed_types = self._node_stepper.last_feed_types()
-
-    lines = ["Continued to %s:" % parsed.target_name, ""]
-    font_attr_segs = {}
-    lines.append("Stepper used feeds:")
-    line_counter = len(lines)
-
-    if feed_types:
-      for feed_name in feed_types:
-        feed_info_line = "  %s : %s" % (feed_name, feed_types[feed_name])
-        lines.append(feed_info_line)
-        if feed_types[feed_name] == stepper.NodeStepper.FEED_TYPE_HANDLE:
-          font_attr_segs[line_counter] = [
-              (len(feed_name) + 2, len(feed_info_line), "green")
-          ]
-        elif feed_types[feed_name] == stepper.NodeStepper.FEED_TYPE_OVERRIDE:
-          font_attr_segs[line_counter] = [
-              (len(feed_name) + 2, len(feed_info_line), "yellow")
-          ]
-        line_counter += 1
-    else:
-      lines.append("  (No feeds)")
-    lines.append("")
-
     screen_output = debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
-
-    tensor_output = tensor_format.format_tensor(
-        cont_result, parsed.target_name,
-        include_metadata=True)
-    screen_output.extend(tensor_output)
+        ["Continued to %s:" % parsed.target_name, ""])
+    screen_output.extend(self._report_last_feed_types())
+    screen_output.extend(self._report_last_updated())
+    screen_output.extend(
+        tensor_format.format_tensor(
+            cont_result, parsed.target_name, include_metadata=True))
 
     # Generate windowed view of the sorted transitive closure on which the
     # stepping is occurring.
@@ -444,6 +419,47 @@ class NodeStepperCLI(object):
     self._calculate_next()
 
     return final_output
+
+  def _report_last_feed_types(self):
+    """Generate a report of the feed types used in the cont/step call.
+
+    Returns:
+      (debugger_cli_common.RichTextLines) A RichTextLines representation of the
+        feeds used in the last cont/step call.
+    """
+    feed_types = self._node_stepper.last_feed_types()
+
+    out = ["Stepper used feeds:"]
+    if feed_types:
+      for feed_name in feed_types:
+        feed_info = RL("  %s : " % feed_name)
+        feed_info += RL(feed_types[feed_name],
+                        self._FEED_COLORS[feed_types[feed_name]])
+        out.append(feed_info)
+    else:
+      out.append("  (No feeds)")
+    out.append("")
+
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(out)
+
+  def _report_last_updated(self):
+    """Generate a report of the variables updated in the last cont/step call.
+
+    Returns:
+      (debugger_cli_common.RichTextLines) A RichTextLines representation of the
+        variables updated in the last cont/step call.
+    """
+
+    last_updated = self._node_stepper.last_updated()
+    if not last_updated:
+      return debugger_cli_common.RichTextLines([])
+
+    rich_lines = [RL("Updated:", self._UPDATED_ATTRIBUTE)]
+    sorted_last_updated = sorted(list(last_updated))
+    for updated in sorted_last_updated:
+      rich_lines.append("  %s" % updated)
+    rich_lines.append("")
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(rich_lines)
 
   def step(self, args, screen_info=None):
     """Step once.
@@ -590,4 +606,3 @@ class NodeStepperCLI(object):
       return [(element_name + ":%d" % slot) for slot in slots]
     else:
       return []
-

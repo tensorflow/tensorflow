@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Implementations of different data feeders to provide data for TF trainer (deprecated).
 
-"""Implementations of different data feeders to provide data for TF trainer."""
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 # TODO(ipolosukhin): Replace this module with feed-dict queue runners & queues.
 
@@ -29,23 +33,24 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 # pylint: disable=g-multiple-import,g-bad-import-order
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
-
 
 # pylint: enable=g-multiple-import,g-bad-import-order
 
 
 def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
   """Returns shape for input and output of the data feeder."""
-  x_is_dict, y_is_dict = isinstance(x_shape, dict), y_shape is not None and isinstance(y_shape, dict)
+  x_is_dict, y_is_dict = isinstance(
+      x_shape, dict), y_shape is not None and isinstance(y_shape, dict)
   if y_is_dict and n_classes is not None:
-    assert (isinstance(n_classes, dict))
+    assert isinstance(n_classes, dict)
 
   if batch_size is None:
     batch_size = list(x_shape.values())[0][0] if x_is_dict else x_shape[0]
@@ -76,7 +81,10 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size=None):
   if not y_is_dict:
     output_shape = out_el_shape(y_shape, n_classes)
   else:
-    output_shape = dict([(k, out_el_shape(v, n_classes[k] if n_classes is not None and k in n_classes else None))
+    output_shape = dict([(k,
+                          out_el_shape(v, n_classes[k]
+                                       if n_classes is not None and
+                                       k in n_classes else None))
                          for k, v in list(y_shape.items())])
 
   return input_shape, output_shape, batch_size
@@ -99,8 +107,13 @@ def _is_iterable(x):
   return hasattr(x, 'next') or hasattr(x, '__next__')
 
 
-def setup_train_data_feeder(
-        x, y, n_classes, batch_size=None, shuffle=True, epochs=None):
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
+def setup_train_data_feeder(x,
+                            y,
+                            n_classes,
+                            batch_size=None,
+                            shuffle=True,
+                            epochs=None):
   """Create data feeder, to sample inputs from dataset.
 
   If `x` and `y` are iterators, use `StreamingDataFeeder`.
@@ -108,10 +121,13 @@ def setup_train_data_feeder(
   Args:
     x: numpy, pandas or Dask matrix or dictionary of aforementioned. Also
       supports iterables.
-    y: numpy, pandas or Dask array or dictionary of aforementioned. Also supports
+    y: numpy, pandas or Dask array or dictionary of aforementioned. Also
+      supports
       iterables.
-    n_classes: number of classes. Must be None or same type as y. In case, `y` is `dict`
-      (or iterable which returns dict) such that `n_classes[key] = n_classes for y[key]`
+    n_classes: number of classes. Must be None or same type as y. In case, `y`
+      is `dict`
+      (or iterable which returns dict) such that `n_classes[key] = n_classes for
+        y[key]`
     batch_size: size to split data into parts. Must be >= 1.
     shuffle: Whether to shuffle the inputs.
     epochs: Number of epochs to run.
@@ -127,7 +143,7 @@ def setup_train_data_feeder(
     # pylint: disable=g-import-not-at-top
     import dask.dataframe as dd
     if (isinstance(x, (dd.Series, dd.DataFrame)) and
-          (y is None or isinstance(y, (dd.Series, dd.DataFrame)))):
+        (y is None or isinstance(y, (dd.Series, dd.DataFrame)))):
       data_feeder_cls = DaskDataFeeder
     else:
       data_feeder_cls = DataFeeder
@@ -140,7 +156,7 @@ def setup_train_data_feeder(
                        'streaming learning to work.')
     return StreamingDataFeeder(x, y, n_classes, batch_size)
   return data_feeder_cls(
-    x, y, n_classes, batch_size, shuffle=shuffle, epochs=epochs)
+      x, y, n_classes, batch_size, shuffle=shuffle, epochs=epochs)
 
 
 def _batch_data(x, batch_size=None):
@@ -150,7 +166,8 @@ def _batch_data(x, batch_size=None):
   x_first_el = six.next(x)
   x = itertools.chain([x_first_el], x)
 
-  chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(x_first_el, dict) else []
+  chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(
+      x_first_el, dict) else []
   chunk_filled = False
   for data in x:
     if isinstance(data, dict):
@@ -161,7 +178,8 @@ def _batch_data(x, batch_size=None):
           chunk_filled = True
       if chunk_filled:
         yield chunk
-        chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(x_first_el, dict) else []
+        chunk = dict([(k, []) for k in list(x_first_el.keys())]) if isinstance(
+            x_first_el, dict) else []
         chunk_filled = False
     else:
       chunk.append(data)
@@ -177,6 +195,7 @@ def _batch_data(x, batch_size=None):
     yield np.matrix(chunk)
 
 
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
 def setup_predict_data_feeder(x, batch_size=None):
   """Returns an iterable for feeding into predict step.
 
@@ -208,6 +227,7 @@ def setup_predict_data_feeder(x, batch_size=None):
   return [x]
 
 
+@deprecated(None, 'Please use tensorflow/transform or tf.data.')
 def setup_processor_data_feeder(x):
   """Sets up processor iterable.
 
@@ -222,6 +242,7 @@ def setup_processor_data_feeder(x):
   return x
 
 
+@deprecated(None, 'Please convert numpy dtypes explicitly.')
 def check_array(array, dtype):
   """Checks array on dtype and converts it if different.
 
@@ -259,16 +280,27 @@ def _access(data, iloc):
 def _check_dtype(dtype):
   if dtypes.as_dtype(dtype) == dtypes.float64:
     logging.warn(
-      'float64 is not supported by many models, consider casting to float32.')
+        'float64 is not supported by many models, consider casting to float32.')
   return dtype
 
 
 class DataFeeder(object):
-  """Data feeder is an example class to sample data for TF trainer."""
+  """Data feeder is an example class to sample data for TF trainer.
 
-  def __init__(
-          self, x, y, n_classes, batch_size=None, shuffle=True, random_state=None,
-          epochs=None):
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Please use tensorflow/transform or tf.data.')
+  def __init__(self,
+               x,
+               y,
+               n_classes,
+               batch_size=None,
+               shuffle=True,
+               random_state=None,
+               epochs=None):
     """Initializes a DataFeeder instance.
 
     Args:
@@ -299,37 +331,46 @@ class DataFeeder(object):
       input_dtype: DType of input (or dictionary of shapes).
       output_dtype: DType of output (or dictionary of shapes.
     """
-    x_is_dict, y_is_dict = isinstance(x, dict), y is not None and isinstance(y, dict)
+    x_is_dict, y_is_dict = isinstance(
+        x, dict), y is not None and isinstance(y, dict)
     if isinstance(y, list):
       y = np.array(y)
 
-    self._x = dict([(k, check_array(v, v.dtype)) for k, v in list(x.items())]) if x_is_dict else check_array(x, x.dtype)
-    self._y = None if y is None else \
-      dict([(k, check_array(v, v.dtype)) for k, v in list(y.items())]) if x_is_dict else check_array(y, y.dtype)
+    self._x = dict([(k, check_array(v, v.dtype)) for k, v in list(x.items())
+                   ]) if x_is_dict else check_array(x, x.dtype)
+    self._y = None if y is None else (dict(
+        [(k, check_array(v, v.dtype)) for k, v in list(y.items())])
+                                      if y_is_dict else check_array(y, y.dtype))
 
-    # self.n_classes is not None means we're converting raw target indices to one-hot.
+    # self.n_classes is not None means we're converting raw target indices
+    # to one-hot.
     if n_classes is not None:
       if not y_is_dict:
-        y_dtype = (np.int64 if n_classes is not None and n_classes > 1 else np.float32)
+        y_dtype = (
+            np.int64 if n_classes is not None and n_classes > 1 else np.float32)
         self._y = (None if y is None else check_array(y, dtype=y_dtype))
 
     self.n_classes = n_classes
     self.max_epochs = epochs
 
-    x_shape = dict([(k, v.shape) for k, v in list(self._x.items())]) if x_is_dict else self._x.shape
-    y_shape = dict(
-      [(k, v.shape) for k, v in list(self._y.items())]) if y_is_dict else None if y is None else self._y.shape
+    x_shape = dict([(k, v.shape) for k, v in list(self._x.items())
+                   ]) if x_is_dict else self._x.shape
+    y_shape = dict([(k, v.shape) for k, v in list(self._y.items())
+                   ]) if y_is_dict else None if y is None else self._y.shape
 
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-      x_shape, y_shape, n_classes, batch_size)
+        x_shape, y_shape, n_classes, batch_size)
 
     # Input dtype matches dtype of x.
-    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(self._x.items())]) if x_is_dict \
-      else _check_dtype(self._x.dtype)
+    self._input_dtype = (
+        dict([(k, _check_dtype(v.dtype)) for k, v in list(self._x.items())])
+        if x_is_dict else _check_dtype(self._x.dtype))
 
-    # note: self._output_dtype = np.float32 when y is None
-    self._output_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(self._y.items())]) if y_is_dict \
-      else _check_dtype(self._y.dtype) if y is not None else np.float32
+    # self._output_dtype == np.float32 when y is None
+    self._output_dtype = (
+        dict([(k, _check_dtype(v.dtype)) for k, v in list(self._y.items())])
+        if y_is_dict else (_check_dtype(self._y.dtype)
+                           if y is not None else np.float32))
 
     # self.n_classes is None means we're passing in raw target indices
     if n_classes is not None and y_is_dict:
@@ -339,9 +380,16 @@ class DataFeeder(object):
 
     self._shuffle = shuffle
     self.random_state = np.random.RandomState(
-      42) if random_state is None else random_state
+        42) if random_state is None else random_state
 
-    num_samples = list(self._x.values())[0].shape[0] if x_is_dict else self._x.shape[0]
+    if x_is_dict:
+      num_samples = list(self._x.values())[0].shape[0]
+    elif tensor_util.is_tensor(self._x):
+      num_samples = self._x.shape[
+          0].value  # shape will be a Dimension, extract an int
+    else:
+      num_samples = self._x.shape[0]
+
     if self._shuffle:
       self.indices = self.random_state.permutation(num_samples)
     else:
@@ -380,8 +428,8 @@ class DataFeeder(object):
     Returns:
       The epoch placeholder.
     """
-    self._epoch_placeholder = array_ops.placeholder(dtypes.int32, [1],
-                                                    name='epoch')
+    self._epoch_placeholder = array_ops.placeholder(
+        dtypes.int32, [1], name='epoch')
     return self._epoch_placeholder
 
   def input_builder(self):
@@ -398,19 +446,17 @@ class DataFeeder(object):
         placeholder = {}
         for key in list(shape.keys()):
           placeholder[key] = array_ops.placeholder(
-            dtypes.as_dtype(dtype[key]),
-            [None] + shape[key][1:],
-            name=name_prepend + '_' + key
-          )
+              dtypes.as_dtype(dtype[key]), [None] + shape[key][1:],
+              name=name_prepend + '_' + key)
       else:
         placeholder = array_ops.placeholder(
-          dtypes.as_dtype(dtype),
-          [None] + shape[1:],
-          name=name_prepend)
+            dtypes.as_dtype(dtype), [None] + shape[1:], name=name_prepend)
       return placeholder
 
-    self._input_placeholder = get_placeholder(self.input_shape, self._input_dtype, 'input')
-    self._output_placeholder = get_placeholder(self.output_shape, self._output_dtype, 'output')
+    self._input_placeholder = get_placeholder(self.input_shape,
+                                              self._input_dtype, 'input')
+    self._output_placeholder = get_placeholder(self.output_shape,
+                                               self._output_dtype, 'output')
     return self._input_placeholder, self._output_placeholder
 
   def set_placeholders(self, input_placeholder, output_placeholder):
@@ -432,9 +478,9 @@ class DataFeeder(object):
       A `dict` with data feed params while training.
     """
     return {
-      'epoch': self.epoch,
-      'offset': self.offset,
-      'batch_size': self._batch_size
+        'epoch': self.epoch,
+        'offset': self.offset,
+        'batch_size': self._batch_size
     }
 
   def get_feed_dict_fn(self):
@@ -444,7 +490,8 @@ class DataFeeder(object):
       A function that when called samples a random subset of batch size
       from `x` and `y`.
     """
-    x_is_dict, y_is_dict = isinstance(self._x, dict), self._y is not None and isinstance(self._y, dict)
+    x_is_dict, y_is_dict = isinstance(
+        self._x, dict), self._y is not None and isinstance(self._y, dict)
 
     # Assign input features from random indices.
     def extract(data, indices):
@@ -481,19 +528,24 @@ class DataFeeder(object):
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # Take next batch of indices.
-      x_len = list(self._x.values())[0].shape[0] if x_is_dict else self._x.shape[0]
+      x_len = list(
+          self._x.values())[0].shape[0] if x_is_dict else self._x.shape[0]
       end = min(x_len, self.offset + self._batch_size)
       batch_indices = self.indices[self.offset:end]
 
       # adding input placeholder
       feed_dict.update(
-        dict([(self._input_placeholder[k].name, extract(v, batch_indices)) for k, v in list(self._x.items())])
-        if x_is_dict else {self._input_placeholder.name: extract(self._x, batch_indices)})
+          dict([(self._input_placeholder[k].name, extract(v, batch_indices))
+                for k, v in list(self._x.items())]) if x_is_dict else {
+                    self._input_placeholder.name:
+                        extract(self._x, batch_indices)
+                })
 
       # move offset and reset it if necessary
       self.offset += self._batch_size
       if self.offset >= x_len:
-        self.indices = self.random_state.permutation(x_len) if self._shuffle else np.array(range(x_len))
+        self.indices = self.random_state.permutation(
+            x_len) if self._shuffle else np.array(range(x_len))
         self.offset = 0
         self.epoch += 1
 
@@ -504,15 +556,20 @@ class DataFeeder(object):
       # adding output placeholders
       if y_is_dict:
         for k, v in list(self._y.items()):
-          n_classes = (
-            self.n_classes[k] if k in self.n_classes else None) if self.n_classes is not None else None
+          n_classes = (self.n_classes[k] if k in self.n_classes else
+                       None) if self.n_classes is not None else None
           shape, dtype = self.output_shape[k], self._output_dtype[k]
-          feed_dict.update(
-            {self._output_placeholder[k].name: assign_label(v, shape, dtype, n_classes, batch_indices)})
+          feed_dict.update({
+              self._output_placeholder[k].name:
+                  assign_label(v, shape, dtype, n_classes, batch_indices)
+          })
       else:
-        shape, dtype, n_classes = self.output_shape, self._output_dtype, self.n_classes
-        feed_dict.update(
-          {self._output_placeholder.name: assign_label(self._y, shape, dtype, n_classes, batch_indices)})
+        shape, dtype, n_classes = (self.output_shape, self._output_dtype,
+                                   self.n_classes)
+        feed_dict.update({
+            self._output_placeholder.name:
+                assign_label(self._y, shape, dtype, n_classes, batch_indices)
+        })
 
       return feed_dict
 
@@ -521,6 +578,10 @@ class DataFeeder(object):
 
 class StreamingDataFeeder(DataFeeder):
   """Data feeder for TF trainer that reads data from iterator.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Streaming data feeder allows to read data as it comes it from disk or
   somewhere else. It's custom to have this iterators rotate infinetly over
@@ -566,41 +627,57 @@ class StreamingDataFeeder(DataFeeder):
       self._y = None
     self.n_classes = n_classes
 
-    x_is_dict, y_is_dict = isinstance(x_first_el, dict), y is not None and isinstance(y_first_el, dict)
+    x_is_dict = isinstance(x_first_el, dict)
+    y_is_dict = y is not None and isinstance(y_first_el, dict)
     if y_is_dict and n_classes is not None:
-      assert (isinstance(n_classes, dict))
+      assert isinstance(n_classes, dict)
 
     # extract shapes for first_elements
-    x_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in list(x_first_el.items())]) if x_is_dict \
-      else [1] + list(x_first_el.shape)
+    if x_is_dict:
+      x_first_el_shape = dict(
+          [(k, [1] + list(v.shape)) for k, v in list(x_first_el.items())])
+    else:
+      x_first_el_shape = [1] + list(x_first_el.shape)
 
-    y_first_el_shape = dict([(k, [1] + list(v.shape)) for k, v in list(y_first_el.items())]) if y_is_dict \
-      else ([1] + list(y_first_el[0].shape if isinstance(y_first_el, list) else y_first_el.shape)
-            if y is not None else None)
+    if y_is_dict:
+      y_first_el_shape = dict(
+          [(k, [1] + list(v.shape)) for k, v in list(y_first_el.items())])
+    elif y is None:
+      y_first_el_shape = None
+    else:
+      y_first_el_shape = (
+          [1] + list(y_first_el[0].shape
+                     if isinstance(y_first_el, list) else y_first_el.shape))
 
-    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(x_first_el_shape, y_first_el_shape,
-                                                                              n_classes, batch_size)
+    self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
+        x_first_el_shape, y_first_el_shape, n_classes, batch_size)
 
     # Input dtype of x_first_el.
-    self._input_dtype = dict([(k, _check_dtype(v.dtype)) for k, v in list(x_first_el.items())]) if x_is_dict \
-      else _check_dtype(x_first_el.dtype)
+    if x_is_dict:
+      self._input_dtype = dict(
+          [(k, _check_dtype(v.dtype)) for k, v in list(x_first_el.items())])
+    else:
+      self._input_dtype = _check_dtype(x_first_el.dtype)
 
     # Output dtype of y_first_el.
     def check_y_dtype(el):
-      if isinstance(el, list) or isinstance(el, np.ndarray):
-        if isinstance(el, np.ndarray) and el.ndim == 0:
-          return el.dtype
-        else:
-          return _check_dtype(np.dtype(type(el[0])))
+      if isinstance(el, np.ndarray):
+        return el.dtype
+      elif isinstance(el, list):
+        return check_y_dtype(el[0])
       else:
         return _check_dtype(np.dtype(type(el)))
 
     # Output types are floats, due to both softmaxes and regression req.
     if n_classes is not None and (y is None or not y_is_dict) and n_classes > 0:
       self._output_dtype = np.float32
+    elif y_is_dict:
+      self._output_dtype = dict(
+          [(k, check_y_dtype(v)) for k, v in list(y_first_el.items())])
+    elif y is None:
+      self._output_dtype = None
     else:
-      self._output_dtype = dict([(k, check_y_dtype(v)) for k, v in list(y_first_el.items())]) if y_is_dict \
-        else (check_y_dtype(y_first_el) if y is not None else None)
+      self._output_dtype = check_y_dtype(y_first_el)
 
   def get_feed_params(self):
     """Function returns a `dict` with data feed params while training.
@@ -627,15 +704,19 @@ class StreamingDataFeeder(DataFeeder):
       """
 
       def init_array(shape, dtype):
+        """Initialize array of given shape or dict of shapes and dtype."""
         if shape is None:
           return None
+        elif isinstance(shape, dict):
+          return dict(
+              [(k, np.zeros(shape[k], dtype[k])) for k in list(shape.keys())])
         else:
-          return dict([(k, np.zeros(shape[k], dtype[k])) for k in list(shape.keys())]) if isinstance(shape, dict) else \
-            np.zeros(shape, dtype=dtype)
+          return np.zeros(shape, dtype=dtype)
 
       def put_data_array(dest, index, source=None, n_classes=None):
+        """Puts data array into container."""
         if source is None:
-          dest = dest[:index, :]
+          dest = dest[:index]
         elif n_classes is not None and n_classes > 1:
           if len(self.output_shape) == 2:
             dest.itemset((index, source), 1.0)
@@ -650,12 +731,16 @@ class StreamingDataFeeder(DataFeeder):
         return dest
 
       def put_data_array_or_dict(holder, index, data=None, n_classes=None):
+        """Puts data array or data dictionary into container."""
         if holder is None:
           return None
         if isinstance(holder, dict):
-          assert (isinstance(data, dict))
-          for k, v in list(holder.items()):
-            num_classes = n_classes[k] if (n_classes is not None and k in n_classes) else None
+          if data is None:
+            data = {k: None for k in holder.keys()}
+          assert isinstance(data, dict)
+          for k in holder.keys():
+            num_classes = n_classes[k] if (n_classes is not None and
+                                           k in n_classes) else None
             holder[k] = put_data_array(holder[k], index, data[k], num_classes)
         else:
           holder = put_data_array(holder, index, data, n_classes)
@@ -685,12 +770,18 @@ class StreamingDataFeeder(DataFeeder):
           out = put_data_array_or_dict(out, i, next_out, self.n_classes)
 
       # creating feed_dict
-      feed_dict = dict([(self._input_placeholder[k].name, inp[k]) for k in list(self._input_placeholder.keys())]) if \
-        isinstance(inp, dict) else {self._input_placeholder.name: inp}
+      if isinstance(inp, dict):
+        feed_dict = dict([(self._input_placeholder[k].name, inp[k])
+                          for k in list(self._input_placeholder.keys())])
+      else:
+        feed_dict = {self._input_placeholder.name: inp}
       if self._y is not None:
-        feed_dict.update(
-          dict([(self._output_placeholder[k].name, out[k]) for k in list(self._output_placeholder.keys())]) \
-            if isinstance(out, dict) else {self._output_placeholder.name: out})
+        if isinstance(out, dict):
+          feed_dict.update(
+              dict([(self._output_placeholder[k].name, out[k])
+                    for k in list(self._output_placeholder.keys())]))
+        else:
+          feed_dict.update({self._output_placeholder.name: out})
 
       return feed_dict
 
@@ -700,13 +791,24 @@ class StreamingDataFeeder(DataFeeder):
 class DaskDataFeeder(object):
   """Data feeder for that reads data from dask.Series and dask.DataFrame.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Numpy arrays can be serialized to disk and it's possible to do random seeks
   into them. DaskDataFeeder will remove requirement to have full dataset in the
   memory and still do random seeks for sampling of batches.
   """
 
-  def __init__(self, x, y, n_classes, batch_size, shuffle=True,
-               random_state=None, epochs=None):
+  @deprecated(None, 'Please feed input to tf.data to support dask.')
+  def __init__(self,
+               x,
+               y,
+               n_classes,
+               batch_size,
+               shuffle=True,
+               random_state=None,
+               epochs=None):
     """Initializes a DaskDataFeeder instance.
 
     Args:
@@ -729,10 +831,14 @@ class DaskDataFeeder(object):
       output_shape: shape of the output.
       input_dtype: dtype of input.
       output_dtype: dtype of output.
+
+    Raises:
+      ValueError: if `x` or `y` are `dict`, as they are not supported currently.
     """
 
     if isinstance(x, dict) or isinstance(y, dict):
-      raise ValueError("DaskDataFeeder does not support dictionaries at the moment.")
+      raise ValueError(
+          'DaskDataFeeder does not support dictionaries at the moment.')
 
     # pylint: disable=invalid-name,super-init-not-called
     import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
@@ -760,7 +866,7 @@ class DaskDataFeeder(object):
     self._shuffle = shuffle
     self.epochs = epochs
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-      x_shape, y_shape, n_classes, batch_size)
+        x_shape, y_shape, n_classes, batch_size)
     self.sample_fraction = self._batch_size / float(x_count)
     self._input_dtype = _check_dtype(self._x.dtypes[0])
     self._output_dtype = _check_dtype(self._y.dtypes[self._y_columns])
@@ -781,8 +887,8 @@ class DaskDataFeeder(object):
     """Returns a function, that will sample data and provide it to placeholders.
 
     Args:
-      input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output labels.
+      input_placeholder: tf.placeholder for input features mini batch.
+      output_placeholder: tf.placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size
@@ -794,8 +900,8 @@ class DaskDataFeeder(object):
       # TODO(ipolosukhin): option for with/without replacement (dev version of
       # dask)
       sample = self.df.random_split(
-        [self.sample_fraction, 1 - self.sample_fraction],
-        random_state=self.random_state)
+          [self.sample_fraction, 1 - self.sample_fraction],
+          random_state=self.random_state)
       inp = extract_pandas_matrix(sample[0][self._x_columns].compute()).tolist()
       out = extract_pandas_matrix(sample[0][self._y_columns].compute())
       # convert to correct dtype
@@ -808,7 +914,6 @@ class DaskDataFeeder(object):
       out_max = self._y.max().compute().values[0]
       encoded_out = np.zeros((out.size, out_max + 1), dtype=self._output_dtype)
       encoded_out[np.arange(out.size), out] = 1
-      return {input_placeholder.name: inp,
-              output_placeholder.name: encoded_out}
+      return {input_placeholder.name: inp, output_placeholder.name: encoded_out}
 
     return _feed_dict_fn

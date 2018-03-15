@@ -23,7 +23,9 @@ namespace tensorflow {
 const CancellationToken CancellationManager::kInvalidToken = -1;
 
 CancellationManager::CancellationManager()
-    : is_cancelling_(false), is_cancelled_(0), next_cancellation_token_(0) {}
+    : is_cancelling_(false),
+      is_cancelled_(false),
+      next_cancellation_token_(0) {}
 
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
@@ -87,6 +89,10 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
   }
 }
 
-CancellationManager::~CancellationManager() { StartCancel(); }
+CancellationManager::~CancellationManager() {
+  if (!callbacks_.empty()) {
+    StartCancel();
+  }
+}
 
 }  // end namespace tensorflow

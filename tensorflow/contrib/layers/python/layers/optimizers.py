@@ -41,7 +41,7 @@ OPTIMIZER_CLS_NAMES = {
     "Adagrad": train.AdagradOptimizer,
     "Adam": train.AdamOptimizer,
     "Ftrl": train.FtrlOptimizer,
-    "Momentum": train.MomentumOptimizer,
+    "Momentum": lambda learning_rate: train.MomentumOptimizer(learning_rate, momentum=0.9),  # pylint: disable=line-too-long
     "RMSProp": train.RMSPropOptimizer,
     "SGD": train.GradientDescentOptimizer,
 }
@@ -51,6 +51,7 @@ OPTIMIZER_SUMMARIES = [
     "loss",
     "gradients",
     "gradient_norm",
+    "global_gradient_norm",
 ]
 
 
@@ -66,30 +67,33 @@ def optimize_loss(loss,
                   variables=None,
                   name=None,
                   summaries=None,
-                  colocate_gradients_with_ops=False):
+                  colocate_gradients_with_ops=False,
+                  increment_global_step=True):
   """Given loss and parameters for optimizer, returns a training op.
 
-  Various ways of passing optimizers, include:
+  Various ways of passing optimizers include:
 
-  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+  - by string specifying the name of the optimizer. See OPTIMIZER_CLS_NAMES
       for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-  - function, takes learning rate `Tensor` as argument and must return
+  - by function taking learning rate `Tensor` as argument and returning an
       `Optimizer` instance. E.g. `optimize_loss(...,
       optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
     Alternatively, if `learning_rate` is `None`, the function takes no
     arguments. E.g. `optimize_loss(..., learning_rate=None,
       optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
-  - class, subclass of `Optimizer` that takes only one required argument -
-      learning rate, such as AdamOptimizer, AdagradOptimizer.
-      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
-  - object, instance of subclass of `Optimizer`.
-      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+  - by a subclass of `Optimizer` having a single-argument constructor
+      (the argument is the learning rate), such as AdamOptimizer or
+      AdagradOptimizer. E.g. `optimize_loss(...,
+      optimizer=tf.train.AdagradOptimizer)`.
+  - by an instance of a subclass of `Optimizer`.
+      E.g., `optimize_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Scalar `Tensor`.
-    global_step: Scalar int `Tensor`, step counter for each update. If not
-                 supplied, it will be fetched from the default graph (see
-                 `tf.contrib.framework.get_global_step` for details). If it's
+    global_step: Scalar int `Tensor`, step counter to update on each step
+                 unless `increment_global_step` is `False`. If not supplied,
+                 it will be fetched from the default graph (see
+                 `tf.train.get_global_step` for details). If it has
                  not been created, no step will be incremented with each weight
                  update. `learning_rate_decay_fn` requires `global_step`.
     learning_rate: float or `Tensor`, magnitude of update per each training
@@ -125,10 +129,15 @@ def optimize_loss(loss,
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
     summaries: List of internal quantities to visualize on tensorboard. If not
-               set only the loss and the learning rate will be reported. The
-               complete list is in OPTIMIZER_SUMMARIES.
+               set, the loss, the learning rate, and the global norm of the
+               gradients will be reported. The complete list of possible values
+               is in OPTIMIZER_SUMMARIES.
     colocate_gradients_with_ops: If True, try colocating gradients with the
                                  corresponding op.
+    increment_global_step: Whether to increment `global_step`. If your model
+      calls `optimize_loss` multiple times per training step (e.g. to optimize
+      different parts of the model), use this arg to avoid incrementing
+      `global_step` more times than necessary.
 
   Returns:
     Training op.
@@ -138,17 +147,18 @@ def optimize_loss(loss,
         * `loss` is an invalid type or shape.
         * `global_step` is an invalid type or shape.
         * `learning_rate` is an invalid type or value.
-        * `optimizer` is wrong type.
-        * `clip_gradients` is not float or callable.
+        * `optimizer` has the wrong type.
+        * `clip_gradients` is neither float nor callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
+        * `gradients` is empty.
   """
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
   if global_step is None:
-    global_step = contrib_framework.get_global_step()
+    global_step = train.get_global_step()
   else:
-    contrib_framework.assert_global_step(global_step)
+    train.assert_global_step(global_step)
   with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:
@@ -175,7 +185,12 @@ def optimize_loss(loss,
                          "Got %s of type %s" % (str(learning_rate),
                                                 str(type(learning_rate))))
     if summaries is None:
-      summaries = ["loss", "learning_rate"]
+      summaries = ["loss", "learning_rate", "global_gradient_norm"]
+    else:
+      for summ in summaries:
+        if summ not in OPTIMIZER_SUMMARIES:
+          raise ValueError("Summaries should be one of [%s], you provided %s." %
+                           (", ".join(OPTIMIZER_SUMMARIES), summ))
     if learning_rate is not None and learning_rate_decay_fn is not None:
       if global_step is None:
         raise ValueError("global_step is required for learning_rate_decay_fn.")
@@ -233,8 +248,12 @@ def optimize_loss(loss,
     # Multiply some gradients.
     if gradient_multipliers is not None:
       gradients = _multiply_gradients(gradients, gradient_multipliers)
+      if not gradients:
+        raise ValueError(
+            "Empty list of (gradient, var) pairs encountered. This is most "
+            "likely to be caused by an improper value of gradient_multipliers.")
 
-    if "gradient_norm" in summaries:
+    if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
@@ -244,8 +263,8 @@ def optimize_loss(loss,
     elif callable(clip_gradients):
       gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
-      raise ValueError("Unknown type %s for clip_gradients" %
-                       type(clip_gradients))
+      raise ValueError(
+          "Unknown type %s for clip_gradients" % type(clip_gradients))
 
     # Add scalar summary for loss.
     if "loss" in summaries:
@@ -266,13 +285,16 @@ def optimize_loss(loss,
           summary.scalar("gradient_norm/%s" % var_name,
                          clip_ops.global_norm([grad_values]))
 
-    if clip_gradients is not None and "gradient_norm" in summaries:
+    if clip_gradients is not None and ("global_gradient_norm" in summaries or
+                                       "gradient_norm" in summaries):
       summary.scalar("global_norm/clipped_gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(
-        gradients, global_step=global_step, name="train")
+        gradients,
+        global_step=global_step if increment_global_step else None,
+        name="train")
 
     # Ensure the train_tensor computes grad_updates.
     train_tensor = control_flow_ops.with_dependencies([grad_updates], loss)
@@ -330,8 +352,8 @@ def adaptive_clipping_fn(std_factor=2.,
   https://arxiv.org/abs/1412.1602.
 
   Keeps a moving average of the mean and std of the log(norm) of the gradient.
-  if the norm exceeds `exp(mean + std_factor*std)`, all gradients are rescaled
-  such that the global norm becomes `exp(mean)`.
+  If the norm exceeds `exp(mean + std_factor*std)` then all gradients will be
+  rescaled such that the global norm becomes `exp(mean)`.
 
   Args:
     std_factor: Python scaler (or tensor).

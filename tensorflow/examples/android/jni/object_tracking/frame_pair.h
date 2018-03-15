@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
-#define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
 
 #include "tensorflow/examples/android/jni/object_tracking/keypoint.h"
 
@@ -30,7 +30,7 @@ class FramePair {
         number_of_keypoints_(0) {}
 
   // Cleans up the FramePair so that they can be reused.
-  void Init(const int64 start_time, const int64 end_time);
+  void Init(const int64_t start_time, const int64_t end_time);
 
   void AdjustBox(const BoundingBox box,
                  float* const translation_x,
@@ -74,10 +74,10 @@ class FramePair {
   // TODO(andrewharp): Make these private.
  public:
   // The time at frame1.
-  int64 start_time_;
+  int64_t start_time_;
 
   // The time at frame2.
-  int64 end_time_;
+  int64_t end_time_;
 
   // This array will contain the keypoints found in frame 1.
   Keypoint frame1_keypoints_[kMaxKeypoints];
@@ -100,4 +100,4 @@ class FramePair {
 
 }  // namespace tf_tracking
 
-#endif  // THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_

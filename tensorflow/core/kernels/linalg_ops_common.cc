@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 
+#include <utility>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -121,7 +123,7 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
       OP_REQUIRES(
           context, input_rank >= 2,
           errors::InvalidArgument("Input tensor ", i,
-                                  " must have rank >= 2, got", input_rank));
+                                  " must have rank >= 2, got ", input_rank));
       // If the tensor rank is greater than 2, we consider the inner-most
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
@@ -145,10 +147,9 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     const int col_dimension = input_rank - 1;
     const int64 num_rows = in.dim_size(row_dimension);
     const int64 num_cols = in.dim_size(col_dimension);
-    // TODO(rmlarsen): Use emplace_back when it is added to InlinedVector. Same
-    // in several places below.
-    input_matrix_shapes->push_back(TensorShape({num_rows, num_cols}));
-    inputs->push_back(in);
+    input_matrix_shapes->emplace_back(
+        std::initializer_list<int64>({num_rows, num_cols}));
+    inputs->emplace_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
@@ -171,28 +172,45 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
           num_outputs, context->num_outputs()));
 
   // Allocate outputs.
-  for (int i = 0; i < context->num_outputs(); ++i) {
-    TensorShape output_tensor_shape({0});
-    if (i < num_outputs) {
+  std::set<int> unused_inputs;
+  for (int input_idx = 0; input_idx < context->num_inputs(); ++input_idx) {
+    unused_inputs.insert(input_idx);
+  }
+  for (int output_idx = 0; output_idx < context->num_outputs(); ++output_idx) {
+    TensorShape output_tensor_shape({});
+    if (output_idx < num_outputs) {
       // This output is used, set up output shape and allocate it.
-      const TensorShape& output_matrix_shape = output_matrix_shapes->at(i);
+      const TensorShape& output_matrix_shape =
+          output_matrix_shapes->at(output_idx);
       OP_REQUIRES(context, output_matrix_shape.dims() <= 2,
                   errors::InvalidArgument(
                       "Rank of matrix output no. %d must be 0, 1 or 2, got %d.",
-                      i, output_matrix_shape.dims()));
+                      output_idx, output_matrix_shape.dims()));
 
       // The final output has the shape of the outer batch dimensions
       // concatenated with the output_matrix_shape (if the output is not
       // scalar).
       output_tensor_shape = batch_shape;
-      for (int dim = 0; dim < output_matrix_shape.dims(); ++dim) {
-        output_tensor_shape.AddDim(output_matrix_shape.dim_size(dim));
-      }
+      output_tensor_shape.AppendShape(output_matrix_shape);
     }
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(i, output_tensor_shape, &out));
-    outputs->push_back(out);
+    // See if there is an input buffer we can reuse for this output.
+    bool reused_input = false;
+    if (EnableInputForwarding()) {
+      for (int input_idx : unused_inputs) {
+        if (context->forward_input_to_output_with_shape(
+                input_idx, output_idx, output_tensor_shape, &out)) {
+          reused_input = true;
+          unused_inputs.erase(input_idx);
+          break;
+        }
+      }
+    }
+    if (!reused_input) {
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  output_idx, output_tensor_shape, &out));
+    }
+    outputs->emplace_back(out);
   }
 }
 
@@ -202,18 +220,17 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
   ConstMatrixMaps matrix_inputs;
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
-    matrix_inputs.push_back(
-        ConstMatrixMap(inputs[i].flat<Scalar>().data() +
-                           matrix_index * input_matrix_shapes[i].num_elements(),
-                       input_matrix_shapes[i].dim_size(0),
-                       input_matrix_shapes[i].dim_size(1)));
+    matrix_inputs.emplace_back(
+        inputs[i]->flat<Scalar>().data() +
+            matrix_index * input_matrix_shapes[i].num_elements(),
+        input_matrix_shapes[i].dim_size(0), input_matrix_shapes[i].dim_size(1));
   }
 
   MatrixMaps matrix_outputs;
-  for (int i = 0; i < output_matrix_shapes.size(); ++i) {
+  for (size_t i = 0; i < output_matrix_shapes.size(); ++i) {
     // The output matrix shape may not be a matrix.
     int num_output_rows = output_matrix_shapes[i].dims() >= 1
                               ? output_matrix_shapes[i].dim_size(0)
@@ -221,10 +238,10 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     int num_output_cols = output_matrix_shapes[i].dims() == 2
                               ? output_matrix_shapes[i].dim_size(1)
                               : 1;
-    matrix_outputs.push_back(
-        MatrixMap(outputs[i]->flat<Scalar>().data() +
-                      matrix_index * output_matrix_shapes[i].num_elements(),
-                  num_output_rows, num_output_cols));
+    matrix_outputs.emplace_back(
+        outputs[i]->flat<Scalar>().data() +
+            matrix_index * output_matrix_shapes[i].num_elements(),
+        num_output_rows, num_output_cols);
   }
   ComputeMatrix(context, matrix_inputs, &matrix_outputs);
 }

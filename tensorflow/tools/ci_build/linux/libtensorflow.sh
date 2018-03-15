@@ -14,9 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce a tarball release of the C-library and associated C API
-# header file. Intended to be run inside a docker container. See
-# libtensorflow_docker.sh
+# Script to produce binary releases for libtensorflow (C API, Java jars etc.).
+# Intended to be run inside a docker container. See libtensorflow_docker.sh
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,9 +23,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # See comments at the top of this file for details.
 source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
 
-SUFFIX="-linux-cpu-"
+SUFFIX="-cpu-linux-"
 if [ "${TF_NEED_CUDA}" == "1" ]; then
-  SUFFIX="-linux-gpu-"
+  SUFFIX="-gpu-linux-"
 fi
 
 build_libtensorflow_tarball "${SUFFIX}$(uname -m)"

@@ -154,6 +154,8 @@ struct Add9Functor<GPUDevice, T> {
   template struct functor::Add9Functor<GPUDevice, type>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_FUNCTORS);
+TF_CALL_complex64(REGISTER_FUNCTORS);
+TF_CALL_complex128(REGISTER_FUNCTORS);
 
 #undef REGISTER_FUNCTORS
 

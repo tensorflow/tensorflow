@@ -17,10 +17,15 @@ limitations under the License.
 #define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_UTILS_H_
 
 #include <set>
+#include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -104,8 +109,8 @@ void FilterGraphDef(const GraphDef& input_graph_def,
                     std::function<bool(const NodeDef&)> selector,
                     GraphDef* output_graph_def);
 
-// Creates a copy of the input graph, with all occurences of the attributes with
-// the names in the argument removed from the node defs.
+// Creates a copy of the input graph, with all occurrences of the attributes
+// with the names in the argument removed from the node defs.
 void RemoveAttributes(const GraphDef& input_graph_def,
                       const std::vector<string>& attributes,
                       GraphDef* output_graph_def);
@@ -123,6 +128,13 @@ void FindInvalidInputs(const GraphDef& graph_def,
 // Returns a descriptive error status if there are problems spotted with the
 // graph.
 Status IsGraphValid(const GraphDef& graph_def);
+
+// Returns input and output types for a particular NodeDef.
+Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
+                     DataTypeVector* outputs);
+
+// Takes a comma-separated string of numbers and parses them into a shape.
+Status TensorShapeFromString(const string& shape_string, TensorShape* result);
 
 // This is used to spot particular subgraphs in a larger model. To use it,
 // create a pattern like:
@@ -193,9 +205,11 @@ Status ReplaceMatchingOpTypes(
 // Returns a list of the unique nodes found in this match.
 void MatchedNodesAsArray(const NodeMatch& match, std::vector<NodeDef>* result);
 
-// Changes all input references to a particular node name.
+// Changes all input references to a particular node name. Any nodes with names
+// listed in nodes_to_ignore will not have their inputs rewritten.
 Status RenameNodeInputs(const GraphDef& input_graph_def,
                         const std::map<string, string>& inputs_to_rename,
+                        const std::unordered_set<string>& nodes_to_ignore,
                         GraphDef* output_graph_def);
 
 // Utility function that copies all the nodes found in a match into the
@@ -209,15 +223,38 @@ struct TransformFuncContext {
   std::vector<string> input_names;
   std::vector<string> output_names;
   TransformFuncParameters params;
+
+  // Returns how many occurrences of the given parameter are present.
+  int CountParameters(const string& name) const;
+
+  // Gets a single instance of a parameter, using a default if it's not present.
+  Status GetOneStringParameter(const string& name, const string& default_value,
+                               string* result) const;
+
+  // Gets a single occurrence of a parameter as a 32-bit integer, falling back
+  // to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneInt32Parameter(const string& name, int32 default_value,
+                              int32* result) const;
+
+  // Gets a single occurrence of a parameter as a 64-bit integer, falling back
+  // to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneInt64Parameter(const string& name, int64 default_value,
+                              int64* result) const;
+
+  // Gets a single occurrence of a parameter as a floating point number, falling
+  // back to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneFloatParameter(const string& name, float default_value,
+                              float* result) const;
+
+  // Gets a single occurrence of a parameter as a boolean, falling back to a
+  // default if it isn't present and returning an error if it's not one of
+  // "true", "1", "false", or "0".
+  Status GetOneBoolParameter(const string& name, bool default_value,
+                             bool* result) const;
 };
-
-// Returns how many occurrences of the given parameter are present.
-int CountParameters(const TransformFuncContext& context, const string& name);
-
-// Gets a simple occurrence of a parameter, using a default if it isn't present.
-Status GetExactlyOneParameter(const TransformFuncContext& context,
-                              const string& name, const string& default_value,
-                              string* result);
 
 // This is the function API for all graph transformations, taking an input
 // GraphDef and other arguments, and returning a transformed GraphDef.

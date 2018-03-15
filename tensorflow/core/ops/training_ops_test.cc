@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/platform/test.h"
@@ -21,26 +20,26 @@ limitations under the License.
 namespace tensorflow {
 
 // Used for testing the grad+indices handling for SparseApplyXYZ tests.
-static void TestGradAndIndicesErrorHandling(ShapeInferenceTestOp op,
+static void TestGradAndIndicesErrorHandling(const ShapeInferenceTestOp& op,
                                             string shape_spec_middle,
-                                            string shape_spec_end = "") {
+                                            const string& shape_spec_end = "") {
   auto shape_spec = [&shape_spec_middle, shape_spec_end](
-      const char* var_spec, const char* grad_indices_spec) {
+                        const char* var_spec, const char* grad_indices_spec) {
     return strings::StrCat(var_spec, ";", shape_spec_middle, ";",
                            grad_indices_spec, shape_spec_end);
   };
 
   // mismatch between grad[1] and var[1].
   INFER_ERROR("Dimension 1 in both shapes must be equal", op,
-              shape_spec("[?,1]", "[?,2];[?]").c_str());
+              shape_spec("[?,1]", "[?,2];[?]"));
   // grad[0] and indices[0] must match.
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op,
-              shape_spec("?", "[2,?];[1]").c_str());
+              shape_spec("?", "[2,?];[1]"));
   // grad is wrong rank.
-  INFER_ERROR("must be equal rank", op, shape_spec("[1]", "[?,2];[?]").c_str());
+  INFER_ERROR("must be equal rank", op, shape_spec("[1]", "[?,2];[?]"));
   // indices is wrong rank.
   INFER_ERROR("Shape must be rank 1 but is rank 2", op,
-              shape_spec("[?]", "[?];[1,2]").c_str());
+              shape_spec("[?]", "[?];[1,2]"));
 }
 
 TEST(TrainingOpsTest, ApplyGradientDescent_ShapeFn) {
@@ -331,6 +330,40 @@ TEST(TrainingOpsTest, SparseApplyRMSProp_ShapeFn) {
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?;?;?");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?;?;?");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;?;[?];?;?");
+}
+
+TEST(TrainingOpsTest, ApplyAddSign_ShapeFn) {
+  ShapeInferenceTestOp op("ApplyAddSign");
+
+  // Output is a merge of inputs 0, 1, and 6 (var, ms, and grad).
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[];[?,?,2]", "[d0_0,d1_1,d6_2]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[];[];[];[];[2]");
+
+  // lr, alpha, sign_decay, and beta must be scalars.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;[?];?;?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;[?];?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?");
+}
+
+TEST(TrainingOpsTest, ApplyPowerSign_ShapeFn) {
+  ShapeInferenceTestOp op("ApplyPowerSign");
+
+  // Output is a merge of inputs 0, 1, and 6 (var, ms, and grad).
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[];[?,?,2]", "[d0_0,d1_1,d6_2]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[];[];[];[];[2]");
+
+  // lr, logbase, sign_decay, and beta must be scalars.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;[?];?;?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;[?];?;?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;[?];?;?");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?");
 }
 
 }  // end namespace tensorflow

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+
+#include <unordered_map>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

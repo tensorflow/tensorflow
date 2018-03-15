@@ -37,19 +37,19 @@ static Graph* ConstructSpaceToBatchGraph(
   if (dtype == DT_FLOAT) {
     Tensor input(DT_FLOAT, input_shape);
     input.flat<float>().setRandom();
-    NodeBuilder(g->NewName("n"), op_name)
-        .Input(test::graph::Constant(g, input))
-        .Input(test::graph::Constant(g, paddings_tensor))
-        .Attr("block_size", block_size)
-        .Finalize(g, &ret);
+    TF_CHECK_OK(NodeBuilder(g->NewName("n"), op_name)
+                    .Input(test::graph::Constant(g, input))
+                    .Input(test::graph::Constant(g, paddings_tensor))
+                    .Attr("block_size", block_size)
+                    .Finalize(g, &ret));
   } else if (dtype == DT_HALF) {
     Tensor input(DT_HALF, input_shape);
     input.flat<Eigen::half>().setRandom();
-    NodeBuilder(g->NewName("n"), op_name)
-        .Input(test::graph::Constant(g, input))
-        .Input(test::graph::Constant(g, paddings_tensor))
-        .Attr("block_size", block_size)
-        .Finalize(g, &ret);
+    TF_CHECK_OK(NodeBuilder(g->NewName("n"), op_name)
+                    .Input(test::graph::Constant(g, input))
+                    .Input(test::graph::Constant(g, paddings_tensor))
+                    .Attr("block_size", block_size)
+                    .Finalize(g, &ret));
   }
   return g;
 }
@@ -70,7 +70,7 @@ static Graph* ConstructSpaceToBatchGraph(
   }                                                                                                     \
   BENCHMARK(                                                                                            \
       BM_##OP##_##DEVICE##_##DTYPE##_##B##_##H##_##W##_##D##_bs##BS##_pad##P00##_##P01##_##P10##_##P11);
-#define BM_SpaceToBatch(OP, ...)                      \
+#define BM_SpaceToBatch(OP, ...)                                 \
   BM_Expand(BM_SpaceToBatchDev(OP, cpu, DT_FLOAT, __VA_ARGS__)); \
   BM_Expand(BM_SpaceToBatchDev(OP, gpu, DT_FLOAT, __VA_ARGS__)); \
   BM_Expand(BM_SpaceToBatchDev(OP, cpu, DT_HALF, __VA_ARGS__));  \

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package tensorflow.boosted_trees.learner;
+
+import "tensorflow/contrib/boosted_trees/proto/tree_config.proto";
+
+// Gathered information for a split node.
+message SplitInfo {
+  // The split node without the child nodes attached.
+  tensorflow.boosted_trees.trees.TreeNode split_node = 1;
+
+  // Left Leaf node.
+  tensorflow.boosted_trees.trees.Leaf left_child = 2;
+
+  // Right Leaf node.
+  tensorflow.boosted_trees.trees.Leaf right_child = 3;
+}

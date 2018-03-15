@@ -21,14 +21,14 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
 
-Status FinalizeOpDef(OpDefBuilder b, OpDef* op_def) {
+Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
   OpRegistrationData op_reg_data;
   const Status s = b.Finalize(&op_reg_data);
   *op_def = op_reg_data.op_def;
@@ -246,7 +246,7 @@ TEST(StrippedOpListForGraphTest, FlatTest) {
         FunctionDef* function_def = graph_def.mutable_library()->add_function();
         function_def->mutable_signature()->set_name("F");
         for (const string& op : graph_ops[order]) {
-          function_def->add_node()->set_op(op);
+          function_def->add_node_def()->set_op(op);
         }
         graph_def.add_node()->set_op("F");
       } else {
@@ -293,11 +293,11 @@ TEST(StrippedOpListForGraphTest, NestedFunctionTest) {
     FunctionDef* c = graph_def.mutable_library()->add_function();
     b->mutable_signature()->set_name("B");
     c->mutable_signature()->set_name("C");
-    b->add_node()->set_op("A");
-    c->add_node()->set_op("B");
+    b->add_node_def()->set_op("A");
+    c->add_node_def()->set_op("B");
     if (recursive) {
-      b->add_node()->set_op("B");
-      c->add_node()->set_op("C");
+      b->add_node_def()->set_op("B");
+      c->add_node_def()->set_op("C");
     }
 
     // Use C in the graph.

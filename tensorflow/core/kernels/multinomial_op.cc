@@ -23,6 +23,7 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,7 +40,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename OutputType>
 struct MultinomialFunctor {
   void operator()(OpKernelContext* ctx, const Device& d,
                   typename TTypes<T>::ConstMatrix logits,
@@ -48,11 +49,11 @@ struct MultinomialFunctor {
                   typename TTypes<float>::Flat scratch, int batch_size,
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output);
+                  typename TTypes<OutputType>::Matrix output);
 };
 
-template <typename T>
-struct MultinomialFunctor<CPUDevice, T> {
+template <typename T, typename OutputType>
+struct MultinomialFunctor<CPUDevice, T, OutputType> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<float>::Flat /* noises */,
@@ -60,15 +61,15 @@ struct MultinomialFunctor<CPUDevice, T> {
                   typename TTypes<float>::Flat /* scratch */, int batch_size,
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output) {
+                  typename TTypes<OutputType>::Matrix output) {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     // The implementation only parallelizes by batch.
     //
     // This takes O(BatchSize * NumSamples * log(NumClasses) + NumClasses) CPU
     // time.
-    auto DoWork = [num_samples, num_classes, &gen, &output, &logits](
-        int64 start_row, int64 limit_row) {
+    auto DoWork = [ctx, num_samples, num_classes, &gen, &output, &logits](
+                      int64 start_row, int64 limit_row) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
@@ -78,35 +79,41 @@ struct MultinomialFunctor<CPUDevice, T> {
       gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);
 
-      std::vector<float> cdf(num_classes);
-
+      Tensor cdf_tensor;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_DOUBLE, TensorShape({num_classes}),
+                                        &cdf_tensor));
+      auto cdf = cdf_tensor.flat<double>();
       for (int64 b = start_row; b < limit_row; ++b) {
         const auto* logits_row = &logits(b, 0);
 
         // Takes an along-class maximum (for numerical stability).
         T max = std::numeric_limits<T>::lowest();
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+          if (Eigen::numext::isfinite(logits_row[j])) {
             max = std::max(max, logits_row[j]);
           }
         }
-        const float max_logit = static_cast<float>(max);
+        const double max_logit = static_cast<double>(max);
 
         // Precompute cumulative probability distribution across classes.
         // Note: This isn't normalized.
-        float running_total = 0;
+        cdf = (logits.template chip<0>(b).template cast<double>() - max_logit)
+                  .exp();
+        double running_total = 0;
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
-            running_total +=
-                std::exp(static_cast<float>(logits_row[j]) - max_logit);
+          if (Eigen::numext::isfinite(logits_row[j])) {
+            running_total += cdf(j);
           }
-          cdf[j] = running_total;
+          cdf(j) = running_total;
         }
         // Generate each sample.
+        const double* cdf_begin = cdf.data();
+        const double* cdf_end = cdf.data() + num_classes;
         for (int64 j = 0; j < num_samples; ++j) {
-          float to_find = simple_philox.RandFloat() * running_total;
-          auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
-          output(b, j) = std::distance(cdf.begin(), found_iter);
+          const double to_find = simple_philox.RandDouble() * running_total;
+          auto found_iter = std::upper_bound(cdf_begin, cdf_end, to_find);
+          output(b, j) = std::distance(cdf_begin, found_iter);
         }
       }
     };
@@ -121,7 +128,7 @@ struct MultinomialFunctor<CPUDevice, T> {
 }  // namespace functor
 
 // Samples from a multinomial distribution.
-template <typename Device, typename T>
+template <typename Device, typename T, typename OutputType>
 class MultinomialOp : public OpKernel {
  public:
   explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -148,9 +155,9 @@ class MultinomialOp : public OpKernel {
     for (int i = 0; i < 2; i++) {
       const int64 dim = logits_t.dim_size(i);
       OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
-                  errors::InvalidArgument("logits.shape = ",
-                                          logits_t.shape().DebugString(),
-                                          " too large for int"));
+                  errors::InvalidArgument(
+                      "logits.shape = ", logits_t.shape().DebugString(),
+                      " too large for int"));
     }
     const int batch_size = static_cast<int>(logits_t.dim_size(0));
     const int num_classes = static_cast<int>(logits_t.dim_size(1));
@@ -183,14 +190,16 @@ class MultinomialOp : public OpKernel {
                                &scratch));
       }
 
-      const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      // CPU generates doubles = 2 samples per number.
+      if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
       auto rng =
           generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
-      functor::MultinomialFunctor<Device, T>()(
+      functor::MultinomialFunctor<Device, T, OutputType>()(
           ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
           noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
           batch_size, num_classes, num_samples, rng,
-          samples_t->matrix<int64>());
+          samples_t->matrix<OutputType>());
     }
   }
 
@@ -200,10 +209,17 @@ class MultinomialOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
 };
 
-#define REGISTER(TYPE)                                                  \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("Multinomial").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      MultinomialOp<CPUDevice, TYPE>);
+#define REGISTER(TYPE)                                                   \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT32), \
+                          MultinomialOp<CPUDevice, TYPE, int32>);        \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT64), \
+                          MultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
@@ -211,12 +227,20 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #if GOOGLE_CUDA
-#define REGISTER(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(Name("Multinomial")             \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("num_samples")  \
-                              .TypeConstraint<TYPE>("T"), \
-                          MultinomialOp<GPUDevice, TYPE>)
+#define REGISTER(TYPE)                                                   \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_GPU)                        \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT32), \
+                          MultinomialOp<GPUDevice, TYPE, int32>)         \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_GPU)                        \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT64), \
+                          MultinomialOp<GPUDevice, TYPE, int64>)
+
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);

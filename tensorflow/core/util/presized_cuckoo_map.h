@@ -67,7 +67,7 @@ inline uint64 multiply_high_u64(uint64 x, uint64 y) {
   return prod_hi + (prod_mid1 >> 32) + (prod_mid2 >> 32) + carry;
 #endif
 }
-}
+}  // namespace presized_cuckoo_map
 
 template <class value>
 class PresizedCuckooMap {
@@ -130,6 +130,10 @@ class PresizedCuckooMap {
     uint64 tk = key_transform(k);
     return FindInBucket(k, fast_map_to_buckets(tk), out) ||
            FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
+  }
+
+  int64 MemoryUsed() const {
+    return sizeof(PresizedCuckooMap<value>) + sizeof(CuckooPathQueue);
   }
 
  private:

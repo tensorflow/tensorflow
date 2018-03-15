@@ -39,7 +39,6 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
-#include "tensorflow/core/util/use_cudnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -57,7 +56,9 @@ class AvgPoolingOp : public UnaryOp<T> {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
-        errors::InvalidArgument("Default AvgPoolingOp only supports NHWC."));
+        errors::InvalidArgument("Default AvgPoolingOp only supports NHWC ",
+                                "on device type ",
+                                DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -151,10 +152,11 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
 
     TensorShape output_shape = params.forward_output_shape();
 
-    if (internal::AvgPoolUseCudnn() || data_format_ == FORMAT_NCHW) {
+    if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
-          stride_, padding_, data_format_, tensor_in, output_shape);
+          stride_, padding_, data_format_, tensor_in, output_shape,
+          /*propagate_nans=*/false);
     } else {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
@@ -211,9 +213,11 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
-                    "Default AvgPoolingGradOp only supports NHWC."));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument("Default AvgPoolingGradOp only supports NHWC ",
+                                "on device type ",
+                                DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -409,7 +413,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     DnnPoolingGradOp<T>::Compute(
         context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
         stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-        output_shape);
+        output_shape, /*propagate_nans=*/false);
   }
 
  private:
@@ -533,7 +537,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
       DnnPoolingGradOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
           stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-          output_shape);
+          output_shape, /*propagate_nans=*/false);
     }
   }
 

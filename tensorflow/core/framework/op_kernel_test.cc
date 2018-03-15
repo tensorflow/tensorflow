@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/version.h"
 
 class DummyKernel : public tensorflow::OpKernel {
@@ -133,8 +137,8 @@ class OpKernelTest : public ::testing::Test {
                      const DataTypeVector& outputs) {
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(
-        device_type, &device_, cpu_allocator(), CreateNodeDef(op_type, inputs),
-        TF_GRAPH_DEF_VERSION, &status));
+        std::move(device_type), &device_, cpu_allocator(),
+        CreateNodeDef(op_type, inputs), TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_TRUE(op != nullptr);
     if (op != nullptr) {
@@ -148,9 +152,9 @@ class OpKernelTest : public ::testing::Test {
     NodeDef node_def;
     protobuf::TextFormat::ParseFromString(ascii_node_def, &node_def);
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device_,
-                                                cpu_allocator(), node_def,
-                                                TF_GRAPH_DEF_VERSION, &status));
+    std::unique_ptr<OpKernel> op(
+        CreateOpKernel(std::move(device_type), &device_, cpu_allocator(),
+                       node_def, TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
@@ -334,6 +338,36 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   delete params.device;
 }
 
+TEST_F(OpKernelTest, InputDtype) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({}));
+  Tensor b(DT_INT32, TensorShape({}));
+  Tensor c(DT_UINT8, TensorShape({}));
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
+                                            TensorValue(&c)};
+  params.inputs = &inputs;
+  OpKernelContext* ctx = new OpKernelContext(&params);
+
+  DataType dtype;
+  EXPECT_FALSE(ctx->input_dtype("non_existent_input", &dtype).ok());
+  ASSERT_TRUE(ctx->input_dtype("a", &dtype).ok());
+  EXPECT_EQ(dtype, DT_FLOAT);
+  ASSERT_TRUE(ctx->input_dtype("b", &dtype).ok());
+  EXPECT_EQ(dtype, DT_INT32);
+  delete ctx;
+  delete params.device;
+}
+
 class OpKernelBuilderTest : public ::testing::Test {
  protected:
   // Each attr is described by a "name|type|value".
@@ -354,7 +388,7 @@ class OpKernelBuilderTest : public ::testing::Test {
   }
 
   std::unique_ptr<OpKernel> ExpectSuccess(const string& op_type,
-                                          DeviceType device_type,
+                                          const DeviceType& device_type,
                                           const std::vector<string>& attrs,
                                           DataTypeSlice input_types = {}) {
     Status status;
@@ -393,7 +427,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     return op;
   }
 
-  void ExpectFailure(const string& op_type, DeviceType device_type,
+  void ExpectFailure(const string& op_type, const DeviceType& device_type,
                      const std::vector<string>& attrs, error::Code code) {
     Status status;
     const NodeDef def = CreateNodeDef(op_type, attrs);
@@ -425,7 +459,8 @@ class OpKernelBuilderTest : public ::testing::Test {
     }
   }
 
-  string GetKernelClassName(const string& op_type, DeviceType device_type,
+  string GetKernelClassName(const string& op_type,
+                            const DeviceType& device_type,
                             const std::vector<string>& attrs,
                             DataTypeSlice input_types = {}) {
     NodeDef def = CreateNodeDef(op_type, attrs);
@@ -475,10 +510,9 @@ TEST_F(OpKernelBuilderTest, BuilderBoth) {
 }
 
 REGISTER_OP("BuildTypeAttr").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeAttr").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
   ExpectSuccess("BuildTypeAttr", DEVICE_CPU, {"T|type|DT_FLOAT"});
@@ -490,10 +524,9 @@ TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
 }
 
 REGISTER_OP("BuildTypeListAttr").Attr("T: list(type)");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeListAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bool>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeListAttr").Device(DEVICE_CPU).TypeConstraint<bool>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[]"});
@@ -539,14 +572,12 @@ TEST_F(OpKernelBuilderTest, DuplicateKernel) {
 }
 
 REGISTER_OP("DuplicateKernelForT").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   const NodeDef ndef =
@@ -581,6 +612,36 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
 
   ExpectFailure("BadConstraint", DEVICE_CPU, {"dtype|type|DT_FLOAT"},
                 error::INVALID_ARGUMENT);
+}
+
+REGISTER_OP("ListOut").Output("a: int32").Output("b: T").Attr("T: list(type)");
+REGISTER_KERNEL_BUILDER(Name("ListOut").Device(tensorflow::DEVICE_CPU),
+                        DummyKernel);
+
+TEST_F(OpKernelBuilderTest, OpOutputList) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  std::unique_ptr<DummyDevice> device(
+      new DummyDevice(env, params.record_tensor_accesses));
+  params.device = device.get();
+  Status status;
+  std::unique_ptr<OpKernel> op(CreateOpKernel(
+      DEVICE_CPU, params.device, cpu_allocator(),
+      CreateNodeDef("ListOut", {"T|list(type)|[DT_FLOAT, DT_INT32]"}),
+      TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok()) << status.ToString();
+  params.op_kernel = op.get();
+  gtl::InlinedVector<TensorValue, 4> inputs{};
+  params.inputs = &inputs;
+  std::unique_ptr<OpKernelContext> ctx(new OpKernelContext(&params));
+
+  EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
+  OpOutputList out_list;
+  EXPECT_FALSE(ctx->output_list("non_existent_output", &out_list).ok());
+  ASSERT_TRUE(ctx->output_list("b", &out_list).ok());
+  EXPECT_EQ(DT_FLOAT, out_list.expected_output_dtype(0));
+  EXPECT_EQ(DT_INT32, out_list.expected_output_dtype(1));
 }
 
 class GetAttrKernel : public ::tensorflow::OpKernel {
@@ -833,6 +894,74 @@ TEST_F(LabelTest, Duplicate) {
   ExpectFailure("LabeledKernel", DEVICE_CPU, {"_kernel|string|'dupe'"},
                 error::INVALID_ARGUMENT);
 }
+
+void BM_InputRangeHelper(int iters, const NodeDef& node_def,
+                         const char* input_name, int expected_start,
+                         int expected_stop) {
+  Status status;
+  std::unique_ptr<DummyDevice> device(new DummyDevice(Env::Default(), false));
+
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
+  TF_CHECK_OK(status);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    int start;
+    int stop;
+    TF_CHECK_OK(op->InputRange(input_name, &start, &stop));
+    EXPECT_EQ(expected_start, start);
+    EXPECT_EQ(expected_stop, stop);
+  }
+  testing::StopTiming();
+}
+
+REGISTER_KERNEL_BUILDER(Name("ConcatV2").Device(DEVICE_CPU), DummyKernel);
+REGISTER_KERNEL_BUILDER(Name("Select").Device(DEVICE_CPU), DummyKernel);
+
+void BM_ConcatInputRange(int iters) {
+  testing::StopTiming();
+
+  // Create a ConcatV2 NodeDef with 4 inputs (plus the axis).
+  NodeDef node_def;
+  node_def.set_name("concat-op");
+  node_def.set_op("ConcatV2");
+  AttrValue attr_N;
+  attr_N.set_i(4);
+  AttrValue attr_T;
+  attr_T.set_type(DT_FLOAT);
+  AttrValue attr_Tidx;
+  attr_Tidx.set_type(DT_INT32);
+  node_def.mutable_attr()->insert({"N", attr_N});
+  node_def.mutable_attr()->insert({"T", attr_T});
+  node_def.mutable_attr()->insert({"Tidx", attr_Tidx});
+  for (size_t i = 0; i < 5; ++i) {
+    node_def.add_input(strings::StrCat("a:", i));
+  }
+
+  BM_InputRangeHelper(iters, node_def, "values", 0, 4);
+}
+
+void BM_SelectInputRange(int iters) {
+  testing::StopTiming();
+
+  // Create a Select NodeDef with 3 inputs.
+  NodeDef node_def;
+  node_def.set_name("select-op");
+  node_def.set_op("Select");
+  AttrValue attr_T;
+  attr_T.set_type(DT_FLOAT);
+  node_def.mutable_attr()->insert({"T", attr_T});
+  for (size_t i = 0; i < 3; ++i) {
+    node_def.add_input(strings::StrCat("a:", i));
+  }
+
+  BM_InputRangeHelper(iters, node_def, "condition", 0, 1);
+}
+
+BENCHMARK(BM_ConcatInputRange);
+BENCHMARK(BM_SelectInputRange);
 
 }  // namespace
 }  // namespace tensorflow

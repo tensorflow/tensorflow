@@ -28,9 +28,9 @@ void ExpectNodeEqual(const Node* n, gtl::ArraySlice<T> values,
                      TensorShape shape) {
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
   DataType dtype;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(tensor.dtype(), dtype);
   test::ExpectTensorEqual<T>(tensor, test::AsTensor(values, shape));
 }
@@ -39,9 +39,9 @@ void ExpectTypeAndShape(const Node* n, DataType expected_dtype,
                         TensorShape expected_shape) {
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
   DataType dtype;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(dtype, expected_dtype);
   EXPECT_EQ(expected_shape, TensorShape(tensor.shape()));
 }
@@ -98,6 +98,20 @@ TEST(ConstOpTest, WithExplicitShape) {
   TF_CHECK_OK(root.status());
   EXPECT_EQ(d.op().output_type(0), DT_STRING);
   ExpectNodeEqual<string>(d.node(), {"1", "2", "3", "4", "5", "6"}, {2, 3});
+}
+
+TEST(ConstOpTest, FromProto) {
+  Scope root = Scope::NewRootScope();
+  TensorProto proto;
+  proto.set_dtype(DT_DOUBLE);
+  TensorShape({2, 2}).AsProto(proto.mutable_tensor_shape());
+  for (int i = 0; i < 4; ++i) {
+    proto.add_double_val(static_cast<double>(i));
+  }
+  auto c = ops::ConstFromProto(root, proto);
+  TF_CHECK_OK(root.status());
+  EXPECT_EQ(c.op().output_type(0), DT_DOUBLE);
+  ExpectNodeEqual<double>(c.node(), {0.0, 1.0, 2.0, 3.0}, {2, 2});
 }
 
 TEST(ConstOpTest, InvalidInitializer) {

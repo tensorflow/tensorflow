@@ -121,11 +121,11 @@ def embed_sequence(ids,
     `Tensor` of `[batch_size, doc_length, embed_dim]` with embedded sequences.
 
   Raises:
-    ValueError: if `embed_dim` or `vocab_size` are not specified when not
+    ValueError: if `embed_dim` or `vocab_size` are not specified when
       `reuse` is `None` or `False`.
   """
   if not (reuse or (vocab_size and embed_dim)):
-    raise ValueError('Must specify vocab size and embedding dimension when not'
+    raise ValueError('Must specify vocab size and embedding dimension when not '
                      'reusing. Got vocab_size=%s and embed_dim=%s' % (
                          vocab_size, embed_dim))
   with variable_scope.variable_scope(

@@ -408,7 +408,8 @@ class GraphRewriter(object):
       for output_node in output_nodes:
         self.quantize_nodes_recursively(output_node)
     elif self.mode == "eightbit":
-      self.set_input_graph(graph_util.remove_training_nodes(self.input_graph))
+      self.set_input_graph(graph_util.remove_training_nodes(
+          self.input_graph, protected_nodes=output_node_names))
       output_nodes = [
           self.nodes_map[output_node_name]
           for output_node_name in output_node_names
@@ -453,7 +454,8 @@ class GraphRewriter(object):
 
   def round_nodes_recursively(self, current_node):
     """The entry point for simple rounding quantization."""
-    if self.already_visited[current_node.name]:
+    if (current_node.name in self.already_visited
+       ) and self.already_visited[current_node.name]:
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:

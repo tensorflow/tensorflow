@@ -79,14 +79,14 @@ void MemTermDestination(j_compress_ptr cinfo) {
 
 // -----------------------------------------------------------------------------
 void SetDest(j_compress_ptr cinfo, void *buffer, int bufsize) {
-  SetDest(cinfo, buffer, bufsize, NULL);
+  SetDest(cinfo, buffer, bufsize, nullptr);
 }
 
 // -----------------------------------------------------------------------------
 void SetDest(j_compress_ptr cinfo, void *buffer, int bufsize,
              string *destination) {
   MemDestMgr *dest;
-  if (cinfo->dest == NULL) {
+  if (cinfo->dest == nullptr) {
     cinfo->dest = reinterpret_cast<struct jpeg_destination_mgr *>(
         (*cinfo->mem->alloc_small)(reinterpret_cast<j_common_ptr>(cinfo),
                                    JPOOL_PERMANENT, sizeof(MemDestMgr)));
@@ -177,7 +177,7 @@ void SetSrc(j_decompress_ptr cinfo, const void *data,
   src->data = reinterpret_cast<const unsigned char *>(data);
   src->datasize = datasize;
   src->pub.bytes_in_buffer = 0;
-  src->pub.next_input_byte = NULL;
+  src->pub.next_input_byte = nullptr;
   src->try_recover_truncated_jpeg = try_recover_truncated_jpeg;
 }
 

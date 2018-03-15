@@ -17,9 +17,9 @@
 #
 # To build the image, use ../build_server.sh
 
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y \

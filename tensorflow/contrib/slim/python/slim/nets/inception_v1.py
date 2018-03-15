@@ -106,7 +106,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 32, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -128,7 +128,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 64, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -156,7 +156,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 64, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -178,7 +178,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 64, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -200,7 +200,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 64, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -222,7 +222,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 64, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -244,7 +244,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 128, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -272,7 +272,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 128, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points
@@ -294,7 +294,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
                 net, [3, 3], scope='MaxPool_0a_3x3')
             branch_3 = layers.conv2d(
                 branch_3, 128, [1, 1], scope='Conv2d_0b_1x1')
-          net = array_ops.concat_v2([branch_0, branch_1, branch_2, branch_3], 3)
+          net = array_ops.concat([branch_0, branch_1, branch_2, branch_3], 3)
         end_points[end_point] = net
         if final_endpoint == end_point:
           return net, end_points

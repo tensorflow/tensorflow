@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import graph_editor as ge
+from tensorflow.contrib.graph_editor.tests import match
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
@@ -50,11 +51,11 @@ class EditTest(test.TestCase):
   def test_detach(self):
     """Test for ge.detach."""
     sgv = ge.sgv(self.c.op, self.a.op)
-    control_outputs = ge.util.ControlOutputs(self.graph)
+    control_outputs = ge.ControlOutputs(self.graph)
     ge.detach(sgv, control_ios=control_outputs)
     # make sure the detached graph is as expected.
     self.assertTrue(
-        ge.matcher("^foo/c$").input_ops("a", "geph__b_0")(self.c.op))
+        match.OpMatcher("^foo/c$").input_ops("a", "geph__b_0")(self.c.op))
 
   def test_connect(self):
     """Test for ge.connect."""
@@ -66,13 +67,14 @@ class EditTest(test.TestCase):
     sgv = ge.sgv(x.op, y.op, z.op)
     ge.connect(sgv, ge.sgv(self.e.op).remap_inputs([0]))
     self.assertTrue(
-        ge.matcher("^foo/bar/e$").input_ops("^z$", "foo/d$")(self.e.op))
+        match.OpMatcher("^foo/bar/e$").input_ops("^z$", "foo/d$")(self.e.op))
 
   def test_bypass(self):
     """Test for ge.bypass."""
     ge.bypass(ge.sgv(self.f.op).remap_inputs([0]))
     self.assertTrue(
-        ge.matcher("^foo/bar/h$").input_ops("^foo/c$", "foo/bar/g$")(self.h.op))
+        match.OpMatcher("^foo/bar/h$").input_ops("^foo/c$", "foo/bar/g$")(
+            self.h.op))
 
 
 if __name__ == "__main__":

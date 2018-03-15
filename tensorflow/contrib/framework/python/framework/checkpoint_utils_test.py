@@ -54,12 +54,13 @@ def _create_checkpoints(sess, checkpoint_dir):
 def _create_partition_checkpoints(sess, checkpoint_dir):
   checkpoint_prefix = os.path.join(checkpoint_dir, "model")
   checkpoint_state_name = "checkpoint"
-  v1 = variable_scope.get_variable(
-      name="var1",
-      shape=[100, 100],
-      initializer=init_ops.truncated_normal_initializer(0.5),
-      partitioner=partitioned_variables.min_max_variable_partitioner(
-          max_partitions=5, axis=0, min_slice_size=8 << 10))
+  with variable_scope.variable_scope("scope"):
+    v1 = variable_scope.get_variable(
+        name="var1",
+        shape=[100, 100],
+        initializer=init_ops.truncated_normal_initializer(0.5),
+        partitioner=partitioned_variables.min_max_variable_partitioner(
+            max_partitions=5, axis=0, min_slice_size=8 << 10))
   sess.run(variables.global_variables_initializer())
   v1_value = sess.run(v1._get_variable_list())
   saver = saver_lib.Saver()
@@ -143,6 +144,25 @@ class CheckpointsTest(test.TestCase):
         # Check that tensors are not explicitly in the graph.
         self.assertLess(len(str(session.graph.as_graph_def())), 27000)
 
+  def testInitWithScopeDoesNotCaptureSuffixes(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.test_session() as session:
+      _, _, _, v4 = _create_checkpoints(session, checkpoint_dir)
+
+    with ops.Graph().as_default() as g:
+      with variable_scope.variable_scope("useful_scope"):
+        my4 = variable_scope.get_variable("var4", [9, 9])
+      with variable_scope.variable_scope("useful_scope_1"):
+        my5_init = [[1.0, 2.0], [3.0, 4.0]]
+        my5 = variable_scope.get_variable("var5", initializer=my5_init)
+
+      checkpoint_utils.init_from_checkpoint(checkpoint_dir,
+                                            {"useful_scope/": "useful_scope/"})
+      with self.test_session(graph=g) as session:
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(my4.eval(session), v4)
+        self.assertAllEqual(my5.eval(session), my5_init)
+
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
     with self.test_session() as session:
@@ -167,6 +187,29 @@ class CheckpointsTest(test.TestCase):
         self.assertAllEqual(my3.eval(session), v3)
         self.assertAllEqual(my4.eval(session), v4)
 
+  def testInitToRootCheckpoint(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.test_session() as session:
+      v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
+
+    # New graph and session.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as session:
+        my1 = variable_scope.get_variable("var1", [1, 10])
+        my2 = variable_scope.get_variable("var2", [10, 10])
+        my3 = variable_scope.get_variable("var3", [100, 100])
+        with variable_scope.variable_scope("useful_scope"):
+          my4 = variable_scope.get_variable("var4", [9, 9])
+
+        checkpoint_utils.init_from_checkpoint(checkpoint_dir,
+                                              {"/": "/",})
+
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(my1.eval(session), v1)
+        self.assertAllEqual(my2.eval(session), v2)
+        self.assertAllEqual(my3.eval(session), v3)
+        self.assertAllEqual(my4.eval(session), v4)
+
   def testInitFromPartitionVar(self):
     checkpoint_dir = self.get_temp_dir()
     with self.test_session() as session:
@@ -183,13 +226,24 @@ class CheckpointsTest(test.TestCase):
               partitioner=partitioned_variables.min_max_variable_partitioner(
                   max_partitions=5, axis=0, min_slice_size=8 << 10))
           my1_var_list = my1._get_variable_list()
+        with variable_scope.variable_scope("some_other_scope"):
+          my2 = variable_scope.get_variable(
+              name="var1",
+              shape=[100, 100],
+              initializer=init_ops.truncated_normal_initializer(0.5),
+              partitioner=partitioned_variables.min_max_variable_partitioner(
+                  max_partitions=5, axis=0, min_slice_size=8 << 10))
+          my2_var_list = my2._get_variable_list()
 
-        checkpoint_utils.init_from_checkpoint(checkpoint_dir,
-                                              {"var1": "some_scope/my1",})
+        checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
+            "scope/var1": "some_scope/my1",
+            "scope/": "some_other_scope/"})
 
         session.run(variables.global_variables_initializer())
         my1_values = session.run(my1_var_list)
         self.assertAllEqual(my1_values, v1)
+        my2_values = session.run(my2_var_list)
+        self.assertAllEqual(my2_values, v1)
 
     # New graph and session.
     with ops.Graph().as_default() as g:
@@ -204,7 +258,7 @@ class CheckpointsTest(test.TestCase):
           my1_var_list = my1._get_variable_list()
 
         checkpoint_utils.init_from_checkpoint(checkpoint_dir,
-                                              {"var1": my1_var_list,})
+                                              {"scope/var1": my1_var_list,})
 
         session.run(variables.global_variables_initializer())
         my1_values = session.run(my1_var_list)

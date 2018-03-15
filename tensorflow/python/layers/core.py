@@ -22,45 +22,59 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import standard_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
-class Dense(base._Layer):  # pylint: disable=protected-access
+@tf_export('layers.Dense')
+class Dense(base.Layer):
   """Densely-connected layer class.
 
-  This layer implements the operation `outputs = activation(inputs.w + b)`
+  This layer implements the operation:
+  `outputs = activation(inputs * kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
-  argument (if not `None`), `w` is a weights matrix created by the layer,
-  and `b` is a bias vector created by the layer (only if `use_bias` is `True`).
-
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  argument (if not `None`), `kernel` is a weights matrix created by the layer,
+  and `bias` is a bias vector created by the layer
+  (only if `use_bias` is `True`).
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer function for the weight matrix.
+    kernel_initializer: Initializer function for the weight matrix.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
-    weights_regularizer: Regularizer function for the weight matrix.
+    kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
+    kernel_constraint: An optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: An optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
     reuse: Boolean, whether to reuse the weights of a previous layer
@@ -70,111 +84,122 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     units: Python integer, dimensionality of the output space.
     activation: Activation function (callable).
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer instance (or name) for the weight matrix.
+    kernel_initializer: Initializer instance (or name) for the kernel matrix.
     bias_initializer: Initializer instance (or name) for the bias.
-    weights_regularizer: Regularizer instance for the weight matrix (callable)
+    kernel_regularizer: Regularizer instance for the kernel matrix (callable)
     bias_regularizer: Regularizer instance for the bias (callable).
     activity_regularizer: Regularizer instance for the output (callable)
-    weights: Weight matrix (TensorFlow variable or tensor).
+    kernel_constraint: Constraint function for the kernel matrix.
+    bias_constraint: Constraint function for the bias.
+    kernel: Weight matrix (TensorFlow variable or tensor).
     bias: Bias vector, if applicable (TensorFlow variable or tensor).
   """
 
   def __init__(self, units,
                activation=None,
                use_bias=True,
-               weights_initializer=None,
+               kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
-               weights_regularizer=None,
+               kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
-    self.weights_initializer = weights_initializer
+    self.kernel_initializer = kernel_initializer
     self.bias_initializer = bias_initializer
-    self.weights_regularizer = weights_regularizer
+    self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
+    self.kernel_constraint = kernel_constraint
+    self.bias_constraint = bias_constraint
+    self.input_spec = base.InputSpec(min_ndim=2)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape.ndims is None:
-      raise ValueError('Inputs to `Dense` should have known rank.')
-    if len(input_shape) < 2:
-      raise ValueError('Inputs to `Dense` should have rank >= 2.')
     if input_shape[-1].value is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
-    # Note that we set `trainable=True` because this is a trainable
-    # weight of the layer. If the layer is not trainable
-    # (self.trainable = False), the variable will not be added to
-    # tf.trainable_variables(), and self.trainable_weights will be empty.
-    self.w = vs.get_variable('weights',
-                             shape=[input_shape[-1].value, self.units],
-                             initializer=self.weights_initializer,
-                             regularizer=self.weights_regularizer,
-                             dtype=self.dtype,
-                             trainable=True)
+    self.input_spec = base.InputSpec(min_ndim=2,
+                                     axes={-1: input_shape[-1].value})
+    self.kernel = self.add_variable('kernel',
+                                    shape=[input_shape[-1].value, self.units],
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    constraint=self.kernel_constraint,
+                                    dtype=self.dtype,
+                                    trainable=True)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=[self.units,],
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  dtype=self.dtype,
-                                  trainable=True)
+      self.bias = self.add_variable('bias',
+                                    shape=[self.units,],
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    constraint=self.bias_constraint,
+                                    dtype=self.dtype,
+                                    trainable=True)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
-    input_dim = shape[-1]
-    output_shape = shape[:-1] + [self.units]
-    if len(output_shape) > 2:
-      # Reshape the input to 2D.
-      output_shape_tensors = array_ops.unstack(array_ops.shape(inputs))
-      output_shape_tensors[-1] = self.units
-      output_shape_tensor = array_ops.stack(output_shape_tensors)
-      inputs = array_ops.reshape(inputs, [-1, input_dim])
-
-    outputs = standard_ops.matmul(inputs, self.w)
+    if len(shape) > 2:
+      # Broadcasting is required for the inputs.
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
+                                                             [0]])
+      # Reshape the output back to the original ndim of the input.
+      if not context.executing_eagerly():
+        output_shape = shape[:-1] + [self.units]
+        outputs.set_shape(output_shape)
+    else:
+      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
-
-    if len(output_shape) > 2:
-      # Reshape the output back to the original ndim of the input.
-      outputs = array_ops.reshape(outputs, output_shape_tensor)
-      outputs.set_shape(output_shape)
-
     if self.activation is not None:
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    input_shape = input_shape.with_rank_at_least(2)
+    if input_shape[-1].value is None:
+      raise ValueError(
+          'The innermost dimension of input_shape must be defined, but saw: %s'
+          % input_shape)
+    return input_shape[:-1].concatenate(self.units)
 
+
+@tf_export('layers.dense')
 def dense(
     inputs, units,
     activation=None,
     use_bias=True,
-    weights_initializer=None,
+    kernel_initializer=None,
     bias_initializer=init_ops.zeros_initializer(),
-    weights_regularizer=None,
+    kernel_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
+    kernel_constraint=None,
+    bias_constraint=None,
     trainable=True,
     name=None,
-    reuse=False):
+    reuse=None):
   """Functional interface for the densely-connected layer.
 
-  This layer implements the operation `outputs = activation(inputs.w + b)`
+  This layer implements the operation:
+  `outputs = activation(inputs.kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
-  argument (if not `None`), `w` is a weights matrix created by the layer,
-  and `b` is a bias vector created by the layer (only if `use_bias` is `True`).
-
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  argument (if not `None`), `kernel` is a weights matrix created by the layer,
+  and `bias` is a bias vector created by the layer
+  (only if `use_bias` is `True`).
 
   Arguments:
     inputs: Tensor input.
@@ -182,28 +207,44 @@ def dense(
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer function for the weight matrix.
+    kernel_initializer: Initializer function for the weight matrix.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
-    weights_regularizer: Regularizer function for the weight matrix.
+    kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
+    kernel_constraint: An optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    bias_constraint: An optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
-                weights_initializer=weights_initializer,
+                kernel_initializer=kernel_initializer,
                 bias_initializer=bias_initializer,
-                weights_regularizer=weights_regularizer,
+                kernel_regularizer=kernel_regularizer,
                 bias_regularizer=bias_regularizer,
                 activity_regularizer=activity_regularizer,
+                kernel_constraint=kernel_constraint,
+                bias_constraint=bias_constraint,
                 trainable=trainable,
                 name=name,
                 dtype=inputs.dtype.base_dtype,
@@ -212,7 +253,8 @@ def dense(
   return layer.apply(inputs)
 
 
-class Dropout(base._Layer):  # pylint: disable=protected-access
+@tf_export('layers.Dropout')
+class Dropout(base.Layer):
   """Applies Dropout to the input.
 
   Dropout consists in randomly setting a fraction `rate` of input units to 0
@@ -221,7 +263,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
   sum is unchanged at training time and inference time.
 
   Arguments:
-    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+    rate: The dropout rate, between 0 and 1. E.g. `rate=0.1` would drop out
       10% of input units.
     noise_shape: 1D tensor of type `int32` representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -230,7 +272,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}.
       for behavior.
     name: The name of the layer (string).
   """
@@ -245,16 +287,29 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
     self.noise_shape = noise_shape
     self.seed = seed
 
+  def _get_noise_shape(self, inputs):
+    # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
+    # which will override `self.noise_shape`, and allows for custom noise
+    # shapes with dynamically sized inputs.
+    if self.noise_shape is None:
+      return self.noise_shape
+    return nn_ops._get_noise_shape(inputs, self.noise_shape)
+
   def call(self, inputs, training=False):
+
     def dropped_inputs():
       return nn.dropout(inputs, 1  - self.rate,
-                        noise_shape=self.noise_shape,
+                        noise_shape=self._get_noise_shape(inputs),
                         seed=self.seed)
     return utils.smart_cond(training,
                             dropped_inputs,
                             lambda: array_ops.identity(inputs))
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('layers.dropout')
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -279,7 +334,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
@@ -288,9 +343,76 @@ def dropout(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
+
+
+@tf_export('layers.Flatten')
+class Flatten(base.Layer):
+  """Flattens an input tensor while preserving the batch axis (axis 0).
+
+  Examples:
+
+  ```
+    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    y = Flatten()(x)
+    # now `y` has shape `(None, 16)`
+
+    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    y = Flatten()(x)
+    # now `y` has shape `(None, None)`
+  ```
+  """
+
+  def __init__(self, **kwargs):
+    super(Flatten, self).__init__(**kwargs)
+    self.input_spec = base.InputSpec(min_ndim=2)
+
+  def call(self, inputs):
+    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    if not context.executing_eagerly():
+      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
+    return outputs
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    output_shape = [input_shape[0]]
+    if all(input_shape[1:]):
+      output_shape += [np.prod(input_shape[1:])]
+    else:
+      output_shape += [None]
+    return tensor_shape.TensorShape(output_shape)
+
+
+@tf_export('layers.flatten')
+def flatten(inputs, name=None):
+  """Flattens an input tensor while preserving the batch axis (axis 0).
+
+  Arguments:
+    inputs: Tensor input.
+    name: The name of the layer (string).
+
+  Returns:
+    Reshaped tensor.
+
+  Examples:
+
+  ```
+    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    y = flatten(x)
+    # now `y` has shape `(None, 16)`
+
+    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    y = flatten(x)
+    # now `y` has shape `(None, None)`
+  ```
+  """
+  layer = Flatten(name=name)
+  return layer.apply(inputs)
 
 
 # Aliases

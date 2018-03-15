@@ -13,20 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=line-too-long
-"""This library provides a set of classes and functions that helps train models.
+"""Support for training models.
 
-## Optimizers
-
-The Optimizer base class provides methods to compute gradients for a loss and
-apply gradients to variables.  A collection of subclasses implement classic
-optimization algorithms such as GradientDescent and Adagrad.
-
-You never instantiate the Optimizer class itself, but instead instantiate one
-of the subclasses.
+See the @{$python/train} guide.
 
 @@Optimizer
-
 @@GradientDescentOptimizer
 @@AdadeltaOptimizer
 @@AdagradOptimizer
@@ -37,67 +28,31 @@ of the subclasses.
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
 @@RMSPropOptimizer
-
-## Gradient Computation
-
-TensorFlow provides functions to compute the derivatives for a given
-TensorFlow computation graph, adding operations to the graph. The
-optimizer classes automatically compute derivatives on your graph, but
-creators of new Optimizers or expert users can call the lower-level
-functions below.
-
+@@custom_gradient
 @@gradients
 @@AggregationMethod
-
 @@stop_gradient
-
 @@hessians
-
-
-## Gradient Clipping
-
-TensorFlow provides several operations that you can use to add clipping
-functions to your graph. You can use these functions to perform general data
-clipping, but they're particularly useful for handling exploding or vanishing
-gradients.
-
 @@clip_by_value
 @@clip_by_norm
 @@clip_by_average_norm
 @@clip_by_global_norm
 @@global_norm
-
-## Decaying the learning rate
+@@cosine_decay
+@@cosine_decay_restarts
+@@linear_cosine_decay
+@@noisy_linear_cosine_decay
 @@exponential_decay
 @@inverse_time_decay
 @@natural_exp_decay
 @@piecewise_constant
 @@polynomial_decay
-
-## Moving Averages
-
-Some training algorithms, such as GradientDescent and Momentum often benefit
-from maintaining a moving average of variables during optimization.  Using the
-moving averages for evaluations often improve results significantly.
-
 @@ExponentialMovingAverage
-
-## Coordinator and QueueRunner
-
-See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
-for how to use threads and queues.  For documentation on the Queue API,
-see [Queues](../../api_docs/python/io_ops.md#queues).
-
 @@Coordinator
 @@QueueRunner
+@@LooperThread
 @@add_queue_runner
 @@start_queue_runners
-
-## Distributed execution
-
-See [Distributed TensorFlow](../../how_tos/distributed/index.md) for
-more information about how to configure a distributed TensorFlow program.
-
 @@Server
 @@Supervisor
 @@SessionManager
@@ -110,38 +65,39 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionCreator
 @@ChiefSessionCreator
 @@WorkerSessionCreator
-
-## Reading Summaries from Event Files
-
-See [Summaries and
-TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
-overview of summaries, event files, and visualization in TensorBoard.
-
 @@summary_iterator
-
-## Training Utilities
-
-@@global_step
-@@basic_train_loop
-@@get_global_step
-@@assert_global_step
-@@write_graph
 @@SessionRunHook
+@@SessionRunArgs
+@@SessionRunContext
+@@SessionRunValues
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
+@@CheckpointSaverListener
 @@NewCheckpointReader
 @@StepCounterHook
 @@NanLossDuringTrainingError
 @@NanTensorHook
 @@SummarySaverHook
 @@GlobalStepWaiterHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
-@@LooperThread
+@@FinalOpsHook
+@@FeedFnHook
+@@ProfilerHook
+@@SecondOrStepTimer
+@@global_step
+@@basic_train_loop
+@@get_global_step
+@@get_or_create_global_step
+@@create_global_step
+@@assert_global_step
+@@write_graph
+@@load_checkpoint
+@@load_variable
+@@list_variables
+@@init_from_checkpoint
+@@warm_start
+@@VocabInfo
 """
-# pylint: enable=line-too-long
 
 # Optimizers.
 from __future__ import absolute_import
@@ -151,10 +107,14 @@ from __future__ import print_function
 import sys as _sys
 
 from tensorflow.python.ops import io_ops as _io_ops
+from tensorflow.python.ops import sdca_ops as _sdca_ops
 from tensorflow.python.ops import state_ops as _state_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=g-bad-import-order,unused-import
+from tensorflow.python.ops.sdca_ops import sdca_optimizer
+from tensorflow.python.ops.sdca_ops import sdca_fprint
+from tensorflow.python.ops.sdca_ops import sdca_shrink_l1
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
@@ -178,18 +138,28 @@ from tensorflow.python.training.queue_runner import *
 
 # For the module level doc.
 from tensorflow.python.training import input as _input
-from tensorflow.python.training.input import *
+from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverListener
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
+from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
+from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
+from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
+from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
+from tensorflow.python.training.checkpoint_utils import list_variables
+from tensorflow.python.training.checkpoint_utils import load_checkpoint
+from tensorflow.python.training.checkpoint_utils import load_variable
+
 from tensorflow.python.training.device_setter import replica_device_setter
 from tensorflow.python.training.monitored_session import Scaffold
 from tensorflow.python.training.monitored_session import MonitoredTrainingSession
@@ -218,8 +188,13 @@ from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
 from tensorflow.python.training.training_util import get_global_step
 from tensorflow.python.training.training_util import assert_global_step
+from tensorflow.python.training.training_util import create_global_step
+from tensorflow.python.training.training_util import get_or_create_global_step
+from tensorflow.python.training.warm_starting_util import VocabInfo
+from tensorflow.python.training.warm_starting_util import warm_start
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=wildcard-import
 # Training data protos.
@@ -232,8 +207,8 @@ from tensorflow.python.training.learning_rate_decay import *
 # pylint: enable=wildcard-import
 
 # Distributed computing support.
-from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
-from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
+from tensorflow.core.protobuf.cluster_pb2 import ClusterDef
+from tensorflow.core.protobuf.cluster_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
@@ -242,36 +217,53 @@ from tensorflow.python.training.server_lib import Server
 _allowed_symbols = [
     # TODO(cwhipkey): review these and move to contrib or expose through
     # documentation.
-    "generate_checkpoint_state_proto",   # Used internally by saver.
+    "generate_checkpoint_state_proto",  # Used internally by saver.
     "checkpoint_exists",  # Only used in test?
     "get_checkpoint_mtimes",  # Only used in test?
 
     # Legacy: remove.
     "do_quantize_training_on_graphdef",  # At least use grah_def, not graphdef.
-                                         # No uses within tensorflow.
+    # No uses within tensorflow.
     "queue_runner",  # Use tf.train.start_queue_runner etc directly.
-                     # This is also imported internally.
+    # This is also imported internally.
 
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizer",
     # Protobufs:
-    "BytesList",          # from example_pb2.
+    "BytesList",  # from example_pb2.
     "ClusterDef",
-    "Example",            # from example_pb2
-    "Feature",            # from example_pb2
-    "Features",           # from example_pb2
-    "FeatureList",        # from example_pb2
-    "FeatureLists",       # from example_pb2
-    "FloatList",          # from example_pb2.
-    "Int64List",          # from example_pb2.
+    "Example",  # from example_pb2
+    "Feature",  # from example_pb2
+    "Features",  # from example_pb2
+    "FeatureList",  # from example_pb2
+    "FeatureLists",  # from example_pb2
+    "FloatList",  # from example_pb2.
+    "Int64List",  # from example_pb2.
     "JobDef",
-    "SaverDef",           # From saver_pb2.
-    "SequenceExample",    # from example_pb2.
+    "SaverDef",  # From saver_pb2.
+    "SequenceExample",  # from example_pb2.
     "ServerDef",
 ]
+
+# pylint: disable=undefined-variable
+tf_export("train.BytesList")(BytesList)
+tf_export("train.ClusterDef")(ClusterDef)
+tf_export("train.Example")(Example)
+tf_export("train.Feature")(Feature)
+tf_export("train.Features")(Features)
+tf_export("train.FeatureList")(FeatureList)
+tf_export("train.FeatureLists")(FeatureLists)
+tf_export("train.FloatList")(FloatList)
+tf_export("train.Int64List")(Int64List)
+tf_export("train.JobDef")(JobDef)
+tf_export("train.SaverDef")(SaverDef)
+tf_export("train.SequenceExample")(SequenceExample)
+tf_export("train.ServerDef")(ServerDef)
+# pylint: enable=undefined-variable
+
 # Include extra modules for docstrings because:
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.
 remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _io_ops, _state_ops])
+                    [_sys.modules[__name__], _io_ops, _sdca_ops, _state_ops])

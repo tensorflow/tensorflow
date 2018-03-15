@@ -11,6 +11,12 @@ licenses([
 
 exports_files(["LICENSE"])
 
+# INTEL_MKL start
+load("//tensorflow:tensorflow.bzl", "if_mkl")
+
+# INTEL_MKL end
+load("//tensorflow:tensorflow.bzl", "if_mkl")
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
@@ -20,14 +26,25 @@ cc_library(
         "Eigen/Eigenvalues",
         "Eigen/QR",
         "Eigen/SVD",
+        "unsupported/Eigen/MatrixFunctions",
         "unsupported/Eigen/SpecialFunctions",
         "unsupported/Eigen/CXX11/ThreadPool",
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
     ],
+    includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",
-        "@local_config_sycl//sycl:sycl",
+        "@local_config_sycl//sycl",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = ["**/OWNERS"],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

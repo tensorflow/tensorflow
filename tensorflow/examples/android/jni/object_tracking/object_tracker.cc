@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/integral_image.h"
-#include "tensorflow/examples/android/jni/object_tracking/log_streaming.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/time_log.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
@@ -97,10 +97,9 @@ void ObjectTracker::FindCorrespondences(FramePair* const frame_pair) const {
        num_keypoints_found, frame_pair->number_of_keypoints_);
 }
 
-
-void ObjectTracker::NextFrame(const uint8* const new_frame,
-                              const uint8* const uv_frame,
-                              const int64 timestamp,
+void ObjectTracker::NextFrame(const uint8_t* const new_frame,
+                              const uint8_t* const uv_frame,
+                              const int64_t timestamp,
                               const float* const alignment_matrix_2x3) {
   IncrementFrameIndex();
   LOGV("Received frame %d", num_frames_);
@@ -148,12 +147,9 @@ void ObjectTracker::NextFrame(const uint8* const new_frame,
   TimeLog("Detected objects.");
 }
 
-
 TrackedObject* ObjectTracker::MaybeAddObject(
-    const std::string& id,
-    const Image<uint8>& source_image,
-    const BoundingBox& bounding_box,
-    const ObjectModelBase* object_model) {
+    const std::string& id, const Image<uint8_t>& source_image,
+    const BoundingBox& bounding_box, const ObjectModelBase* object_model) {
   // Train the detector if this is a new object.
   if (objects_.find(id) != objects_.end()) {
     return objects_[id];
@@ -174,13 +170,12 @@ TrackedObject* ObjectTracker::MaybeAddObject(
   return object;
 }
 
-
 void ObjectTracker::RegisterNewObjectWithAppearance(
-    const std::string& id, const uint8* const new_frame,
+    const std::string& id, const uint8_t* const new_frame,
     const BoundingBox& bounding_box) {
   ObjectModelBase* object_model = NULL;
 
-  Image<uint8> image(frame_width_, frame_height_);
+  Image<uint8_t> image(frame_width_, frame_height_);
   image.FromArray(new_frame, frame_width_, 1);
 
   if (detector_ != NULL) {
@@ -200,10 +195,9 @@ void ObjectTracker::RegisterNewObjectWithAppearance(
   }
 }
 
-
 void ObjectTracker::SetPreviousPositionOfObject(const std::string& id,
                                                 const BoundingBox& bounding_box,
-                                                const int64 timestamp) {
+                                                const int64_t timestamp) {
   CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %lld", timestamp);
   CHECK_ALWAYS(timestamp <= curr_time_,
                "Timestamp too great! %lld vs %lld", timestamp, curr_time_);
@@ -237,11 +231,10 @@ void ObjectTracker::ForgetTarget(const std::string& id) {
   }
 }
 
-
-int ObjectTracker::GetKeypointsPacked(uint16* const out_data,
-                                     const float scale) const {
+int ObjectTracker::GetKeypointsPacked(uint16_t* const out_data,
+                                      const float scale) const {
   const FramePair& change = frame_pairs_[GetNthIndexFromEnd(0)];
-  uint16* curr_data = out_data;
+  uint16_t* curr_data = out_data;
   int num_keypoints = 0;
 
   for (int i = 0; i < change.number_of_keypoints_; ++i) {
@@ -309,9 +302,8 @@ BoundingBox ObjectTracker::TrackBox(const BoundingBox& region,
   return tracked_box;
 }
 
-
 BoundingBox ObjectTracker::TrackBox(const BoundingBox& region,
-                                    const int64 timestamp) const {
+                                    const int64_t timestamp) const {
   CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %lld", timestamp);
   CHECK_ALWAYS(timestamp <= curr_time_, "Timestamp is in the future!");
 
@@ -429,11 +421,11 @@ void ObjectTracker::Draw(const int canvas_width, const int canvas_height,
   if (kRenderDebugDerivative) {
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     for (int i = 0; i < kNumPyramidLevels; ++i) {
-      const Image<int32>& dx = *frame1_->GetSpatialX(i);
-      Image<uint8> render_image(dx.GetWidth(), dx.GetHeight());
+      const Image<int32_t>& dx = *frame1_->GetSpatialX(i);
+      Image<uint8_t> render_image(dx.GetWidth(), dx.GetHeight());
       for (int y = 0; y < dx.GetHeight(); ++y) {
-        const int32* dx_ptr = dx[y];
-        uint8* dst_ptr = render_image[y];
+        const int32_t* dx_ptr = dx[y];
+        uint8_t* dst_ptr = render_image[y];
         for (int x = 0; x < dx.GetWidth(); ++x) {
           *dst_ptr++ = Clip(-(*dx_ptr++), 0, 255);
         }

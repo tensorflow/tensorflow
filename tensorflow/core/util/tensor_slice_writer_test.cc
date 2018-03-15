@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <array>
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
@@ -270,13 +273,15 @@ size_t BytesPerElementHelper(DT value) {
   SavedSlice ss;
   std::array<DT, 1> lo_data;
   std::fill(lo_data.begin(), lo_data.end(), value);
-  TensorSliceWriter::SaveData(lo_data.data(), lo_data.size(), &ss);
-  int lo_byte_size = ss.ByteSize();
+  TF_EXPECT_OK(
+      TensorSliceWriter::SaveData(lo_data.data(), lo_data.size(), &ss));
+  size_t lo_byte_size = ss.ByteSizeLong();
 
   std::array<DT, 1001> hi_data;
   std::fill(hi_data.begin(), hi_data.end(), value);
-  TensorSliceWriter::SaveData(hi_data.data(), hi_data.size(), &ss);
-  int hi_byte_size = ss.ByteSize();
+  TF_EXPECT_OK(
+      TensorSliceWriter::SaveData(hi_data.data(), hi_data.size(), &ss));
+  size_t hi_byte_size = ss.ByteSizeLong();
 
   return (hi_byte_size - lo_byte_size) / (hi_data.size() - lo_data.size());
 }

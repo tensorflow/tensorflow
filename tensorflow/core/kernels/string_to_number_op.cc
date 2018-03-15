@@ -49,28 +49,14 @@ class StringToNumberOp : public OpKernel {
     auto output_flat = output_tensor->flat<OutputType>();
 
     for (int i = 0; i < input_flat.size(); ++i) {
-      Convert(input_flat(i), &output_flat(i), context);
+      OP_REQUIRES(
+          context,
+          strings::SafeStringToNumeric<OutputType>(input_flat(i).c_str(),
+                                                   &output_flat(i)),
+          errors::InvalidArgument(kErrorMessage, input_flat(i).c_str()));
     }
   }
-
- private:
-  void Convert(const string& s, OutputType* output_data,
-               OpKernelContext* context);
 };
-
-template <>
-void StringToNumberOp<float>::Convert(const string& s, float* output_data,
-                                      OpKernelContext* context) {
-  OP_REQUIRES(context, strings::safe_strtof(s.c_str(), output_data),
-              errors::InvalidArgument(kErrorMessage, s));
-}
-
-template <>
-void StringToNumberOp<int32>::Convert(const string& s, int32* output_data,
-                                      OpKernelContext* context) {
-  OP_REQUIRES(context, strings::safe_strto32(s, output_data),
-              errors::InvalidArgument(kErrorMessage, s));
-}
 
 // Registers the currently supported output types.
 #define REGISTER(type)                                           \
@@ -79,7 +65,9 @@ void StringToNumberOp<int32>::Convert(const string& s, int32* output_data,
                               .TypeConstraint<type>("out_type"), \
                           StringToNumberOp<type>)
 REGISTER(float);
+REGISTER(double);
 REGISTER(int32);
+REGISTER(int64);
 #undef REGISTER
 
 }  // namespace tensorflow

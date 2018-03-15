@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -92,6 +91,7 @@ class KilledBySignal {
  public:
   explicit KilledBySignal(int signum) : signum_(signum) {}
   bool operator()(int exit_status) const { return exit_status == signum_; }
+
  private:
   const int signum_;
 };
@@ -105,7 +105,7 @@ TEST_F(AbortOpTest, pass_error_msg) {
                    .Attr("error_msg", "abort_op_test")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  EXPECT_EXIT(RunOpKernel(), KilledBySignal(SIGABRT),
+  EXPECT_EXIT(RunOpKernel().IgnoreError(), KilledBySignal(SIGABRT),
               "Abort_op intentional failure; abort_op_test");
 }
 
@@ -113,7 +113,7 @@ TEST_F(AbortOpTest, pass_error_msg) {
 TEST_F(AbortOpTest, default_msg) {
   TF_ASSERT_OK(NodeDefBuilder("abort_op", "Abort").Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  EXPECT_EXIT(RunOpKernel(), KilledBySignal(SIGABRT),
+  EXPECT_EXIT(RunOpKernel().IgnoreError(), KilledBySignal(SIGABRT),
               "Abort_op intentional failure; ");
 }
 
@@ -123,7 +123,7 @@ TEST_F(AbortOpTest, exit_normally) {
                    .Attr("exit_without_error", true)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  EXPECT_EXIT(RunOpKernel(), ::testing::ExitedWithCode(0), "");
+  EXPECT_EXIT(RunOpKernel().IgnoreError(), ::testing::ExitedWithCode(0), "");
 }
 
 }  // namespace

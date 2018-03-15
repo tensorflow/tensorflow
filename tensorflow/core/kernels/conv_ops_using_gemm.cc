@@ -233,12 +233,27 @@ class Im2ColConvFunctor {
       return;
     }
 
-    // If this is a simple 1x1 kernel, we can skip im2col and just use a GEMM.
-    if (filter_height == filter_width && filter_width == 1 &&
-        stride_rows == 1 && stride_cols == 1) {
-      const int m = input_batches * input_width * input_height;
+    // We can just use a GEMM if the im2col is the identity operator, e.g., if
+    // the kernel is 1x1 or the input data and filter have same height/width.
+    if (filter_height == 1 && filter_width == 1 && stride_rows == 1 &&
+        stride_cols == 1) {
+      // The kernel is 1x1.
+      const int m = input_batches * input_height * input_width;
       const int n = filter_count;
       const int k = input_depth;
+      const int lda = k;
+      const int ldb = filter_count;
+      const int ldc = filter_count;
+      TGemmFunctor gemm_functor;
+      gemm_functor(context, m, n, k, input_data, lda, filter_data, ldb,
+                   output_data, ldc);
+      return;
+    } else if (filter_height == input_height && filter_width == input_width &&
+               padding == VALID) {
+      // The input data and filter have the same height/width.
+      const int m = input_batches;
+      const int n = filter_count;
+      const int k = input_height * input_width * input_depth;
       const int lda = k;
       const int ldb = filter_count;
       const int ldc = filter_count;
@@ -453,18 +468,19 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -472,18 +488,20 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
     const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 

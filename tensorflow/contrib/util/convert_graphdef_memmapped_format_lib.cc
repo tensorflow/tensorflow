@@ -15,10 +15,13 @@ limitations under the License.
 #include "tensorflow/contrib/util/convert_graphdef_memmapped_format_lib.h"
 
 #include <unordered_set>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 #include "tensorflow/core/platform/env.h"
@@ -139,9 +142,9 @@ Status ConvertConstantsToImmutable(const string& in_graph_filename,
   const auto load_graph_status =
       ReadBinaryProto(default_env, in_graph_filename, &graph_def);
   if (!load_graph_status.ok()) {
-    return tensorflow::errors::NotFound("Failed to load graph at '",
-                                        in_graph_filename, "' : ",
-                                        load_graph_status.error_message());
+    return tensorflow::errors::NotFound(
+        "Failed to load graph at '", in_graph_filename,
+        "' : ", load_graph_status.error_message());
   }
 
   NodeConverter node_converter;

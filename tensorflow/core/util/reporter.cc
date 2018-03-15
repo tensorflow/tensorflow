@@ -41,8 +41,8 @@ Status TestReporter::Benchmark(int64 iters, double cpu_time, double wall_time,
                                double throughput) {
   if (closed_) return Status::OK();
   benchmark_entry_.set_iters(iters);
-  benchmark_entry_.set_cpu_time(cpu_time);
-  benchmark_entry_.set_wall_time(wall_time);
+  benchmark_entry_.set_cpu_time(cpu_time / iters);
+  benchmark_entry_.set_wall_time(wall_time / iters);
   benchmark_entry_.set_throughput(throughput);
   return Status::OK();
 }

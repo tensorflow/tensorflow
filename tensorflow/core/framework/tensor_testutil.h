@@ -166,10 +166,11 @@ struct Expector<T, false> {
   static void Equal(const Tensor& x, const Tensor& y) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      ExpectEqual(a[i], b[i]);
     }
   }
 };
@@ -182,27 +183,29 @@ struct Expector<T, true> {
   static void Equal(const Tensor& x, const Tensor& y) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      ExpectEqual(a[i], b[i]);
     }
   }
 
-  static void Near(const T& a, const T& b, const double abs_err) {
+  static void Near(const T& a, const T& b, const double abs_err, int index) {
     if (a != b) {  // Takes care of inf.
-      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err) << "a = " << a
-                                                            << " b = " << b;
+      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err)
+          << "a = " << a << " b = " << b << " index = " << index;
     }
   }
 
   static void Near(const Tensor& x, const Tensor& y, const double abs_err) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      Near(a(i), b(i), abs_err);
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      Near(a[i], b[i], abs_err, i);
     }
   }
 };

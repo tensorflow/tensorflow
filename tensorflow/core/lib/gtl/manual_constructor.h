@@ -30,7 +30,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"  // For aligned_malloc/aligned_free
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace gtl {
@@ -127,9 +127,9 @@ class ManualConstructor {
   // Support users creating arrays of ManualConstructor<>s.  This ensures that
   // the array itself has the correct alignment.
   static void* operator new[](size_t size) {
-    return port::aligned_malloc(size, TF_LIB_GTL_ALIGN_OF(Type));
+    return port::AlignedMalloc(size, TF_LIB_GTL_ALIGN_OF(Type));
   }
-  static void operator delete[](void* mem) { port::aligned_free(mem); }
+  static void operator delete[](void* mem) { port::AlignedFree(mem); }
 
   inline Type* get() { return reinterpret_cast<Type*>(space_); }
   inline const Type* get() const {

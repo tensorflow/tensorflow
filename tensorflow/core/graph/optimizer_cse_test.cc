@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/optimizer_cse.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -85,7 +86,7 @@ class OptimizerCSETest : public ::testing::Test {
                            str_util::Join(edges, ";"));
   }
 
-  string DoCSE(std::function<bool(const Node*)> consider_fn = nullptr) {
+  string DoCSE(const std::function<bool(const Node*)>& consider_fn = nullptr) {
     string before = CanonicalGraphString(&graph_);
     LOG(ERROR) << "Before rewrites: " << before;
 

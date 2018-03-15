@@ -204,28 +204,16 @@ def stack_blocks_dense(net,
           raise ValueError('The target output_stride cannot be reached.')
 
         with variable_scope.variable_scope('unit_%d' % (i + 1), values=[net]):
-          unit_depth, unit_depth_bottleneck, unit_stride = unit
-
           # If we have reached the target output_stride, then we need to employ
           # atrous convolution with stride=1 and multiply the atrous rate by the
           # current unit's stride for use in subsequent layers.
           if output_stride is not None and current_stride == output_stride:
-            net = block.unit_fn(
-                net,
-                depth=unit_depth,
-                depth_bottleneck=unit_depth_bottleneck,
-                stride=1,
-                rate=rate)
-            rate *= unit_stride
+            net = block.unit_fn(net, rate=rate, **dict(unit, stride=1))
+            rate *= unit.get('stride', 1)
 
           else:
-            net = block.unit_fn(
-                net,
-                depth=unit_depth,
-                depth_bottleneck=unit_depth_bottleneck,
-                stride=unit_stride,
-                rate=1)
-            current_stride *= unit_stride
+            net = block.unit_fn(net, rate=1, **unit)
+            current_stride *= unit.get('stride', 1)
       net = utils.collect_named_outputs(outputs_collections, sc.name, net)
 
   if output_stride is not None and current_stride != output_stride:
@@ -234,8 +222,7 @@ def stack_blocks_dense(net,
   return net
 
 
-def resnet_arg_scope(is_training=True,
-                     weight_decay=0.0001,
+def resnet_arg_scope(weight_decay=0.0001,
                      batch_norm_decay=0.997,
                      batch_norm_epsilon=1e-5,
                      batch_norm_scale=True):
@@ -247,8 +234,6 @@ def resnet_arg_scope(is_training=True,
     training ResNets from scratch, they might need to be tuned.
 
   Args:
-    is_training: Whether or not we are training the parameters in the batch
-      normalization layers of the model.
     weight_decay: The weight decay to use for regularizing the model.
     batch_norm_decay: The moving average decay when estimating layer activation
       statistics in batch normalization.
@@ -261,7 +246,6 @@ def resnet_arg_scope(is_training=True,
     An `arg_scope` to use for the resnet models.
   """
   batch_norm_params = {
-      'is_training': is_training,
       'decay': batch_norm_decay,
       'epsilon': batch_norm_epsilon,
       'scale': batch_norm_scale,

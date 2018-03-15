@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/c_api_internal.h"
 
 namespace tensorflow {
 
@@ -77,6 +78,10 @@ void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
       assert(0);
       break;
   }
+}
+
+Status StatusFromTF_Status(const TF_Status* tf_status) {
+  return tf_status->status;
 }
 
 }  // namespace tensorflow

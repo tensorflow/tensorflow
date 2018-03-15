@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -33,12 +33,18 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                                const std::vector<int32>& stride,
                                Padding padding, TensorFormat data_format,
                                const TensorShape& tensor_in_shape) {
-  // For maxpooling, tensor_in should have 4 dimensions.
-  OP_REQUIRES(context, tensor_in_shape.dims() == 4,
-              errors::InvalidArgument("tensor_in must be 4-dimensional"));
+  // For maxpooling, tensor_in should have 2 spatial dimensions.
+  // Note: the total number of dimensions could be 4 for NHWC, NCHW,
+  // or 5 for NCHW_VECT_C.
+  OP_REQUIRES(context,
+              GetTensorSpatialDims(tensor_in_shape.dims(), data_format) == 2,
+              errors::InvalidArgument(
+                  "tensor_in_shape must have 2 spatial dimensions. ",
+                  tensor_in_shape.dims(), " ", data_format));
 
   this->data_format = data_format;
-  depth = GetTensorDim(tensor_in_shape, data_format, 'C');
+  depth = GetTensorDim(tensor_in_shape, data_format, 'C') *
+          (data_format == FORMAT_NCHW_VECT_C ? 4 : 1);
   tensor_in_cols = GetTensorDim(tensor_in_shape, data_format, 'W');
   tensor_in_rows = GetTensorDim(tensor_in_shape, data_format, 'H');
   tensor_in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
@@ -64,6 +70,8 @@ PoolParameters::PoolParameters(OpKernelContext* context,
     OP_REQUIRES_OK(
         context, GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
                                        padding, &out_width, &pad_cols));
+    pad_depth = 0;
+    out_depth = depth;
   } else {
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the
@@ -125,8 +133,7 @@ namespace functor {
       typename TTypes<T, 4>::Tensor out);                           \
   extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
 
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(Eigen::half);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -136,10 +143,13 @@ void DnnPoolingOp<T>::Compute(
     perftools::gputools::dnn::PoolingMode pooling_mode,
     const std::vector<int32>& size, const std::vector<int32>& stride,
     Padding padding, TensorFormat data_format, const Tensor& tensor_in,
-    const TensorShape& tensor_out_shape) {
+    const TensorShape& tensor_out_shape, bool propagate_nans) {
   Tensor* tensor_out = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_out_shape, &tensor_out));
+  if (tensor_in.shape().num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in.shape()};
@@ -181,7 +191,8 @@ void DnnPoolingOp<T>::Compute(
       .set_vertical_stride(params.row_stride)
       .set_horizontal_stride(params.col_stride)
       .set_vertical_padding(params.pad_rows)
-      .set_horizontal_padding(params.pad_cols);
+      .set_horizontal_padding(params.pad_cols)
+      .set_propagate_nans(propagate_nans);
 
   perftools::gputools::dnn::BatchDescriptor input_desc;
   input_desc.set_count(params.tensor_in_batch)
@@ -211,7 +222,7 @@ void DnnPoolingOp<T>::Compute(
                                       output_desc, &output_data)
                     .ok();
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+              errors::Internal("cudnn PoolForward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
@@ -230,7 +241,7 @@ void DnnPoolingGradOp<T>::Compute(
     const std::vector<int32>& size, const std::vector<int32>& stride,
     Padding padding, TensorFormat data_format, const Tensor* tensor_in,
     const Tensor* tensor_out, const Tensor& out_backprop,
-    const TensorShape& tensor_in_shape) {
+    const TensorShape& tensor_in_shape, bool propagate_nans) {
   CHECK((pooling_mode != perftools::gputools::dnn::PoolingMode::kMaximum) ||
         (tensor_in && tensor_out))
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
@@ -239,6 +250,9 @@ void DnnPoolingGradOp<T>::Compute(
   Tensor* input_backprop = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_in_shape, &input_backprop));
+  if (tensor_in_shape.num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in_shape};
@@ -320,7 +334,8 @@ void DnnPoolingGradOp<T>::Compute(
       .set_vertical_stride(params.row_stride)
       .set_horizontal_stride(params.col_stride)
       .set_vertical_padding(params.pad_rows)
-      .set_horizontal_padding(params.pad_cols);
+      .set_horizontal_padding(params.pad_cols)
+      .set_propagate_nans(propagate_nans);
 
   perftools::gputools::dnn::BatchDescriptor orig_output_desc;
   orig_output_desc.set_count(params.tensor_in_batch)
@@ -371,10 +386,11 @@ void DnnPoolingGradOp<T>::Compute(
   }
 }
 
-template class DnnPoolingOp<Eigen::half>;
-template class DnnPoolingOp<float>;
-template class DnnPoolingGradOp<Eigen::half>;
-template class DnnPoolingGradOp<float>;
+#define DEFINE_DNN_OPS(T)         \
+  template class DnnPoolingOp<T>; \
+  template class DnnPoolingGradOp<T>;
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_DNN_OPS)
+#undef DEFINE_DNN_OPS
 
 #endif  // GOOGLE_CUDA
 

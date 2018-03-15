@@ -34,21 +34,22 @@ from tensorflow.python.lib.io.file_io import stat as Stat
 from tensorflow.python.lib.io.file_io import walk as Walk
 # pylint: enable=unused-import
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('gfile.GFile', 'gfile.Open')
 class GFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(GFile, self).__init__(name=name, mode=mode)
 
 
+@tf_export('gfile.FastGFile')
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(FastGFile, self).__init__(name=name, mode=mode)
 
 

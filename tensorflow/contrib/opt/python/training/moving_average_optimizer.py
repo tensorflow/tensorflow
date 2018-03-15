@@ -12,39 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Optimizer that computes a moving average of the variables.
+"""Moving average optimizer."""
 
-Empirically it has been found that using the moving average of the trained
-parameters of a deep network is better than using its trained parameters
-directly. This optimizer allows you to compute this moving average and swap the
-variables at save time so that any code outside of the training loop will use by
-default the averaged values instead of the original ones.
-
-Example of usage:
-
-```python
-
-// Encapsulate your favorite optimizer (here the momentum one)
-// inside the MovingAverageOptimizer.
-opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
-opt = tf.contrib.opt.MovingAverageOptimizer(opt)
-// Then create your model and all its variables.
-model = build_model()
-// Add the training op that optimizes using opt.
-// This needs to be called before swapping_saver().
-opt.minimize(cost, var_list)
-// Then create your saver like this:
-saver = opt.swapping_saver()
-// Pass it to your training loop.
-    slim.learning.train(
-        model,
-        ...
-        saver=saver)
-```
-
-Note that for evaluation, the normal saver should be used instead of
-swapping_saver().
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -60,7 +29,39 @@ from tensorflow.python.training import saver
 
 
 class MovingAverageOptimizer(optimizer.Optimizer):
-  """Optimizer wrapper that maintains a moving average of parameters."""
+  """Optimizer that computes a moving average of the variables.
+
+  Empirically it has been found that using the moving average of the trained
+  parameters of a deep network is better than using its trained parameters
+  directly. This optimizer allows you to compute this moving average and swap
+  the variables at save time so that any code outside of the training loop will
+  use by default the averaged values instead of the original ones.
+
+  Example of usage:
+
+  ```python
+
+  // Encapsulate your favorite optimizer (here the momentum one)
+  // inside the MovingAverageOptimizer.
+  opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
+  opt = tf.contrib.opt.MovingAverageOptimizer(opt)
+  // Then create your model and all its variables.
+  model = build_model()
+  // Add the training op that optimizes using opt.
+  // This needs to be called before swapping_saver().
+  opt.minimize(cost, var_list)
+  // Then create your saver like this:
+  saver = opt.swapping_saver()
+  // Pass it to your training loop.
+      slim.learning.train(
+          model,
+          ...
+          saver=saver)
+  ```
+
+  Note that for evaluation, the normal saver should be used instead of
+  swapping_saver().
+  """
 
   def __init__(self, opt, average_decay=0.9999, num_updates=None,
                sequential_update=True):
@@ -82,14 +83,17 @@ class MovingAverageOptimizer(optimizer.Optimizer):
     self._optimizer = opt
     self._ema = moving_averages.ExponentialMovingAverage(
         average_decay, num_updates=num_updates)
-    self._variable_map = None
+    self._swapped_variable_name_map = None
     self._sequential_update = sequential_update
+
+  def compute_gradients(self, *args, **kwargs):
+    return self._optimizer.compute_gradients(*args, **kwargs)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     train_op = self._optimizer.apply_gradients(
         grads_and_vars, global_step=global_step, name=name)
     var_list = [x[1] for x in grads_and_vars if x[0] is not None]
-    self._variable_map = {}
+    self._swapped_variable_name_map = {}
     if self._sequential_update:
       with ops.control_dependencies([train_op]):
         ma_op = self._ema.apply(var_list)
@@ -98,9 +102,9 @@ class MovingAverageOptimizer(optimizer.Optimizer):
 
     for v in var_list:
       v_avg = self._ema.average(v)
-      self._variable_map[v.op.name] = v_avg
-      self._variable_map[v_avg.op.name] = v
-    return control_flow_ops.group(train_op, ma_op, name="train_with_avg")
+      self._swapped_variable_name_map[v.op.name] = v_avg.op.name
+      self._swapped_variable_name_map[v_avg.op.name] = v.op.name
+    return control_flow_ops.group(train_op, ma_op, name='train_with_avg')
 
   def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
     """Create a saver swapping moving averages and variables.
@@ -121,26 +125,49 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       **kwargs: Keyword arguments of `Saver()`.
 
     Returns:
-      A `tf.Saver` object.
+      A `tf.train.Saver` object.
 
     Raises:
       RuntimeError: If apply_gradients or minimize has not been called before.
+      ValueError: If var_list is provided and contains some variables but not
+        their moving average counterpart.
     """
 
-    if self._variable_map is None:
+    if self._swapped_variable_name_map is None:
       raise RuntimeError('Must call apply_gradients or minimize before '
                          'creating the swapping_saver')
     if var_list is None:
       var_list = variables.global_variables()
     if not isinstance(var_list, dict):
       var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
+
+    # OpListToDict converts variables to tensors. We make sure we can get
+    # the unique variable name for normal and resource vaiables.
+    def get_v_name(tensor):
+      if tensor.op.type == 'ReadVariableOp':
+        return tensor.op.inputs[0].op.name
+      else:
+        return tensor.op.name
+
+    v_name_to_tensor = {}
+    for tensor in six.itervalues(var_list):
+      v_name = get_v_name(tensor)
+      v_name_to_tensor[v_name] = tensor
+
     # Now swap variables and moving averages
     swapped_var_list = {}
-    for k, v in six.iteritems(var_list):
-      v_swap = self._variable_map.get(v.op.name, None)
-      if v_swap:
-        swapped_var_list[k] = v_swap
-      else:
-        swapped_var_list[k] = v
+    for k, tensor in six.iteritems(var_list):
+      v_name = get_v_name(tensor)
+      swapped_v_name = self._swapped_variable_name_map.get(v_name, None)
+      tensor_to_save = tensor
+      if swapped_v_name is not None:
+        if swapped_v_name in v_name_to_tensor:
+          tensor_to_save = v_name_to_tensor[swapped_v_name]
+        else:
+          raise ValueError(
+              ('Variable to swap %s is not part of variables to save. '
+               'This breaks MovingAverageOptimizer.') % swapped_v_name)
+      swapped_var_list[k] = tensor_to_save
+
     # Build the swapping saver.
     return saver.Saver(swapped_var_list, name=name, **kwargs)

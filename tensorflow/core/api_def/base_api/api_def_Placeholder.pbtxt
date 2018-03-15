@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "Placeholder"
+  out_arg {
+    name: "output"
+    description: <<END
+A placeholder tensor that must be replaced using the feed mechanism.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of elements in the tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+(Optional) The shape of the tensor. If the shape has 0 dimensions, the
+shape is unconstrained.
+END
+  }
+  summary: "A placeholder op for a value that will be fed into the computation."
+  description: <<END
+N.B. This operation will fail with an error if it is executed. It is
+intended as a way to represent a value that will always be fed, and to
+provide attrs that enable the fed value to be checked at runtime.
+END
+}

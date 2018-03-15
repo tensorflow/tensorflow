@@ -11,6 +11,9 @@ message VariableDef {
   // Name of the variable tensor.
   string variable_name = 1;
 
+  // Name of the tensor holding the variable's initial value.
+  string initial_value_name = 6;
+
   // Name of the initializer op.
   string initializer_name = 2;
 
@@ -19,6 +22,9 @@ message VariableDef {
 
   // Support for saving variables as slices of a larger variable.
   SaveSliceInfoDef save_slice_info_def = 4;
+
+  // Whether to represent this as a ResourceVariable.
+  bool is_resource = 5;
 }
 
 message SaveSliceInfoDef {

@@ -25,3 +25,10 @@ from __future__ import print_function
 from tensorflow.python.pywrap_tensorflow import DeleteStatSummarizer
 from tensorflow.python.pywrap_tensorflow import NewStatSummarizer
 from tensorflow.python.pywrap_tensorflow import StatSummarizer
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['DeleteStatSummarizer', 'NewStatSummarizer',
+                    'StatSummarizer']
+
+remove_undocumented(__name__, _allowed_symbols)

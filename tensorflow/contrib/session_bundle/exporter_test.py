@@ -183,7 +183,7 @@ class SaveRestoreShardedTest(test.TestCase):
                                  global_step, constants.ASSETS_DIRECTORY,
                                  "hello42.txt")
       asset_contents = gfile.GFile(assets_path).read()
-      self.assertEqual(asset_contents, b"your data here")
+      self.assertEqual(asset_contents, "your data here")
       self.assertEquals("hello42.txt", asset.filename)
       self.assertEquals("filename42:0", asset.tensor_binding.tensor_name)
       ignored_asset_path = os.path.join(export_path,

@@ -1,7 +1,835 @@
-# Changes since the last release
+# Release 1.6.0
+
+## Breaking Changes
+* Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
+* Prebuilt binaries will use AVX instructions. This may break TF on older CPUs.
+
+## Major Features And Improvements
+* New Optimizer internal API for non-slot variables. Descendants of AdamOptimizer that access _beta[12]_power will need to be updated.
+* `tf.estimator.{FinalExporter,LatestExporter}` now export stripped SavedModels. This improves forward compatibility of the SavedModel.
+* FFT support added to XLA CPU/GPU.
+
+## Bug Fixes and Other Changes
+* Documentation updates:
+  * Added a second version of Getting Started, which is aimed at ML
+newcomers.
+  * Clarified documentation on `resize_images.align_corners` parameter.
+  * Additional documentation for TPUs.
+* Google Cloud Storage (GCS):
+  * Add client-side throttle.
+  * Add a `FlushCaches()` method to the FileSystem interface, with an implementation for GcsFileSystem.
+* Other:
+  * Add `tf.contrib.distributions.Kumaraswamy`.
+  * `RetryingFileSystem::FlushCaches()` calls the base FileSystem's `FlushCaches()`.
+  * Add `auto_correlation` to distributions.
+  * Add `tf.contrib.distributions.Autoregressive`.
+  * Add SeparableConv1D layer.
+  * Add convolutional Flipout layers.
+  * When both inputs of `tf.matmul` are bfloat16, it returns bfloat16, instead of float32.
+  * Added `tf.contrib.image.connected_components`.
+  * Add `tf.contrib.framework.CriticalSection` that allows atomic variable access.
+  * Output variance over trees predictions for classifications tasks.
+  * For `pt` and `eval` commands, allow writing tensor values to filesystem as numpy files.
+  * gRPC: Propagate truncated errors (instead of returning gRPC internal error).
+  * Augment `parallel_interleave` to support 2 kinds of prefetching.
+  * Improved XLA support for C64-related ops log, pow, atan2, tanh.
+  * Add probabilistic convolutional layers.
+
+## API Changes
+* Introducing `prepare_variance` boolean with default setting to False for backward compatibility.
+* Move `layers_dense_variational_impl.py` to `layers_dense_variational.py`.
+
+## Known Bugs
+* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
+  `CUDA_ILLEGAL_ADDRESS` failures.
+
+  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
+  and CUDA 9.1 sometimes does not properly compute the carry bit when
+  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
+  large_constant]`) into 32-bit arithmetic in SASS.
+
+  As a result, these versions of `ptxas` miscompile most XLA programs which use
+  more than 4GB of temp memory.  This results in garbage results and/or
+  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
+
+  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
+  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
+  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
+  or disable XLA:GPU.
+
+  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
+  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, Ag Ramesh, Aiden Scandella, Akimasa Kimura, Alex Rothberg, Allen Goodman,
+amilioto, Andrei Costinescu, Andrei Nigmatulin, Anjum Sayed, Anthony Platanios,
+Anush Elangovan, Armando Fandango, Ashish Kumar Ram, Ashwini Shukla, Ben, Bhavani Subramanian,
+Brett Koonce, Carl Thomé, cclauss, Cesc, Changming Sun, Christoph Boeddeker, Clayne Robison,
+Clemens Schulz, Clint (Woonhyuk Baek), codrut3, Cole Gerdemann, Colin Raffel, Daniel Trebbien,
+Daniel Ylitalo, Daniel Zhang, Daniyar, Darjan Salaj, Dave Maclachlan, David Norman, Dong--Jian,
+dongsamb, dssgsra, Edward H, eladweiss, elilienstein, Eric Lilienstein, error.d, Eunji Jeong, fanlu,
+Florian Courtial, fo40225, Fred, Gregg Helt, Guozhong Zhuang, Hanchen Li, hsm207, hyunyoung2,
+ImSheridan, Ishant Mrinal Haloi, Jacky Ko, Jay Young, Jean Flaherty, Jerome, JerrikEph, Jesse
+Kinkead, jfaath, Jian Lin, jinghuangintel, Jiongyan Zhang, Joel Hestness, Joel Shor, Johnny Chan,
+Julian Niedermeier, Julian Wolff, JxKing, K-W-W, Karl Lessard, Kasper Marstal, Keiji Ariyama,
+Koan-Sin Tan, Loki Der Quaeler, Loo Rong Jie, Luke Schaefer, Lynn Jackson, ManHyuk, Matt Basta,
+Matt Smith, Matthew Schulkind, Michael, michaelkhan3, Miguel Piedrafita, Mikalai Drabovich,
+Mike Knapp, mjwen, mktozk, Mohamed Aly, Mohammad Ashraf Bhuiyan, Myungjoo Ham, Naman Bhalla,
+Namrata-Ibm, Nathan Luehr, nathansilberman, Netzeband, Niranjan Hasabnis, Omar Aflak, Ozge
+Yalcinkaya, Parth P Panchal, patrickzzy, Patryk Chrabaszcz, Paul Van Eck, Paweł Kapica, Peng Yu,
+Philip Yang, Pierre Blondeau, Po-Hsien Chu, powderluv, Puyu Wang, Rajendra Arora, Rasmus, Renat
+Idrisov, resec, Robin Richtsfeld, Ronald Eddy Jr, Sahil Singh, Sam Matzek, Sami Kama, sandipmgiri,
+Santiago Castro, Sayed Hadi Hashemi, Scott Tseng, Sergii Khomenko, Shahid, Shengpeng Liu, Shreyash
+Sharma, Shrinidhi Kl, Simone Cirillo, simsicon, Stanislav Levental, starsblinking, Stephen Lumenta,
+Steven Hickson, Su Tang, Taehoon Lee, Takuya Wakisaka, Ted Chang, Ted Ying, Tijmen Verhulsdonck,
+Timofey Kondrashov, vade, vaibhav, Valentin Khrulkov, vchigrin, Victor Costan, Viraj Navkal,
+Vivek Rane, wagonhelm, Yan Facai (颜发才), Yanbo Liang, Yaroslav Bulatov, yegord, Yong Tang,
+Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, 田传武
+
+# Release 1.5.0
+
+## Breaking Changes
+* Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
+* Starting from 1.6 release, our prebuilt binaries will use AVX instructions.
+  This may break TF on older CPUs.
+
+## Major Features And Improvements
+* [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
+  preview version is now available.
+* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
+  dev preview is now available.
+* CUDA 9.0 and cuDNN 7 support.
+* Accelerated Linear Algebra (XLA):
+  * Add `complex64` support to XLA compiler.
+  * `bfloat` support is now added to XLA infrastructure.
+  * Make `ClusterSpec` propagation work with XLA devices.
+  * Use a determinisitic executor to generate XLA graph.
+* `tf.contrib`:
+  * `tf.contrib.distributions`:
+    * Add `tf.contrib.distributions.Autoregressive`.
+    * Make `tf.contrib.distributions` QuadratureCompound classes support batch
+    * Infer `tf.contrib.distributions.RelaxedOneHotCategorical` `dtype` from arguments.
+    * Make `tf.contrib.distributions` quadrature family parameterized by
+      `quadrature_grid_and_prob` vs `quadrature_degree`.
+    * `auto_correlation` added to `tf.contrib.distributions`
+  * Add `tf.contrib.bayesflow.layers`, a collection of probabilistic (neural) layers.
+  * Add `tf.contrib.bayesflow.halton_sequence`.
+  * Add `tf.contrib.data.make_saveable_from_iterator.`
+  * Add `tf.contrib.data.shuffle_and_repeat`.
+  * Add new custom transformation: `tf.contrib.data.scan()`.
+  * `tf.contrib.distributions.bijectors`:
+    * Add `tf.contrib.distributions.bijectors.MaskedAutoregressiveFlow`.
+    * Add `tf.contrib.distributions.bijectors.Permute`.
+    * Add `tf.contrib.distributions.bijectors.Gumbel`.
+    * Add `tf.contrib.distributions.bijectors.Reshape`.
+    * Support shape inference (i.e., shapes containing -1) in the Reshape bijector.
+* Add `streaming_precision_recall_at_equal_thresholds,` a method for computing
+  streaming precision and recall with `O(num_thresholds + size of predictions)`
+  time and space complexity.
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
+* Replaced the implementation of `tf.flags` with `absl.flags`.
+* Add support for `CUBLAS_TENSOR_OP_MATH` in fp16 GEMM
+* Add support for CUDA on NVIDIA Tegra devices
+
+## Bug Fixes and Other Changes
+* Documentation updates:
+  * Clarified that you can only install TensorFlow on 64-bit machines.
+  * Added a short doc explaining how `Estimator`s save checkpoints.
+  * Add documentation for ops supported by the `tf2xla` bridge.
+  * Fix minor typos in the doc of `SpaceToDepth` and `DepthToSpace`.
+  * Updated documentation comments in `mfcc_mel_filterbank.h` and `mfcc.h` to
+    clarify that the input domain is squared magnitude spectra and the weighting
+    is done on linear magnitude spectra (sqrt of inputs).
+  * Change `tf.contrib.distributions` docstring examples to use `tfd` alias
+    rather than `ds`, `bs`.
+  * Fix docstring typos in `tf.distributions.bijectors.Bijector`.
+  * `tf.assert_equal` no longer raises `ValueError.` It now raises
+    `InvalidArgumentError,` as documented.
+  * Update Getting Started docs and API intro.
+* Google Cloud Storage (GCS):
+  * Add userspace DNS caching for the GCS client.
+  * Customize request timeouts for the GCS filesystem.
+  * Improve GCS filesystem caching.
+* Bug Fixes:
+  * Fix bug where partitioned integer variables got their wrong shapes. Before
+  * Fix correctness bug in CPU and GPU implementations of Adadelta.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+    importing into a scope. WARNING: This may break loading checkpoints of
+    graphs with partitioned variables saved after using `import_meta_graph` with
+    a non-empty `import_scope` argument.
+  * Fix bug in offline debugger which prevented viewing events.
+  * Added the `WorkerService.DeleteWorkerSession` method to the gRPC interface,
+    to fix a memory leak. Ensure that your master and worker servers are running
+    the same version of TensorFlow to avoid compatibility issues.
+  * Fix bug in peephole implementation of BlockLSTM cell.
+  * Fix bug by casting dtype of `log_det_jacobian` to match `log_prob` in
+    `TransformedDistribution`.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+  * Ensure `tf.distributions.Multinomial` doesn't underflow in `log_prob`.
+    Before this change, all partitions of an integer variable were initialized
+    with the shape of the unpartitioned variable; after this change they are
+    initialized correctly.
+* Other:
+  * Add necessary shape util support for bfloat16.
+  * Add a way to run ops using a step function to MonitoredSession.
+  * Add `DenseFlipout` probabilistic layer.
+  * A new flag `ignore_live_threads` is available on train. If set to `True`, it
+    will ignore threads that remain running when tearing down infrastructure
+    after successfully completing training, instead of throwing a RuntimeError.
+  * Restandardize `DenseVariational` as simpler template for other probabilistic
+    layers.
+  * `tf.data` now supports `tf.SparseTensor` components in dataset elements.
+  * It is now possible to iterate over `Tensor`s.
+  * Allow `SparseSegmentReduction` ops to have missing segment IDs.
+  * Modify custom export strategy to account for multidimensional sparse float
+    splits.
+  * `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` now supports arbitrary
+    dilations with GPU and cuDNNv6 support.
+  * `Estimator` now supports `Dataset`: `input_fn` can return a `Dataset`
+    instead of `Tensor`s.
+  * Add `RevBlock`, a memory-efficient implementation of reversible residual layers.
+  * Reduce BFCAllocator internal fragmentation.
+  * Add `cross_entropy` and `kl_divergence` to `tf.distributions.Distribution`.
+  * Add `tf.nn.softmax_cross_entropy_with_logits_v2` which enables backprop
+    w.r.t. the labels.
+  * GPU back-end now uses `ptxas` to compile generated PTX.
+  * `BufferAssignment`'s protocol buffer dump is now deterministic.
+  * Change embedding op to use parallel version of `DynamicStitch`.
+  * Add support for sparse multidimensional feature columns.
+  * Speed up the case for sparse float columns that have only 1 value.
+  * Allow sparse float splits to support multivalent feature columns.
+  * Add `quantile` to `tf.distributions.TransformedDistribution`.
+  * Add `NCHW_VECT_C` support for `tf.depth_to_space` on GPU.
+  * Add `NCHW_VECT_C` support for `tf.space_to_depth` on GPU.
+
+## API Changes
+* Rename `SqueezeDims` attribute to `Axis` in C++ API for Squeeze op.
+* `Stream::BlockHostUntilDone` now returns Status rather than bool.
+* Minor refactor: move stats files from `stochastic` to `common` and remove
+  `stochastic`.
+
+## Known Bugs
+* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
+  `CUDA_ILLEGAL_ADDRESS` failures.
+
+  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
+  and CUDA 9.1 sometimes does not properly compute the carry bit when
+  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
+  large_constant]`) into 32-bit arithmetic in SASS.
+
+  As a result, these versions of `ptxas` miscompile most XLA programs which use
+  more than 4GB of temp memory.  This results in garbage results and/or
+  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
+
+  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
+  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
+  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
+  or disable XLA:GPU.
+
+  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
+  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Adam Zahran, Ag Ramesh, Alan Lee, Alan Yee, Alex Sergeev, Alexander, Amir H. Jadidinejad,
+Amy, Anastasios Doumoulakis, Andrei Costinescu, Andrei Nigmatulin, Anthony Platanios,
+Anush Elangovan, arixlin, Armen Donigian, ArtëM Sobolev, Atlas7, Ben Barsdell, Bill Prin,
+Bo Wang, Brett Koonce, Cameron Thomas, Carl Thomé, Cem Eteke, cglewis, Changming Sun,
+Charles Shenton, Chi-Hung, Chris Donahue, Chris Filo Gorgolewski, Chris Hoyean Song,
+Chris Tava, Christian Grail, Christoph Boeddeker, cinqS, Clayne Robison, codrut3, concerttttt,
+CQY, Dan Becker, Dan Jarvis, Daniel Zhang, David Norman, dmaclach, Dmitry Trifonov,
+Donggeon Lim, dongpilYu, Dr. Kashif Rasul, Edd Wilder-James, Eric Lv, fcharras, Felix Abecassis,
+FirefoxMetzger, formath, FredZhang, Gaojin Cao, Gary Deer, Guenther Schmuelling, Hanchen Li,
+Hanmin Qin, hannesa2, hyunyoung2, Ilya Edrenkin, Jackson Kontny, Jan, Javier Luraschi,
+Jay Young, Jayaram Bobba, Jeff, Jeff Carpenter, Jeremy Sharpe, Jeroen BéDorf, Jimmy Jia,
+Jinze Bai, Jiongyan Zhang, Joe Castagneri, Johan Ju, Josh Varty, Julian Niedermeier,
+JxKing, Karl Lessard, Kb Sriram, Keven Wang, Koan-Sin Tan, Kyle Mills, lanhin, LevineHuang,
+Loki Der Quaeler, Loo Rong Jie, Luke Iwanski, LáSzló Csomor, Mahdi Abavisani, Mahmoud Abuzaina,
+ManHyuk, Marek ŠUppa, MathSquared, Mats Linander, Matt Wytock, Matthew Daley, Maximilian Bachl,
+mdymczyk, melvyniandrag, Michael Case, Mike Traynor, miqlas, Namrata-Ibm, Nathan Luehr,
+Nathan Van Doorn, Noa Ezra, Nolan Liu, Oleg Zabluda, opensourcemattress, Ouwen Huang,
+Paul Van Eck, peisong, Peng Yu, PinkySan, pks, powderluv, Qiao Hai-Jun, Qiao Longfei,
+Rajendra Arora, Ralph Tang, resec, Robin Richtsfeld, Rohan Varma, Ryohei Kuroki, SaintNazaire,
+Samuel He, Sandeep Dcunha, sandipmgiri, Sang Han, scott, Scott Mudge, Se-Won Kim, Simon Perkins,
+Simone Cirillo, Steffen Schmitz, Suvojit Manna, Sylvus, Taehoon Lee, Ted Chang, Thomas Deegan,
+Till Hoffmann, Tim, Toni Kunic, Toon Verstraelen, Tristan Rice, Urs KöSter, Utkarsh Upadhyay,
+Vish (Ishaya) Abrams, Winnie Tsang, Yan Chen, Yan Facai (颜发才), Yi Yang, Yong Tang,
+Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武 
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
+# Release 1.4.1
+
+## Bug Fixes and Other Changes
+* `LinearClassifier` fix.
+
+# Release 1.4.0
+
+## Major Features And Improvements
+* `tf.keras` is now part of the core TensorFlow API.
+* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+  the core TensorFlow API.
+  * The API is now subject to backwards compatibility guarantees.
+
+# Release 1.4.0
+
+## Major Features And Improvements
+* `tf.keras` is now part of the core TensorFlow API.
+* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+  the core TensorFlow API.
+  * The API is now subject to backwards compatibility guarantees.
+  * For a guide to migrating from the `tf.contrib.data` API, see the
+    [README](https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
+  * Major new features include `Dataset.from_generator()` (for building an input
+    pipeline from a Python generator), and the `Dataset.apply()` method for
+    applying custom transformation functions.
+  * Several custom transformation functions have been added, including
+    `tf.contrib.data.batch_and_drop_remainder()` and
+    `tf.contrib.data.sloppy_interleave()`.
+* Add `train_and_evaluate` for simple distributed `Estimator` training.
+* Add `tf.spectral.dct` for computing the DCT-II.
+* Add Mel-Frequency Cepstral Coefficient support to `tf.contrib.signal`
+  (with GPU and gradient support).
+* Add a self-check on `import tensorflow` for Windows DLL issues.
+* Add NCHW support to `tf.depth_to_space` on GPU.
+* TensorFlow Debugger (tfdbg):
+  * Add `eval` command to allow evaluation of arbitrary Python/numpy expressions
+    in tfdbg command-line interface. See
+    [Debugging TensorFlow Programs](https://www.tensorflow.org/programmers_guide/debugger)
+    for more details.
+  * Usability improvement: The frequently used tensor filter `has_inf_or_nan` is
+    now added to `Session` wrappers and hooks by default. So there is no need
+    for clients to call `.add_tensor_filter(tf_debug.has_inf_or_nan)` anymore.
+* SinhArcsinh (scalar) distribution added to `contrib.distributions`.
+* Make `GANEstimator` opensource.
+* `Estimator.export_savedmodel()` now includes all valid serving signatures
+  that can be constructed from the Serving Input Receiver and all available
+  ExportOutputs. For instance, a classifier may provide regression- and
+  prediction-flavored outputs, in addition to the classification-flavored one.
+  Building signatures from these allows TF Serving to honor requests using the
+  different APIs (Classify, Regress, and Predict). Furthermore,
+  `serving_input_receiver_fn()` may now specify alternative subsets of nodes
+  that may act as inputs. This allows, for instance, producing a prediction
+  signature for a classifier that accepts raw `Tensors` instead of a serialized
+  `tf.Example`.
+* Add `tf.contrib.bayesflow.hmc`.
+* Add `tf.contrib.distributions.MixtureSameFamily`.
+* Make `Dataset.shuffle()` always reshuffles after each iteration by default.
+* Add `tf.contrib.bayesflow.metropolis_hastings`.
+* Add `log_rate` parameter to `tf.contrib.distributions.Poisson`.
+* Extend `tf.contrib.distributions.bijector` API to handle some non-injective
+  transforms.
+* Java:
+  * Generics (e.g., `Tensor<Integer>`) for improved type-safety
+    (courtesy @andrewcmyers).
+  * Support for multi-dimensional string tensors.
+  * Support loading of custom operations (e.g. many in `tf.contrib`) on Linux
+    and OS X
+* All our prebuilt binaries have been built with CUDA 8 and cuDNN 6.
+  We anticipate releasing TensorFlow 1.5 with CUDA 9 and cuDNN 7.
+
+## Bug Fixes and Other Changes
+* `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM
+  states.  Specifically, it no longer ever drops the `c` (memory) state of an
+  `LSTMStateTuple`.  The new behavior leads to proper dropout behavior
+  for LSTMs and stacked LSTMs.  This bug fix follows recommendations from
+  published literature, but is a behavioral change.  State dropout behavior
+  may be customized via the new `dropout_state_filter_visitor` argument.
+* Removed `tf.contrib.training.python_input`.  The same behavior, in a more
+  flexible and reproducible package, is available via the new
+  `tf.contrib.data.Dataset.from_generator` method!
+* Fix `tf.contrib.distributions.Affine` incorrectly computing log-det-jacobian.
+* Fix `tf.random_gamma` incorrectly handling non-batch, scalar draws.
+* Resolved a race condition in TensorForest TreePredictionsV4Op.
+* Google Cloud Storage file system, Amazon S3 file system, and Hadoop file
+  system support are now default build options.
+* Custom op libraries must link against libtensorflow_framework.so
+  (installed at `tf.sysconfig.get_lib()`).
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
 
 ## Breaking Changes to the API
+* The signature of the `tf.contrib.data.rejection_resample()` function has been
+  changed. It now returns a function that can be used as an argument to
+  `Dataset.apply()`.
+* Remove `tf.contrib.data.Iterator.from_dataset()` method. Use
+  `Dataset.make_initializable_iterator()` instead.
+* Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
+* Reorder some TFGAN loss functions in a non-backwards compatible way.
 
+## Known Issues
+* In Python 3, `Dataset.from_generator()` does not support Unicode strings.
+  You must convert any strings to bytes objects before yielding them from
+  the generator.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, Abdullah Alrasheed, abenmao, Adam Salvail, Aditya Dhulipala, Ag Ramesh,
+Akimasa Kimura, Alan Du, Alan Yee, Alexander, Amit Kushwaha, Amy, Andrei Costinescu,
+Andrei Nigmatulin, Andrew Erlichson, Andrew Myers, Andrew Stepanov, Androbin, AngryPowman,
+Anish Shah, Anton Daitche, Artsiom Chapialiou, asdf2014, Aseem Raj Baranwal, Ash Hall,
+Bart Kiers, Batchu Venkat Vishal, ben, Ben Barsdell, Bill Piel, Carl Thomé, Catalin Voss,
+Changming Sun, Chengzhi Chen, Chi Zeng, Chris Antaki, Chris Donahue, Chris Oelmueller,
+Chris Tava, Clayne Robison, Codrut, Courtial Florian, Dalmo Cirne, Dan J, Darren Garvey,
+David Kristoffersson, David Norman, David RöThlisberger, DavidNorman, Dhruv, DimanNe,
+Dorokhov, Duncan Mac-Vicar P, EdwardDixon, EMCP, error.d, FAIJUL, Fan Xia,
+Francois Xavier, Fred Reiss, Freedom" Koan-Sin Tan, Fritz Obermeyer, Gao, Xiang,
+Guenther Schmuelling, Guo Yejun (郭叶军), Hans Gaiser, HectorSVC, Hyungsuk Yoon,
+James Pruegsanusak, Jay Young, Jean Wanka, Jeff Carpenter, Jeremy Rutman, Jeroen BéDorf,
+Jett Jones, Jimmy Jia, jinghuangintel, jinze1994, JKurland, Joel Hestness, joetoth,
+John B Nelson, John Impallomeni, John Lawson, Jonas, Jonathan Dekhtiar, joshkyh, Jun Luan,
+Jun Mei, Kai Sasaki, Karl Lessard, karl@kubx.ca, Kb Sriram, Kenichi Ueno, Kevin Slagle,
+Kongsea, Lakshay Garg, lhlmgr, Lin Min, liu.guangcong, Loki Der Quaeler, Louie Helm,
+lucasmoura, Luke Iwanski, Lyndon White, Mahmoud Abuzaina, Marcel Puyat, Mark Aaron Shirley,
+Michele Colombo, MtDersvan, Namrata-Ibm, Nathan Luehr, Naurril, Nayana Thorat, Nicolas Lopez,
+Niranjan Hasabnis, Nolan Liu, Nouce, Oliver Hennigh, osdamv, Patrik Erdes,
+Patryk Chrabaszcz, Pavel Christof, Penghao Cen, postBG, Qingqing Cao, Qingying Chen, qjivy,
+Raphael, Rasmi, raymondxyang, Renze Yu, resec, Roffel, Ruben Vereecken, Ryohei Kuroki,
+sandipmgiri, Santiago Castro, Scott Kirkland, Sean Vig, Sebastian Raschka, Sebastian Weiss,
+Sergey Kolesnikov, Sergii Khomenko, Shahid, Shivam Kotwalia, Stuart Berg, Sumit Gouthaman,
+superzerg, Sven Mayer, tetris, Ti Zhou, Tiago Freitas Pereira, Tian Jin, Tomoaki Oiki,
+Vaibhav Sood, vfdev, Vivek Rane, Vladimir Moskva, wangqr, Weber Xie, Will Frey,
+Yan Facai (颜发才), yanivbl6, Yaroslav Bulatov, Yixing Lao, Yong Tang, youkaichao,
+Yuan (Terry) Tang, Yue Zhang, Yuxin Wu, Ziming Dong, ZxYuan, 黄璞
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
+# Release 1.3.0
+
+See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
+
+## Major Features and Improvements
+* Added canned estimators to Tensorflow library. List of added estimators:
+  * `DNNClassifier`
+  * `DNNRegressor`
+  * `LinearClassifier`
+  * `LinearRegressor`
+  * `DNNLinearCombinedClassifier`
+  * `DNNLinearCombinedRegressor`.
+* All our prebuilt binaries have been built with cuDNN 6. We anticipate releasing TensorFlow 1.4 with cuDNN 7.
+* `import tensorflow` now goes much faster.
+* Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
+* Added an axis parameter to `tf.gather`.
+* Added a `constant_values` keyword argument to `tf.pad`.
+* Adds `Dataset.interleave` transformation.
+* Add `ConcatenateDataset` to concatenate two datasets.
+* Added Mobilenet support to TensorFlow for Poets training script.
+* Adds a block cache to the GCS filesystem with configurable block size and count.
+* SinhArcSinh bijector added.
+* Added `Dataset.list_files` API.
+* Introduces new operations and Python bindings for the Cloud TPU.
+* Adding TensorFlow-iOS CocoaPod for symmetry with tensorflow-android.
+* Introduces base implementations of ClusterResolvers.
+* Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
+* Changed references to LIBXSMM to use version 1.8.1.
+* TensorFlow Debugger (tfdbg):
+  * Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+  * Display feed values with the `print_feed` or `pf` command and clickable links in the curses UI.
+  * Runtime profiler at the op level and the Python source line level with the `run -p` command.
+* Initial release of the statistical distribution library `tf.distributions`.
+* GPU kernels and speed improvements for unary `tf.where` and `tf.nn.top_k`.
+* Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
+* Added `tf.contrib.signal`, a library for signal processing primitives.
+* Added `tf.contrib.resampler`, containing CPU and GPU ops for differentiable resampling of images.
+
+## Breaking Changes to the API
+* `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
+* Breaking change to `tf.contrib.data.Dataset` APIs that expect a nested structure. Lists are now converted to `tf.Tensor` implicitly. You may need to change uses of lists to tuples in existing code. In addition, dicts are now supported as a nested structure.
+
+## Changes to contrib APIs
+* Adds tf.contrib.nn.rank_sampled_softmax_loss, a sampled-softmax variant that can improve rank loss.
+* `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
+* Adds time series models to contrib. See contrib/timeseries/README.md for details.
+* Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+
+## Known Issues
+* Tensorflow_gpu compilation fails with Bazel 0.5.3.
+
+## Bug Fixes and Other Changes
+* Fixes `strides` and `begin` dtype mismatch when slicing using int64 Tensor index in python.
+* Improved convolution padding documentation.
+* Add a tag constant, gpu, to present graph with GPU support.
+* `saved_model.utils` now support SparseTensors transparently.
+* A more efficient implementation of non-max suppression.
+* Add support for the shrinkage-type L2 to FtrlOptimizer in addition to the online L2 it already supports.
+* Fix negative variance in moments calculation.
+* Expand UniqueOp Benchmark Tests to cover more collision cases.
+* Improves stability of GCS filesystem on Mac.
+* Add time estimation to HloCostAnalysis.
+* Fixed the bug in Estimator that params in constructor was not a deepcopy of the user provided one. This bugs inadvertently enabled user to mutate the params after the creation of Estimator, leading to potentially undefined behavior.
+* Added None check for save_path in `saver.restore`.
+* Register devices under their legacy names in device_mgr to ease the transition to clusterspec-propagated configurations.
+* VectorExponential added to distributions.
+* Add a bitwise module with bitwise_and, bitwise_or, bitwise_xor, and invert functions.
+* Add fixed-grid ODE integration routines.
+* Allow passing bounds to ScipyOptimizerInterface.
+* Correctness fixes for fft_length parameter to `tf.spectral.rfft` & `tf.spectral.irfft`.
+* Exported model signatures using the 'predict' method will no longer have their input and output keys silently ignored and rewritten to 'inputs' and 'outputs'. If a model was exported with different names before 1.2, and is now served with tensorflow/serving, it will accept requests using 'inputs' and 'outputs'. Starting at 1.2, such a model will accept the keys specified during export. Therefore, inference requests using 'inputs' and 'outputs' may start to fail. To fix this, either update any inference clients to send requests with the actual input and output keys used by the trainer code, or conversely, update the trainer code to name the input and output Tensors 'inputs' and 'outputs', respectively. Signatures using the 'classify' and 'regress' methods are not affected by this change; they will continue to standardize their input and output keys as before.
+* Add in-memory caching to the Dataset API.
+* Set default end_of_sequence variable in datasets iterators to false.
+* [Performance] Increase performance of `tf.layers.conv2d` when setting use_bias=True by 2x by using nn.bias_add.
+* Update iOS examples to use CocoaPods, and moved to tensorflow/examples/ios.
+* Adds a family= attribute in `tf.summary` ops to allow controlling the tab name used in Tensorboard for organizing summaries.
+* When GPU is configured, do not require --config=cuda, instead, automatically build for GPU if this is requested in the configure script.
+* Fix incorrect sampling of small probabilities in CPU/GPU multinomial.
+* Add a list_devices() API on sessions to list devices within a cluster. Additionally, this change augment the ListDevices master API to support specifying a session.
+* Allow uses of over-parameterized separable convolution.
+* TensorForest multi-regression bug fix.
+* Framework now supports armv7, cocoapods.org now displays correct page.
+* Script to create iOS framework for CocoaPods.
+* Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
+* TensorFlow Debugger (tfdbg):
+  * Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
+  * Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4F2E4A2E, Adriano Carmezim, Adrià Arrufat, Alan Yee, Alex Lattas, Alex Rothberg,
+Alexandr Baranezky, Ali Siddiqui, Andreas Solleder, Andrei Costinescu, Andrew Hundt,
+Androbin, Andy Kernahan, Anish Shah, Anthony Platanios, Arvinds-Ds, b1rd, Baptiste
+Arnaud, Ben Mabey, Benedikt Linse, Beomsu Kim, Bo Wang, Boyuan Deng, Brett Koonce,
+Bruno Rosa, Carl Thomé, Changming Sun, Chase Roberts, Chirag Bhatia, Chris Antaki,
+Chris Hoyean Song, Chris Tava, Christos Nikolaou, Croath Liu, cxx, Czxck001, Daniel
+Ylitalo, Danny Goodman, Darren Garvey, David Brailovsky, David Norman, DavidNorman,
+davidpham87, ddurham2, Dhruv, DimanNe, Drew Hintz, Dustin Tran, Earthson Lu, ethiraj,
+Fabian Winnen, Fei Sun, Freedom" Koan-Sin Tan, Fritz Obermeyer, Gao, Xiang, Gautam,
+Guenther Schmuelling, Gyu-Ho Lee, Hauke Brammer, horance, Humanity123, J Alammar,
+Jayeol Chun, Jeroen BéDorf, Jianfei Wang, jiefangxuanyan, Jing Jun Yin, Joan Puigcerver,
+Joel Hestness, Johannes Mayer, John Lawson, Johnson145, Jon Malmaud, Jonathan Alvarez-Gutierrez,
+Juang, Yi-Lin, Julian Viereck, Kaarthik Sivashanmugam, Karl Lessard, karl@kubx.ca, Kevin
+Carbone, Kevin Van Der Burgt, Kongsea, ksellesk, lanhin, Lef Ioannidis, Liangliang He,
+Louis Tiao, Luke Iwanski, LáSzló Csomor, magixsno, Mahmoud Abuzaina, Marcel Hlopko, Mark
+Neumann, Maxwell Paul Brickner, mdfaijul, MichaëL Defferrard, Michał JastrzęBski, Michele
+Colombo, Mike Brodie, Mosnoi Ion, mouradmourafiq, myPrecious, Nayana Thorat,
+Neeraj Kashyap, Nelson Liu, Niranjan Hasabnis, Olivier Moindrot, orome, Pankaj Gupta, Paul
+Van Eck, peeyush18, Peng Yu, Pierre, preciousdp11, qjivy, Raingo, raoqiyu, ribx, Richard S.
+Imaoka, Rishabh Patel, Robert Walecki, Rockford Wei, Ryan Kung, Sahil Dua, Sandip Giri, Sayed
+Hadi Hashemi, sgt101, Shitian Ni, Shuolongbj, Siim PõDer, Simon Perkins, sj6077, SOLARIS,
+Spotlight0xff, Steffen Eberbach, Stephen Fox, superryanguo, Sven Mayer, Tapan Prakash,
+Tiago Morais Morgado, Till Hoffmann, Tj Rana, Vadim Markovtsev, vhasanov, Wei Wu,
+windead, Yan (Asta) Li, Yan Chen, Yann Henon, Yi Wang, Yong Tang, yorkie, Yuan (Terry)
+Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
+# Release 1.2.1
+
+## Bug Fixes and Other Changes
+* Updating markdown version required to >= 2.6.8.
+* Support tensors as dropout rates again, by removing the min(max(..))
+
+# Release 1.2.0
+
+## Major Features and Improvements
+* Python 3.6 support on Windows.
+* Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
+* Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
+* Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
+* `RNNCell` objects now subclass `tf.layers.Layer`.  The strictness described
+  in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
+  it caches its scope.  All future uses of the RNNCell will reuse variables from
+  that same scope.  This is a breaking change from the behavior of RNNCells
+  in TensorFlow versions <= 1.0.1.  TensorFlow 1.1 had checks in place to
+  ensure old code works correctly with the new semantics; this version
+  allows more flexible uses of RNNCell but can lead to subtle errors if
+  using code meant for TensorFlow <= 1.0.1.  For example, writing:
+  `MultiRNNCell([lstm] * 5)` will now build a 5-layer LSTM stack where each
+  layer shares the **same** parameters.  To get 5 layers each with their own
+  parameters, write: `MultiRNNCell([LSTMCell(...) for _ in range(5)])`.
+  If at all unsure, first test your code with TF 1.1; ensure it raises no
+  errors, and then upgrade to TF 1.2.
+* RNNCells' variable names have been renamed for consistency with Keras layers.
+  Specifically, the previous variable names "weights" and "biases" have
+  been changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the tool
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
+* Many of the RNN functions and classes that were in the `tf.nn` namespace
+  before the 1.0 release and which were moved to `tf.contrib.rnn` have now
+  been moved back to the core namespace.  This includes
+  `RNNCell`, `LSTMCell`, `GRUCell`, and a number of other cells.  These
+  now reside in `tf.nn.rnn_cell` (with aliases in `tf.contrib.rnn` for backwards
+  compatibility).  The original `tf.nn.rnn` function is now `tf.nn.static_rnn`,
+  and the bidirectional static and state saving static rnn functions are also
+  now back in the `tf.nn` namespace.
+
+  Notable exceptions are the `EmbeddingWrapper`, `InputProjectionWrapper` and
+  `OutputProjectionWrapper`,  which will slowly be moved to deprecation
+  in `tf.contrib.rnn`.  These are inefficient wrappers that should often
+  be replaced by calling `embedding_lookup` or `layers.dense` as pre- or post-
+  processing of the rnn.  For RNN decoding, this functionality has been replaced
+  with an alternative API in `tf.contrib.seq2seq`.
+* Intel MKL Integration (https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture). Intel developed a number of
+  optimized deep learning primitives: In addition to matrix multiplication and
+  convolution, these building blocks include:
+  Direct batched convolution
+  Pooling: maximum, minimum, average
+  Normalization: LRN, batch normalization
+  Activation: rectified linear unit (ReLU)
+  Data manipulation: multi-dimensional transposition (conversion), split,
+  concat, sum and scale.
+* TensorForest Estimator now supports SavedModel export for serving.
+* Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
+* TensorFlow C library now available for Windows.
+* We released a new open-source version of TensorBoard.
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* Android releases of TensorFlow are now pushed to jcenter for easier
+  integration into apps. See
+  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
+  for more details.
+
+## Deprecations
+
+* TensorFlow 1.2 may be the last time we build with cuDNN 5.1. Starting with
+  TensorFlow 1.3, we will try to build all our prebuilt binaries with cuDNN 6.0.
+  While we will try to keep our source code compatible with cuDNN 5.1, it will
+  be best effort.
+
+## Breaking Changes to the API
+* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and has simplified method signatures.
+
+## Changes to contrib APIs
+* Added `tf.contrib.util.create_example`.
+* Added bilinear interpolation to `tf.contrib.image`.
+* Add `tf.contrib.stateless` for random ops with custom seed control.
+* MultivariateNormalFullCovariance added to contrib/distributions/
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
+* Added `tf.contrib.kernel_methods` module with Ops and estimators for primal
+  (explicit) kernel methods in TensorFlow.
+
+## Bug Fixes and Other Changes
+* In python, `Operation.get_attr` on type attributes returns the Python DType
+  version of the type to match expected get_attr documentation rather than the
+  protobuf enum.
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
+* Changed MIN_SDK version to 8.0 when building iOS libraries.
+* Fixed LIBXSMM integration.
+* Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
+* Improve implicit broadcasting lowering.
+* Improving stability of GCS/BigQuery clients by a faster retrying of stale transmissions.
+* Remove OpKernelConstruction::op_def() as part of minimizing proto dependencies.
+* VectorLaplaceDiag distribution added.
+* Android demo no longer requires libtensorflow_demo.so to run (libtensorflow_inference.so still required)
+* Added `categorical_column_with_vocabulary_file`.
+* Introduce ops for batching/unbatching tensors across Session::Run() calls.
+* Add tf.log_sigmoid(x) = tf.log(tf.sigmoid(x)) = -tf.nn.softplus(-x).
+* Changed hooks lists to immutable tuples, and now allow any iterable for the associated arguments.
+* Introduce TFDecorator.
+* Added an Mfcc op for speech feature generation.
+* Improved DirectSession::Run() overhead and error checking. Feeding a value of the wrong type will now synchronously raise an INVALID_ARGUMENT error instead of asynchronously raising an INTERNAL error. Code that depends on the (undefined) behavior when feeding a tensor of the wrong type may need to be updated.
+* Added unreduced NONE, and reduced MEAN options for losses. Removed "WEIGHTED_" prefix from other Reduction constants.
+* assertAllClose now handles dicts.
+* Added Gmock matcher for HloInstructions.
+* Add var name to errors on variable restore.
+* Added an AudioSpectrogram op for audio feature generation.
+* Added `reduction` arg to losses.
+* `tf.placeholder` can represent scalar shapes and partially known.
+* Remove estimator_spec(mode) argument.
+* Added an AudioSpectrogram op for audio feature generation.
+* TensorBoard disables all runs by default if there are more than 40 runs.
+* Removed old doc generator code.
+* GCS file system integration now supports domain buckets, e.g gs://bucket.domain.com/path.
+* Add `tf.summary.text` for outputting text to TensorBoard.
+* The "run" command of tfdbg's command-line interface now supports filtering of tensors by node name, op type and tensor dtype.
+* `tf.string_to_number` now supports int64 and float64 outputs.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4F2E4A2E, Aaron Schumacher, Abhi Agg, admcrae, Adriano Carmezim, Adrià Arrufat,
+agramesh1, Akimitsu Seo, Alan Mosca, Alex Egg, Alex Rothberg, Alexander Heinecke,
+Alexander Matyasko, Alexandr Baranezky, Alexandre Caulier, Ali Siddiqui, Anand Venkat,
+Andrew Hundt, Androbin, Anmol Sharma, Arie, Arno Leist, Arron Cao, AuréLien Geron, Bairen Yi,
+Beomsu Kim, Carl Thomé, cfperez, Changming Sun, Corey Wharton, critiqjo, Dalei Li, Daniel
+Rasmussen, Daniel Trebbien, DaríO Hereñú, David Eng, David Norman, David Y. Zhang, Davy Song, ddurham2,
+Deepak Subburam, Dmytro Kyrychuk, Dominic Rossi, Dominik SchlöSser, Dustin Tran,
+Eduardo Pinho, Egil Martinsson, Elliot Saba, Eric Bigelow, Erik Smistad, Evan Klitzke,
+Fabrizio Milo, Falcon Dai, Fei Gao, FloopCZ, Fung Lam, Gautam, GBLin5566, Greg Peatfield,
+Gu Wang, Guenther Schmuelling, Hans Pabst, Harun Gunaydin, Huaizheng, Ido Shamay, Ikaro
+Silva, Ilya Edrenkin, Immexxx, James Mishra, Jamie Cooke, Jay Young, Jayaram Bobba,
+Jianfei Wang, jinghua2, Joey Meyer, John Maidens, Jonghoon Jin, Julian Villella,
+Jun Kim, Jun Shi, Junwei Pan, jyegerlehner, Karan Desai, Karel Van De Plassche,
+Kb Sriram, KhabarlakKonstantin, Koan-Sin Tan, krivard, Kwotsin, Leandro Gracia Gil,
+Li Chen, Liangliang He, Louie Helm, lspvic, Luiz Henrique Soares, LáSzló Csomor,
+Mark Wong, Mathew Wicks, Matthew Rahtz, Maxwell Paul Brickner, Michael Hofmann, Miguel
+Flores Ruiz De Eguino, MikeTam1021, Mortada Mehyar, Mycosynth, Namnamseo,
+Nate Harada, Neven Miculinic, Nghia Tran, Nick Lyu, Niranjan Hasabnis, Nishidha, Oleksii
+Kuchaiev, Oyesh Mann Singh, Panmari, Patrick, Paul Van Eck, Piyush Chaudhary, Quim Llimona,
+Raingo, Richard Davies, Ruben Vereecken, Sahit Chintalapudi, Sam Abrahams, Santiago Castro,
+Scott Sievert, Sean O'Keefe, Sebastian Schlecht, Shane, Shubhankar Deshpande, Spencer Schaber,
+Sunyeop Lee, t13m, td2014, Thomas H. P. Andersen, Toby Petty, Umang Mehta,
+Vadim Markovtsev, Valentin Iovene, Vincent Zhao, Vit Stepanovs, Vivek Rane, Vu Pham, wannabesrevenge,
+weipingpku, wuhaixutab, wydwww, Xiang Gao, Xiaolin Lin, xiaoyaozhuzi, Yaroslav Bulatov, Yi Liu,
+Yoshihiro Sugi, Yuan (Terry) Tang, Yuming Wang, Yuxin Wu, Zader Zheng, Zhaojun Zhang, zhengjiajin,
+ZhipengShen, Ziming Dong, zjj2wry
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
+# Release 1.1.0
+
+## Major Features and Improvements
+* Added Java API support for Windows.
+* Added `tf.spectral` module. Moved existing FFT ops to `tf.spectral` while
+  keeping an alias in the old location (`tf.*`).
+* Added 1D, 2D and 3D Fourier transform ops for real signals to `tf.spectral`.
+* Added a `tf.bincount` function.
+* Added Keras 2 API to contrib.
+* Added a new lightweight queue-like object - `RecordInput`.
+* Added `tf.contrib.image.compose_transforms` function.
+* Bring `tf.estimator.*` into the API. Non-deprecated functionality from `tf.contrib.learn.Estimator` is moved to `tf.estimator.Estimator` with cosmetic changes.
+* Docker images: TF images on gcr.io and Docker Hub are upgraded to ubuntu:16.04.
+* Added the following features to TensorFlow Debugger (tfdbg):
+  * Ability to inspect Python source file against TF ops and tensors (command `print_source` / `ps`)
+  * New navigation bar in Curses-based UI
+  * NodeStepper (command `invoke_stepper`) now uses intermediate tensor dumps. It also uses `TensorHandles` as direct feeds during successive `cont` calls for improved performance and reduced memory consumption.
+* Initial release of installation guides for Java, C, and Go.
+* Added Text Dashboard to TensorBoard.
+
+## Deprecations
+
+* TensorFlow 1.1.0 will be the last time we release a binary with Mac GPU support. Going forward, we will stop testing on Mac GPU systems. We continue to welcome patches that maintain Mac GPU support, and we will try to keep the Mac GPU build working.
+
+## Changes to contrib APIs
+* The behavior of RNNCells is now stricter due to the transition towards making RNNCells act more like Keras layers.
+  * If an RNNCell is used twice in two different variable scopes, an error is raised describing how to avoid this behavior.
+  * If an RNNCell is used in a variable scope with existing conflicting variables, an error is raised showing that the RNNCell must be constructed with argument `reuse=True`.
+* Deprecated contrib/distributions `pmf`, `pdf`, `log_pmf`, `log_pdf`.
+* Moved `bayesflow.special_math` to distributions.
+* `tf.contrib.tensor_forest.python.tensor_forest.RandomForestDeviceAssigner` removed.
+* Changed some MVN classes and parameters:
+  * `tf.contrib.distributions.MultivariateNormalFull` replaced by `tf.contrib.distributions.MultivariateNormalTriL`.
+  * `tf.contrib.distributions.MultivariateNormalCholesky` replaced by `tf.contrib.distributions.MultivariateNormalTriL`
+  * `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev` replaced
+    by `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale`
+  * `tf.contrib.distributions.MultivariateNormalDiag` arguments changed from `mu`, `diag_stddev` to `log`, `scale_diag`.
+  * `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT` removed.
+  * `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank` added.
+
+## Bug Fixes and Other Changes
+* Java: Support for loading models exported using the SavedModel API (courtesy @EronWright).
+* Go: Added support for incremental graph execution.
+* Fix a bug in the WALS solver when single-threaded.
+* Added support for integer sparse feature values in `tf.contrib.layers.sparse_column_with_keys`.
+* Fixed `tf.set_random_seed(0)` to be deterministic for all ops.
+* Stability improvements for the GCS file system support.
+* Improved TensorForest performance.
+* Added support for multiple filename globs in `tf.matching_files`.
+* `LogMessage` now includes a timestamp as beginning of a message.
+* Added MultiBox person detector example standalone binary.
+* Android demo: Makefile build functionality added to build.gradle to fully support building TensorFlow demo in Android on Windows.
+* Android demo: read MultiBox priors from txt file rather than protobuf.
+* Added colocation constraints to `StagingArea`.
+* `sparse_matmul_op` reenabled for Android builds.
+* Restrict weights rank to be the same as the broadcast target, to avoid ambiguity on broadcast rules.
+* Upgraded libxsmm to 1.7.1 and applied other changes for performance and memory usage.
+* Fixed bfloat16 integration of LIBXSMM sparse mat-mul.
+* Improved performance and reduce memory usage by allowing ops to forward input buffers to output buffers and perform computations in-place.
+* Improved the performance of CPU assignment for strings.
+* Speed up matrix * vector multiplication and matrix * matrix with unknown shapes.
+* C API: Graph imports now support input remapping, control dependencies, and returning imported nodes (see `TF_GraphImportGraphDefWithReturnOutputs()`)
+* Multiple C++ API updates.
+* Multiple TensorBoard updates including:
+  * Users can now view image summaries at various sampled steps (instead of just the last step).
+  * Bugs involving switching runs as well as the image dashboard are fixed.
+  * Removed data download links from TensorBoard.
+  * TensorBoard uses a relative data directory, for easier embedding.
+  * TensorBoard automatically ignores outliers for domain calculation, and formats proportional values consistently.
+* Multiple tfdbg bug fixes:
+  * Fixed Windows compatibility issues.
+  * Command history now persists across runs.
+  * Bug fix in graph validation related to `tf.while_loops`.
+* Java Maven fixes for bugs with Windows installation.
+* Backport fixes and improvements from external keras.
+* Keras config file handling fix.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex
+Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton
+Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben
+Visser, Brady Zhou, Calpa Liu, Changming Sun, Chih Cheng Liang, Christopher
+Berner, Clark Zinzow, @Conchylicultor, Dan Ellis, Dan J, Dan Jarvis, Daniel
+Ylitalo, Darren Garvey, David Norman, David Truong, @DavidNorman, Dimitar
+Pavlov, Dmitry Persiyanov, @Eddie, @elirex, Erfan Noury, Eron Wright, Evgeny
+Mazovetskiy, Fabrizio (Misto) Milo, @fanlu, Fisher Coder, Florian Courtial,
+Franck Dernoncourt, Gagan Goel, Gao, Xiang, @Gautam, Gefu Tang, @guilherme,
+@guschmue, Hannah Provenza, Hans Pabst, @hartb, Hsiao Yi, Huazuo Gao, Igor
+ChorążEwicz, Ivan Smirnov, Jakub Kolodziejczyk, Jason Gavris, Jason Morton, Jay
+Young, Jayaram Bobba, Jeremy Sawruk, Jiaming Liu, Jihun Choi, @jiqiu, Joan Thibault,
+John C F, Jojy George Varghese, Jon Malmaud, Julian Berman, Julian Niedermeier,
+Junpeng Lao, Kai Sasaki, @Kankroc, Karl Lessard, Kyle Bostelmann, @Lezcano, Li
+Yi, Luo Yun, @lurker, Mahmoud-Abuzaina, Mandeep Singh, Marek Kolodziej, Mark
+Szepieniec, Martial Hue, Medhat Omr, Memo Akten, Michael Gharbi, MichaëL Defferrard,
+Milan Straka, @MircoT, @mlucool, Muammar Ibn Faisal, Nayana Thorat, @nghiattran,
+Nicholas Connor, Nikolaas Steenbergen, Niraj Patel, Niranjan Hasabnis, @Panmari,
+Pavel Bulanov, Philip Pries Henningsen, Philipp Jund, @polonez, Prayag Verma, Rahul
+Kavi, Raphael Gontijo Lopes, @rasbt, Raven Iqqe, Reid Pryzant, Richard Shin, Rizwan
+Asif, Russell Kaplan, Ryo Asakura, RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay,
+Sean Papay, @seaotterman, @selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano
+Probst, @taknevski, @tbonza, @teldridge11, Tim Anglade, Tomas Reimers, Tomer Gafner,
+Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad Firoiu,
+@wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yi Liu, Yuan (Terry) Tang, @Yufeng,
+Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
+
+# Release 1.0.1
+
+## Bug Fixes and Other Changes
+* Change GraphConstructor to not increase the version when importing, but instead take the min of all versions.
+* Google Cloud Storage fixes.
+* Removed `tf.core` and `tf.python` modules from the API. These were never intended to be exposed. Please use the same objects through top-level `tf` module instead.
+
+# Release 1.0.0
+
+## Major Features and Improvements
+* XLA (experimental): initial release of [XLA](https://www.tensorflow.org/versions/master/experimental/xla/), a domain-specific compiler for TensorFlow graphs, that targets CPUs and GPUs.
+* TensorFlow Debugger (tfdbg): command-line interface and API.
+* New python 3 docker images added.
+* Made pip packages pypi compliant. TensorFlow can now be installed by `pip
+  install tensorflow` command.
+* Several python API calls have been changed to resemble NumPy more closely.
+* Android: person detection + tracking demo implementing Scalable Object
+  Detection using Deep Neural Networks.
+* New (experimental) [Java API](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/java).
+* Add new Android image stylization demo based on "A Learned Representation For Artistic Style", and add YOLO object detector support.
+
+## Breaking Changes to the API
+To help you upgrade your existing TensorFlow Python code to match the API changes below, we have prepared a [conversion script](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/compatibility).
+* TensorFlow/models have been moved to a separate github repository.
 * Division and modulus operators (/, //, %) now match Python (flooring)
   semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
   integer truncation based behaviors you can use `tf.truncatediv`
@@ -51,14 +879,98 @@
   keywords. In particular we now match NumPy order as
   `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
   made `tf.sparse_split` require keyword arguments.
-* Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
-  In the Beta release, we will update `tf.concat` to match argument order of
-  `tf.concat_v2.
-* tf.image.decode_jpeg by default uses the faster DCT method, sacrificing
+* `tf.concat` now takes arguments in reversed order and with different keywords. In particular we now match NumPy order as `tf.concat(values, axis, name)`.
+* `tf.image.decode_jpeg` by default uses the faster DCT method, sacrificing
   a little fidelity for improved speed. One can revert to the old
-  behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
+  behavior by specifying the attribute `dct_method='INTEGER_ACCURATE'`.
 * `tf.complex_abs` has been removed from the Python interface. `tf.abs`
   supports complex tensors and should be used instead.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
+* Template.`var_scope` property renamed to `.variable_scope`
+* SyncReplicasOptimizer is removed and SyncReplicasOptimizerV2 renamed to SyncReplicasOptimizer.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  `tf.zeros_initializer` with `tf.zeros_initializer()`.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
+* Replace tf.scalar_summary, tf.histogram_summary, tf.audio_summary, tf.image_summary with tf.summary.scalar, tf.summary.histogram, tf.summary.audio, tf.summary.image, respectively. The new summary ops take name rather than tag as their first argument, meaning summary ops now respect TensorFlow name scopes.
+* Replace tf.train.SummaryWriter and tf.train.SummaryWriterCache with tf.summary.FileWriter and tf.summary.FileWriterCache.
+* Removes RegisterShape from public API. Use C++ shape function registration
+  instead.
+* Deprecated `_ref` dtypes from the python API.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
+* Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
+* tf.nn.rnn_cell.* and most functions in tf.nn.rnn.* (with the exception of dynamic_rnn and raw_rnn) are temporarily in tf.contrib.rnn.  They will be moved back into core for TF 1.2.
+* `tf.nn.sampled_softmax_loss` and `tf.nn.nce_loss` have both changed their API such that you need to switch the `inputs, labels` to `labels, inputs` parameters.
+* The shape keyword argument of the `SparseTensor` constructor changes its name to `dense_shape` between Tensorflow 0.12 and Tensorflow 1.0.
+
+## Bug Fixes and Other Changes
+* Numerous C++ API updates.
+* New op: `parallel_stack`.
+* Introducing common tf io compression options constants for
+  RecordReader/RecordWriter.
+* Add `sparse_column_with_vocabulary_file`, to specify a feature column that
+  transform string features to IDs, where the mapping is defined by a vocabulary
+  file.
+* Added `index_to_string_table` which returns a lookup table that maps indices to
+  strings.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Add a `ParallelForWithWorkerId` function.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Support restore session from checkpoint files in v2 in `contrib/session_bundle`.
+* Added a tf.contrib.image.rotate function for arbitrary angles.
+* Added `tf.contrib.framework.filter_variables` as a convenience function to
+  filter lists of variables based on regular expressions.
+* `make_template()` takes an optional `custom_getter_ param`.
+* Added comment about how existing directories are handled by
+  `recursive_create_dir`.
+* Added an op for QR factorizations.
+* Divides and mods in Python API now use flooring (Python) semantics.
+* Android: pre-built libs are now built nightly.
+* Android: cmake/gradle build for TensorFlow Inference library under
+  `contrib/android/cmake`
+* Android: Much more robust Session initialization code.
+* Android: TF stats now exposed directly in demo and log when debug mode is
+  active
+* Android: new/better README.md documentation
+* saved_model is available as `tf.saved_model`.
+* Empty op is now stateful.
+* Improve speed of scatter_update on the cpu for ASSIGN operations.
+* Change `reduce_join` to treat `reduction_indices` in the same way as other `reduce_` ops.
+* Move `TensorForestEstimator` to `contrib/tensor_forest`.
+* Enable compiler optimizations by default and allow configuration in configure.
+* `tf.divide` now honors the name field.
+* Make metrics weight broadcasting more strict.
+* Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
+* Enable inplace update ops for strings on CPU. Speed up string concat.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aaron Hu, Abhishek Aggarwal, Adam Michael, Adriano Carmezim, @AfirSraftGarrier,
+Alexander Novikov, Alexander Rosenberg Johansen, Andrew Gibiansky, Andrew Hundt,
+Anish Shah, Anton Loss, @b0noI, @BoyuanJiang, Carl Thomé, Chad Kennedy, Comic
+Chang, Connor Braa, Daniel N. Lang, Daniel Trebbien,
+@danielgordon10, Darcy Liu, Darren Garvey, Dmitri Lapin, Eron Wright, Evan
+Cofer, Fabrizio Milo, Finbarr Timbers, Franck Dernoncourt, Garrett Smith,
+@guschmue, Hao Wei, Henrik Holst, Huazuo Gao, @Ian, @Issac, Jacob Israel,
+Jangsoo Park, Jin Kim, Jingtian Peng, John Pope, Kye Bostelmann, Liangliang He,
+Ling Zhang, Luheng He, Luke Iwanski, @lvli, Michael Basilyan, Mihir Patel,
+Mikalai Drabovich, Morten Just, @newge, Nick Butlin, Nishant Shukla,
+Pengfei Ni, Przemyslaw Tredak, @rasbt, @Ronny, Rudolf Rosa, @RustingSword,
+Sam Abrahams, Sam Putnam, @SeongAhJo, Shi Jiaxin, @skavulya, Steffen MüLler,
+@TheUSER123, @tiriplicamihai, @vhasanov, Victor Costan, Vit Stepanovs,
+Wangda Tan, Wenjian Huang, Xingdong Zuo, Yaroslav Bulatov, Yota Toyama,
+Yuan (Terry) Tang, Yuxin Wu
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
 
 # Release 0.12.0
 
@@ -98,15 +1010,15 @@
 ## Breaking Changes to the API
 
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
-  indexing now starts from 1 instead of 0, and bus_id==0 is used where
-  previously BUS_ANY was used.
+  indexing now starts from 1 instead of 0, and `bus_id==0` is used where
+  previously `BUS_ANY` was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
-  intead of a bool. Any callers to this function can be converted to a bool
+  instead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
 * The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed TF_Port to TF_Output in the C API.
+* Renamed `TF_Port` to `TF_Output` in the C API.
 * Removes RegisterShape from public API. Use C++ shape function registration instead.
   indexing now starts from 1 instead of 0, and `bus_id==0` is used where
   previously `BUS_ANY` was used.
@@ -120,7 +1032,7 @@
 * `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
   `SparseTensorValue.shape`.
 * `Env::FileExists` and `FileSystem::FileExists` now return a
-  `tensorflow::Status` intead of a bool. Any callers to this function can be
+  `tensorflow::Status` instead of a bool. Any callers to this function can be
   converted to a bool by adding `.ok()` to the call.
 * C API: Type `TF_SessionWithGraph` has been renamed to `TF_Session`, indicating
   its preferred use in language bindings for TensorFlow. What was previously
@@ -141,7 +1053,7 @@
   `tf.global_variables_initializer` respectively.
 * `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
   that must be called with initializer arguments, in your code replace
-  tf.zeros_initializer with tf.zeros_initializer()
+  `tf.zeros_initializer` with `tf.zeros_initializer()`
 
 ## Bug Fixes and Other Changes
 

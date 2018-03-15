@@ -63,29 +63,14 @@ port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDeviceWithPluginConfig(
 
 port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
-  mutex_lock lock(executors_mutex_);
-
-  port::StatusOr<StreamExecutor*> status = executor_cache_.Get(config);
-  if (status.ok()) {
-    return status.ValueOrDie();
-  }
-
-  port::StatusOr<std::unique_ptr<StreamExecutor>> executor =
-      GetUncachedExecutor(config);
-  if (!executor.ok()) {
-    return executor.status();
-  }
-
-  StreamExecutor* naked_executor = executor.ValueOrDie().get();
-  SE_RETURN_IF_ERROR(
-      executor_cache_.Insert(config, executor.ConsumeValueOrDie()));
-  return naked_executor;
+  return executor_cache_.GetOrCreate(
+      config, [&]() { return GetUncachedExecutor(config); });
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, new HostExecutor(config.plugin_config));
+      this, port::MakeUnique<HostExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -118,3 +103,8 @@ static void InitializeHostPlatform() {
 
 REGISTER_MODULE_INITIALIZER(
     host_platform, perftools::gputools::host::InitializeHostPlatform());
+
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+// Note that module initialization sequencing is not supported in the
+// open-source project, so this will be a no-op there.
+REGISTER_MODULE_INITIALIZER_SEQUENCE(host_platform, multi_platform_manager);

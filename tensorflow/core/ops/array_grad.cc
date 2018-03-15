@@ -25,6 +25,7 @@ REGISTER_OP_NO_GRADIENT("Shape");
 REGISTER_OP_NO_GRADIENT("Rank");
 REGISTER_OP_NO_GRADIENT("Size");
 REGISTER_OP_NO_GRADIENT("ZerosLike");
+REGISTER_OP_NO_GRADIENT("OnesLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
 REGISTER_OP_NO_GRADIENT("StopGradient");
@@ -247,6 +248,7 @@ Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
   std::vector<string> dys;
+  dys.reserve(N);
   for (int i = 0; i < N; ++i) {
     dys.push_back(strings::StrCat("dy:", i));
   }
@@ -330,6 +332,25 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
+
+Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "p: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dp: int32"},
+      // Attr defs
+      {"T: type"},
+      // Nodes
+      {
+          {{"q"}, "InvertPermutation", {"p"}, {}},
+          {{"dx"}, "ConjugateTranspose", {"dy", "q"}, {{"T", "$T"}}},
+          {{"dp"}, "ZerosLike", {"p"}, {{"T", DT_INT32}}},
+      });
+  VLOG(1) << "ConjugateTransposeGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ConjugateTranspose", ConjugateTransposeGrad);
 
 Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(

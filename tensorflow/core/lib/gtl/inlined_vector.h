@@ -31,12 +31,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 
-#include <cstddef>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <type_traits>
@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
@@ -353,7 +354,7 @@ class InlinedVector {
     size_t n = size();
     Destroy(base, n);
     if (!is_inline()) {
-      free(base);
+      port::Free(base);
     }
   }
 
@@ -406,7 +407,7 @@ class InlinedVector {
   };
   // 2) Construct a T with args at not-yet-initialized memory pointed by dst.
   struct Construct {
-    template<class... Args>
+    template <class... Args>
     void operator()(T* dst, Args&&... args) const {
       new (dst) T(std::forward<Args>(args)...);
     }
@@ -434,7 +435,7 @@ class InlinedVector {
     }
 
     T* src = data();
-    T* dst = static_cast<T*>(malloc(target * sizeof(T)));
+    T* dst = static_cast<T*>(port::Malloc(target * sizeof(T)));
 
     // Need to copy elem before discarding src since it might alias src.
     InitType{}(dst + s, std::forward<Args>(args)...);

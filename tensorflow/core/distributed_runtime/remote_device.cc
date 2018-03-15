@@ -16,18 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
-
-using std::placeholders::_1;
 
 // TODO(zhifengc): We need to consolidate (full/partial) device name
 // parsing into one place.
@@ -43,8 +43,7 @@ string GetLocalDeviceName(StringPiece fullname) {
 class RemoteDevice : public Device {
  public:
   RemoteDevice(Env* env, const DeviceAttributes& da)
-      : Device(env, da, nullptr),
-        local_dev_name_(GetLocalDeviceName(da.name())) {}
+      : Device(env, da), local_dev_name_(GetLocalDeviceName(da.name())) {}
 
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
@@ -68,18 +67,50 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
     GetStatusResponse resp;
   };
   Call* call = new Call;
-  auto cb = [env, worker_cache, worker_name, done, wi, call](const Status& s) {
+  auto cb = [env, worker_cache, worker_name, done, wi,
+             call](const Status& status) {
+    Status s = status;
     std::vector<Device*> remote_devices;
+    auto cleanup = gtl::MakeCleanup(
+        [&worker_cache, &worker_name, &wi, &done, &remote_devices, &s, call] {
+          worker_cache->ReleaseWorker(worker_name, wi);
+          done(s, &remote_devices);
+          delete call;
+        });
     if (s.ok()) {
+      DeviceNameUtils::ParsedName worker_name_parsed;
+      if (!DeviceNameUtils::ParseFullName(worker_name, &worker_name_parsed) ||
+          !worker_name_parsed.has_job || !worker_name_parsed.has_replica ||
+          !worker_name_parsed.has_task) {
+        s = errors::InvalidArgument("Could not parse worker name: ",
+                                    worker_name);
+        LOG(WARNING) << s;
+        return;
+      }
       remote_devices.reserve(call->resp.device_attributes_size());
       for (const DeviceAttributes& da : call->resp.device_attributes()) {
-        auto d = new RemoteDevice(env, da);
-        remote_devices.push_back(d);
+        DeviceNameUtils::ParsedName device_name_parsed;
+        CHECK(DeviceNameUtils::ParseFullName(da.name(), &device_name_parsed))
+            << "Device attribute name '" << da.name() << "' could not be "
+            << "parsed. Device Attribute: " << da.DebugString();
+        // Preserve the exact name, if possible.
+        // TODO(b/37868888): Simplify when legacy device name formats removed.
+        if (device_name_parsed.job == worker_name_parsed.job &&
+            device_name_parsed.replica == worker_name_parsed.replica &&
+            device_name_parsed.task == worker_name_parsed.task) {
+          auto d = new RemoteDevice(env, da);
+          remote_devices.push_back(d);
+        } else {
+          DeviceAttributes da_rewritten = da;
+          da_rewritten.set_name(DeviceNameUtils::FullName(
+              worker_name_parsed.job, worker_name_parsed.replica,
+              worker_name_parsed.task, device_name_parsed.type,
+              device_name_parsed.id));
+          auto d = new RemoteDevice(env, da_rewritten);
+          remote_devices.push_back(d);
+        }
       }
     }
-    worker_cache->ReleaseWorker(worker_name, wi);
-    done(s, &remote_devices);
-    delete call;
   };
   wi->GetStatusAsync(&call->req, &call->resp, cb);
 }

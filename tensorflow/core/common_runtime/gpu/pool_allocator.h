@@ -24,7 +24,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <vector>
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/visitable_allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -171,9 +171,9 @@ class BasicCPUAllocator : public SubAllocator {
   ~BasicCPUAllocator() override {}
 
   void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::aligned_malloc(num_bytes, alignment);
+    return port::AlignedMalloc(num_bytes, alignment);
   }
-  void Free(void* ptr, size_t num_bytes) override { port::aligned_free(ptr); }
+  void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
 };
 
 // Allocator for pinned CPU RAM that is made known to CUDA for the

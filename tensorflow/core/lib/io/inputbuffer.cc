@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace io {
@@ -43,25 +44,26 @@ Status InputBuffer::FillBuffer() {
 
 Status InputBuffer::ReadLine(string* result) {
   result->clear();
-  int i;
   Status s;
-  for (i = 0;; i++) {
-    if (pos_ == limit_) {
-      // Get more data into buffer
-      s = FillBuffer();
-      if (limit_ == buf_) {
-        break;
+  do {
+    size_t buf_remain = limit_ - pos_;
+    char* newline = static_cast<char*>(memchr(pos_, '\n', buf_remain));
+    if (newline != nullptr) {
+      size_t result_len = newline - pos_;
+      result->append(pos_, result_len);
+      pos_ = newline + 1;
+      if (!result->empty() && result->back() == '\r') {
+        result->resize(result->size() - 1);
       }
-    }
-    char c = *pos_++;
-    if (c == '\n') {
-      // We don't append the '\n' to *result
       return Status::OK();
     }
-    // We don't append '\r' to *result
-    if (c != '\r') {
-      *result += c;
-    }
+    if (buf_remain > 0) result->append(pos_, buf_remain);
+    // Get more data into buffer
+    s = FillBuffer();
+    DCHECK_EQ(pos_, buf_);
+  } while (limit_ != buf_);
+  if (!result->empty() && result->back() == '\r') {
+    result->resize(result->size() - 1);
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -114,17 +116,35 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
 }
 
 Status InputBuffer::ReadVarint32Fallback(uint32* result) {
+  Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
+  if (errors::IsDataLoss(s)) {
+    return errors::DataLoss("Stored data is too large to be a varint32.");
+  }
+  return s;
+}
+
+Status InputBuffer::ReadVarint64Fallback(uint64* result) {
+  Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
+  if (errors::IsDataLoss(s)) {
+    return errors::DataLoss("Stored data is too large to be a varint64.");
+  }
+  return s;
+}
+
+template <typename T>
+Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   uint8 scratch = 0;
-  char* p = reinterpret_cast<char*>(&scratch);
+  auto* p = reinterpret_cast<char*>(&scratch);
   size_t unused_bytes_read = 0;
 
   *result = 0;
-  for (int shift = 0; shift <= 28; shift += 7) {
+  for (int index = 0; index < max_bytes; index++) {
+    int shift = 7 * index;
     TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
-    *result |= (scratch & 127) << shift;
+    *result |= (static_cast<T>(scratch) & 127) << shift;
     if (!(scratch & 128)) return Status::OK();
   }
-  return errors::DataLoss("Stored data is too large to be a varint32.");
+  return errors::DataLoss("Stored data longer than ", max_bytes, " bytes.");
 }
 
 Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {

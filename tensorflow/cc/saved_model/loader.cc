@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
@@ -36,7 +38,7 @@ auto* load_attempt_count = monitoring::Counter<2>::New(
     "status");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/cc/saved_model/load_latency",
-    "Latency in microseconds for SavedModels that were succesfully loaded.",
+    "Latency in microseconds for SavedModels that were successfully loaded.",
     "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
@@ -60,6 +62,15 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
                     export_dir);
 }
 
+string GetTagsAsString(const std::unordered_set<string>& tags) {
+  string tags_as_string = "{ ";
+  for (const string& tag : tags) {
+    tags_as_string = strings::StrCat(tags_as_string, tag, " ");
+  }
+  tags_as_string = strings::StrCat(tags_as_string, "}");
+  return tags_as_string;
+}
+
 Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
                               const std::unordered_set<string>& tags,
                               MetaGraphDef* meta_graph_def_to_load) {
@@ -76,13 +87,18 @@ Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
     }
   }
   return Status(error::Code::NOT_FOUND,
-                "Could not find meta graph def matching supplied tags.");
+                "Could not find meta graph def matching supplied tags: " +
+                    GetTagsAsString(tags) +
+                    ". To inspect available tag-sets in the SavedModel, please "
+                    "use the SavedModel CLI: `saved_model_cli`");
 }
 
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
                                 const SessionOptions& session_options,
                                 std::unique_ptr<Session>* session) {
-  session->reset(NewSession(session_options));
+  Session* session_p = nullptr;
+  TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
+  session->reset(session_p);
   return (*session)->Create(meta_graph_def.graph_def());
 }
 
@@ -106,6 +122,37 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
   }
 }
 
+bool HasMainOp(const MetaGraphDef& meta_graph_def) {
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  if (collection_def_map.find(kSavedModelMainOpKey) !=
+      collection_def_map.end()) {
+    return true;
+  }
+  return false;
+}
+
+Status RunMainOp(const RunOptions& run_options, const string& export_dir,
+                 const MetaGraphDef& meta_graph_def,
+                 const std::vector<AssetFileDef>& asset_file_defs,
+                 Session* session) {
+  LOG(INFO) << "Running MainOp on SavedModel bundle.";
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  const auto main_op_it = collection_def_map.find(kSavedModelMainOpKey);
+  if (main_op_it != collection_def_map.end()) {
+    if (main_op_it->second.node_list().value_size() != 1) {
+      return errors::FailedPrecondition(
+          strings::StrCat("Expected exactly one main op in : ", export_dir));
+    }
+    std::vector<std::pair<string, Tensor>> inputs;
+    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
+    RunMetadata run_metadata;
+    const StringPiece main_op_name = main_op_it->second.node_list().value(0);
+    return session->Run(run_options, inputs, {}, {main_op_name.ToString()},
+                        nullptr /* outputs */, &run_metadata);
+  }
+  return Status::OK();
+}
+
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
                   const StringPiece restore_op_name,
                   const StringPiece variable_filename_const_op_name,
@@ -121,8 +168,9 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
-    return errors::NotFound(
-        "Checkpoint index file not found in SavedModel directory.");
+    LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
+                 "were restored.";
+    return Status::OK();
   }
   const string variables_path =
       io::JoinPath(variables_directory, kSavedModelVariablesFilename);
@@ -191,7 +239,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
     return Status(error::Code::NOT_FOUND,
                   "SavedModel not found in export directory: " + export_dir);
   }
-  LOG(INFO) << "Loading SavedModel from: " << export_dir;
+  LOG(INFO) << "Loading SavedModel with tags: " << GetTagsAsString(tags)
+            << "; from: " << export_dir;
 
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
@@ -210,11 +259,15 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                  bundle->meta_graph_def.saver_def().restore_op_name(),
                  bundle->meta_graph_def.saver_def().filename_tensor_name(),
                  asset_file_defs, bundle->session.get()));
-  // TODO(sukritiramesh): Add support for a single main op to run upon load,
-  // which will supersede the legacy_init_op and separate RunRestore.
-  TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
-                                     bundle->meta_graph_def, asset_file_defs,
-                                     bundle->session.get()));
+  if (HasMainOp(bundle->meta_graph_def)) {
+    TF_RETURN_IF_ERROR(RunMainOp(run_options, export_dir,
+                                 bundle->meta_graph_def, asset_file_defs,
+                                 bundle->session.get()));
+  } else {
+    TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
+                                       bundle->meta_graph_def, asset_file_defs,
+                                       bundle->session.get()));
+  }
   return Status::OK();
 }
 
@@ -235,7 +288,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
     return end_microseconds - start_microseconds;
   }();
   auto log_and_count = [&](const string& status_str) {
-    LOG(INFO) << "Loading SavedModel: " << status_str << ". Took "
+    LOG(INFO) << "SavedModel load for tags " << GetTagsAsString(tags)
+              << "; Status: " << status_str << ". Took "
               << load_latency_microsecs << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };

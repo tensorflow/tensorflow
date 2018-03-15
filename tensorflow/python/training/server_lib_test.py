@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,13 +34,19 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import input as input_ops
+from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
 
 
 class GrpcServerTest(test.TestCase):
 
+  def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
+    super(GrpcServerTest, self).__init__(methodName)
+    self._cached_server = server_lib.Server.create_local_server()
+
   def testRunStep(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
 
     with session.Session(server.target) as sess:
       c = constant_op.constant([[2, 1]])
@@ -50,7 +56,7 @@ class GrpcServerTest(test.TestCase):
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
   def testMultipleSessions(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
 
     c = constant_op.constant([[2, 1]])
     d = constant_op.constant([[1], [2]])
@@ -65,130 +71,6 @@ class GrpcServerTest(test.TestCase):
     sess_1.close()
     sess_2.close()
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
-
-  # Verifies behavior of multiple variables with multiple sessions connecting to
-  # the same server.
-
-  def testSameVariablesNoClear(self):
-    server = server_lib.Server.create_local_server()
-
-    with session.Session(server.target) as sess_1:
-      v0 = variables.Variable([[2, 1]], name="v0")
-      v1 = variables.Variable([[1], [2]], name="v1")
-      v2 = math_ops.matmul(v0, v1)
-      sess_1.run([v0.initializer, v1.initializer])
-      self.assertAllEqual([[4]], sess_1.run(v2))
-
-    with session.Session(server.target) as sess_2:
-      new_v0 = ops.get_default_graph().get_tensor_by_name("v0:0")
-      new_v1 = ops.get_default_graph().get_tensor_by_name("v1:0")
-      new_v2 = math_ops.matmul(new_v0, new_v1)
-      self.assertAllEqual([[4]], sess_2.run(new_v2))
-
-  # Verifies behavior of tf.Session.reset().
-
-  def testSameVariablesClear(self):
-    server = server_lib.Server.create_local_server()
-
-    # Creates a graph with 2 variables.
-    v0 = variables.Variable([[2, 1]], name="v0")
-    v1 = variables.Variable([[1], [2]], name="v1")
-    v2 = math_ops.matmul(v0, v1)
-
-    # Verifies that both sessions connecting to the same target return
-    # the same results.
-    sess_1 = session.Session(server.target)
-    sess_2 = session.Session(server.target)
-    sess_1.run(variables.global_variables_initializer())
-    self.assertAllEqual([[4]], sess_1.run(v2))
-    self.assertAllEqual([[4]], sess_2.run(v2))
-
-    # Resets target. sessions abort. Use sess_2 to verify.
-    session.Session.reset(server.target)
-    with self.assertRaises(errors_impl.AbortedError):
-      self.assertAllEqual([[4]], sess_2.run(v2))
-
-    # Connects to the same target. Device memory for the variables would have
-    # been released, so they will be uninitialized.
-    sess_2 = session.Session(server.target)
-    with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess_2.run(v2)
-    # Reinitializes the variables.
-    sess_2.run(variables.global_variables_initializer())
-    self.assertAllEqual([[4]], sess_2.run(v2))
-    sess_2.close()
-
-  # Verifies behavior of tf.Session.reset() with multiple containers using
-  # default container names as defined by the target name.
-  def testSameVariablesClearContainer(self):
-    # Starts two servers with different names so they map to different
-    # resource "containers".
-    server0 = server_lib.Server(
-        {
-            "local0": ["localhost:0"]
-        }, protocol="grpc", start=True)
-    server1 = server_lib.Server(
-        {
-            "local1": ["localhost:0"]
-        }, protocol="grpc", start=True)
-
-    # Creates a graph with 2 variables.
-    v0 = variables.Variable(1.0, name="v0")
-    v1 = variables.Variable(2.0, name="v0")
-
-    # Initializes the variables. Verifies that the values are correct.
-    sess_0 = session.Session(server0.target)
-    sess_1 = session.Session(server1.target)
-    sess_0.run(v0.initializer)
-    sess_1.run(v1.initializer)
-    self.assertAllEqual(1.0, sess_0.run(v0))
-    self.assertAllEqual(2.0, sess_1.run(v1))
-
-    # Resets container "local0". Verifies that v0 is no longer initialized.
-    session.Session.reset(server0.target, ["local0"])
-    sess = session.Session(server0.target)
-    with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess.run(v0)
-    # Reinitializes v0 for the following test.
-    sess.run(v0.initializer)
-
-    # Verifies that v1 is still valid.
-    self.assertAllEqual(2.0, sess_1.run(v1))
-
-    # Resets container "local1". Verifies that v1 is no longer initialized.
-    session.Session.reset(server1.target, ["local1"])
-    sess = session.Session(server1.target)
-    with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess.run(v1)
-    # Verifies that v0 is still valid.
-    sess = session.Session(server0.target)
-    self.assertAllEqual(1.0, sess.run(v0))
-
-  # Verifies behavior of tf.Session.reset() with multiple containers using
-  # tf.container.
-  def testMultipleContainers(self):
-    with ops.container("test0"):
-      v0 = variables.Variable(1.0, name="v0")
-    with ops.container("test1"):
-      v1 = variables.Variable(2.0, name="v0")
-    server = server_lib.Server.create_local_server()
-    sess = session.Session(server.target)
-    sess.run(variables.global_variables_initializer())
-    self.assertAllEqual(1.0, sess.run(v0))
-    self.assertAllEqual(2.0, sess.run(v1))
-
-    # Resets container. Session aborts.
-    session.Session.reset(server.target, ["test0"])
-    with self.assertRaises(errors_impl.AbortedError):
-      sess.run(v1)
-
-    # Connects to the same target. Device memory for the v0 would have
-    # been released, so it will be uninitialized. But v1 should still
-    # be valid.
-    sess = session.Session(server.target)
-    with self.assertRaises(errors_impl.FailedPreconditionError):
-      sess.run(v0)
-    self.assertAllEqual(2.0, sess.run(v1))
 
   # Verifies various reset failures.
   def testResetFails(self):
@@ -209,7 +91,7 @@ class GrpcServerTest(test.TestCase):
           config=config_pb2.ConfigProto(operation_timeout_in_ms=5))
 
     # Verifies no containers are reset with non-existent container.
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     sess = session.Session(server.target)
     sess.run(variables.global_variables_initializer())
     self.assertAllEqual(1.0, sess.run(v0))
@@ -236,7 +118,7 @@ class GrpcServerTest(test.TestCase):
         use_rpc_for_inprocess_master=True))
 
   def testLargeConstant(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     with session.Session(server.target, config=self._useRPCConfig()) as sess:
       const_val = np.empty([10000, 3000], dtype=np.float32)
       const_val.fill(0.5)
@@ -245,7 +127,7 @@ class GrpcServerTest(test.TestCase):
       self.assertAllEqual([10000, 3000], sess.run(shape_t))
 
   def testLargeFetch(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     with session.Session(server.target, config=self._useRPCConfig()) as sess:
       c = array_ops.fill([10000, 3000], 0.5)
       expected_val = np.empty([10000, 3000], dtype=np.float32)
@@ -253,7 +135,7 @@ class GrpcServerTest(test.TestCase):
       self.assertAllEqual(expected_val, sess.run(c))
 
   def testLargeFeed(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     with session.Session(server.target, config=self._useRPCConfig()) as sess:
       feed_val = np.empty([10000, 3000], dtype=np.float32)
       feed_val.fill(0.5)
@@ -265,7 +147,7 @@ class GrpcServerTest(test.TestCase):
       self.assertEqual(0.5, max_val)
 
   def testCloseCancelsBlockingOperation(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     sess = session.Session(server.target, config=self._useRPCConfig())
 
     q = data_flow_ops.FIFOQueue(10, [dtypes.float32])
@@ -276,7 +158,8 @@ class GrpcServerTest(test.TestCase):
     sess.run(dequeue_t)
 
     def blocking_dequeue():
-      with self.assertRaises(errors_impl.CancelledError):
+      with self.assertRaisesRegexp(errors_impl.CancelledError,
+                                   "Session::Close"):
         sess.run(dequeue_t)
 
     blocking_thread = self.checkedThread(blocking_dequeue)
@@ -286,7 +169,7 @@ class GrpcServerTest(test.TestCase):
     blocking_thread.join()
 
   def testInteractiveSession(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     # Session creation will warn (in C++) that the place_pruned_graph option
     # is not supported, but it should successfully ignore it.
     sess = session.InteractiveSession(server.target)
@@ -324,16 +207,8 @@ class GrpcServerTest(test.TestCase):
               "local": ["localhost"]
           }, job_name="local", task_index=0)
 
-  def testSparseJob(self):
-    server = server_lib.Server({"local": {37: "localhost:0"}})
-    with ops.device("/job:local/task:37"):
-      a = constant_op.constant(1.0)
-
-    with session.Session(server.target) as sess:
-      self.assertEqual(1.0, sess.run(a))
-
   def testTimeoutRaisesException(self):
-    server = server_lib.Server.create_local_server()
+    server = self._cached_server
     q = data_flow_ops.FIFOQueue(1, [dtypes.float32])
     blocking_t = q.dequeue()
 
@@ -344,6 +219,116 @@ class GrpcServerTest(test.TestCase):
     with session.Session(server.target, config=self._useRPCConfig()) as sess:
       with self.assertRaises(errors_impl.DeadlineExceededError):
         sess.run(blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
+
+  def testTwoServersSamePort(self):
+    # Starting a server with the same target as the cached server should fail.
+    server = self._cached_server
+    with self.assertRaises(errors_impl.UnknownError):
+      _ = server_lib.Server(
+          {"local_2": [server.target[len("grpc://"):]]})
+
+  def testExtendAfterQueueRunners(self):
+    server = self._cached_server
+    with session.Session(server.target) as sess:
+      input_queue = input_ops.input_producer(constant_op.constant(
+          [0.], dtype=dtypes.float32))
+      self.assertIsNotNone(input_queue)
+
+      var = variables.Variable(1., dtype=dtypes.float32, trainable=False,
+                               name="var")
+
+      sess.run(variables.global_variables_initializer())
+      queue_runner_impl.start_queue_runners(sess)
+      sess.run(var.assign(3.0))
+
+  def testIsolateSessionState(self):
+    server = self._cached_server
+
+    init_value = array_ops.placeholder(dtypes.int32)
+    v = variables.Variable(init_value, validate_shape=False, name="v")
+
+    sharing_config = config_pb2.ConfigProto(isolate_session_state=False)
+    sharing_sess_0 = session.Session(server.target, config=sharing_config)
+    sharing_sess_1 = session.Session(server.target, config=sharing_config)
+
+    isolate_config = config_pb2.ConfigProto(isolate_session_state=True)
+    isolate_sess_0 = session.Session(server.target, config=isolate_config)
+    isolate_sess_1 = session.Session(server.target, config=isolate_config)
+
+    # Initially all variables are initialized.
+    for sess in [sharing_sess_0, sharing_sess_1,
+                 isolate_sess_0, isolate_sess_1]:
+      with self.assertRaises(errors_impl.FailedPreconditionError):
+        sess.run(v)
+
+    # Shared sessions will see each other's updates, but isolated sessions
+    # will not.
+    sharing_sess_0.run(v.initializer, feed_dict={init_value: 86})
+    self.assertAllEqual(86, sharing_sess_0.run(v))
+    self.assertAllEqual(86, sharing_sess_1.run(v))
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      isolate_sess_0.run(v)
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      isolate_sess_1.run(v)
+
+    # Changing the shape works because `validate_shape` is False.
+    sharing_sess_1.run(v.initializer, feed_dict={init_value: [86, 99]})
+    self.assertAllEqual([86, 99], sharing_sess_0.run(v))
+    self.assertAllEqual([86, 99], sharing_sess_1.run(v))
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      isolate_sess_0.run(v)
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      isolate_sess_1.run(v)
+
+    # Initializing in an isolated session will only affect the state in that
+    # session.
+    isolate_sess_0.run(v.initializer, feed_dict={init_value: 37})
+    self.assertAllEqual([86, 99], sharing_sess_0.run(v))
+    self.assertAllEqual([86, 99], sharing_sess_1.run(v))
+    self.assertAllEqual(37, isolate_sess_0.run(v))
+    with self.assertRaises(errors_impl.FailedPreconditionError):
+      isolate_sess_1.run(v)
+
+    # Isolated sessions can have different shapes for the same variable.
+    isolate_sess_1.run(v.initializer, feed_dict={init_value: [19, 86]})
+    self.assertAllEqual([86, 99], sharing_sess_0.run(v))
+    self.assertAllEqual([86, 99], sharing_sess_1.run(v))
+    self.assertAllEqual(37, isolate_sess_0.run(v))
+    self.assertAllEqual([19, 86], isolate_sess_1.run(v))
+
+  def testShapeChangingIsolateState(self):
+    server = self._cached_server
+    sharing_config = config_pb2.ConfigProto(isolate_session_state=False)
+    isolate_config = config_pb2.ConfigProto(isolate_session_state=True)
+
+    with ops.Graph().as_default():
+      w_vector = variables.Variable([1, 2, 3], name="w")
+      with session.Session(server.target, config=sharing_config) as sess:
+        with self.assertRaises(errors_impl.FailedPreconditionError):
+          sess.run(w_vector)
+        sess.run(w_vector.initializer)
+        self.assertAllEqual([1, 2, 3], sess.run(w_vector))
+
+    with ops.Graph().as_default():
+      w_vector = variables.Variable([4, 5, 6], name="w")
+      with session.Session(server.target, config=sharing_config) as sess:
+        self.assertAllEqual([1, 2, 3], sess.run(w_vector))
+        sess.run(w_vector.initializer)
+        self.assertAllEqual([4, 5, 6], sess.run(w_vector))
+
+    with ops.Graph().as_default():
+      w_scalar = variables.Variable(86, name="w")
+      with session.Session(server.target, config=sharing_config) as sess:
+        with self.assertRaises(errors_impl.InvalidArgumentError):
+          sess.run(w_scalar.initializer)
+
+    with ops.Graph().as_default():
+      w_scalar = variables.Variable(37, name="w")
+      with session.Session(server.target, config=isolate_config) as sess:
+        with self.assertRaises(errors_impl.FailedPreconditionError):
+          sess.run(w_scalar)
+        sess.run(w_scalar.initializer)
+        self.assertAllEqual(37, sess.run(w_scalar))
 
 
 class ServerDefTest(test.TestCase):
@@ -435,6 +420,17 @@ class ServerDefTest(test.TestCase):
 
 
 class ClusterSpecTest(test.TestCase):
+
+  def testStringConversion(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:1111"],
+        "worker": ["worker0:3333", "worker1:4444"]
+    })
+
+    expected_str = (
+        "ClusterSpec({'ps': ['ps0:1111'], 'worker': ['worker0:3333', "
+        "'worker1:4444']})")
+    self.assertEqual(expected_str, str(cluster_spec))
 
   def testProtoDictDefEquivalences(self):
     cluster_spec = server_lib.ClusterSpec({

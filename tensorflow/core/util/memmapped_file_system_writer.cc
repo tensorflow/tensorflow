@@ -41,7 +41,7 @@ Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
         " and include [A-Za-z0-9_.]");
   }
   const auto tensor_data = tensor.tensor_data();
-  if (0 == tensor_data.size()) {
+  if (tensor_data.empty()) {
     return errors::InvalidArgument(
         "MemmappedEnvWritter: saving tensor with 0 size");
   }

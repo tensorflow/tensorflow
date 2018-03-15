@@ -34,7 +34,9 @@ class DeviceAttributes;
 
 class DeviceMgr {
  public:
+  // Takes ownership of each device in 'devices'.
   // TODO(zhifengc): Other initialization information.
+  // TODO(b/37437134): Use std::unique_ptr's to track ownership.
   explicit DeviceMgr(const std::vector<Device*>& devices);
   ~DeviceMgr();
 
@@ -60,12 +62,13 @@ class DeviceMgr {
   int NumDeviceType(const string& type) const;
 
  private:
+  // TODO(b/37437134): Use std::unique_ptr's to track ownership.
   typedef gtl::InlinedVector<Device*, 8> DeviceVec;
   DeviceVec devices_;
 
   StringPiece CopyToBackingStore(StringPiece s);
 
-  std::unordered_map<StringPiece, Device*, StringPiece::Hasher> device_map_;
+  std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;
   core::Arena name_backing_store_;  // Storage for keys in device_map_
   std::unordered_map<string, int> device_type_counts_;
 

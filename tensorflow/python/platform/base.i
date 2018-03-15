@@ -106,6 +106,10 @@ limitations under the License.
   $1 = &temp;
 }
 
+%typemap(out) int64_t {
+  $result = PyLong_FromLongLong($1);
+}
+
 %typemap(out) string {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }

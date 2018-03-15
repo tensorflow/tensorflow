@@ -41,6 +41,8 @@ class SessionState {
 
   int64 GetNewId();
 
+  static const char* kTensorHandleResourceTypeName;
+
  private:
   mutex state_lock_;
 
@@ -71,6 +73,12 @@ class TensorStore {
   // Save the tensors in the tensor store of this run to the session.
   Status SaveTensors(const std::vector<string>& output_names,
                      SessionState* session_state);
+
+  // Returns true if no tensors have been added to this store.
+  bool empty() {
+    mutex_lock l(lock_);
+    return tensors_.empty();
+  }
 
  private:
   mutex lock_;

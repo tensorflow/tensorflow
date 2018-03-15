@@ -23,27 +23,26 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
+const char* const kSchemePrefix = "grpc://";
+const size_t kSchemePrefixLength = strlen(kSchemePrefix);
+
 GrpcSession::GrpcSession(const SessionOptions& options)
-    : options_(options),
-      current_graph_version_(-1) {}
+    : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
-
-namespace {
-const char* kSchemePrefix = "grpc://";
-const size_t kSchemePrefixLength = strlen(kSchemePrefix);
-}  // namespace
 
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
                            std::unique_ptr<GrpcSession>* out_session) {
-  std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
+  std::unique_ptr<GrpcSession> session(new GrpcSession(options));
   std::unique_ptr<MasterInterface> master;
   // For testing, we enable the client to disable the use of the local
   // master registry, so that the RPC stack is exercised.
@@ -51,12 +50,13 @@ Status GrpcSession::Create(const SessionOptions& options,
     master = LocalMaster::Lookup(options.target);
   }
   if (!master) {
-    SharedGrpcChannelPtr master_channel =
-        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+    SharedGrpcChannelPtr master_channel;
+    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
+        options.target.substr(kSchemePrefixLength), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
-  ret->SetRemoteMaster(std::move(master));
-  *out_session = std::move(ret);
+  session->SetRemoteMaster(std::move(master));
+  *out_session = std::move(session);
   return Status::OK();
 }
 
@@ -74,7 +74,7 @@ void ReEncodeConsts(GraphDef* gdef) {
         }
       }
       if (proto != nullptr && proto->tensor_content().empty() &&
-          proto->ByteSize() > 64) {
+          proto->ByteSizeLong() > 64) {
         // If the constant is encoded with repeated proto fields and
         // it is moderate large, we re-encode it in tensor_content as
         // a Cord. This is mildly helpful for reducing the peak memory
@@ -101,6 +101,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
   *req.mutable_graph_def() = graph;
+  req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
@@ -169,61 +170,81 @@ Status GrpcSession::RunHelper(
     const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
     RunMetadata* run_metadata, const string& prun_handle) {
   // Convert to proto
-  RunStepRequest req;
-  RunStepResponse resp;
+  std::unique_ptr<MutableRunStepRequestWrapper> req(
+      master_->CreateRunStepRequest());
+  std::unique_ptr<MutableRunStepResponseWrapper> resp(
+      master_->CreateRunStepResponse());
 
-  *req.mutable_options() = run_options;
+  *req->mutable_options() = run_options;
+
+  if (run_options.timeout_in_ms() == 0) {
+    req->mutable_options()->set_timeout_in_ms(
+        options_.config.operation_timeout_in_ms());
+  }
 
   if (!prun_handle.empty()) {
-    req.set_partial_run_handle(prun_handle);
+    req->set_partial_run_handle(prun_handle);
   }
 
   for (const auto& it : inputs) {
-    Tensor input_tensor = it.second;
-    auto feed = req.add_feed();
-    feed->set_name(it.first);
-    TensorProto* proto = feed->mutable_tensor();
-    input_tensor.AsProtoTensorContent(proto);
+    req->add_feed(it.first, it.second);
   }
 
-  // Build an index from fetch tensor name to offset.
+  // Support long error messages by storing the error code in the response body.
+  req->set_store_errors_in_response_body(true);
+
+  // Build an index from fetch tensor name to first index in
+  // output_tensor_names.
   std::unordered_map<string, int> output_name_to_offset;
-  for (const string& output_name : output_tensor_names) {
-    req.add_fetch(output_name);
-    output_name_to_offset.insert(
-        std::make_pair(output_name, output_name_to_offset.size()));
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& name = output_tensor_names[i];
+    if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
+      req->add_fetch(name);
+    }
   }
   for (const string& target : target_node_names) {
-    req.add_target(target);
+    req->add_target(target);
   }
 
   CallOptions call_options;
-  call_options.SetTimeout(run_options.timeout_in_ms());
-  TF_RETURN_IF_ERROR(RunProto(&call_options, &req, &resp));
+  call_options.SetTimeout(req->options().timeout_in_ms());
+  TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
+
+  // Look for an extended error returned in the response body.
+  if (resp->status_code() != error::Code::OK) {
+    return Status(resp->status_code(), resp->status_error_message());
+  }
 
   if (!output_tensor_names.empty()) {
     outputs->resize(output_tensor_names.size());
   }
 
   // Convert response back to Tensors in the correct order.
-  for (const NamedTensorProto& tensor : resp.tensor()) {
-    auto fetch_it = output_name_to_offset.find(tensor.name());
+  for (size_t i = 0; i < resp->num_tensors(); ++i) {
+    auto fetch_it = output_name_to_offset.find(resp->tensor_name(i));
     if (fetch_it == output_name_to_offset.end()) {
       return errors::Internal("Received response for unrequested fetch: ",
-                              tensor.name());
+                              resp->tensor_name(i));
     }
 
     Tensor output;
-    if (!output.FromProto(tensor.tensor())) {
-      return errors::InvalidArgument("Could not parse returned proto for ",
-                                     tensor.name());
-    }
-
+    TF_RETURN_IF_ERROR(resp->TensorValue(i, &output));
     (*outputs)[fetch_it->second] = output;
+  }
+  // In the unlikely event that output_tensor_names contains duplicates, fill in
+  // the duplicate values.
+  if (output_name_to_offset.size() != output_tensor_names.size()) {
+    for (int i = 0; i < output_tensor_names.size(); ++i) {
+      const string& name = output_tensor_names[i];
+      int offset = output_name_to_offset[name];
+      if (offset != i) {
+        (*outputs)[i] = (*outputs)[offset];
+      }
+    }
   }
 
   if (run_metadata) {
-    run_metadata->Swap(resp.mutable_metadata());
+    run_metadata->Swap(resp->mutable_metadata());
   }
 
   return Status::OK();
@@ -249,8 +270,9 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
              outputs, nullptr);
 }
 
-Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
-                             RunStepResponse* resp) {
+Status GrpcSession::RunProto(CallOptions* call_options,
+                             MutableRunStepRequestWrapper* req,
+                             MutableRunStepResponseWrapper* resp) {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
@@ -308,7 +330,7 @@ Status GrpcSession::Close() {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
+      return Status::OK();
     }
     req.set_session_handle(handle_);
     handle_.clear();
@@ -319,27 +341,41 @@ Status GrpcSession::Close() {
   return master_->CloseSession(&call_options, &req, &resp);
 }
 
-std::vector<DeviceAttributes> GrpcSession::ListDevices() {
-  std::vector<DeviceAttributes> devices;
-
+Status GrpcSession::ListDevices(std::vector<DeviceAttributes>* response) {
   ListDevicesRequest req;
+  {
+    mutex_lock l(mu_);
+    req.set_session_handle(handle_);
+  }
+  if (req.session_handle().empty()) {
+    LOG(WARNING) << "GrpcSession::ListDevices will initialize the session with "
+                    "an empty graph and other defaults because the session has "
+                    "not yet been created.";
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(Create(graph_def));
+    {
+      mutex_lock l(mu_);
+      req.set_session_handle(handle_);
+    }
+  }
   ListDevicesResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   Status s = master_->ListDevices(&call_options, &req, &resp);
   if (!s.ok()) {
     LOG(ERROR) << "Could not list devices: " << s;
-    return devices;
+    return s;
   }
 
+  response->clear();
+  response->reserve(resp.local_device_size() + resp.remote_device_size());
   for (const auto& device_attr : resp.local_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
   for (const auto& device_attr : resp.remote_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
-
-  return devices;
+  return Status::OK();
 }
 
 void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
@@ -349,8 +385,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 // Static method.
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
-  SharedGrpcChannelPtr master_channel =
-      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+  SharedGrpcChannelPtr master_channel;
+  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
+      options.target.substr(kSchemePrefixLength), &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);

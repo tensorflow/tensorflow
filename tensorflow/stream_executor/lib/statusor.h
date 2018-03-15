@@ -49,7 +49,7 @@ limitations under the License.
 //
 //  StatusOr<std::unique_ptr<Foo>> result = FooFactory::MakeNewFoo(arg);
 //  if (result.ok()) {
-//    std::unique_ptr<Foo> foo = result.ConsumeValueOrDie();
+//    std::unique_ptr<Foo> foo = std::move(result.ValueOrDie());
 //    foo->DoSomethingCool();
 //  } else {
 //    LOG(ERROR) << result.status();
@@ -135,7 +135,7 @@ class StatusOr {
   // operators, to support move-only types and avoid unnecessary copying.
   StatusOr(T&& value);  // NOLINT
 
-  // Move conversion operator to avoid unecessary copy.
+  // Move conversion operator to avoid unnecessary copy.
   // T must be assignable from U.
   // Not marked with explicit so the implicit conversion can happen.
   template <typename U>
@@ -143,7 +143,7 @@ class StatusOr {
       : status_(std::move(other.status_)),
         value_(std::move(other.value_)) {}
 
-  // Move assignment opeartor to avoid unnecessary copy.
+  // Move assignment operator to avoid unnecessary copy.
   // T must be assignable from U
   template <typename U>
   StatusOr& operator=(StatusOr<U>&& other) {
@@ -163,6 +163,7 @@ class StatusOr {
   // If you need to initialize a T object from the stored value,
   // ConsumeValueOrDie() may be more efficient.
   const T& ValueOrDie() const;
+  T& ValueOrDie();
 
   // Returns our current value, requires this->ok(). Use this if
   // you would otherwise want to say std::move(s.ValueOrDie()), for example
@@ -202,13 +203,19 @@ StatusOr<T>::StatusOr(const T& value)
 
 template <typename T>
 const T& StatusOr<T>::ValueOrDie() const {
-  assert(status_.ok());
+  TF_CHECK_OK(status_);
+  return value_;
+}
+
+template <typename T>
+T& StatusOr<T>::ValueOrDie() {
+  TF_CHECK_OK(status_);
   return value_;
 }
 
 template <typename T>
 T StatusOr<T>::ConsumeValueOrDie() {
-  assert(status_.ok());
+  TF_CHECK_OK(status_);
   return std::move(value_);
 }
 

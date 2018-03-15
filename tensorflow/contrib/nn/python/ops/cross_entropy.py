@@ -65,7 +65,7 @@ def deprecated_flipped_softmax_cross_entropy_with_logits(logits,
     softmax cross entropy loss.
   """
   return nn.softmax_cross_entropy_with_logits(
-      logits=logits, labels=labels, dim=dim, name=name)
+      labels=labels, logits=logits, dim=dim, name=name)
 
 
 # TODO(b/33392402): Formally deprecate this API.
@@ -116,10 +116,10 @@ def deprecated_flipped_sparse_softmax_cross_entropy_with_logits(logits,
 
   Raises:
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
-      of the labels is not equal to the rank of the labels minus one.
+      of the labels is not equal to the rank of the logits minus one.
   """
   return nn.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=labels, name=name)
+      labels=labels, logits=logits, name=name)
 
 
 # TODO(b/33392402): Formally deprecate this API.
@@ -174,4 +174,4 @@ def deprecated_flipped_sigmoid_cross_entropy_with_logits(logits,
     ValueError: If `logits` and `targets` do not have the same shape.
   """
   return nn.sigmoid_cross_entropy_with_logits(
-      logits=logits, targets=targets, name=name)
+      labels=targets, logits=logits, name=name)

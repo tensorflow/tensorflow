@@ -39,8 +39,8 @@ void KeypointDetector::ScoreKeypoints(const ImageData& image_data,
   const Image<int>& I_y = *image_data.GetSpatialY(0);
 
   if (config_->detect_skin) {
-    const Image<uint8>& u_data = *image_data.GetU();
-    const Image<uint8>& v_data = *image_data.GetV();
+    const Image<uint8_t>& u_data = *image_data.GetU();
+    const Image<uint8_t>& v_data = *image_data.GetV();
 
     static const int reference[] = {111, 155};
 
@@ -200,8 +200,7 @@ void KeypointDetector::SelectKeypoints(
 //  center_ptr: the location of the center pixel in memory
 //  offsets: the relative offsets from the center pixel of the edge pixels.
 inline int TestCircle(const int circle_perimeter, const int threshold,
-                      const uint8* const center_ptr,
-                      const int* offsets) {
+                      const uint8_t* const center_ptr, const int* offsets) {
   // Get the actual value of the center pixel for easier reference later on.
   const int center_value = static_cast<int>(*center_ptr);
 
@@ -274,9 +273,9 @@ inline int TestCircle(const int circle_perimeter, const int threshold,
 
 // Returns a score in the range [0.0, positive infinity) which represents the
 // relative likelihood of a point being a corner.
-float KeypointDetector::HarrisFilter(const Image<int32>& I_x,
-                                    const Image<int32>& I_y,
-                                    const float x, const float y) const {
+float KeypointDetector::HarrisFilter(const Image<int32_t>& I_x,
+                                     const Image<int32_t>& I_y, const float x,
+                                     const float y) const {
   if (I_x.ValidInterpPixel(x - kHarrisWindowSize, y - kHarrisWindowSize) &&
       I_x.ValidInterpPixel(x + kHarrisWindowSize, y + kHarrisWindowSize)) {
     // Image gradient matrix.
@@ -403,11 +402,11 @@ int KeypointDetector::CopyKeypoints(const FramePair& prev_change,
 
 
 // FAST keypoint detector.
-int KeypointDetector::FindFastKeypoints(const Image<uint8>& frame,
-                                      const int quadrant,
-                                      const int downsample_factor,
-                                      const int max_num_keypoints,
-                                     Keypoint* const keypoints) {
+int KeypointDetector::FindFastKeypoints(const Image<uint8_t>& frame,
+                                        const int quadrant,
+                                        const int downsample_factor,
+                                        const int max_num_keypoints,
+                                        Keypoint* const keypoints) {
   /*
    // Reference for a circle of diameter 7.
    const int circle[] = {0, 0, 1, 1, 1, 0, 0,
@@ -464,7 +463,7 @@ int KeypointDetector::FindFastKeypoints(const Image<uint8>& frame,
 
   // Loop through once to find FAST keypoint clumps.
   for (int img_y = start_y; img_y < end_y; ++img_y) {
-    const uint8* curr_pixel_ptr = frame[img_y] + start_x;
+    const uint8_t* curr_pixel_ptr = frame[img_y] + start_x;
 
     for (int img_x = start_x; img_x < end_x; ++img_x) {
       // Only insert it if it meets the quick minimum requirements test.
@@ -478,7 +477,7 @@ int KeypointDetector::FindFastKeypoints(const Image<uint8>& frame,
 
         // Non-zero score means the keypoint was found.
         if (fast_score != 0) {
-          uint8* const center_ptr = (*keypoint_scratch_)[img_y] + img_x;
+          uint8_t* const center_ptr = (*keypoint_scratch_)[img_y] + img_x;
 
           // Increase the keypoint count on this pixel and the pixels in all
           // 4 cardinal directions.
@@ -500,7 +499,7 @@ int KeypointDetector::FindFastKeypoints(const Image<uint8>& frame,
   // Loop through again and Harris filter pixels in the center of clumps.
   // We can shrink the window by 1 pixel on every side.
   for (int img_y = start_y + 1; img_y < end_y - 1; ++img_y) {
-    const uint8* curr_pixel_ptr = (*keypoint_scratch_)[img_y] + start_x;
+    const uint8_t* curr_pixel_ptr = (*keypoint_scratch_)[img_y] + start_x;
 
     for (int img_x = start_x + 1; img_x < end_x - 1; ++img_x) {
       if (*curr_pixel_ptr >= kMinNumConnectedForFastKeypoint) {
@@ -533,7 +532,7 @@ int KeypointDetector::FindFastKeypoints(const ImageData& image_data,
 
   // TODO(andrewharp): Get this working for multiple image scales.
   for (int i = 0; i < 1; ++i) {
-    const Image<uint8>& frame = *image_data.GetPyramidSqrt2Level(i);
+    const Image<uint8_t>& frame = *image_data.GetPyramidSqrt2Level(i);
     num_found += FindFastKeypoints(
         frame, fast_quadrant_,
         downsample_factor, max_num_keypoints, keypoints + num_found);

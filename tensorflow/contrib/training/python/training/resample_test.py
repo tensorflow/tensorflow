@@ -34,6 +34,22 @@ from tensorflow.python.platform import test
 class ResampleTest(test.TestCase):
   """Tests that resampling runs and outputs are close to expected values."""
 
+  def testRepeatRange(self):
+    cases = [
+        ([], []),
+        ([0], []),
+        ([1], [0]),
+        ([1, 0], [0]),
+        ([0, 1], [1]),
+        ([3], [0, 0, 0]),
+        ([0, 1, 2, 3], [1, 2, 2, 3, 3, 3]),
+    ]
+    with self.test_session() as sess:
+      for inputs, expected in cases:
+        array_inputs = numpy.array(inputs, dtype=numpy.int32)
+        actual = sess.run(resample._repeat_range(array_inputs))
+        self.assertAllEqual(actual, expected)
+
   def testRoundtrip(self, rate=0.25, count=5, n=500):
     """Tests `resample(x, weights)` and resample(resample(x, rate), 1/rate)`."""
 
@@ -132,12 +148,12 @@ class ResampleTest(test.TestCase):
     resampled = resample.resample_at_rate([vals], rates)
 
     with self.test_session() as s:
-      rs = s.run(resampled, {
+      rs, = s.run(resampled, {
           vals: list(range(count)),
           rates: numpy.zeros(
               shape=[count], dtype=numpy.float32)
       })
-      self.assertEqual(0, len(rs))
+      self.assertEqual(rs.shape, (0,))
 
   def testDtypes(self, count=10):
     """Test that we can define the ops with float64 weights."""

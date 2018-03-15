@@ -60,6 +60,14 @@ class WorkerCacheLogger {
                         const string& tensor_name, const string& src_device,
                         const string& dst_device, int64 bytes);
 
+  // Generates a NodeExecStats record with the given data, and saves for
+  // later retrieval by RetrieveLogs().
+  void RecordDataTransfer(int64 step_id, int64 start_usecs, int64 end_usecs,
+                          const string& tensor_name, const string& src_device,
+                          const string& dst_device, int64 bytes,
+                          const string& details,
+                          const string& transfer_method_name);
+
  private:
   mutex count_mu_;
   int32 want_logging_count_ GUARDED_BY(count_mu_) = 0;

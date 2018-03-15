@@ -24,9 +24,14 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-// Aligned allocation/deallocation
-void* aligned_malloc(size_t size, int minimum_alignment);
-void aligned_free(void* aligned_memory);
+// Aligned allocation/deallocation. `minimum_alignment` must be a power of 2
+// and a multiple of sizeof(void*).
+void* AlignedMalloc(size_t size, int minimum_alignment);
+void AlignedFree(void* aligned_memory);
+
+void* Malloc(size_t size);
+void* Realloc(void* ptr, size_t size);
+void Free(void* ptr);
 
 // Tries to release num_bytes of free memory back to the operating
 // system for reuse.  Use this routine with caution -- to get this
@@ -53,6 +58,9 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes);
 // Currently, if a malloc implementation does not support this
 // routine, this routine returns 0.
 std::size_t MallocExtension_GetAllocatedSize(const void* p);
+
+// Returns the amount of RAM available in kB, or INT64_MAX if unknown.
+int64 AvailableRam();
 
 }  // namespace port
 }  // namespace tensorflow

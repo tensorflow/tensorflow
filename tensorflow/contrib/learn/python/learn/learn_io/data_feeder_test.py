@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -48,16 +41,6 @@ class DataFeederTest(test.TestCase):
   def _assert_raises(self, input_data):
     with self.assertRaisesRegexp(TypeError, 'annot convert'):
       data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
-
-  def test_input_uint32(self):
-    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint32)
-    self._assert_raises(data)
-    self._assert_raises(self._wrap_dict(data))
-
-  def test_input_uint64(self):
-    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint64)
-    self._assert_raises(data)
-    self._assert_raises(self._wrap_dict(data))
 
   def _assert_dtype(self, expected_np_dtype, expected_tf_dtype, input_data):
     feeder = data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
@@ -93,6 +76,16 @@ class DataFeederTest(test.TestCase):
     data = np.matrix([[1, 2], [3, 4]], dtype=np.int64)
     self._assert_dtype(np.int64, dtypes.int64, data)
     self._assert_dtype(np.int64, dtypes.int64, self._wrap_dict(data))
+
+  def test_input_uint32(self):
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint32)
+    self._assert_dtype(np.uint32, dtypes.uint32, data)
+    self._assert_dtype(np.uint32, dtypes.uint32, self._wrap_dict(data))
+
+  def test_input_uint64(self):
+    data = np.matrix([[1, 2], [3, 4]], dtype=np.uint64)
+    self._assert_dtype(np.uint64, dtypes.uint64, data)
+    self._assert_dtype(np.uint64, dtypes.uint64, self._wrap_dict(data))
 
   def test_input_uint8(self):
     data = np.matrix([[1, 2], [3, 4]], dtype=np.uint8)
@@ -253,20 +246,20 @@ class DataFeederTest(test.TestCase):
       inp, out = df.input_builder()
       feed_dict_fn = df.get_feed_dict_fn()
       feed_dict = feed_dict_fn()
-      self._assertAllClose(inp, [[1, 2], [3, 4]], feed_dict, 'name')
-      self._assertAllClose(out, [1, 2], feed_dict, 'name')
+      self._assertAllClose(inp, [[[1, 2]], [[3, 4]]], feed_dict, 'name')
+      self._assertAllClose(out, [[[1], [2]], [[2], [2]]], feed_dict, 'name')
 
     def x_iter(wrap_dict=False):
-      yield np.array([1, 2]) if not wrap_dict else self._wrap_dict(
-          np.array([1, 2]), 'in')
-      yield np.array([3, 4]) if not wrap_dict else self._wrap_dict(
-          np.array([3, 4]), 'in')
+      yield np.array([[1, 2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1, 2]]), 'in')
+      yield np.array([[3, 4]]) if not wrap_dict else self._wrap_dict(
+          np.array([[3, 4]]), 'in')
 
     def y_iter(wrap_dict=False):
-      yield np.array([1]) if not wrap_dict else self._wrap_dict(
-          np.array([1]), 'out')
-      yield np.array([2]) if not wrap_dict else self._wrap_dict(
-          np.array([2]), 'out')
+      yield np.array([[1], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1], [2]]), 'out')
+      yield np.array([[2], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[2], [2]]), 'out')
 
     func(
         data_feeder.StreamingDataFeeder(
@@ -277,6 +270,16 @@ class DataFeederTest(test.TestCase):
             y_iter(True),
             n_classes=self._wrap_dict(0, 'out'),
             batch_size=2))
+    # Test non-full batches.
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(), y_iter(), n_classes=0, batch_size=10))
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(True),
+            y_iter(True),
+            n_classes=self._wrap_dict(0, 'out'),
+            batch_size=10))
 
   def test_dask_data_feeder(self):
     if HAS_PANDAS and HAS_DASK:

@@ -13,35 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_patch_3d.h"
+#include "tensorflow/core/kernels/eigen_volume_patch.h"
 
 namespace Eigen {
 
 /** CuboidConvolution
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies a 3D convolution over a multichannel input voxel block.
-  *
-  * The input parameter is expected to be a tensor with a rank of 4 or more
-  * (channels, depth, height, width, and optionally others).
-  * The kernel parameter is expected to be a 5D tensor (filters, channels,
-  * kernel_depth, kernel_height, kernel_width).
-  * The result can be assigned to a tensor of rank equal to the rank of the
-  * input. The dimensions of the result will be filters, depth, height, width
-  * (and others if applicable).
-  *
-  * The input and kernel have to be in the same layout, and both row-major and
-  * col-major are supported. The shapes given above are for col-major layout.
-  * For row-major, all dimensions should be reversed.
-  *
-  * It is possible to swap the order of the depth, width, and height dimensions
-  * provided that the same order is used in the input, the kernel, and the
-  * output.
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies a 3D convolution over a multichannel input voxel block.
+ *
+ * The input parameter is expected to be a tensor with a rank of 4 or more
+ * (channels, depth, height, width, and optionally others).
+ * The kernel parameter is expected to be a 5D tensor (filters, channels,
+ * kernel_depth, kernel_height, kernel_width).
+ * The result can be assigned to a tensor of rank equal to the rank of the
+ * input. The dimensions of the result will be filters, depth, height, width
+ * (and others if applicable).
+ *
+ * The input and kernel have to be in the same layout, and both row-major and
+ * col-major are supported. The shapes given above are for col-major layout.
+ * For row-major, all dimensions should be reversed.
+ *
+ * It is possible to swap the order of the depth, width, and height dimensions
+ * provided that the same order is used in the input, the kernel, and the
+ * output.
+ */
 template <typename Input, typename Kernel>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
     internal::traits<Input>::Layout == ColMajor,
@@ -55,26 +55,8 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                 const Kernel>,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<Input>::Index, 2>,
-                // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const
-                // Input>
-                const Eigen::TensorStridingOp<
-                    const Eigen::array<typename internal::traits<Input>::Index,
-                                       internal::traits<Input>::NumDimensions +
-                                           3>,
-                    const Eigen::TensorReshapingOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index,
-                            internal::traits<Input>::NumDimensions + 3>,
-                        const Eigen::TensorPatchOp<
-                            const Eigen::DSizes<
-                                typename internal::traits<Input>::Index,
-                                internal::traits<Input>::NumDimensions>,
-                            const Eigen::TensorPaddingOp<
-                                const Eigen::array<
-                                    Eigen::IndexPair<typename internal::traits<
-                                        Input>::Index>,
-                                    internal::traits<Input>::NumDimensions>,
-                                const Input> > > > > > >,
+                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                          const Input> > > >,
     TensorReshapingOp<
         const DSizes<typename internal::traits<Input>::Index,
                      internal::traits<Input>::NumDimensions>,
@@ -82,26 +64,8 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
             const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<Input>::Index, 2>,
-                // const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic, const
-                // Input>
-                const Eigen::TensorStridingOp<
-                    const Eigen::array<typename internal::traits<Input>::Index,
-                                       internal::traits<Input>::NumDimensions +
-                                           3>,
-                    const Eigen::TensorReshapingOp<
-                        const Eigen::DSizes<
-                            typename internal::traits<Input>::Index,
-                            internal::traits<Input>::NumDimensions + 3>,
-                        const Eigen::TensorPatchOp<
-                            const Eigen::DSizes<
-                                typename internal::traits<Input>::Index,
-                                internal::traits<Input>::NumDimensions>,
-                            const Eigen::TensorPaddingOp<
-                                const Eigen::array<
-                                    Eigen::IndexPair<typename internal::traits<
-                                        Input>::Index>,
-                                    internal::traits<Input>::NumDimensions>,
-                                const Input> > > > >,
+                const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
+                                          const Input> >,
             const TensorReshapingOp<
                 const DSizes<typename internal::traits<Input>::Index, 2>,
                 const Kernel> > > >::type
@@ -242,15 +206,17 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
   return choose(
       Cond<internal::traits<Input>::Layout == ColMajor>(),
       kernel.reshape(kernel_dims)
-          .contract(internal::Extract3DPatches(
-                        input, kernelDepth, kernelRows, kernelCols,
-                        stridePlanes, strideRows, strideCols, padding_type)
+          .contract(input
+                        .extract_volume_patches(
+                            kernelDepth, kernelRows, kernelCols, stridePlanes,
+                            strideRows, strideCols, padding_type)
                         .reshape(pre_contract_dims),
                     contract_dims)
           .reshape(post_contract_dims),
-      internal::Extract3DPatches(input, kernelDepth, kernelRows, kernelCols,
-                                 stridePlanes, strideRows, strideCols,
-                                 padding_type)
+      input
+          .extract_volume_patches(kernelDepth, kernelRows, kernelCols,
+                                  stridePlanes, strideRows, strideCols,
+                                  padding_type)
           .reshape(pre_contract_dims)
           .contract(kernel.reshape(kernel_dims), contract_dims)
           .reshape(post_contract_dims));
@@ -258,4 +224,4 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_

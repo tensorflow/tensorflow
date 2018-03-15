@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
 
 #if GOOGLE_CUDA
 
@@ -29,21 +29,41 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T, typename Index>
+template <typename T, typename Index, bool is_axis_zero>
 __global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
-                               int64 first_dim_size, int64 indices_size,
-                               int64 out_size) {
-  const int32 slice_size = out_size / indices_size;
+                               int64 gather_dim_size, int64 indices_size,
+                               int64 slice_size, int64 out_size) {
   CUDA_1D_KERNEL_LOOP(i, out_size) {
-    Index indices_i = i / slice_size;
-    Index indices_slice_i = i - indices_i * slice_size;
-    Index params_first_index = ldg(indices + indices_i);
-    if (!(params_first_index >= 0 && params_first_index < first_dim_size)) {
+    Index batch_i = 0;
+    Index indices_i = 0;
+    Index slice_i = 0;
+    if (is_axis_zero) {
+      indices_i = i / slice_size;
+      slice_i = i - indices_i * slice_size;
+    } else {
+      Index batch_indices_i = i / slice_size;
+      // The batch index into params to use for i.
+      batch_i = batch_indices_i / indices_size;
+      // The index into indices to use for i.
+      indices_i = batch_indices_i - batch_i * indices_size;
+      // Index into the current slice in params to use for i.
+      slice_i = i - batch_indices_i * slice_size;
+    }
+
+    // Index into the gather axis to use for i.
+    Index gather_i = ldg(indices + indices_i);
+
+    // Check gather_i is in [0, gather_dim_size).
+    if (!FastBoundsCheck(gather_i, gather_dim_size)) {
       // Set indices out of range to zero
       // TODO(fpmc): Log an error for transfer back to host.
       out[i] = T(0);
     } else {
-      Index params_i = params_first_index * slice_size + indices_slice_i;
+      // params is a [batch_size, gather_dim_size, slice_size] tensor. Read
+      // params[batch_i, gather_i, slice_i] and write it to the i'th position in
+      // out.
+      Index params_i =
+          (batch_i * gather_dim_size + gather_i) * slice_size + slice_i;
       out[i] = ldg(params + params_i);
     }
   }
@@ -52,9 +72,11 @@ __global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
 namespace functor {
 template <typename T, typename Index>
 struct GatherFunctor<GPUDevice, T, Index> {
-  int64 operator()(const GPUDevice& d, typename TTypes<T>::ConstMatrix params,
+  int64 operator()(OpKernelContext* ctx,
+                   typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T>::Matrix out) {
+                   typename TTypes<T, 3>::Tensor out) {
+    const GPUDevice& d = ctx->eigen_gpu_device();
     const int64 out_size = out.size();
     if (out_size == 0) {
       // We need a check here since the CPU version does useful error checking
@@ -63,15 +85,27 @@ struct GatherFunctor<GPUDevice, T, Index> {
       // checking, so we skip the loop entirely.
       return -1;
     }
-    const int64 first_dim_size = params.dimension(0);
+    const bool is_axis_zero = params.dimension(0) == 1;
+    const int64 gather_dim_size = params.dimension(1);
     const int64 indices_size = indices.size();
+    const int64 slice_size = params.dimension(2);
+
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
-    // clang-format off
-    GatherOpKernel<T, Index>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            params.data(), indices.data(), out.data(), first_dim_size,
-            indices_size, out_size);
-    // clang-format on
+    if (is_axis_zero) {
+      // clang-format off
+      GatherOpKernel<T, Index, true>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              params.data(), indices.data(), out.data(), gather_dim_size,
+              indices_size, slice_size, out_size);
+      // clang-format on
+    } else {
+      // clang-format off
+      GatherOpKernel<T, Index, false>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              params.data(), indices.data(), out.data(), gather_dim_size,
+              indices_size, slice_size, out_size);
+      // clang-format on
+    }
     // TODO(fpmc): enable indices validation on GPU.
     // Right now checking for indicies out of bound in the kernel would
     // require copying code between GPU/CPU, and thus slow.
@@ -84,4 +118,4 @@ struct GatherFunctor<GPUDevice, T, Index> {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_

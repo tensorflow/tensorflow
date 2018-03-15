@@ -28,7 +28,7 @@ import java.nio.charset.Charset;
  * <pre>{@code
  * // g is a Graph instance.
  * try (Tensor c1 = Tensor.create(3.0f)) {
- *   g.opBuilder("Constant", "MyConst")
+ *   g.opBuilder("Const", "MyConst")
  *       .setAttr("dtype", c1.dataType())
  *       .setAttr("value", c1)
  *       .build();
@@ -39,8 +39,11 @@ public final class OperationBuilder {
 
   OperationBuilder(Graph graph, String type, String name) {
     this.graph = graph;
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       this.unsafeNativeHandle = allocate(r.nativeHandle(), type, name);
+    } finally {
+      r.close();
     }
   }
 
@@ -50,22 +53,61 @@ public final class OperationBuilder {
    * <p>The OperationBuilder is not usable after build() returns.
    */
   public Operation build() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       Operation op = new Operation(graph, finish(unsafeNativeHandle));
       unsafeNativeHandle = 0;
       return op;
+    } finally {
+      r.close();
     }
   }
 
-  public OperationBuilder addInput(Output input) {
-    try (Graph.Reference r = graph.ref()) {
+  /**
+   * Returns the builder to create an operation.
+   *
+   * <p>Inputs to TensorFlow operations are outputs of another TensorFlow operation. This method is
+   * used to add a input to a {@link OperationBuilder}.
+   *
+   * @param input {@link Output} supposed to be the input of the OperationBuilder.
+   * @return the OperationBuilder instance for chaining.
+   */
+  public OperationBuilder addInput(Output<?> input) {
+    Graph.Reference r = graph.ref();
+    try {
       addInput(unsafeNativeHandle, input.op().getUnsafeNativeHandle(), input.index());
+    } finally {
+      r.close();
     }
     return this;
   }
 
-  public OperationBuilder addInputList(Output[] inputs) {
-    try (Graph.Reference r = graph.ref()) {
+  /**
+   * Ensure that the operation does not execute before the control operation does.
+   *
+   * <p>A control input is an Operation that must be executed before running the operation currently
+   * being built.
+   *
+   * <p>For example, an Assert operation may be added as a control input for this operation. The
+   * Assert now behaves as a pre-condition that will always verify itself before running the
+   * operation.
+   *
+   * @param control operation that must be executed before running this operation.
+   * @return the OperationBuilder instance for chaining.
+   */
+  public OperationBuilder addControlInput(Operation control) {
+    Graph.Reference r = graph.ref();
+    try {
+      addControlInput(unsafeNativeHandle, control.getUnsafeNativeHandle());
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder addInputList(Output<?>[] inputs) {
+    Graph.Reference r = graph.ref();
+    try {
       long[] opHandles = new long[inputs.length];
       int[] indices = new int[inputs.length];
       for (int i = 0; i < inputs.length; ++i) {
@@ -73,13 +115,18 @@ public final class OperationBuilder {
         indices[i] = inputs[i].index();
       }
       addInputList(unsafeNativeHandle, opHandles, indices);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setDevice(String device) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setDevice(unsafeNativeHandle, device);
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -90,57 +137,81 @@ public final class OperationBuilder {
   }
 
   public OperationBuilder setAttr(String name, byte[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrString(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, long value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrInt(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, long[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrIntList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, float value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrFloat(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, float[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrFloatList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, boolean value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrBool(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, boolean[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrBoolList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, DataType value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrType(unsafeNativeHandle, name, value.c());
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -150,27 +221,91 @@ public final class OperationBuilder {
     for (int i = 0; i < value.length; ++i) {
       ctypes[i] = value[i].c();
     }
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTypeList(unsafeNativeHandle, name, ctypes);
+    } finally {
+      r.close();
     }
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor value) {
-    try (Graph.Reference r = graph.ref()) {
+  public OperationBuilder setAttr(String name, Tensor<?> value) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
+    } finally {
+      r.close();
     }
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor[] value) {
+  public OperationBuilder setAttr(String name, Tensor<?>[] value) {
     long[] handles = new long[value.length];
     int idx = 0;
-    for (Tensor t : value) {
+    for (Tensor<?> t : value) {
       handles[idx++] = t.getNativeHandle();
     }
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTensorList(unsafeNativeHandle, name, handles);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder setAttr(String name, Shape value) {
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShape(unsafeNativeHandle, name, value.asArray(), value.numDimensions());
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder setAttr(String name, Shape[] value) {
+    int[] numDimensions = new int[value.length];
+    int totalNumDimensions = 0;
+    for (int idx = 0; idx < value.length; ++idx) {
+      int n = value[idx].numDimensions();
+      numDimensions[idx] = n;
+      if (n > 0) {
+        totalNumDimensions += n;
+      }
+    }
+    // Flatten the shapes into a single array to avoid too much overhead in the
+    // native part
+    long[] shapes = new long[totalNumDimensions];
+    int shapeIdx = 0;
+    for (Shape shape : value) {
+      if (shape.numDimensions() > 0) {
+        for (long dim : shape.asArray()) {
+          shapes[shapeIdx++] = dim;
+        }
+      }
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShapeList(unsafeNativeHandle, name, shapes, numDimensions);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder setAttr(String name, String[] value) {
+    Charset utf8 = Charset.forName("UTF-8");
+    Object[] objects = new Object[value.length];
+    for (int i = 0; i < value.length; ++i) {
+      objects[i] = value[i].getBytes(utf8);
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrStringList(unsafeNativeHandle, name, objects);
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -186,15 +321,12 @@ public final class OperationBuilder {
 
   private static native void addInputList(long handle, long[] opHandles, int[] indices);
 
+  private static native void addControlInput(long handle, long opHandle);
+
   private static native void setDevice(long handle, String device);
 
   // The names of all the setAttr* family functions below correspond to the C library types, not the
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
-  //
-  // TODO(ashankar):
-  // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
-  //   encoded?)
-  // - setAttrShape and setAttrShapeList: Which would take in a long[] or long[][]?
 
   private static native void setAttrString(long handle, String name, byte[] value);
 
@@ -217,4 +349,11 @@ public final class OperationBuilder {
   private static native void setAttrTensor(long handle, String name, long tensorHandle);
 
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
+
+  private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
+
+  private static native void setAttrShapeList(
+      long handle, String name, long[] shapes, int[] numDims);
+
+  private static native void setAttrStringList(long handle, String name, Object[] value);
 }

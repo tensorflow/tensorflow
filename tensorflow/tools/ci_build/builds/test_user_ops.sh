@@ -76,14 +76,17 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
 
 pushd "${TMP_DIR}"
 
-# Obtain paths include and lib paths to the TensorFlow installation
-TF_INC=$("${PYTHON_BIN_PATH}" \
-         -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+# Obtain compilation and linking flags
+TF_CFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
+TF_LFLAGS=( $("${PYTHON_BIN_PATH}" \
+	      -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
 
-if [[ -z "${TF_INC}" ]]; then
-  die "FAILED to determine TensorFlow include path"
+if [[ -z "${TF_CFLAGS[*]}" || -z "${TF_LFLAGS[*]}" ]]; then
+  die "FAILED to determine TensorFlow compilation or linking flags"
 else
-  echo "TensorFlow include path: ${TF_INC}"
+  echo "TensorFlow compile flags: ${TF_CFLAGS[*]}"
+  echo "TensorFlow link flags: ${TF_LFLAGS[*]}"
 fi
 
 # Check g++ availability
@@ -123,7 +126,7 @@ if [[ ${IS_GPU} == "0" ]]; then
   EXPECTED_OUTPUT="[42, 0, 0]"
 
   # Locate the op kernel C++ file
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/zero_out_op_kernel_1.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/zero_out_op_kernel_1.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
 
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
@@ -142,7 +145,7 @@ if [[ ${IS_GPU} == "0" ]]; then
 
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
     -shared "${SRC_FILE}" -o "${USER_OP_SO}" \
-    -fPIC -I "${TF_INC}" || \
+    -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]}  || \
     die "g++ compilation of ${SRC_FILE} FAILED"
 
 else
@@ -162,13 +165,13 @@ else
   "${NVCC_BIN}" --version
   echo ""
 
-  OP_KERNEL_CU="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc"
+  OP_KERNEL_CU="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cu.cc"
   OP_KERNEL_CU=$(realpath "${OP_KERNEL_CU}")
   if [[ ! -f "${OP_KERNEL_CU}" ]]; then
     die "ERROR: Unable to find user-op kernel CUDA file at: ${OP_KERNEL_CU}"
   fi
 
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
     die "ERROR: Unable to find user-op kernel C++ file at: ${OP_KERNEL_CC}"
@@ -181,7 +184,7 @@ else
   OP_KERNEL_O=$(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.o/')
   "${NVCC_BIN}" -std=c++11 \
       -c -o "${OP_KERNEL_O}" "${OP_KERNEL_CU}" \
-      -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
+      ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
   CUDA_LIB_DIR="/usr/local/cuda/lib64"
@@ -200,7 +203,7 @@ else
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" -I "${TF_INC}" -L "${CUDA_LIB_DIR}" \
+      "${OP_KERNEL_O}" ${TF_CFLAGS[@]} -L "${CUDA_LIB_DIR}" ${TF_LFLAGS[@]} \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi

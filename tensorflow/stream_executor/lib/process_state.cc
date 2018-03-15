@@ -41,7 +41,7 @@ bool GetCurrentDirectory(string* dir) {
   std::unique_ptr<char[]> a(new char[len]);
   for (;;) {
     char* p = getcwd(a.get(), len);
-    if (p != NULL) {
+    if (p != nullptr) {
       *dir = p;
       return true;
     } else if (errno == ERANGE) {

@@ -30,9 +30,10 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
-__global__ void ScatterOpCustomKernel(
-    T* params, const T* updates, const Index* indices,
-    Index first_dim_size, Index updates_size, Index indices_size) {
+__global__ void ScatterOpCustomKernel(T* params, const T* updates,
+                                      const Index* indices,
+                                      Index first_dim_size, Index updates_size,
+                                      Index indices_size) {
   Index update_block = updates_size / indices_size;
   CUDA_1D_KERNEL_LOOP(i, updates_size) {
     int indices_i = i / update_block;
@@ -85,8 +86,8 @@ struct ScatterFunctor<GPUDevice, T, Index, op> {
     CudaLaunchConfig config = GetCudaLaunchConfig(updates_size, d);
     ScatterOpCustomKernel<T, Index, op>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            params.data(), updates.data(), indices.data(),
-            first_dim_size, updates_size, indices_size);
+            params.data(), updates.data(), indices.data(), first_dim_size,
+            updates_size, indices_size);
     return -1;
   }
 };

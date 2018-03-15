@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
-
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Forward declare proto so that it's symbols can be removed from .so exports
+class GraphDef;
 
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.
@@ -55,6 +56,12 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface& op_registry,
                                  int node_offset);
 
+// Same as above, except for the fact that it skips nodes that aren't found in
+// op_registry if skip_unknown_ops is true.
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface& op_registry,
+                                 int node_offset, bool skip_unknown_ops);
+
 // Remove attrs from 'graph_def' that have the default value according
 // to 'producer_op_registry', but don't exist according to
 // 'consumer_op_registry'. This can allow 'graph_def' to run on the
@@ -62,7 +69,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 // attr with a default was added). Note that this will not affect
 // attrs with non-default values, so you must run a
 // ValidateGraphDef...() function to see if the result is in fact
-// compatible. If not nulllptr, the op/attr pairs that were removed
+// compatible. If not nullptr, the op/attr pairs that were removed
 // are added to '*op_attr_removed'.
 //
 // Expected usage, for a producer that wants to prepare a graph for

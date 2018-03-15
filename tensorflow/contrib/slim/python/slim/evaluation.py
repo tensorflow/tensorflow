@@ -34,7 +34,7 @@ the metrics and finally call the `evaluation` method:
       "mse": slim.metrics.mean_squared_error(predictions, labels),
   })
 
-  inital_op = tf.group(
+  initial_op = tf.group(
       tf.global_variables_initializer(),
       tf.local_variables_initializer())
 
@@ -42,7 +42,7 @@ the metrics and finally call the `evaluation` method:
     metric_values = slim.evaluation(
         sess,
         num_evals=1,
-        inital_op=initial_op,
+        initial_op=initial_op,
         eval_op=names_to_updates.values(),
         final_op=name_to_values.values())
 
@@ -81,7 +81,7 @@ more summaries and call the evaluation_loop method:
 
   # Evaluate every 10 minutes:
   slim.evaluation_loop(
-      master='',
+      '',
       checkpoint_dir,
       logdir,
       num_evals=num_evals,
@@ -153,7 +153,8 @@ def evaluate_once(master,
                   summary_op=_USE_DEFAULT,
                   summary_op_feed_dict=None,
                   variables_to_restore=None,
-                  session_config=None):
+                  session_config=None,
+                  hooks=None):
   """Evaluates the model at the given checkpoint path.
 
   Args:
@@ -177,6 +178,8 @@ def evaluate_once(master,
       slim.variables.GetVariablesToRestore() is used.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+    hooks: A list of additional `SessionRunHook` objects to pass during the
+      evaluation.
 
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
@@ -184,11 +187,13 @@ def evaluate_once(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
+  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
-    hooks.append(
-        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
+    all_hooks.append(evaluation.SummaryAtEndHook(
+        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+  if hooks is not None:
+    all_hooks.extend(hooks)
 
   saver = None
   if variables_to_restore is not None:
@@ -203,7 +208,7 @@ def evaluate_once(master,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
-      hooks=hooks,
+      hooks=all_hooks,
       config=session_config)
 
 
@@ -213,6 +218,7 @@ def evaluation_loop(master,
                     num_evals=1,
                     initial_op=None,
                     initial_op_feed_dict=None,
+                    init_fn=None,
                     eval_op=None,
                     eval_op_feed_dict=None,
                     final_op=None,
@@ -223,7 +229,8 @@ def evaluation_loop(master,
                     eval_interval_secs=60,
                     max_number_of_evaluations=None,
                     session_config=None,
-                    timeout=None):
+                    timeout=None,
+                    hooks=None):
   """Runs TF-Slim's Evaluation Loop.
 
   Args:
@@ -233,6 +240,8 @@ def evaluation_loop(master,
     num_evals: The number of times to run `eval_op`.
     initial_op: An operation run at the beginning of evaluation.
     initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
+    init_fn: An optional callable to be executed after `init_op` is called. The
+      callable must accept one argument, the session being initialized.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -252,6 +261,8 @@ def evaluation_loop(master,
       configure the `Session`. If left as `None`, the default will be used.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
+    hooks: A list of additional `SessionRunHook` objects to pass during
+      repeated evaluations.
 
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
@@ -259,11 +270,15 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
+  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
-    hooks.append(
-        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
+    all_hooks.append(evaluation.SummaryAtEndHook(
+        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+
+  if hooks is not None:
+    # Add custom hooks if provided.
+    all_hooks.extend(hooks)
 
   saver = None
   if variables_to_restore is not None:
@@ -273,13 +288,14 @@ def evaluation_loop(master,
       checkpoint_dir,
       master=master,
       scaffold=monitored_session.Scaffold(
-          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict,
+          init_fn=init_fn, saver=saver),
       eval_ops=eval_op,
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
       eval_interval_secs=eval_interval_secs,
-      hooks=hooks,
+      hooks=all_hooks,
       config=session_config,
       max_number_of_evaluations=max_number_of_evaluations,
       timeout=timeout)

@@ -40,7 +40,7 @@ class StringPiece {
   typedef size_t size_type;
 
   // Create an empty slice.
-  StringPiece() : data_(""), size_(0) {}
+  StringPiece() : data_(nullptr), size_(0) {}
 
   // Create a slice that refers to d[0,n-1].
   StringPiece(const char* d, size_t n) : data_(d), size_(n) {}
@@ -50,11 +50,6 @@ class StringPiece {
 
   // Create a slice that refers to s[0,strlen(s)-1]
   StringPiece(const char* s) : data_(s), size_(strlen(s)) {}
-
-  void set(const void* data, size_t len) {
-    data_ = reinterpret_cast<const char*>(data);
-    size_ = len;
-  }
 
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
@@ -70,19 +65,13 @@ class StringPiece {
   iterator begin() const { return data_; }
   iterator end() const { return data_ + size_; }
 
-  static const size_t npos;
+  static const size_t npos = size_type(-1);
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
   char operator[](size_t n) const {
     assert(n < size());
     return data_[n];
-  }
-
-  // Change this slice to refer to an empty array
-  void clear() {
-    data_ = "";
-    size_ = 0;
   }
 
   // Drop the first "n" bytes from this slice.
@@ -113,10 +102,6 @@ class StringPiece {
   }
 
   StringPiece substr(size_t pos, size_t n = npos) const;
-
-  struct Hasher {
-    size_t operator()(StringPiece arg) const;
-  };
 
   // Return a string that contains the copy of the referenced data.
   std::string ToString() const { return std::string(data_, size_); }

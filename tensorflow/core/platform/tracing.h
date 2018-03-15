@@ -103,7 +103,7 @@ class Tracing {
   friend class ScopedAnnotation;
   friend class TraceMe;
 
-  static std::atomic<Tracing::Engine*> tracing_engine_;
+  TF_EXPORT static std::atomic<Tracing::Engine*> tracing_engine_;
   static Tracing::Engine* engine() {
     return tracing_engine_.load(std::memory_order_acquire);
   }
@@ -166,10 +166,22 @@ class Tracing::Engine {
   // May return nullptr if annotations are not supported.
   virtual Annotation* PushAnnotation(StringPiece name) = 0;
 
-  // Start tracing under the specified label.  Caller should delete the
-  // result to stop tracing.
+  // Start tracing under the specified label. Caller should delete the result
+  // to stop tracing.
   // May return nullptr if tracing is not supported.
-  virtual Tracer* StartTracing(StringPiece label) = 0;
+  virtual Tracer* StartTracing(StringPiece label, bool is_expensive) = 0;
+  // Same as above, but implementations can avoid copying the string.
+  virtual Tracer* StartTracing(string&& label, bool is_expensive) {
+    return StartTracing(StringPiece(label), is_expensive);
+  }
+
+  // Backwards compatibility one arg variants (assume is_expensive=true).
+  Tracer* StartTracing(StringPiece label) {
+    return StartTracing(label, /*is_expensive=*/true);
+  }
+  Tracer* StartTracing(string&& label) {
+    return StartTracing(StringPiece(label), /*is_expensive=*/true);
+  }
 };
 
 // This class permits a user to apply annotation on kernels and memcpys
@@ -197,6 +209,12 @@ class Tracing::ScopedAnnotation {
   // label string is only done if tracing is enabled.
   ScopedAnnotation(StringPiece name_part1, StringPiece name_part2);
 
+  // Returns true iff scoped annotations are active.
+  static bool Enabled() {
+    auto e = Tracing::engine();
+    return e && e->IsEnabled();
+  }
+
  private:
   std::unique_ptr<Engine::Annotation> annotation_;
 };
@@ -208,6 +226,14 @@ class Tracing::ScopedAnnotation {
 class Tracing::TraceMe {
  public:
   explicit TraceMe(StringPiece name);
+  TraceMe(StringPiece name, bool is_expensive);
+
+  // If tracing is enabled, set up a traceMe with a label of
+  // "<name_part1>:<name_part2>".  This can be cheaper than the
+  // single-argument constructor because the concatenation of the
+  // label string is only done if tracing is enabled.
+  TraceMe(StringPiece name_part1, StringPiece name_part2);
+  TraceMe(StringPiece name_part1, StringPiece name_part2, bool is_expensive);
 
  private:
   std::unique_ptr<Engine::Tracer> tracer_;
@@ -229,10 +255,24 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
   }
 }
 
-inline Tracing::TraceMe::TraceMe(StringPiece name) {
+inline Tracing::TraceMe::TraceMe(StringPiece name) : TraceMe(name, true) {}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name, bool is_expensive) {
   auto e = Tracing::engine();
   if (e && e->IsEnabled()) {
-    tracer_.reset(e->StartTracing(name));
+    tracer_.reset(e->StartTracing(name, is_expensive));
+  }
+}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name_part1, StringPiece name_part2)
+    : TraceMe(name_part1, name_part2, true) {}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name_part1, StringPiece name_part2,
+                                 bool is_expensive) {
+  auto e = Tracing::engine();
+  if (e && e->IsEnabled()) {
+    tracer_.reset(e->StartTracing(strings::StrCat(name_part1, ":", name_part2),
+                                  is_expensive));
   }
 }
 

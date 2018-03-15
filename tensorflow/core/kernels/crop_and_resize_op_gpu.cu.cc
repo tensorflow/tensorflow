@@ -88,26 +88,26 @@ __global__ void CropAndResizeKernel(
     const int right_x_index = ceilf(in_x);
     const float x_lerp = in_x - left_x_index;
 
-    const float top_left(
+    const float top_left(static_cast<float>(
         image_ptr[((b_in * image_height + top_y_index) * image_width +
                    left_x_index) *
                       depth +
-                  d]);
-    const float top_right(
+                  d]));
+    const float top_right(static_cast<float>(
         image_ptr[((b_in * image_height + top_y_index) * image_width +
                    right_x_index) *
                       depth +
-                  d]);
-    const float bottom_left(
+                  d]));
+    const float bottom_left(static_cast<float>(
         image_ptr[((b_in * image_height + bottom_y_index) * image_width +
                    left_x_index) *
                       depth +
-                  d]);
-    const float bottom_right(
+                  d]));
+    const float bottom_right(static_cast<float>(
         image_ptr[((b_in * image_height + bottom_y_index) * image_width +
                    right_x_index) *
                       depth +
-                  d]);
+                  d]));
     const float top = top_left + (top_right - top_left) * x_lerp;
     const float bottom = bottom_left + (bottom_right - bottom_left) * x_lerp;
     crops_ptr[out_idx] = top + (bottom - top) * y_lerp;
@@ -258,26 +258,26 @@ __global__ void CropAndResizeBackpropBoxesKernel(
     const int right_x_index = ceilf(in_x);
     const float x_lerp = in_x - left_x_index;
 
-    const float top_left =
+    const float top_left(static_cast<float>(
         image_ptr[((b_in * image_height + top_y_index) * image_width +
                    left_x_index) *
                       depth +
-                  d];
-    const float top_right =
+                  d]));
+    const float top_right(static_cast<float>(
         image_ptr[((b_in * image_height + top_y_index) * image_width +
                    right_x_index) *
                       depth +
-                  d];
-    const float bottom_left =
+                  d]));
+    const float bottom_left(static_cast<float>(
         image_ptr[((b_in * image_height + bottom_y_index) * image_width +
                    left_x_index) *
                       depth +
-                  d];
-    const float bottom_right =
+                  d]));
+    const float bottom_right(static_cast<float>(
         image_ptr[((b_in * image_height + bottom_y_index) * image_width +
                    right_x_index) *
                       depth +
-                  d];
+                  d]));
 
     // Compute the image gradient.
     float image_grad_y = (1 - x_lerp) * (bottom_left - top_left) +
@@ -320,7 +320,8 @@ namespace functor {
 
 template <typename T>
 struct CropAndResize<GPUDevice, T> {
-  bool operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const OpKernelContext* context,
+                  typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   float extrapolation_value,
@@ -335,6 +336,7 @@ struct CropAndResize<GPUDevice, T> {
     const int depth = crops.dimension(3);
 
     const int total_count = num_boxes * crop_height * crop_width * depth;
+    const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     if (total_count > 0) {
       CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
@@ -436,11 +438,11 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
   template struct CropAndResizeBackpropImage<GPUDevice, T>; \
   template struct CropAndResizeBackpropBoxes<GPUDevice, T>;
 
-TF_CALL_float(DEFINE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 
-template struct CheckValidBoxIndHelper<GPUDevice>;
+template struct CheckValidBoxIndexHelper<GPUDevice>;
 
 }  // namespace functor
 }  // namespace tensorflow

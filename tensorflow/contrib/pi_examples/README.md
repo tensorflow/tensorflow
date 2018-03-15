@@ -13,7 +13,7 @@ sudo apt-get install -y libjpeg-dev
 ```
 
  - To download the example model you'll need, run these commands:
- 
+
 ```bash
 curl https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015_stripped.zip \
 -o /tmp/inception_dec_2015_stripped.zip
@@ -69,5 +69,5 @@ Flite package and then pipe the output of the binary you've built, like this:
 
 ```
 sudo apt-get install flite
-tensorflow/contrib/pi_examples/camera/gen/bin/camera | xargs -n1 flite -t
+tensorflow/contrib/pi_examples/camera/gen/bin/camera | xargs -n 1 flite -t
 ```

@@ -17,6 +17,8 @@
 ## This package provides optimizers to train linear models.
 
 @@SdcaModel
+@@SparseFeatureColumn
+@@SDCAOptimizer
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -25,3 +27,6 @@ from __future__ import print_function
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
 from tensorflow.contrib.linear_optimizer.python.sdca_optimizer import SDCAOptimizer
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

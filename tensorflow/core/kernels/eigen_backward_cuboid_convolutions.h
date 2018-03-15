@@ -13,35 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_patch_3d.h"
+#include "tensorflow/core/kernels/eigen_volume_patch.h"
 
 namespace Eigen {
 
 /** CuboidConvolutionBackwardInput
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Computes the backprop for the input of a 3D convolution.
-  *
-  * The output_backward parameter is expected to be a tensor with a rank of 4 or
-  * more (channels, depth, height, width, and optionally others)
-  * The kernel parameter is expected to be a 5D tensor (filters, channels,
-  * kernel_depth, kernel_height, kernel_width)
-  * output_backward and kernel have to be in the same layout.
-  *
-  * The dimensions of the result will be filters, depth, height, width (and
-  * others if applicable).
-  *
-  * It is possible to swap the order of the depth, width and height dimensions
-  * provided that the same order is used in the input, the kernel, and the
-  * output.
-  *
-  * All dimension orders above are given for col-major, and should be reversed
-  * for row-major.
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Computes the backprop for the input of a 3D convolution.
+ *
+ * The output_backward parameter is expected to be a tensor with a rank of 4 or
+ * more (channels, depth, height, width, and optionally others)
+ * The kernel parameter is expected to be a 5D tensor (filters, channels,
+ * kernel_depth, kernel_height, kernel_width)
+ * output_backward and kernel have to be in the same layout.
+ *
+ * The dimensions of the result will be filters, depth, height, width (and
+ * others if applicable).
+ *
+ * It is possible to swap the order of the depth, width and height dimensions
+ * provided that the same order is used in the input, the kernel, and the
+ * output.
+ *
+ * All dimension orders above are given for col-major, and should be reversed
+ * for row-major.
+ */
 
 template <typename OutputBackward, typename Kernel>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
@@ -300,26 +300,26 @@ CuboidConvolutionBackwardInput(
 }
 
 /** CuboidConvolutionBackwardKernel
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Computes the backprop for the filter of a 3D convolution.
-  *
-  * The output_backward parameter is expected to be a tensor with a rank of 4 or
-  * more (channels, depth, height, width, and optionally others)
-  * The kernel parameter is expected to be a 4D tensor (filters, channels,
-  * kernel_depth, kernel_height, kernel_width)
-  * output_backward and kernel have to be in the same layout.
-  *
-  * The dimensions of the result will be filters, depth, height, width (and
-  * others if applicable).
-  *
-  * It is possible to swap the order of the depth, width and height dimensions
-  * provided that the same order is used in the input, the kernel, and the
-  * output.
-  *
-  * All dimension orders above are given for col-major, and should be reversed
-  * for row-major.
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Computes the backprop for the filter of a 3D convolution.
+ *
+ * The output_backward parameter is expected to be a tensor with a rank of 4 or
+ * more (channels, depth, height, width, and optionally others)
+ * The kernel parameter is expected to be a 4D tensor (filters, channels,
+ * kernel_depth, kernel_height, kernel_width)
+ * output_backward and kernel have to be in the same layout.
+ *
+ * The dimensions of the result will be filters, depth, height, width (and
+ * others if applicable).
+ *
+ * It is possible to swap the order of the depth, width and height dimensions
+ * provided that the same order is used in the input, the kernel, and the
+ * output.
+ *
+ * All dimension orders above are given for col-major, and should be reversed
+ * for row-major.
+ */
 template <typename OutputBackward, typename Input>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
     internal::traits<OutputBackward>::Layout == ColMajor,
@@ -617,4 +617,4 @@ CuboidConvolutionBackwardKernel(
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_CUBOID_CONVOLUTIONS_H_

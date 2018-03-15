@@ -25,8 +25,8 @@
 #include <utility>
 #include <vector>
 
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -42,7 +42,6 @@ using shape_inference::ShapeHandle;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::LeftProbabilityK;
-
 
 // The term 'routing function' is synonymous with 'the probability
 // that an instance is routed to each leaf node.'  It is defined in
@@ -96,10 +95,8 @@ class KFeatureRoutingFunction : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("max_nodes", &max_nodes_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features_per_node",
                                              &num_features_per_node_));
-    OP_REQUIRES_OK(context, context->GetAttr("layer_num",
-                                             &layer_num_));
-    OP_REQUIRES_OK(context, context->GetAttr("random_seed",
-                                             &random_seed_));
+    OP_REQUIRES_OK(context, context->GetAttr("layer_num", &layer_num_));
+    OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -108,27 +105,25 @@ class KFeatureRoutingFunction : public OpKernel {
     const Tensor& tree_biases_tensor = context->input(2);
 
     if (input_data.shape().dim_size(0) > 0) {
-      OP_REQUIRES(context, input_data.shape().dims() == 2,
-                  errors::InvalidArgument(
-                      "input_data should be two-dimensional"));
+      OP_REQUIRES(
+          context, input_data.shape().dims() == 2,
+          errors::InvalidArgument("input_data should be two-dimensional"));
     }
 
     // Check tensor bounds.
     if (!CheckTensorBounds(context, input_data)) return;
 
-    const int32 num_data = static_cast<int32>(
-        input_data.shape().dim_size(0));
-    const int32 num_features = static_cast<int32>(
-        input_data.shape().dim_size(1));
+    const int32 num_data = static_cast<int32>(input_data.shape().dim_size(0));
+    const int32 num_features =
+        static_cast<int32>(input_data.shape().dim_size(1));
 
     Tensor* output_probabilities = nullptr;
     TensorShape output_shape;
     output_shape.AddDim(num_data);
     output_shape.AddDim(max_nodes_);
 
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, output_shape,
-                                            &output_probabilities));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
+                                                     &output_probabilities));
 
     auto out_probs = output_probabilities->tensor<float, 2>();
     const auto tree_biases = tree_biases_tensor.tensor<float, 1>();
@@ -136,30 +131,22 @@ class KFeatureRoutingFunction : public OpKernel {
     // Iteratively compute the probability of reaching each leaf.
     std::vector<int32> feature_set;
     for (int i = 0; i < num_data; i++) {
-      const Tensor point = input_data.Slice(i, i+1);
+      const Tensor point = input_data.Slice(i, i + 1);
 
       out_probs(i, 0) = 1.0f;
 
       for (int j = 0; j < max_nodes_ / 2; j++) {
         feature_set.clear();
-        tensorforest::GetFeatureSet(
-            layer_num_,
-            i,
-            random_seed_,
-            num_features,
-            num_features_per_node_,
-            &feature_set);
+        tensorforest::GetFeatureSet(layer_num_, i, random_seed_, num_features,
+                                    num_features_per_node_, &feature_set);
 
-        int32 left_child = 2*j + 1;
+        int32 left_child = 2 * j + 1;
         int32 right_child = left_child + 1;
 
         float prob = out_probs(i, j);
-        float left_prob = LeftProbabilityK(point,
-                                           feature_set,
-                                           tree_parameters_tensor.Slice(j, j+1),
-                                           tree_biases(j),
-                                           num_features,
-                                           num_features_per_node_);
+        float left_prob = LeftProbabilityK(
+            point, feature_set, tree_parameters_tensor.Slice(j, j + 1),
+            tree_biases(j), num_features, num_features_per_node_);
 
         out_probs(i, left_child) = prob * left_prob;
         out_probs(i, right_child) = prob * (1.0f - left_prob);

@@ -100,6 +100,9 @@ Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
 
+// Reverses <axis> dimensions of <tensor>>
+Node* Reverse(Graph* g, Node* tensor, Node* axis);
+
 // Generates random unit uniform distribution of the input shape.
 Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 
@@ -109,6 +112,14 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 // Generates random gamma distribution with the given shape and alpha[s].
 // Output dtype determined by alpha.
 Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
+
+// Generates random poisson distribution with the given shape and lam[s].
+// Output dtype determined by lam.
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
+
+// Rolls tensor by an offset of <shift> along the corresponding
+// <axis> dimensions.
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis);
 
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
@@ -164,14 +175,8 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
-// Perform gather op on params "in0" with indices "in1".
-Node* Gather(Graph* g, Node* in0, Node* in1);
-
-// Computes broadcasted shape from the given input shapes.
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
-
-// Computes the args needed broadcast gradient function.
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
+// Perform gather op on params "in0" with indices "in1" and axis "axis".
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis);
 
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);
@@ -197,6 +202,12 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias);
 
 // Add a Conv2D node in "g".
 Node* Conv2D(Graph* g, Node* in0, Node* in1);
+
+// Add a Diag node in "g".
+Node* Diag(Graph* g, Node* in, DataType type);
+
+// Add a DiagPart node in "g".
+Node* DiagPart(Graph* g, Node* in, DataType type);
 
 }  // end namespace graph
 }  // end namespace test

@@ -503,6 +503,8 @@ class QuantizeGraphTest(test.TestCase):
                                           [a_identity_name, b_constant_name])
     quantize_graph.set_attr_dtype(add_node, "T", dtypes.float32)
     expected_output.node.extend([add_node])
+    expected_output.versions.CopyFrom(graph_def.versions)
+    expected_output.library.CopyFrom(graph_def.library)
 
     output = graph_util.remove_training_nodes(graph_def)
     stripped_output = graph_util.extract_sub_graph(output, [add_name])
@@ -686,7 +688,7 @@ class QuantizeGraphTest(test.TestCase):
 
   def test_quantized_input_range_bias_add(self):
     input_shape = [1, 1, 2, 6]
-    input_n = quantize_graph.create_node("PlaceholderV2", "input", [])
+    input_n = quantize_graph.create_node("Placeholder", "input", [])
     quantize_graph.set_attr_dtype(input_n, "dtype", dtypes.float32)
     quantize_graph.set_attr_shape(input_n, "shape", input_shape)
     offset_n = quantize_graph.create_constant_node(
@@ -711,7 +713,7 @@ class QuantizeGraphTest(test.TestCase):
     shapes = [[3, 2], [2, 4]]
     inputs = []
     for i, shape in enumerate(shapes):
-      node = quantize_graph.create_node("PlaceholderV2", "input_%s" % i, [])
+      node = quantize_graph.create_node("Placeholder", "input_%s" % i, [])
       quantize_graph.set_attr_dtype(node, "dtype", dtypes.float32)
       quantize_graph.set_attr_shape(node, "shape", shape)
       inputs.append(node)
@@ -950,6 +952,8 @@ class QuantizeGraphTest(test.TestCase):
     quantize_graph.set_attr_dtype(mat_mul_node, "T1", dtypes.uint8)
     quantize_graph.set_attr_dtype(mat_mul_node, "T2", dtypes.int32)
     expected_output.node.extend([mat_mul_node])
+    expected_output.versions.CopyFrom(graph_def.versions)
+    expected_output.library.CopyFrom(graph_def.library)
 
     rewriter = quantize_graph.GraphRewriter(
         graph_def, [mat_mul_name], quantized_input_range=None)

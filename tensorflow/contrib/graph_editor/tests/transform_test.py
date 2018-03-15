@@ -20,11 +20,13 @@ from __future__ import print_function
 import collections
 import numpy as np
 from tensorflow.contrib import graph_editor as ge
+from tensorflow.contrib.graph_editor.tests import match
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -75,7 +77,7 @@ class TransformTest(test.TestCase):
       _ = math_ops.add(a, b)
     sgv = ge.make_view([assert_op, eq.op, a.op, b.op])
     copier = ge.Transformer()
-    copied_sgv, info = copier(sgv, sgv.graph, "", "")
+    _, info = copier(sgv, sgv.graph, "", "")
     new_assert_op = info.transformed(assert_op)
     self.assertIsNotNone(new_assert_op)
 
@@ -84,61 +86,29 @@ class TransformTest(test.TestCase):
 
     def my_transform_op_handler(info, op):
       add_noise = op.name.startswith("Add")
-      op_ = ge.transform.copy_op_handler(info, op)
-      if add_noise:
-        # add some noise to op
-        with info.graph_.as_default():
-          t_ = math_ops.add(constant_op.constant(
-              1.0, shape=[10], name="Noise"),
-                            op_.outputs[0],
-                            name="AddNoise")
-        # return the "noisy" op
-        return t_.op
-      else:
-        return op_
+      op_, op_outputs_ = ge.transform.copy_op_handler(info, op)
+      if not add_noise:
+        return op_, op_outputs_
+      # add some noise to op
+      with info.graph_.as_default():
+        t_ = math_ops.add(
+            constant_op.constant(1.0, shape=[10], name="Noise"),
+            op_.outputs[0],
+            name="AddNoise")
+      # return the "noisy" op
+      return op_, [t_]
 
     transformer.transform_op_handler = my_transform_op_handler
 
     graph = ops.Graph()
     transformer(self.graph, graph, "", "")
-    matcher0 = ge.matcher("AddNoise").input_ops(
-        "Noise", ge.matcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.matcher("AddNoise_1").input_ops(
-        "Noise_1", ge.matcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.matcher("AddNoise_2").input_ops(
-        "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
+    matcher0 = match.OpMatcher("AddNoise").input_ops(
+        "Noise", match.OpMatcher("Add").input_ops("Const", "Input"))
+    matcher1 = match.OpMatcher("AddNoise_1").input_ops(
+        "Noise_1", match.OpMatcher("Add_1").input_ops("Const_1", matcher0))
+    matcher2 = match.OpMatcher("AddNoise_2").input_ops(
+        "Noise_2", match.OpMatcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=graph)[0]
-    self.assertTrue(matcher2(top))
-
-  def test_transform_in_place(self):
-    transformer = ge.Transformer()
-
-    def my_transform_op_handler_in_place(info, op):
-      add_noise = op.name.startswith("Add")
-      op = ge.transform.transform_op_in_place(
-          info, op, detach_outputs=add_noise)
-      if add_noise:
-        # add some noise to op
-        with info.graph_.as_default():
-          t = math_ops.add(constant_op.constant(
-              1.0, shape=[10], name="Noise"),
-                           op.outputs[0],
-                           name="AddNoise")
-        # return the "noisy" op
-        return t.op
-      else:
-        return op
-
-    transformer.transform_op_handler = my_transform_op_handler_in_place
-
-    transformer(self.graph, self.graph, "", "")
-    matcher0 = ge.matcher("AddNoise").input_ops(
-        "Noise", ge.matcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.matcher("AddNoise_1").input_ops(
-        "Noise_1", ge.matcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.matcher("AddNoise_2").input_ops(
-        "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
-    top = ge.select_ops("^AddNoise_2$", graph=self.graph)[0]
     self.assertTrue(matcher2(top))
 
   def test_copy_with_input_replacements(self):
@@ -211,6 +181,34 @@ class TransformTest(test.TestCase):
     res = ge.graph_replace([b, c], {a: d})
     self.assertEqual(res[0].name, "b:0")
     self.assertEqual(res[1].name, "add_1:0")
+
+  def test_graph_replace_gradients(self):
+    ops.reset_default_graph()
+    w = variables.Variable(0.0, name="w")
+    y = math_ops.multiply(math_ops.multiply(w, w, name="mul1"), w, name="mul2")
+    g = gradients_impl.gradients(y, w, name="grad")[0]
+
+    # Extract the operations.
+    replacement_ts = {w.value(): g}
+    original_mul1_grad = (ops.get_default_graph().
+                          get_operation_by_name("grad/mul1_grad/Mul_1"))
+
+    # Should not raise exception.
+    res = ge.graph_replace(g, replacement_ts, dst_scope="res")
+
+    # Extract the operations after graph_replace.
+    result_mul1_grad = (ops.get_default_graph().
+                        get_operation_by_name("res/grad/mul1_grad/Mul_1"))
+
+    # Make sure _original_ops are as expected.
+    self.assertEquals(original_mul1_grad._original_op.name, u"mul1")
+    self.assertEquals(result_mul1_grad._original_op.name, u"res/mul1")
+    self.assertNotEquals(res.name, g.name)
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      g_val, res_val = sess.run([g, res])
+    self.assertNear(g_val, 0.0, ERROR_TOLERANCE)
+    self.assertNear(res_val, 0.0, ERROR_TOLERANCE)
 
 
 if __name__ == "__main__":

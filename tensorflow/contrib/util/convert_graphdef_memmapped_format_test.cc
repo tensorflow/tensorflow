@@ -52,7 +52,7 @@ TEST(ConvertGraphdefMemmappedFormatTest, ConvertModel) {
   test::FillFn<float>(&test_tensor2, [](int) -> float { return 3.0; });
 
   auto root = Scope::NewRootScope().ExitOnError();
-  ops::Output m = ops::MatMul(root, test_tensor1, test_tensor2);
+  Output m = ops::MatMul(root, test_tensor1, test_tensor2);
   const string result_name = m.node()->name();
 
   GraphDef graph_def;
@@ -103,7 +103,7 @@ TEST(ConvertGraphdefMemmappedFormatTest, NotSupportedTypesConvert) {
   Tensor test_tensor2(DT_STRING, kTestTensorShape);
   test::FillFn<string>(&test_tensor2, [](int) -> string { return "XYZ"; });
   auto root = Scope::NewRootScope().ExitOnError();
-  ops::Output m = ops::Add(root, test_tensor1, test_tensor2);
+  Output m = ops::Add(root, test_tensor1, test_tensor2);
   const string result_name = m.node()->name();
 
   GraphDef graph_def;

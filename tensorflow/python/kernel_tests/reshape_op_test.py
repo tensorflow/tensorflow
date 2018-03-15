@@ -37,9 +37,20 @@ class ReshapeTest(test.TestCase):
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
+      # Repeat with an int64 shape tensor.
+      y64 = constant_op.constant(y, dtype=dtypes.int64)
+      tf_ans = array_ops.reshape(x, y64)
+      out = tf_ans.eval()
+      self.assertEqual(tf_ans.get_shape(), out.shape)
+      self.assertShapeEqual(np_ans, tf_ans)
+
   def _testBothReshape(self, x, y):
     self._testReshape(x, y, False)
     self._testReshape(x, y, True)
+
+  def testBoolBasic(self):
+    x = np.arange(1., 7.).reshape([1, 6]) > 3
+    self._testBothReshape(x, [2, 3])
 
   def testFloatBasic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.float32)
@@ -129,10 +140,10 @@ class ReshapeTest(test.TestCase):
     y = array_ops.reshape(x, [array_ops.placeholder(dtypes.int32), 37])
     self.assertEqual([None, 37], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.concat_v2()`.
+    # Unknown input shape, partial new shape using `tf.concat()`.
     y = array_ops.reshape(
         x,
-        array_ops.concat_v2(
+        array_ops.concat(
             [array_ops.placeholder(
                 dtypes.int32, shape=(2,)), [37, 42]], 0))
     self.assertEqual([None, None, 37, 42], y.get_shape().as_list())

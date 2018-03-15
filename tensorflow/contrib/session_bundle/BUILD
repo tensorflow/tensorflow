@@ -1,10 +1,8 @@
-# Description: TensorFlow Serving session bundle.
+# Description:
+#   TensorFlow Serving session bundle.
 
 package(
     default_visibility = ["//visibility:public"],
-    features = [
-        "-layering_check",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -17,6 +15,8 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_mobile",
+    "py_test",
+    "tf_cc_test",
 )
 
 filegroup(
@@ -40,6 +40,16 @@ filegroup(
     ]),
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "session_bundle_pip",
+    deps = [
+        ":bundle_shim_py",
+        ":exporter",
+        ":gc",
+    ],
+)
+
 py_library(
     name = "bundle_shim_py",
     srcs = ["bundle_shim.py"],
@@ -52,6 +62,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -68,36 +80,41 @@ py_test(
     ],
     main = "bundle_shim_test.py",
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = ["no_pip"],
     deps = [
         ":bundle_shim_py",
         ":constants",
+        ":manifest_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "constants",
     srcs = ["constants.py"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "exporter",
     srcs = ["exporter.py"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
         ":gc",
         ":manifest_proto_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -110,9 +127,7 @@ py_library(
 py_test(
     name = "exporter_test",
     size = "small",
-    srcs = [
-        "exporter_test.py",
-    ],
+    srcs = ["exporter_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
@@ -121,34 +136,36 @@ py_test(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "gc",
     srcs = ["gc.py"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
 py_test(
     name = "gc_test",
-    srcs = [
-        "gc_test.py",
-    ],
+    srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
         ":gc",
@@ -174,16 +191,23 @@ filegroup(
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "session_bundle",
     hdrs = ["session_bundle.h"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
+        ":manifest_proto_cc",
         ":session_bundle_lite",
         ":signature",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 # This is a lite version of the session_bundle target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should link
 # any required ops manually.
@@ -192,9 +216,11 @@ cc_library(
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
+        "//tensorflow/core:lib_internal",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -206,30 +232,33 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "session_bundle_test",
-    size = "small",
+    size = "medium",
     srcs = ["session_bundle_test.cc"],
     data = [":session_bundle_half_plus_two"],
     # Link in all registered kernels.
     linkstatic = 1,
-    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":session_bundle",
+        ":signature",
         ":test_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "session_bundle_py",
     srcs = ["session_bundle.py"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -239,7 +268,9 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -250,7 +281,7 @@ py_test(
     data = [":session_bundle_half_plus_two"],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = ["no_pip"],
     deps = [
         ":constants",
         ":manifest_proto_py",
@@ -258,8 +289,8 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:training",
@@ -269,6 +300,7 @@ py_test(
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
 # link any required ops manually.
@@ -276,28 +308,39 @@ cc_library(
     name = "signature_lite",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
-    deps = if_not_mobile([
+    deps = [
+    ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         # mobile not supported yet
     ]),
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "signature",
     hdrs = ["signature.h"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
+        ":manifest_proto_cc",
         ":signature_lite",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_mobile([
         "//tensorflow/core:tensorflow_opensource",
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "signature_test",
     size = "small",
     srcs = ["signature_test.cc"],
@@ -305,7 +348,6 @@ cc_test(
     deps = [
         ":manifest_proto_cc",
         ":signature",
-        ":test_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -317,14 +359,15 @@ cc_test(
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
@@ -353,7 +396,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "bundle_shim_test",
     size = "small",
     srcs = ["bundle_shim_test.cc"],
@@ -363,22 +406,20 @@ cc_test(
     ],
     # Link in all registered kernels.
     linkstatic = 1,
-    tags = ["manual"],
     deps = [
         ":bundle_shim",
         ":test_util",
-        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
 )
 
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 tf_proto_library(
     name = "manifest_proto",
     srcs = ["manifest.proto"],

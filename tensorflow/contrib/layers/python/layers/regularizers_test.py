@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import regularizers
@@ -85,6 +78,30 @@ class RegularizerTest(test.TestCase):
       loss = regularizers.l1_l2_regularizer(1.0, 1.0)(tensor)
       self.assertEquals(loss.op.name, 'l1_l2_regularizer')
       self.assertAlmostEqual(loss.eval(), num_elem + num_elem / 2, 5)
+
+  def test_l1_l2_scale_l1Zero(self):
+    shape = [5, 5, 5]
+    num_elem = 5 * 5 * 5
+    tensor = constant_op.constant(1.0, shape=shape)
+    loss = regularizers.l1_l2_regularizer(0.0, 1.0)(tensor)
+    with self.test_session():
+      self.assertEquals(loss.op.name, 'l1_l2_regularizer')
+      self.assertAlmostEqual(loss.eval(), num_elem / 2, 5)
+
+  def test_l1_l2_scale_l2Zero(self):
+    shape = [5, 5, 5]
+    num_elem = 5 * 5 * 5
+    tensor = constant_op.constant(1.0, shape=shape)
+    loss = regularizers.l1_l2_regularizer(1.0, 0.0)(tensor)
+    with self.test_session():
+      self.assertEquals(loss.op.name, 'l1_l2_regularizer')
+      self.assertAlmostEqual(loss.eval(), num_elem, 5)
+
+  def test_l1_l2_scales_Zero(self):
+    shape = [5, 5, 5]
+    tensor = constant_op.constant(1.0, shape=shape)
+    loss = regularizers.l1_l2_regularizer(0.0, 0.0)(tensor)
+    self.assertEquals(loss, None)
 
   def testL1L2RegularizerWithScope(self):
     with self.test_session():

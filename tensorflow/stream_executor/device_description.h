@@ -82,7 +82,7 @@ class DeviceDescription {
 
   // Returns the limit on the number of simultaneously resident blocks
   // on a multiprocessor.
-  const uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
+  uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
 
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
@@ -141,7 +141,7 @@ class DeviceDescription {
   uint64 device_memory_size() const { return device_memory_size_; }
 
   // Returns the device's core clock rate in GHz.
-  const float clock_rate_ghz() const { return clock_rate_ghz_; }
+  float clock_rate_ghz() const { return clock_rate_ghz_; }
 
   // Returns whether ECC is enabled.
   bool ecc_enabled() const { return ecc_enabled_; }

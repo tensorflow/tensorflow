@@ -123,7 +123,7 @@ class AlphaNum {
       : piece_(digits_, strlen(DoubleToBuffer(f, digits_))) {}
 
   AlphaNum(const Eigen::half &f);  // NOLINT(runtime/explicit)
-  AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
+  AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
@@ -143,8 +143,6 @@ class AlphaNum {
 
   TF_DISALLOW_COPY_AND_ASSIGN(AlphaNum);
 };
-
-extern AlphaNum gEmptyAlphaNum;
 
 // ----------------------------------------------------------------------
 // StrCat()

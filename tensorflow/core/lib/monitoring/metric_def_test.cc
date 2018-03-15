@@ -41,6 +41,24 @@ TEST(MetricDefTest, Simple) {
   EXPECT_EQ("LabelName", metric_def1.label_descriptions()[0]);
 }
 
+TEST(MetricDefTest, StringsPersist) {
+  // Ensure string attributes of the metric are copied into the metric
+  string name = "/tensorflow/metric0";
+  string description = "test description";
+  string label_description = "test label description";
+  const MetricDef<MetricKind::kCumulative, int64, 1> metric_def(
+      name, description, label_description);
+
+  // Mutate the strings
+  name[4] = 'A';
+  description[4] = 'B';
+  label_description[4] = 'C';
+
+  EXPECT_NE(name, metric_def.name());
+  EXPECT_NE(description, metric_def.description());
+  EXPECT_NE(label_description, metric_def.label_descriptions()[0]);
+}
+
 }  // namespace
 }  // namespace monitoring
 }  // namespace tensorflow
