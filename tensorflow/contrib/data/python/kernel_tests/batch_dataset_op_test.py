@@ -387,6 +387,20 @@ class BatchDatasetTest(test.TestCase):
   def testBatchAndMapDatasetWithParallelBatching(self):
     return self._testBatchAndMapDatasetHelper(num_parallel_batches=10)
 
+  def testMapAndBatchYieldsPartialBatch(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .apply(batching.map_and_batch(
+                    lambda x: array_ops.reshape(x * x, [1]), 4))
+                .make_one_shot_iterator())
+    self.assertEqual([None, 1], iterator.output_shapes.as_list())
+    next_element = iterator.get_next()
+    with self.test_session() as sess:
+      self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
+      self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
+      self.assertAllEqual([[64], [81]], sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
   def testMapAndBatchSparse(self):
 
     def _sparse(i):
