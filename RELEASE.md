@@ -1,3 +1,8 @@
+# Release 1.5.1
+
+## Bug Fixes and Other Changes
+* Fixes a potential security vulnerability where on-the-fly changes to the dtype of a tensor reference may lead to undefined behavior.
+
 # Release 1.5.0
 
 ## Breaking Changes
