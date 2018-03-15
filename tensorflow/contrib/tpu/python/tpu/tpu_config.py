@@ -161,7 +161,7 @@ class RunConfig(run_config_lib.RunConfig):
     self._tpu_config = tpu_config or TPUConfig()
     self._cluster = cluster
 
-    # If user sets master and/or evaluation_master explicilty, including empty
+    # If user sets master and/or evaluation_master explicitly, including empty
     # string '', take it. Otherwise, take the values set by parent class.
     if master is not None:
       if cluster is not None:

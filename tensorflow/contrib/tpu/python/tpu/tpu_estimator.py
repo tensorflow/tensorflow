@@ -133,7 +133,7 @@ def _increase_eval_step_op(iterations_per_loop):
   """Returns an op to increase the eval step for TPU evaluation.
 
   Args:
-    iterations_per_loop: Tensor. The number of eval steps runnining in TPU
+    iterations_per_loop: Tensor. The number of eval steps running in TPU
         system before returning to CPU host for each `Session.run`.
 
   Returns:
@@ -605,17 +605,17 @@ class _StoppingPredictHook(session_run_hook.SessionRunHook):
       # batch. And we append one more batch to signal the system it should stop.
       # The data flow might look like
       #
-      #  batch   0: images, labels, stop = 0  (user provideded)
-      #  batch   1: images, labels, stop = 0  (user provideded)
+      #  batch   0: images, labels, stop = 0  (user provided)
+      #  batch   1: images, labels, stop = 0  (user provided)
       #  ...
-      #  batch  99: images, labels, stop = 0  (user provideded)
+      #  batch  99: images, labels, stop = 0  (user provided)
       #  batch 100: images, labels, stop = 1  (TPUEstimator appended)
       #
       # where the final batch (id = 100) is appended by TPUEstimator, so we
       # should drop it before returning the predictions to user.
       # To achieve that, we throw the OutOfRangeError in after_run. Once
       # Monitored Session sees this error in SessionRunHook.after_run, the
-      # "current" prediciton, i.e., batch with id=100, will be discarded
+      # "current" prediction, i.e., batch with id=100, will be discarded
       # immediately
       raise errors.OutOfRangeError(None, None, 'Stopped by stopping signal.')
 
@@ -751,7 +751,7 @@ class _InputPipeline(object):
   2. (features, labels)
 
   Internally, form 1 is reformed to `(features, None)` as features and labels
-  are passed separatedly to underlying methods. For TPU training, TPUEstimator
+  are passed separately to underlying methods. For TPU training, TPUEstimator
   may expect multiple `features` and `labels` tuples one for each core.
 
   TPUEstimator allows various different structures for inputs (namely `features`

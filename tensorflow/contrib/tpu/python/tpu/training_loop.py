@@ -170,7 +170,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
 
 
 def repeat(n, body, inputs=None, infeed_queue=None, name=None):
-  """Builds a training loop that executes a fixed number of interations.
+  """Builds a training loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
   `body` must be a function that takes and returns the values of the
