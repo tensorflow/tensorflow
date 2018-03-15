@@ -3647,7 +3647,7 @@ def cohen_kappa(labels,
     RuntimeError: If eager execution is enabled.
   """
   if context.executing_eagerly():
-    raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
+    raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported '
                        'when eager execution is enabled.')
   if num_classes < 2:
     raise ValueError('`num_classes` must be >= 2.'
