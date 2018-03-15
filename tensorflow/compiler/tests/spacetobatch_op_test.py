@@ -75,11 +75,11 @@ class SpaceToBatchTest(XLATestCase):
       for dtype in self.float_types:
         # outputs = space_to_batch(inputs)
         placeholder = array_ops.placeholder(dtype)
-        x_tf = gen_array_ops._space_to_batch(
+        x_tf = gen_array_ops.space_to_batch(
             placeholder, paddings, block_size=block_size)
         self.assertAllEqual(sess.run(x_tf, {placeholder: inputs}), outputs)
         # inputs = batch_to_space(outputs)
-        x_tf = gen_array_ops._batch_to_space(
+        x_tf = gen_array_ops.batch_to_space(
             placeholder, paddings, block_size=block_size)
         self.assertAllEqual(sess.run(x_tf, {placeholder: outputs}), inputs)
 

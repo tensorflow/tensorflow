@@ -89,14 +89,6 @@ def _safe_div(numerator, denominator, name="value"):
   Returns:
     The element-wise value of the numerator divided by the denominator.
   """
-  if isinstance(denominator, float):
-    if math_ops.equal(denominator, 0.0):
-      return ops.convert_to_tensor(0.0, dtype=numerator.dtype)
-    return math_ops.div(numerator, denominator)
-  if context.in_eager_mode() and denominator._rank() == 0:  # pylint: disable=protected-access
-    if math_ops.equal(denominator, 0.0):
-      return ops.convert_to_tensor(0.0, dtype=numerator.dtype)
-    return math_ops.div(numerator, denominator)
   return array_ops.where(
       math_ops.greater(denominator, 0),
       math_ops.div(numerator, array_ops.where(
@@ -144,7 +136,7 @@ def _num_present(losses, weights, per_batch=False):
       `[batch_size]`. Otherwise, a single scalar tensor is returned.
   """
   if ((isinstance(weights, float) and weights != 0.0) or
-      (context.in_eager_mode() and weights._rank() == 0  # pylint: disable=protected-access
+      (context.executing_eagerly() and weights._rank() == 0  # pylint: disable=protected-access
        and not math_ops.equal(weights, 0.0))):
     return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:
@@ -654,7 +646,7 @@ def sigmoid_cross_entropy(
 
   Args:
     multi_class_labels: `[batch_size, num_classes]` target integer labels in
-      `(0, 1)`.
+      `{0, 1}`.
     logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must

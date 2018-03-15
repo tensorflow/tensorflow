@@ -54,6 +54,9 @@ class ServiceInterface {
   virtual tensorflow::Status Execute(const ExecuteRequest* arg,
                                      ExecuteResponse* result) = 0;
 
+  virtual tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
+                                          ExecuteResponse* result) = 0;
+
   virtual tensorflow::Status ExecuteParallel(
       const ExecuteParallelRequest* arg, ExecuteParallelResponse* result) = 0;
 

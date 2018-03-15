@@ -362,7 +362,7 @@ class MultiLabelHeadTest(test.TestCase):
         "auc_precision_recall": 0.166667,
         "auc_precision_recall/class0": 0,
         "auc_precision_recall/class1": 0.,
-        "auc_precision_recall/class2": 0.49999,
+        "auc_precision_recall/class2": 1.,
         "labels/actual_label_mean/class0": self._labels[0][0],
         "labels/actual_label_mean/class1": self._labels[0][1],
         "labels/actual_label_mean/class2": self._labels[0][2],
@@ -748,7 +748,7 @@ class BinaryClassificationHeadTest(test.TestCase):
         "accuracy/baseline_label_mean": label_mean,
         "accuracy/threshold_0.500000_mean": 1. / 2,
         "auc": 1. / 2,
-        "auc_precision_recall": 0.25,
+        "auc_precision_recall": 0.749999,
         "labels/actual_label_mean": label_mean,
         "labels/prediction_mean": .731059,  # softmax
         "loss": expected_loss,

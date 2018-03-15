@@ -29,7 +29,7 @@ android_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_runtime",
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -42,7 +42,7 @@ android_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -58,7 +58,7 @@ java_library(
     deps = [
         ":libtensorflowlite_jni.so",
         "//tensorflow/contrib/lite/java/src/main/native",
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 

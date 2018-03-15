@@ -2747,7 +2747,7 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       predictions.set_shape(logits.get_shape())
     return predictions
 

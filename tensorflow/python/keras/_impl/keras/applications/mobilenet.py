@@ -79,8 +79,8 @@ from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.engine import InputSpec
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
-from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import BatchNormalization
 from tensorflow.python.keras._impl.keras.layers import Conv2D

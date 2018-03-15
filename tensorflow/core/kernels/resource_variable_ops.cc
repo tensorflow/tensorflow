@@ -351,7 +351,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
     Var* variable = nullptr;
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
                                 context, HandleFromInput(context, 0), &variable,
-                                [this, context](Var** ptr) {
+                                [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
                                   return Status::OK();
@@ -374,7 +374,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
       OP_REQUIRES_OK(context, VariantDeviceCopy(
                                   VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
                                   elements_in(i), &elements_out(i), copy_fn));
-    };
+    }
   }
 
  private:
@@ -608,7 +608,7 @@ class ResourceScatterUpdateOp : public OpKernel {
                                 DataTypeString(DataTypeToEnum<Index>::v()),
                                 " indexing: ", N_big, " > ",
                                 std::numeric_limits<Index>::max()));
-    const Index N = static_cast<Index>(indices.NumElements());
+    const Index N = static_cast<Index>(N_big);
     OP_REQUIRES(
         c, params->dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -619,7 +619,13 @@ class ResourceScatterUpdateOp : public OpKernel {
     if (N > 0) {
       auto indices_flat = indices.flat<Index>();
       auto params_flat = params->flat_outer_dims<T>();
-      auto updates_flat = updates.shaped<T, 2>({N, updates.NumElements() / N});
+      int64 num_updates = updates.NumElements();
+      OP_REQUIRES(c, num_updates % N == 0,
+                  errors::InvalidArgument(
+                      "shape of indices (", indices.shape().DebugString(),
+                      ") is not compatible with the shape of updates (",
+                      updates.shape().DebugString(), ")"));
+      auto updates_flat = updates.shaped<T, 2>({N, num_updates / N});
 
       functor::ScatterFunctor<Device, T, Index, op> functor;
       const Index bad_i = functor(c, c->template eigen_device<Device>(),

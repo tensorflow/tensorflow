@@ -31,6 +31,7 @@ limitations under the License.
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_RegisterBackwardFunctionGetter;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
+%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
 %rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_RecordGradient;

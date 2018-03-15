@@ -3,6 +3,7 @@
 Operator                              | Type Constraint
 ------------------------------------- | ---------------
 `Abs`                                 | `T={double,float,int32,int64}`
+`Acos`                                | `T={complex64,double,float,int32,int64}`
 `Acosh`                               | `T={complex64,double,float}`
 `Add`                                 | `T={complex64,double,float,int32,int64}`
 `AddN`                                | `T={complex64,double,float,int32,int64,uint32,uint64}`
@@ -15,10 +16,12 @@ Operator                              | Type Constraint
 `ApproximateEqual`                    | `T={complex64,double,float,int32,int64,uint32,uint64}`
 `ArgMax`                              | `Tidx={int32,int64}`<br>`output_type={int32,int64}`<br>`T={float}`
 `ArgMin`                              | `Tidx={int32,int64}`<br>`output_type={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
+`Asin`                                | `T={complex64,double,float,int32,int64}`
 `Asinh`                               | `T={complex64,double,float}`
 `AssignAddVariableOp`                 | `dtype={complex64,double,float,int32,int64,uint32,uint64}`
 `AssignSubVariableOp`                 | `dtype={complex64,double,float,int32,int64,uint32,uint64}`
 `AssignVariableOp`                    | `dtype={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`Atan`                                | `T={complex64,double,float,int32,int64}`
 `Atan2`                               | `T={double,float}`
 `Atanh`                               | `T={complex64,double,float}`
 `AvgPool`                             | `T={double,float}`
@@ -75,6 +78,10 @@ Operator                              | Type Constraint
 `FFT`                                 |
 `FFT2D`                               |
 `FFT3D`                               |
+`FakeQuantWithMinMaxArgs`             |
+`FakeQuantWithMinMaxArgsGradient`     |
+`FakeQuantWithMinMaxVars`             |
+`FakeQuantWithMinMaxVarsGradient`     |
 `Fill`                                | `index_type={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Floor`                               | `T={double,float}`
 `FloorDiv`                            | `T={complex64,double,float,int32,int64}`
@@ -84,6 +91,7 @@ Operator                              | Type Constraint
 `FusedBatchNormGradV2`                | `U={float}`<br>`T={float}`
 `FusedBatchNormV2`                    | `U={float}`<br>`T={float}`
 `Gather`                              | `Tindices={int32,int64}`<br>`Tparams={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`GatherNd`                            | `Tindices={int32,int64}`<br>`Tparams={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `GatherV2`                            | `Taxis={int32,int64}`<br>`Tindices={int32,int64}`<br>`Tparams={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Greater`                             | `T={double,float,int32,int64,uint32,uint64}`
 `GreaterEqual`                        | `T={double,float,int32,int64,uint32,uint64}`
@@ -117,14 +125,18 @@ Operator                              | Type Constraint
 `LogicalNot`                          |
 `LogicalOr`                           |
 `MatMul`                              | `T={complex64,double,float}`
+`MatrixBandPart`                      | `Tindex={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `MatrixDiag`                          | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `MatrixDiagPart`                      | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`MatrixSetDiag`                       | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `MatrixTriangularSolve`               | `T={complex64,double,float}`
 `Max`                                 | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
 `MaxPool`                             | `T={double,float,int32,int64}`
 `MaxPool3D`                           | `T={float}`
 `MaxPool3DGrad`                       | `TInput={float}`<br>`T={float}`
 `MaxPoolGrad`                         | `T={double,float,int32,int64,uint32,uint64}`
+`MaxPoolGradGrad`                     | `T={float}`
+`MaxPoolGradGradV2`                   | `T={float}`
 `MaxPoolGradV2`                       | `T={double,float,int32,int64,uint32,uint64}`
 `MaxPoolV2`                           | `T={double,float,int32,int64}`
 `Maximum`                             | `T={double,float,int32,int64}`
@@ -186,6 +198,7 @@ Operator                              | Type Constraint
 `Round`                               | `T={complex64,double,float,int32,int64}`
 `Rsqrt`                               | `T={complex64,double,float}`
 `RsqrtGrad`                           | `T={complex64,double,float}`
+`ScatterNd`                           | `Tindices={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Select`                              | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Selu`                                | `T={double,float}`
 `SeluGrad`                            | `T={double,float}`
@@ -198,6 +211,7 @@ Operator                              | Type Constraint
 `Sinh`                                | `T={complex64,double,float}`
 `Size`                                | `out_type={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Slice`                               | `Index={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
+`Snapshot`                            | `T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Softmax`                             | `T={double,float}`
 `SoftmaxCrossEntropyWithLogits`       | `T={double,float}`
 `Softplus`                            | `T={double,float,int32,int64,uint32,uint64}`

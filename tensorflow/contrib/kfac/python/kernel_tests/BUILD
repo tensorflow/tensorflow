@@ -36,6 +36,7 @@ py_test(
     srcs = ["fisher_factors_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/kfac/python/ops:fisher_blocks",
         "//tensorflow/contrib/kfac/python/ops:fisher_factors",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -113,6 +114,7 @@ py_test(
     name = "utils_test",
     srcs = ["utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         "//tensorflow/contrib/kfac/python/ops:utils",
         "//tensorflow/contrib/tpu",

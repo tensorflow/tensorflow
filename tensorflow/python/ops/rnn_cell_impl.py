@@ -46,6 +46,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,11 +55,52 @@ _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
 
 
+# TODO(jblespiau): Remove this function when we are sure there are no longer
+# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
 def _like_rnncell(cell):
   """Checks that a given object is an RNNCell by using duck typing."""
   conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
                 hasattr(cell, "zero_state"), callable(cell)]
   return all(conditions)
+
+
+# This can be used with self.assertRaisesRegexp for assert_like_rnncell.
+ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
+
+
+def assert_like_rnncell(cell_name, cell):
+  """Raises a TypeError if cell is not like an RNNCell.
+
+  NOTE: Do not rely on the error message (in particular in tests) which can be
+  subject to change to increase readability. Use
+  ASSERT_LIKE_RNNCELL_ERROR_REGEXP.
+
+  Args:
+    cell_name: A string to give a meaningful error referencing to the name
+      of the functionargument.
+    cell: The object which should behave like an RNNCell.
+
+  Raises:
+    TypeError: A human-friendly exception.
+  """
+  conditions = [
+      hasattr(cell, "output_size"),
+      hasattr(cell, "state_size"),
+      hasattr(cell, "zero_state"),
+      callable(cell),
+  ]
+  errors = [
+      "'output_size' property is missing",
+      "'state_size' property is missing",
+      "'zero_state' method is missing",
+      "is not callable"
+  ]
+
+  if not all(conditions):
+
+    errors = [error for error, cond in zip(errors, conditions) if not cond]
+    raise TypeError("The argument {!r} ({}) is not an RNNCell: {}.".format(
+        cell_name, cell, ", ".join(errors)))
 
 
 def _concat(prefix, suffix, static=False):
@@ -127,7 +169,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
     """Combine s with batch_size to get a proper tensor shape."""
     c = _concat(batch_size, s)
     size = array_ops.zeros(c, dtype=dtype)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       c_static = _concat(batch_size, s, static=True)
       size.set_shape(c_static)
     return size
@@ -191,12 +233,13 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    if context.in_graph_mode():
-      trainable = (variable in tf_variables.trainable_variables() or
-                   (isinstance(variable, tf_variables.PartitionedVariable) and
-                    list(variable)[0] in tf_variables.trainable_variables()))
-    else:
+    if context.executing_eagerly():
       trainable = variable._trainable  # pylint: disable=protected-access
+    else:
+      trainable = (
+          variable in tf_variables.trainable_variables() or
+          (isinstance(variable, tf_variables.PartitionedVariable) and
+           list(variable)[0] in tf_variables.trainable_variables()))
     if trainable and variable not in self._trainable_weights:
       self._trainable_weights.append(variable)
     elif not trainable and variable not in self._non_trainable_weights:
@@ -240,7 +283,7 @@ class RNNCell(base_layer.Layer):
     # Try to use the last cached zero_state. This is done to avoid recreating
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
-    is_eager = context.in_eager_mode()
+    is_eager = context.executing_eagerly()
     if is_eager and hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
@@ -912,8 +955,8 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    if not _like_rnncell(cell):
-      raise TypeError("The parameter cell is not a RNNCell.")
+    assert_like_rnncell("cell", cell)
+
     if (dropout_state_filter_visitor is not None
         and not callable(dropout_state_filter_visitor)):
       raise TypeError("dropout_state_filter_visitor must be callable")
@@ -1187,6 +1230,12 @@ class MultiRNNCell(RNNCell):
           "cells must be a list or tuple, but saw: %s." % cells)
 
     self._cells = cells
+    for cell_number, cell in enumerate(self._cells):
+      # Add Checkpointable dependencies on these cells so their variables get
+      # saved with this object when using object-based saving.
+      if isinstance(cell, checkpointable.CheckpointableBase):
+        # TODO(allenl): Track down non-Checkpointable callers.
+        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

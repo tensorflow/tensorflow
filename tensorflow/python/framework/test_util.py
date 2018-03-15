@@ -56,6 +56,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -200,9 +201,12 @@ def _strip_checkpoint_v2_randomized(graph_def):
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
-
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+
+
+def IsMklEnabled():
+  return pywrap_tensorflow.IsMklEnabled()
 
 
 def InstallStackTraceHandler():
@@ -403,6 +407,31 @@ def enable_c_api(fn):
   return wrapper
 
 
+def enable_c_shapes(fn):
+  """Decorator for enabling C shapes on a test.
+
+  Note this enables the C shapes after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_SHAPES
+    # Only use C shapes if the C API is already enabled.
+    ops._USE_C_SHAPES = ops._USE_C_API
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_SHAPES = prev_value
+
+  return wrapper
+
+
 # This decorator is a hacky way to run all the test methods in a decorated
 # class with and without C API enabled.
 # TODO(iga): Remove this and its uses once we switch to using C API by default.
@@ -430,6 +459,32 @@ def with_c_api(cls):
   return cls
 
 
+def assert_no_new_pyobjects_executing_eagerly(f):
+  """Decorator for asserting that no new Python objects persist after a test.
+
+  Runs the test multiple times executing eagerly, first as a warmup and then
+  several times to let objects accumulate. The warmup helps ignore caches which
+  do not grow as the test is run repeatedly.
+
+  Useful for checking that there are no missing Py_DECREFs in the C exercised by
+  a bit of Python.
+  """
+  def decorator(self, **kwargs):
+    """Warms up, gets an object count, runs the test, checks for new objects."""
+    with context.eager_mode():
+      gc.disable()
+      f(self, **kwargs)
+      gc.collect()
+      previous_count = len(gc.get_objects())
+      for _ in range(3):
+        f(self, **kwargs)
+      gc.collect()
+      # There should be no new Python objects hanging around.
+      new_count = len(gc.get_objects())
+      self.assertEqual(previous_count, new_count)
+      gc.enable()
+  return decorator
+
 def assert_no_new_tensors(f):
   """Decorator for asserting that no new Tensors persist after a test.
 
@@ -451,15 +506,19 @@ def assert_no_new_tensors(f):
   def decorator(self, **kwargs):
     """Finds existing Tensors, runs the test, checks for new Tensors."""
 
-    def _is_tensor(obj):
+    def _is_tensorflow_object(obj):
       try:
-        return (isinstance(obj, ops.Tensor) or
-                isinstance(obj, variables.Variable))
+        return isinstance(obj, (
+            ops.Tensor,
+            variables.Variable,
+            tensor_shape.Dimension,
+            tensor_shape.TensorShape))
       except ReferenceError:
         # If the object no longer exists, we don't care about it.
         return False
 
-    tensors_before = set(id(obj) for obj in gc.get_objects() if _is_tensor(obj))
+    tensors_before = set(id(obj) for obj in gc.get_objects()
+                         if _is_tensorflow_object(obj))
     outside_graph_key = ops.get_default_graph()._graph_key
     with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
@@ -469,11 +528,12 @@ def assert_no_new_tensors(f):
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     backprop._zeros_cache.flush()
+    context.get_default_context().ones_rank_cache().flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
-        if _is_tensor(obj) and id(obj) not in tensors_before
+        if _is_tensorflow_object(obj) and id(obj) not in tensors_before
     ]
     if tensors_after:
       raise AssertionError(("%d Tensors not deallocated after test: %s" % (
@@ -506,6 +566,30 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
+    if len(gc.garbage) > previous_garbage:
+      logging.error(
+          "The decorated test created work for Python's garbage collector, "
+          "likely due to a reference cycle. New objects in cycle(s):")
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        try:
+          logging.error(
+              "Object %d of %d" % (i, len(gc.garbage) - previous_garbage))
+          def _safe_object_str(obj):
+            return "<%s %d>" % (obj.__class__.__name__, id(obj))
+          logging.error("  Object type: %s" % (_safe_object_str(obj),))
+          logging.error("  Referrer types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referrers(obj)]),))
+          logging.error("  Referent types: %s" % (
+              ', '.join([_safe_object_str(ref)
+                         for ref in gc.get_referents(obj)]),))
+          logging.error("  Object attribute names: %s" % (dir(obj),))
+          logging.error("  Object __str__:")
+          logging.error(obj)
+          logging.error("  Object __repr__:")
+          logging.error(repr(obj))
+        except Exception:
+          logging.error("(Exception while printing object)")
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
     self.assertEqual(previous_garbage, len(gc.garbage))
@@ -564,6 +648,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
         # This decorator runs the wrapped test twice.
         # Reset the test environment between runs.
         self.tearDown()
+        self._tempdir = None
         self.setUp()
 
       def run_eager_mode(self, **kwargs):
@@ -787,7 +872,7 @@ class TensorFlowTestCase(googletest.TestCase):
     Returns:
       tensors numpy values.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
