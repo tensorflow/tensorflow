@@ -209,6 +209,38 @@ TEST(BasicFlatBufferModel, TestNullModel) {
   ASSERT_EQ(interpreter.get(), nullptr);
 }
 
+// Mocks the verifier by setting the result in ctor.
+class FakeVerifier : public tflite::TfLiteVerifier {
+ public:
+  explicit FakeVerifier(bool result) : result_(result) {}
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    return result_;
+  }
+
+ private:
+  bool result_;
+};
+
+TEST(BasicFlatBufferModel, TestWithTrueVerifier) {
+  FakeVerifier verifier(true);
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithFalseVerifier) {
+  FakeVerifier verifier(false);
+  ASSERT_FALSE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithNullVerifier) {
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin", nullptr));
+}
+
 struct TestErrorReporter : public ErrorReporter {
   int Report(const char* format, va_list args) override {
     calls++;
