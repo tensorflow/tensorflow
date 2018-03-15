@@ -313,6 +313,7 @@ cc_library(
         "lib/gtl/optional.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",
+        "lib/hash/hash.h",
         "lib/histogram/histogram.h",
         "lib/io/buffered_inputstream.h",
         "lib/io/compression.h",
