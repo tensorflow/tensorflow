@@ -44,7 +44,7 @@ TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
                                             max_parallelism_, shape_size_func_)
                                             .Run(&module()));
@@ -73,7 +73,7 @@ TEST_F(ParallelTaskAssignmentTest,
     }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
                                             max_parallelism_, shape_size_func_)
                                             .Run(&module()));
