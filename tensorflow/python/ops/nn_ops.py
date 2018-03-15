@@ -1043,9 +1043,7 @@ def pool(
 
 @tf_export("nn.atrous_conv2d")
 def atrous_conv2d(value, filters, rate, padding, name=None):
-  """Atrous convolution (a.k.a.
-
-  convolution with holes or dilated convolution).
+  """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
   @{tf.nn.convolution}, and exists only for backwards compatibility. You can
