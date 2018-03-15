@@ -53,6 +53,8 @@ namespace tensorflow {
 const char* const kXlaCompiledKernelAttr = "_XlaCompiledKernel";
 const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
+const char* const kXlaHostTransferSequencerAttr =
+    "_xla_host_transfer_sequencer";
 
 namespace {
 
@@ -143,7 +145,7 @@ struct NodeSlot {
 // everything to use it.
 static const char* const kArgOp = "_Arg";
 static const char* const kRetValOp = "_Retval";
-static const char* const kHostComputeOp = "_XlaHostCompute";
+static const char* const kHostComputeOp = "XlaHostCompute";
 static const char* const kSendFromHostOp = "_XlaSendFromHost";
 static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
@@ -328,8 +330,8 @@ class Encapsulator {
     Status MakeSequencingNode(const string& subgraph_name, Graph* graph_out);
 
     // If there is a sequencer node, adds a control edge from the sequencer to
-    // all the downstream nodes of call_node_outputs.
-    void ConnectSequencerToOutputs(Graph* graph_out);
+    // the call node.
+    void ConnectSequencerToCallNode(Graph* graph_out);
 
     Status AddShapeInferenceInfo(
         const string& outside_compilation_subgraph_name,
@@ -424,6 +426,10 @@ class Encapsulator {
 
     // NodeDef for the function call node.
     NodeDef call_node_def_;
+
+    // Name that is used for the call node. This may not be
+    // call_node_def_.name() if the client supplies a rewrite lambda.
+    string function_def_name_;
 
     // Placeholder node simulating the host compute key in the output graph.
     // Not owned.
@@ -863,25 +869,21 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
     NodeDef seq_def;
     NodeDefBuilder builder(strings::StrCat(subgraph_name, "_sequencer"),
                            "NoOp");
+    builder.Attr(kXlaHostTransferSequencerAttr, subgraph_name);
+    builder.Device(device_);
     Status s = builder.Finalize(&seq_def);
     if (!s.ok()) return s;
 
     sequencer_ = graph_out->AddNode(seq_def, &s);
     if (!s.ok()) return s;
-    sequencer_->set_assigned_device_name(device_);
   }
   return Status::OK();
 }
 
-void Encapsulator::Subgraph::ConnectSequencerToOutputs(Graph* graph_out) {
+void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
   if (sequencer_ != nullptr) {
-    std::unordered_set<Node*> output_dependencies;
-    for (Node* node : call_node_outputs_->out_nodes()) {
-      output_dependencies.insert(node);
-    }
-    for (Node* node : output_dependencies) {
-      graph_out->AddControlEdge(sequencer_, node);
-    }
+    VLOG(2) << "ConnectSequencerToCallNode";
+    graph_out->AddControlEdge(sequencer_, call_node_inputs_);
   }
 }
 
@@ -926,6 +928,8 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
 
     name = call_node_def_.op();
   }
+
+  function_def_name_ = name;
 
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
@@ -982,7 +986,7 @@ Status Encapsulator::Subgraph::AddShapeInferenceInfo(
 
 Status Encapsulator::Subgraph::ReplaceFunctionDef(
     FunctionLibraryDefinition* library) {
-  const string& name = call_node_def_.name();
+  const string& name = function_def_name_;
 
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
@@ -1126,6 +1130,8 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
+  // TODO(misard) When we add replication the device placement will have to be
+  // redone.
   builder.Device(device_);
   builder.Attr("Toutputs", dtypes);
   // TODO(misard) For now we only support TPU device 0.
@@ -1138,7 +1144,6 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
 
   oc_subgraph->recv_at_host = graph_out->AddNode(recv_def, &s);
   if (!s.ok()) return s;
-  oc_subgraph->recv_at_host->set_assigned_device_name(device_);
   graph_out->AddEdge(host_compute_key_placeholder_, 0,
                      oc_subgraph->recv_at_host, 0);
 
@@ -1178,6 +1183,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   NodeDefBuilder builder(strings::StrCat("outside_compilation_", subgraph_name,
                                          "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
+  // TODO(misard) When we add replication the device placement will have to be
+  // redone.
   builder.Device(device_);
   builder.Attr("Tinputs", dtypes);
   builder.Attr("key", strings::StrCat("host_compute_channel_", subgraph_name,
@@ -1191,7 +1198,6 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
 
   oc_subgraph->send_from_host = graph_out->AddNode(send_def, &s);
   if (!s.ok()) return s;
-  oc_subgraph->send_from_host->set_assigned_device_name(device_);
   graph_out->AddEdge(host_compute_key_placeholder_, 0,
                      oc_subgraph->send_from_host, inputs.size());
 
@@ -1675,7 +1681,7 @@ Status Encapsulator::AddEdgesToOutputGraph(
 
   for (auto& subgraph_entry : subgraphs_) {
     Subgraph& subgraph = subgraph_entry.second;
-    subgraph.ConnectSequencerToOutputs(graph_out);
+    subgraph.ConnectSequencerToCallNode(graph_out);
   }
 
   return Status::OK();
@@ -1827,8 +1833,12 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
               (*static_shape_out)[in_edge->dst_input()] = proto;
             }
           } else {
+            has_parent_with_unknown_shape = true;
             if (!visited[src_node->id()]) {
-              has_parent_with_unknown_shape = true;
+              if (VLOG_IS_ON(2)) {
+                TensorShapeProto proto;
+                context->ShapeHandleToProto(shape, &proto);
+              }
               stack.push_back({src_node, false});
             }
           }
@@ -1980,6 +1990,11 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
   std::unordered_map<const Node*, Node*> node_images;
   TF_RETURN_IF_ERROR(MakeGraphForOutsideCompilationSends(
       *graph_out, &pruned_graph, &shape_refiner, &node_images, library));
+
+  if (VLOG_IS_ON(1)) {
+    dump_graph::DumpGraphToFile("pruned_graph_for_shape_inference",
+                                *pruned_graph, library);
+  }
 
   for (auto& subgraph_entry : subgraphs_) {
     Subgraph& subgraph = subgraph_entry.second;
