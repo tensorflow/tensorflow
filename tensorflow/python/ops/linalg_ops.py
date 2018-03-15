@@ -545,7 +545,7 @@ def norm(tensor,
       if is_matrix_norm and ord in [2, 2.0]:
         axes = list(range(rank))
         perm_before = list(filter(lambda i: i not in axis, axes)) + list(axis)
-        perm_after = list(map(lambda i: perm_before.index(i), axes))
+        perm_after = list(map(perm_before.index, axes))
         result = array_ops.transpose(array_ops.expand_dims(
             math_ops.reduce_max(gen_linalg_ops.svd(
                 array_ops.transpose(tensor, perm=perm_before),
