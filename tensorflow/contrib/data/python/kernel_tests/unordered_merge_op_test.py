@@ -43,29 +43,19 @@ class UnorderedMergeDatasetTest(test.TestCase):
     self.assertEqual(error_arg_ok, True)
 
   def testUnorderedMergeDatasetErrorDtype(self):
-    #TODO: rearrange
-    #placeholders = [
-    #    array_ops.placeholder(dtypes.int64),
-    #    array_ops.placeholder(dtypes.float32)
-    #]
+    types = [dtypes.int64, dtypes.float32]
+    placeholders = [array_ops.placeholder(t, shape=[None])
+            for t in types]
+    datasets = [dataset_ops.Dataset.from_tensor_slices(p)
+            for p in placeholders]
+    datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
 
-    #datasets = [dataset_ops.Dataset.from_tensor_slices(p)
-    #            for p in placeholders]
-    #datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
-    #new_datasets = []
-    #for i in range(3):
-    #  new_datasets.append(datasets[0].shard(4, i).apply(
-    #      grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
-    #new_datasets.append(datasets[1].batch(4))
-    ds1 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
-    ds2 = dataset_ops.Dataset.range(5).map(
-            lambda x: math_ops.cast(x, dtypes.float32)).shuffle(5)
     new_datasets = []
     for i in range(3):
-      new_datasets.append(ds1.shard(4, i).apply(
+      new_datasets.append(datasets[0].shard(4, i).apply(
           grouping.group_by_window(
               lambda x: x % 2, lambda _, xs: xs.batch(4), 4)))
-    new_datasets.append(ds2.batch(4))
+    new_datasets.append(datasets[1].batch(4))
 
     # for checking messages
     error_types_ok = False
@@ -80,52 +70,18 @@ class UnorderedMergeDatasetTest(test.TestCase):
     self.assertEqual(error_types_ok, True)
 
   def testUnorderedMergeDatasetErrorShape(self):
-    #TODO: rearrange
-    placeholders = [
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.int64),
-        array_ops.placeholder(dtypes.int64)
-    ]
+    placeholders = [array_ops.placeholder(dtypes.int64, shape=[None])
+            for _ in range(3)]
 
-    #datasets = [dataset_ops.Dataset.from_tensor_slices(p)
-    #            for p in placeholders]
-    #datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
+    datasets = [dataset_ops.Dataset.from_tensor_slices(p)
+                for p in placeholders]
+    datasets = [ds.repeat(5).shuffle(10) for ds in datasets]
     
-    #new_datasets = []
-    #for i in range(3):
-    #  new_datasets.append(datasets[0].shard(4, i).apply(
-    #    grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
-    #new_datasets.append(datasets[1])
-
-     
-    ds1 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
-    ds2 = dataset_ops.Dataset.range(5).repeat(5).shuffle(10)
-    datasets = []
-    for i in range(3):
-      datasets.append(ds1.shard(4, i).apply(
-          grouping.group_by_window(
-              lambda x: x % 2, lambda _, xs: xs.batch(4), 4)))
-    datasets.append(ds2)
-
-    error_shapes_ok = False
-    try:
-      dataset = unordered_merge.unordered_merge(datasets)
-    except TypeError as e:
-        if(e.args[0].find('shapes')):
-          error_shapes_ok = True
-    except Exception:
-      pass
-    self.assertEqual(error_shapes_ok, True)
-
     new_datasets = []
     for i in range(3):
-      new_datasets.append(ds1.shard(4, i).apply(
+      new_datasets.append(datasets[0].shard(4, i).apply(
         grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
-    dsX = dataset_ops.Dataset.zip(tuple([ds1, ds2]))
-    new_datasets.append(dsX.shard(4, 3).apply(
-        grouping.group_by_window(lambda x, y: x % 2, lambda _, xs: xs.batch(4), 4)))
+    new_datasets.append(datasets[1])
 
     error_shapes_ok = False
     try:
@@ -137,7 +93,43 @@ class UnorderedMergeDatasetTest(test.TestCase):
       pass
     self.assertEqual(error_shapes_ok, True)
 
-  #TODO: add normal cases
+    new_datasets = []
+    for i in range(3):
+      new_datasets.append(datasets[0].shard(4, i).apply(
+        grouping.group_by_window(lambda x: x%2, lambda _, xs: xs.batch(4), 4)))
+    dsX = dataset_ops.Dataset.zip(tuple([datasets[1], datasets[2]]))
+    new_datasets.append(dsX.shard(4, 3).apply(
+        grouping.group_by_window(lambda x, y: x % 2, lambda _, xs: xs.batch(4), 4)))
+
+    error_shapes_ok2 = False
+    try:
+      dataset = unordered_merge.unordered_merge(new_datasets)
+    except TypeError as e:
+        if(e.args[0].find('shapes')):
+          error_shapes_ok2 = True
+    except Exception:
+      pass
+    self.assertEqual(error_shapes_ok2, True)
+
+  def testUnorderedMergeDatasetNormalSimple(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    datasets = [dataset.shard(10, i).shuffle(50) for i in range(10)]
+    dataset = unordered_merge.unordered_merge(datasets)
+    next_one_op = dataset.make_one_shot_iterator().get_next()
+    
+    results = []
+    with self.test_session() as session:
+      try:
+        while(True):
+          results.append(session.run(next_one_op))
+      except errors.OutOfRangeError:
+        pass
+    sorted_result = sorted(results)
+    expectation = list(range(1000))
+
+    self.assertEqual(sorted_result, expectation)
+
+  #TODO: add more complex normal cases
 
 if __name__ == "__main__":
   test.main()
