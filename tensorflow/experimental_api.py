@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,25 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Probabilistic optimizer modules.
 
-See @{tf.contrib.bayesflow.optimizers}.
-"""
+# Bring in all of the public TensorFlow interface into this
+# module.
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
+# pylint: disable=g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 # pylint: disable=wildcard-import
-from tensorflow.contrib.bayesflow.python.ops.sgld_optimizer import *
-from tensorflow.contrib.bayesflow.python.ops.variational_sgd_optimizer import *
+from tensorflow.tools.api.generator.api import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = [
-    'SGLDOptimizer',
-    'VariationalSGDOptimizer',
-]
+from tensorflow.python.util.lazy_loader import LazyLoader
+contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
+del LazyLoader
 
-remove_undocumented(__name__, _allowed_symbols)
+from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
+app.flags = flags  # pylint: disable=undefined-variable
+
+del absolute_import
+del division
+del print_function

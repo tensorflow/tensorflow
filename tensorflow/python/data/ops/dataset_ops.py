@@ -111,11 +111,11 @@ class Dataset(object):
                                  self.output_types, self.output_shapes,
                                  self.output_classes)
 
-  def make_one_shot_iterator(self):
+  def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    Note: The returned iterator will be initialized automatically.
-    A "one-shot" iterator does not currently support re-initialization.
+    The returned iterator implements the Python iterator protocol and therefore
+    can only be used in eager mode.
 
     Returns:
       An `Iterator` over the elements of this dataset.
@@ -124,9 +124,22 @@ class Dataset(object):
       RuntimeError: If eager execution is enabled.
     """
     if context.executing_eagerly():
-      raise RuntimeError(
-          "dataset.make_one_shot_iterator is not supported when eager "
-          "execution is enabled.")
+      return iterator_ops.EagerIterator(self)
+    else:
+      raise RuntimeError("dataset.__iter__() is only supported when eager "
+                         "execution is enabled.")
+
+  def make_one_shot_iterator(self):
+    """Creates an `Iterator` for enumerating the elements of this dataset.
+
+    Note: The returned iterator will be initialized automatically.
+    A "one-shot" iterator does not currently support re-initialization.
+
+    Returns:
+      An `Iterator` over the elements of this dataset.
+    """
+    if context.executing_eagerly():
+      return iterator_ops.EagerIterator(self)
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
     @function.Defun(capture_by_value=True)

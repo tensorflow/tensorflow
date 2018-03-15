@@ -27,8 +27,9 @@ struct RefCountedEigenContext {
 void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = reinterpret_cast<RefCountedEigenContext*>(context->eigen_context);
   if (ptr == nullptr) {
-    Eigen::setNbThreads(context->recommended_num_threads);
-
+    if (context->recommended_num_threads != -1) {
+      Eigen::setNbThreads(context->recommended_num_threads);
+    }
     ptr = new RefCountedEigenContext;
     ptr->num_references = 0;
     context->eigen_context = ptr;

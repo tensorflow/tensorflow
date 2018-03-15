@@ -49,7 +49,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
+         type == OperatorType::kStridedSlice ||
+         type == OperatorType::kDepthToSpace ||
+         type == OperatorType::kLstmCell || type == OperatorType::kGather ||
+         type == OperatorType::kTranspose;
 }
 
 template <ArrayDataType A>
@@ -510,9 +513,11 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   //
   // Let us just guard this assumption by the following assertion:
   for (const auto& input : op.inputs) {
-    if (IsInputArray(*model, input)) {
-      const auto& input_array = model->GetArray(input);
-      CHECK(input_array.quantization_params);
+    const auto& input_array = model->GetArray(input);
+    if (IsInputArray(*model, input) &&
+        input_array.data_type == ArrayDataType::kFloat) {
+      CHECK(input_array.quantization_params)
+          << "Input array " << input << " is missing quantization_params";
     }
   }
   if (!SupportsQuantization(op)) {

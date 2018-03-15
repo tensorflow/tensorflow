@@ -47,7 +47,7 @@ class LoopOptimizer : public GraphOptimizer {
   Status LoopInvariantNodeMotion();
   Status FindInvariantNodes(NodeDef* node);
   Status RevertInvariantNodes();
-  Status MoveInvariantNodes(const int fname);
+  Status MoveInvariantNodes(const int frame_id);
   Status LINMHandleInvariantNode(NodeDef* node, const int num_outputs,
       const int frame_id);
   Status LINMHandleConst(NodeDef* node, const int num_outputs,

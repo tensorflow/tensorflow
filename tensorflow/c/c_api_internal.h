@@ -124,16 +124,16 @@ struct TF_Session {
   TF_Session(tensorflow::Session* s, TF_Graph* g);
 
   tensorflow::Session* session;
-  TF_Graph* graph;
+  TF_Graph* const graph;
 
-  tensorflow::mutex mu;
+  tensorflow::mutex mu ACQUIRED_AFTER(TF_Graph::mu);
   int last_num_graph_nodes;
 
   // If true, TF_SessionRun and similar methods will call
   // ExtendSessionGraphHelper before running the graph (this is the default
   // public behavior). Can be set to false if the caller needs to call
   // ExtendSessionGraphHelper manually.
-  bool extend_before_run GUARDED_BY(mu);
+  std::atomic<bool> extend_before_run;
 };
 
 struct TF_ImportGraphDefOptions {
@@ -211,9 +211,11 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
                                            TF_Status* status);
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
-                    const char* mutation_type);
+                    const char* mutation_type)
+    EXCLUSIVE_LOCKS_REQUIRED(graph->mu);
 
-bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status);
+bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
+    LOCKS_EXCLUDED(session->graph->mu, session->mu);
 
 }  // end namespace tensorflow
 

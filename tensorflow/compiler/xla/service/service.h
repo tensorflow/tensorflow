@@ -112,6 +112,12 @@ class Service : public ServiceInterface {
   tensorflow::Status Execute(const ExecuteRequest* arg,
                              ExecuteResponse* result) override;
 
+  // Executes a computation with the provided global data passed as
+  // immutable arguments. The request contains the whole computation graph.
+  // Returns global data output and execution timing.
+  tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
+                                  ExecuteResponse* result) override;
+
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
   // computation.

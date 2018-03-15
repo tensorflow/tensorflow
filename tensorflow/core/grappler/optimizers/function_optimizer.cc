@@ -136,6 +136,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (func.attr().count("_noinline") != 0) {
       continue;
     }
+    // Don't touch anything marked XLA to prevent XLA failures further down the
+    // road.
+    if (func.attr().count("_XlaCompile") != 0) {
+      continue;
+    }
     // Can't create IdentityN nodes with no input or output: skip these
     // functions for now.
     if (func.signature().input_arg_size() == 0 ||

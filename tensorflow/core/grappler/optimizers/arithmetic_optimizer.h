@@ -55,14 +55,17 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Granular control for arithmetic optimizer stages
   struct ArithmeticOptimizerOptions {
-    // rewrite a tree of Add/AddN ops with a single AddN
-    bool enable_add_to_addn_combining;
+    bool combine_add_to_addn = true;
+    bool hoist_common_factor_out_of_aggregation = true;
+    bool remove_inverse_transpose = true;
+    bool remove_redundant_bitcast = true;
+    bool remove_redundant_cast = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
-      return {/*enable_add_to_addn_combining*/ true};
+      return ArithmeticOptimizerOptions();
     }
   };
 

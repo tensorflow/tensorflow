@@ -79,6 +79,21 @@ TfLiteType resolveDataType(jint data_type) {
   }
 }
 
+int getDataType(TfLiteType data_type) {
+  switch (data_type) {
+    case kTfLiteFloat32:
+      return 1;
+    case kTfLiteInt32:
+      return 2;
+    case kTfLiteUInt8:
+      return 3;
+    case kTfLiteInt64:
+      return 4;
+    default:
+      return -1;
+  }
+}
+
 void printDims(char* buffer, int max_size, int* dims, int num_dims) {
   if (max_size <= 0) return;
   buffer[0] = '?';
@@ -477,7 +492,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   const int idx = static_cast<int>(input_idx);
-  if (input_idx >= interpreter->inputs().size()) {
+  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
                    "Out of range: Failed to get %d-th input out of %d inputs",
                    input_idx, interpreter->inputs().size());
@@ -485,20 +500,39 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   }
   TfLiteTensor* target = interpreter->tensor(interpreter->inputs()[idx]);
   int size = target->dims->size;
-  int expected_num_bytes = elementByteSize(target->type);
-  for (int i = 0; i < size; ++i) {
-    expected_num_bytes *= target->dims->data[i];
-  }
-  if (num_bytes != expected_num_bytes) {
-    throwException(env, kIllegalArgumentException,
-                   "Failed to get input dimensions. %d-th input should have"
-                   " %d bytes, but found %d bytes.",
-                   idx, expected_num_bytes, num_bytes);
-    return nullptr;
+  if (num_bytes >= 0) {  // verifies num of bytes matches if num_bytes if valid.
+    int expected_num_bytes = elementByteSize(target->type);
+    for (int i = 0; i < size; ++i) {
+      expected_num_bytes *= target->dims->data[i];
+    }
+    if (num_bytes != expected_num_bytes) {
+      throwException(env, kIllegalArgumentException,
+                     "Failed to get input dimensions. %d-th input should have"
+                     " %d bytes, but found %d bytes.",
+                     idx, expected_num_bytes, num_bytes);
+      return nullptr;
+    }
   }
   jintArray outputs = env->NewIntArray(size);
   env->SetIntArrayRegion(outputs, 0, size, &(target->dims->data[0]));
   return outputs;
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    throwException(env, kIllegalArgumentException,
+                   "Out of range: Failed to get %d-th output out of %d outputs",
+                   output_idx, interpreter->outputs().size());
+    return -1;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  int type = getDataType(target->type);
+  return static_cast<jint>(type);
 }
 
 JNIEXPORT jboolean JNICALL

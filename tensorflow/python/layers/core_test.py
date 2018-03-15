@@ -83,6 +83,14 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias.name, 'my_dense/bias:0')
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNoEagerLeak(self):
+    # Tests that repeatedly constructing and building a Layer does not leak
+    # Python objects.
+    inputs = random_ops.random_uniform((5, 4), seed=1)
+    core_layers.Dense(5)(inputs)
+    core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')(inputs)
+
   @test_util.run_in_graph_and_eager_modes()
   def testCallTensorDot(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')

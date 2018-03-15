@@ -40,7 +40,10 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       unary_op->type != OperatorType::kTensorFlowSum &&
       unary_op->type != OperatorType::kTensorFlowMin &&
       unary_op->type != OperatorType::kTensorFlowMax &&
-      unary_op->type != OperatorType::kTensorFlowReshape) {
+      unary_op->type != OperatorType::kTensorFlowReshape &&
+      unary_op->type != OperatorType::kRelu6 &&
+      unary_op->type != OperatorType::kRelu1 &&
+      unary_op->type != OperatorType::kRelu) {
     return false;
   }
   // Check if the input is a constant parameter.
@@ -212,6 +215,37 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
         LOG(FATAL) << "should not get here.";
       }
       output_float_data[i] = outval;
+    }
+  } else if (unary_op->type == OperatorType::kRelu6 &&
+             unary_op->type == OperatorType::kRelu1 &&
+             unary_op->type == OperatorType::kRelu) {
+    for (size_t i = 0; i < output_buffer_size; ++i) {
+      const float value = (*input_float_data)[i];
+      float new_value = 0.0f;
+      switch (unary_op->type) {
+        case OperatorType::kRelu: {
+          static constexpr float kLower = 0;
+          new_value = value < kLower ? kLower : value;
+          break;
+        }
+        case OperatorType::kRelu1: {
+          static constexpr float kUpper = 1;
+          static constexpr float kLower = -1;
+          new_value = value > kUpper ? kUpper : value < kLower ? kLower : value;
+          break;
+        }
+        case OperatorType::kRelu6: {
+          static constexpr float kUpper = 6;
+          static constexpr float kLower = 0;
+          new_value = value > kUpper ? kUpper : value < kLower ? kLower : value;
+          break;
+        }
+        default:
+          LOG(FATAL) << "Unsupported activation function "
+                     << LogName(*unary_op);
+          return false;
+      }
+      output_float_data[i] = new_value;
     }
   } else {
     LOG(FATAL) << "should not get here.";

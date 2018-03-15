@@ -487,7 +487,11 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["noasan"],
+    tags = [
+        "manual",
+        "noasan",
+        "noguitar",
+    ],
 )
 
 cuda_py_test(
@@ -811,6 +815,25 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = ["noasan"],  # times out b/63678675
+)
+
+cuda_py_test(
+    name = "affine_scalar_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/affine_scalar_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 cuda_py_test(
@@ -1147,6 +1170,25 @@ cuda_py_test(
     name = "softplus_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/softplus_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "square_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/square_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

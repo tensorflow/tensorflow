@@ -1143,8 +1143,7 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
     super(AttentionCellWrapper, self).__init__(_reuse=reuse)
-    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
-      raise TypeError("The parameter cell is not RNNCell.")
+    rnn_cell_impl.assert_like_rnncell("cell", cell)
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError(
           "Cell returns tuple of states, but the flag "
@@ -2059,16 +2058,19 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
                initializers=None,
                name="conv_lstm_cell"):
     """Construct ConvLSTMCell.
+
     Args:
       conv_ndims: Convolution dimensionality (1, 2 or 3).
       input_shape: Shape of the input as int tuple, excluding the batch size.
       output_channels: int, number of output channels of the conv LSTM.
       kernel_shape: Shape of kernel as in tuple (of size 1,2 or 3).
-      use_bias: Use bias in convolutions.
+      use_bias: (bool) Use bias in convolutions.
       skip_connection: If set to `True`, concatenate the input to the
-      output of the conv LSTM. Default: `False`.
+        output of the conv LSTM. Default: `False`.
       forget_bias: Forget bias.
+      initializers: Unused.
       name: Name of the module.
+
     Raises:
       ValueError: If `skip_connection` is `True` and stride is different from 1
         or if `input_shape` is incompatible with `conv_ndims`.
@@ -2157,15 +2159,19 @@ class Conv3DLSTMCell(ConvLSTMCell):
 
 
 def _conv(args, filter_size, num_features, bias, bias_start=0.0):
-  """convolution:
+  """Convolution.
+
   Args:
     args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D,
     batch x n, Tensors.
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
+    bias: Whether to use biases in the convolution layer.
     bias_start: starting value to initialize the bias; 0 by default.
+
   Returns:
     A 3D, 4D, or 5D Tensor with shape [batch ... num_features]
+
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
@@ -2305,7 +2311,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     return self._output_size
 
   def _get_input_for_group(self, inputs, group_id, group_size):
-    """Slices inputs into groups to prepare for processing by cell's groups
+    """Slices inputs into groups to prepare for processing by cell's groups.
 
     Args:
       inputs: cell input or it's previous state,
@@ -2706,7 +2712,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
 
 class SRUCell(rnn_cell_impl.LayerRNNCell):
-  """SRU, Simple Recurrent Unit
+  """SRU, Simple Recurrent Unit.
 
      Implementation based on
      Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
@@ -2754,12 +2760,13 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
 
     input_depth = inputs_shape[1].value
 
+    # pylint: disable=protected-access
     self._kernel = self.add_variable(
         rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[input_depth, 4 * self._num_units])
-
+    # pylint: enable=protected-access
     self._bias = self.add_variable(
-        rnn_cell_impl._BIAS_VARIABLE_NAME,
+        rnn_cell_impl._BIAS_VARIABLE_NAME,  # pylint: disable=protected-access
         shape=[2 * self._num_units],
         initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
 
@@ -2768,7 +2775,7 @@ class SRUCell(rnn_cell_impl.LayerRNNCell):
   def call(self, inputs, state):
     """Simple recurrent unit (SRU) with num_units cells."""
 
-    U = math_ops.matmul(inputs, self._kernel)
+    U = math_ops.matmul(inputs, self._kernel)  # pylint: disable=invalid-name
     x_bar, f_intermediate, r_intermediate, x_tx = array_ops.split(
         value=U, num_or_size_splits=4, axis=1)
 
@@ -2898,6 +2905,7 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
     Args:
       args: a 2D Tensor or a list of 2D, batch x n, Tensors.
       output_size: int, second dimension of W[i].
+      norm: bool, whether to normalize the weights.
       bias: boolean, whether to add a bias term or not.
       bias_initializer: starting value to initialize the bias
         (default is all zeros).

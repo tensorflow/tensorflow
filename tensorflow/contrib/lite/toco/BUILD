@@ -196,6 +196,7 @@ cc_library(
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
+        "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
         "graph_transformations/quantize.cc",

@@ -134,18 +134,34 @@ class Interpreter {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadOnly(
+  inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,
+      const char* buffer, size_t bytes,
+      const Allocation* allocation = nullptr) {
+    return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
+                                       dims.data(), quantization, buffer, bytes,
+                                       allocation);
+  };
+
+  TfLiteStatus SetTensorParametersReadOnly(
+      int tensor_index, TfLiteType type, const char* name, const int rank,
+      const int* dims, TfLiteQuantizationParams quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadWrite(
+  inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
-      const std::vector<int>& dims, TfLiteQuantizationParams quantization);
+      const std::vector<int>& dims, TfLiteQuantizationParams quantization) {
+    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                        dims.data(), quantization);
+  }
+  TfLiteStatus SetTensorParametersReadWrite(
+      int tensor_index, TfLiteType type, const char* name, const int rank,
+      const int* dims, TfLiteQuantizationParams quantization);
 
   // Functions to access tensor data
 
@@ -472,7 +488,7 @@ class Interpreter {
   // During Invoke(), Interpreter will allocate input tensors first, which are
   // known to be fixed size. Then it will allocate outputs from nodes as many
   // as possible. When there is a node that produces dynamic sized tensor.
-  // Intepreter will stop allocating tensors, set the value of next allocate
+  // Interpreter will stop allocating tensors, set the value of next allocate
   // node id, and execute the node to generate the output tensor before continue
   // to allocate successors. This process repeats until all nodes are executed.
   // NOTE: this relies on the order of nodes that is in topological order.

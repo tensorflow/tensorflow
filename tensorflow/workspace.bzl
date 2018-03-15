@@ -481,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/636e2230de961637b059b9cd15799daef32544f8.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/636e2230de961637b059b9cd15799daef32544f8.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
       ],
-      sha256 = "44f08a32ac48eca545fd6eac4d5ef3a9cea4382f805b87dce38340255e7d2138",
-      strip_prefix = "llvm-636e2230de961637b059b9cd15799daef32544f8",
+      sha256 = "4442ed6a05c13752338036b1b9f16b09264de24b6c0bf62325fb9ff75a09340f",
+      strip_prefix = "llvm-738ee045416377e8c2094f7f61508ac1c178ff37",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -649,11 +649,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   java_import_external(
-      name = "javax_validation",
-      jar_sha256 = "e459f313ebc6db2483f8ceaad39af07086361b474fa92e40f442e8de5d9895dc",
+      name = "org_checkerframework_qual",
+      jar_sha256 = "a17501717ef7c8dda4dba73ded50c0d7cde440fd721acfeacbf19786ceac1ed6",
       jar_urls = [
-          "http://mirror.bazel.build/repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
-          "http://repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+          "http://mirror.bazel.build/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
+          "http://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
       ],
       licenses = ["notice"],  # Apache 2.0
   )
@@ -701,16 +701,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
       sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
   )
-
-  tf_http_archive(
-      name = "rbe_integration_test",
-      urls = [
-          "http://mirror.bazel.build/github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-          "https://github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-      ],
-      sha256 = "66d93b3919a165d486c31f5290d312abe9fda2685242f812c110653c124e1db4",
-      strip_prefix = "rbe-integration-test-78a6194c7dda200b9522cf07707e3bc695804d1e",
-   )
 
   tf_http_archive(
       name = "arm_neon_2_x86_sse",

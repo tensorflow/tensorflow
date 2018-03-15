@@ -875,7 +875,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          return std::fmax(low, std::fmin(value, high));
+          return std::fmin(high, std::fmax(value, low));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -896,6 +896,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleSelect(HloInstruction* select) override {
+    CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
     CHECK(!ShapeUtil::IsTuple(select->shape()));
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
         [](bool pred, ReturnT on_true, ReturnT on_false) {
@@ -1636,11 +1637,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 Literal::CreateR0<ReturnT>(*selected_val);
 
             const std::vector<const Literal*> args = {
-                curr_val_literal.get(), selected_val_literal.get()};
+                selected_val_literal.get(), curr_val_literal.get()};
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator.Evaluate<const Literal*>(*select, args)
                     .ConsumeValueOrDie();
-            bool selected = computed_result->Get<bool>({});
+            bool selected = !computed_result->Get<bool>({});
             if (selected) {
               selected_val = curr_val;
               selected_index = operand_index;
@@ -2106,13 +2107,15 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: U16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: U16.");
   });
   typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
   typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
   typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: S16.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: S16.");
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
@@ -2126,11 +2129,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   // elementwise computations to be done in F32 and do BF16<->F32 conversion
   // around the input and the output of the computations.
   typed_visitors_[BF16] = MakeUnique<TypedVisitor<bfloat16, float>>(this);
+
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: TUPLE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVistor: unhandled primitive type: TUPLE.");
   });
   typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: OPAQUE.");
+    return Unimplemented(
+        "HloEvaluator::TypedVisitor: unhandled primitive type: OPAQUE.");
   });
 }
 
@@ -2154,6 +2160,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloComputation& computation, ArraySlice<LiteralPtr> arg_literals) {
+  CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
@@ -2850,6 +2857,37 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
+  // Attach cloned computation to an empty HLO module so the existing ones are
+  // not modified.
+  HloModule empty_hlo_module("EmptyModuleForFusion");
+  auto cloned_fused_computation =
+      fusion->fused_instructions_computation()->Clone(
+          /*suffix=*/"clone_with_layout", &empty_hlo_module);
+  for (auto* instruction : cloned_fused_computation->instructions()) {
+    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+  }
+  auto readded_computation =
+      empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
+
+  auto operands = fusion->operands();
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(operands.size());
+  for (auto operand : operands) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  std::unique_ptr<Literal> result =
+      embedded_evaluator
+          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+          .ConsumeValueOrDie();
+
+  evaluated_[fusion] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
   const auto& true_computation_arg =
@@ -2876,6 +2914,26 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();
+}
+
+Status HloEvaluator::HandleSelect(HloInstruction* select) {
+  const auto& pred = GetEvaluatedLiteralFor(select->operand(0));
+  const auto& on_true = GetEvaluatedLiteralFor(select->operand(1));
+  const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
+
+  // If predicate is of scalar type, no element-wise selection would be needed.
+  // This would also handle output array of tuple types as the DefaultAction
+  // would go through the TypedVisitor which doesn't handle tuples.
+  if (ShapeUtil::IsScalar(pred.shape())) {
+    if (pred.Get<bool>({})) {
+      evaluated_[select] = on_true.CloneToUnique();
+    } else {
+      evaluated_[select] = on_false.CloneToUnique();
+    }
+    return Status::OK();
+  }
+
+  return DefaultAction(select);
 }
 
 Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {

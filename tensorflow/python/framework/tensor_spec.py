@@ -65,6 +65,11 @@ class TensorSpec(object):
     else:
       raise ValueError("`tensor` should be a tf.Tensor")
 
+  @classmethod
+  def is_bounded(cls):
+    del cls
+    return False
+
   @property
   def shape(self):
     """Returns the `TensorShape` that represents the shape of the tensor."""
@@ -79,6 +84,16 @@ class TensorSpec(object):
   def name(self):
     """Returns the name of the described tensor."""
     return self._name
+
+  @property
+  def is_discrete(self):
+    """Whether spec is discrete."""
+    return self.dtype.is_integer
+
+  @property
+  def is_continuous(self):
+    """Whether spec is continuous."""
+    return self.dtype.is_floating
 
   def is_compatible_with(self, spec_or_tensor):
     """True if the shape and dtype of `spec_or_tensor` are compatible."""
@@ -162,6 +177,11 @@ class BoundedTensorSpec(TensorSpec):
 
     self._maximum = np.array(maximum, dtype=self.dtype.as_numpy_dtype())
     self._maximum.setflags(write=False)
+
+  @classmethod
+  def is_bounded(cls):
+    del cls
+    return True
 
   @classmethod
   def from_spec(cls, spec):

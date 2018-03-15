@@ -419,7 +419,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -470,7 +470,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -526,7 +526,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           normalizer_params=self._BatchNormParams(fused_batch_norm),
           scope=scope)
 
-      # Manually add a bypass (optionaly) and an activation.
+      # Manually add a bypass (optional) and an activation.
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
 
@@ -565,7 +565,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       stddev: Standard deviation of normal variable.
 
     Returns:
-      An initialized that initialzes with a truncated normal variable.
+      An initialized that initializes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 

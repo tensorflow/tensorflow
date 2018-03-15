@@ -57,6 +57,11 @@ bool ConvertSqueezeToReshape::Run(Model* model, std::size_t op_index) {
   // We use the output shape that has been calculated by shape propagation.
   const auto& output_shape = model->GetArray(squeeze_op->outputs[0]).shape();
 
+  // Empty shapes will not work as empty data arrays.
+  if (output_shape.dimensions_count() == 0) {
+    return false;
+  }
+
   auto* reshape_op = new TensorFlowReshapeOperator;
   reshape_op->inputs = {
       squeeze_op->inputs[0],

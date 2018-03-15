@@ -26,6 +26,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":sequence_feature_column",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -38,7 +39,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",

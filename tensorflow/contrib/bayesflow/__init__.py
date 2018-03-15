@@ -21,23 +21,19 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
-from tensorflow.contrib.bayesflow.python.ops import custom_grad
 from tensorflow.contrib.bayesflow.python.ops import hmc
 from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
-from tensorflow.contrib.bayesflow.python.ops import optimizers
 # pylint: enable=unused-import,line-too-long
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'custom_grad',
     'entropy',
     'hmc',
     'metropolis_hastings',
     'monte_carlo',
-    'optimizers',
     'special_math',
     'stochastic_variables',
     'variational_inference',

@@ -465,7 +465,6 @@ Status LoopOptimizer::LoopInvariantNodeMotion() {
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
   TF_RETURN_IF_ERROR(RemoveStackOps(item.graph, optimized_graph));
-  
   optimized_graph_ = optimized_graph;
 
   // Set up helper data structures.
@@ -475,6 +474,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                                &frame_map_, &num_frames));
 
   TF_RETURN_IF_ERROR(LoopInvariantNodeMotion());
+  return Status::OK();
 }
 
 void LoopOptimizer::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,

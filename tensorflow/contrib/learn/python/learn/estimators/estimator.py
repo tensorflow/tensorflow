@@ -917,8 +917,8 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
       if feed_fn:
         hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps == 0:
-        logging.warning('evaluation steps are 0. If `input_fn` does not raise'
-                        'OutOfRangeError`, the evaluation will never stop.'
+        logging.warning('evaluation steps are 0. If `input_fn` does not raise '
+                        '`OutOfRangeError`, the evaluation will never stop. '
                         'Use steps=None if intended.')
       if steps:
         hooks.append(

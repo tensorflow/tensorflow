@@ -55,6 +55,8 @@ class LogicalExpressionTransformer(transformer.Base):
         gast.NotEq: 'not_equal',
         gast.Or: 'logical_or',
         gast.USub: 'negative',
+        gast.Is: 'py2tf_utils.dynamic_is',
+        gast.IsNot: 'py2tf_utils.dynamic_is_not'
     }
 
   def _expect_simple_symbol(self, operand):
@@ -76,14 +78,21 @@ class LogicalExpressionTransformer(transformer.Base):
     return mapped_op
 
   def _inline_tf_op(self, op_name, args):
-    template = """
-      tf.op_name(args)
+    if 'py2tf_utils' in op_name:
+      # TODO(alexbw): explicitly spelling out the attribute function name
+      # until fix for issue highlighted in cl/188931581 lands.
+      template = """
+      py2tf_utils.op_name(args)
     """
-    replacement = templates.replace(template, op_name=op_name, args=args)
-    # It's a body with a single expression, we want its value.
-    n = replacement[0].value
-    anno.setanno(n, SAFE_BOOLEAN_OPERAND, True)
-    return n
+      op_name = op_name.replace('py2tf_utils.', '')
+    else:
+      template = """
+        tf.op_name(args)
+      """
+    replacement = templates.replace_as_expression(
+        template, op_name=op_name, args=args)
+    anno.setanno(replacement, SAFE_BOOLEAN_OPERAND, True)
+    return replacement
 
   def visit_Compare(self, node):
     node = self.generic_visit(node)

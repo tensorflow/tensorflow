@@ -169,6 +169,7 @@ sh_binary(
         "//tensorflow:windows_msvc": [":simple_console_for_windows"],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
+            "//tensorflow/contrib/lite/python:interpreter_test_data",
             "//tensorflow/contrib/lite/toco:toco",
             "//tensorflow/contrib/lite/toco/python:toco_wrapper",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",

@@ -407,6 +407,31 @@ def enable_c_api(fn):
   return wrapper
 
 
+def enable_c_shapes(fn):
+  """Decorator for enabling C shapes on a test.
+
+  Note this enables the C shapes after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_SHAPES
+    # Only use C shapes if the C API is already enabled.
+    ops._USE_C_SHAPES = ops._USE_C_API
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_SHAPES = prev_value
+
+  return wrapper
+
+
 # This decorator is a hacky way to run all the test methods in a decorated
 # class with and without C API enabled.
 # TODO(iga): Remove this and its uses once we switch to using C API by default.
@@ -433,6 +458,32 @@ def with_c_api(cls):
       setattr(cls, name + "WithCApi", enable_c_api(value))
   return cls
 
+
+def assert_no_new_pyobjects_executing_eagerly(f):
+  """Decorator for asserting that no new Python objects persist after a test.
+
+  Runs the test multiple times executing eagerly, first as a warmup and then
+  several times to let objects accumulate. The warmup helps ignore caches which
+  do not grow as the test is run repeatedly.
+
+  Useful for checking that there are no missing Py_DECREFs in the C exercised by
+  a bit of Python.
+  """
+  def decorator(self, **kwargs):
+    """Warms up, gets an object count, runs the test, checks for new objects."""
+    with context.eager_mode():
+      gc.disable()
+      f(self, **kwargs)
+      gc.collect()
+      previous_count = len(gc.get_objects())
+      for _ in range(3):
+        f(self, **kwargs)
+      gc.collect()
+      # There should be no new Python objects hanging around.
+      new_count = len(gc.get_objects())
+      self.assertEqual(previous_count, new_count)
+      gc.enable()
+  return decorator
 
 def assert_no_new_tensors(f):
   """Decorator for asserting that no new Tensors persist after a test.
