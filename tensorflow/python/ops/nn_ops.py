@@ -2453,6 +2453,14 @@ def conv1d(input=None,
                                                  "value", value)
   filter = deprecation.deprecated_argument_lookup("filter", filter,
                                                   "filters", filters)
+  if input is None:
+      raise ValueError("input must be specified")
+  if filter is None:
+      raise ValueError("filter must be specified")
+  if stride is None:
+      raise ValueError("stride must be specified")
+  if padding is None:
+      raise ValueError("padding must be specified")
   with ops.name_scope(name, "conv1d", [input, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
