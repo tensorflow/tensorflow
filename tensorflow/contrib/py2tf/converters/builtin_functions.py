@@ -36,23 +36,24 @@ class BuiltinFunctionTransformer(transformer.Base):
 
   # pylint:disable=invalid-name
 
-  def _convert_len(self, node):
+  def _convert_builtin(self, node):
     template = """
-      py2tf_utils.dynamic_len(args)
+      py2tf_utils.dynamic_builtin(func, args)
     """
-    return templates.replace(template, args=node.args)[0].value
+    return templates.replace(template, func=node.func, args=node.args)[0].value
 
   def _convert_print(self, node):
     template = """
-      py2tf_utils.call_print(args)
+      py2tf_utils.dynamic_print(args)
     """
     return templates.replace(template, args=node.args)[0].value
 
   def visit_Call(self, node):
     self.generic_visit(node)
     # TODO(mdan): This won't work if the function was hidden.
-    if isinstance(node.func, gast.Name) and node.func.id == 'len':
-      return self._convert_len(node)
+    if isinstance(node.func, gast.Name) and node.func.id in ('len', 'range'):
+      return self._convert_builtin(node)
+    # Print needs to be handled separately because it can be read as statement.
     if isinstance(node.func, gast.Name) and node.func.id == 'print':
       return self._convert_print(node)
     return node

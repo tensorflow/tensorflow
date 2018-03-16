@@ -174,7 +174,9 @@ bool HasResourceInputOrOutput(const Node& node) {
 }
 
 struct NodeCompare {
-  bool operator()(const Node* a, const Node* b) { return a->id() < b->id(); }
+  bool operator()(const Node* a, const Node* b) const {
+    return a->id() < b->id();
+  }
 };
 using OrderedNodeSet = std::set<Node*, NodeCompare>;
 
@@ -189,7 +191,27 @@ Status FindCompilationCandidates(
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
+  int64& fuel =
+      legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
+
+  // Iterate over nodes in sorted order so that compiler fuel is deterministic.
+  // We can't simply pass op_nodes().begin() and op_nodes().end to the
+  // std::vector constructor because they're not proper iterators, with
+  // iterator_traits defined and so on.
+  std::vector<Node*> sorted_nodes;
   for (Node* node : graph.op_nodes()) {
+    sorted_nodes.push_back(node);
+  }
+  std::sort(sorted_nodes.begin(), sorted_nodes.end(), NodeCompare());
+
+  for (Node* node : sorted_nodes) {
+    VLOG(2) << "Fuel: " << fuel;
+    if (fuel <= 0) {
+      VLOG(2)
+          << "Hit fuel limit; not marking any remaining ops as clusterable.";
+      break;
+    }
+
     VLOG(2) << "FindCompilationCandidates(): Processing "
             << node->DebugString();
 
@@ -234,7 +256,9 @@ Status FindCompilationCandidates(
       continue;
     }
     candidates->insert(node);
+    --fuel;
   }
+  VLOG(2) << "candidates->size() = " << candidates->size();
   return Status::OK();
 }
 

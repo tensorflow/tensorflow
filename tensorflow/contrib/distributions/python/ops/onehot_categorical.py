@@ -203,9 +203,6 @@ class OneHotCategorical(distribution.Distribution):
     ret = array_ops.reshape(ret, logits_shape)
     return ret
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _entropy(self):
     return -math_ops.reduce_sum(
         nn_ops.log_softmax(self.logits) * self.probs, axis=-1)

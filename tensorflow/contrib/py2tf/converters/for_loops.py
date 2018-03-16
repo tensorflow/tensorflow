@@ -37,14 +37,18 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
   def visit_For(self, node):
     self.generic_visit(node)
     body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-
+    i_var = self.context.namer.new_symbol('i', body_scope.referenced)
+    n_var = self.context.namer.new_symbol('n', body_scope.referenced)
+    iterated_var = self.context.namer.new_symbol('iterated',
+                                                 body_scope.referenced)
+    # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
     if anno.hasanno(node, 'extra_cond'):
       template = """
         i = 0
-        n = len(loop_iter)
+        iterated = loop_iter
+        n = len(iterated)
         while i < n and extra_cond:
-          # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
-          target = loop_iter[i]
+          target = iterated[i]
           body
           i += 1
       """
@@ -53,17 +57,18 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=self.context.namer.new_symbol('i', body_scope.referenced),
-          n=self.context.namer.new_symbol('n', body_scope.referenced),
+          i=i_var,
+          n=n_var,
+          iterated=iterated_var,
           extra_cond=anno.getanno(node, 'extra_cond'))
     else:
       template = """
         i = 0
-        n = len(loop_iter)
+        iterated = loop_iter
+        n = len(iterated)
         while i < n:
-          # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
-          target = loop_iter[i]
-          body  # pylint:disable=pointless-statement
+          target = iterated[i]
+          body
           i += 1
       """
       repl = templates.replace(
@@ -71,8 +76,9 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=self.context.namer.new_symbol('i', body_scope.referenced),
-          n=self.context.namer.new_symbol('n', body_scope.referenced))
+          i=i_var,
+          n=n_var,
+          iterated=iterated_var)
       return repl
 
   def visit_Continue(self, node):

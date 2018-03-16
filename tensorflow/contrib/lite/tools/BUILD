@@ -4,6 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 py_binary(
@@ -45,7 +46,15 @@ tf_cc_binary(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 cc_library(
@@ -111,6 +120,9 @@ cc_test(
     name = "verifier_test",
     size = "small",
     srcs = ["verifier_test.cc"],
+    tags = [
+        "tflite_not_portable",
+    ],
     deps = [
         ":mutable_op_resolver",
         ":verifier",
@@ -124,3 +136,5 @@ cc_test(
         "@flatbuffers",
     ],
 )
+
+tflite_portable_test_suite()

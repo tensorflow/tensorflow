@@ -285,7 +285,8 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertIs(global_vars[0], trainable_vars[0])
 
 
-@test_util.with_c_api
+# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
+# @test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):
@@ -904,20 +905,6 @@ class ExportImportAcrossScopesTest(test.TestCase):
     with ops.Graph().as_default() as expected_graph:
       with variable_scope.variable_scope("importA/keepA"):
         graph_fn(use_resource=use_resource)
-
-      if use_resource:
-        # Bringing in collections that contain ResourceVariables will adds ops
-        # to the graph the first time a variable is encountered, so mimic the
-        # same behavior.
-        seen_variables = set()
-        for collection_key in sorted([
-            ops.GraphKeys.GLOBAL_VARIABLES,
-            ops.GraphKeys.TRAINABLE_VARIABLES,
-        ]):
-          for var in expected_graph.get_collection(collection_key):
-            if var not in seen_variables:
-              var._read_variable_op()
-              seen_variables.add(var)
 
     result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]

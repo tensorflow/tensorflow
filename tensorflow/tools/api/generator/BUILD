@@ -1,5 +1,6 @@
 # Description:
 # Scripts used to generate TensorFlow Python API.
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
@@ -21,7 +22,7 @@ py_binary(
     srcs = ["create_python_api.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python",
     ],
 )
 
@@ -80,6 +81,7 @@ genrule(
         "api/keras/datasets/boston_housing/__init__.py",
         "api/keras/datasets/cifar10/__init__.py",
         "api/keras/datasets/cifar100/__init__.py",
+        "api/keras/datasets/fashion_mnist/__init__.py",
         "api/keras/datasets/imdb/__init__.py",
         "api/keras/datasets/mnist/__init__.py",
         "api/keras/datasets/reuters/__init__.py",
@@ -102,6 +104,7 @@ genrule(
         "api/linalg/__init__.py",
         "api/logging/__init__.py",
         "api/losses/__init__.py",
+        "api/manip/__init__.py",
         "api/metrics/__init__.py",
         "api/nn/__init__.py",
         "api/nn/rnn_cell/__init__.py",
@@ -133,7 +136,9 @@ py_library(
     name = "python_api",
     srcs = [":python_api_gen"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib:contrib_py",  # keep
+        "//tensorflow/python",  # keep
     ],
 )

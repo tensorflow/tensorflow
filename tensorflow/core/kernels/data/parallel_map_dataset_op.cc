@@ -318,7 +318,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
         // Get the next input element.
         std::vector<Tensor> input_element;
-        bool end_of_input;
+        bool end_of_input = false;
         result->status =
             input_impl_->GetNext(ctx, &input_element, &end_of_input);
         if (end_of_input) {

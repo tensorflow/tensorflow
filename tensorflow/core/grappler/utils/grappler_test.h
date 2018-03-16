@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -30,10 +32,19 @@ class GrapplerTest : public ::testing::Test {
   std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
                                     const std::vector<string>& node_names);
 
+  std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item);
+
   void AddNode(const string& name, const string& op,
                const std::vector<string>& inputs, GraphDef* graph);
 
   void CompareGraphs(GraphDef want, GraphDef got);
+
+  // Check if node 'src' is directly connected to the input($position) of 'dst'.
+  bool IsNodesDirectlyConnected(const NodeMap& node_map, const string& src,
+                                const string& dst, int position = 0);
+
+  // Count nodes of the given op-type in a graph.
+  int CountOpNodes(const GraphDef& graph, const string& op);
 };
 
 }  // end namespace grappler

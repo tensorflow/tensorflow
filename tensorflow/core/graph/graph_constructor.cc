@@ -1271,7 +1271,7 @@ void CopyGraph(const Graph& src, Graph* dest) {
   dest->set_versions(src.versions());
 
   // Copy the nodes
-  std::unordered_map<Node*, Node*>
+  std::unordered_map<const Node*, Node*>
       node_map;  // "Node in src" -> "Node in *dest"
   node_map[src.source_node()] = dest->source_node();
   node_map[src.sink_node()] = dest->sink_node();

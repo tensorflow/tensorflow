@@ -52,6 +52,7 @@ tf_cuda_cc_test(
         "manual",
         "multi_gpu",
         "no_oss",
+        "noguitar",
         "notap",
     ],
     deps =
@@ -136,6 +137,7 @@ cuda_py_test(
         "manual",
         "multi_gpu",
         "no_oss",
+        "noguitar",
         "notap",
     ],
 )

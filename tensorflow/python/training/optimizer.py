@@ -40,19 +40,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _get_variable_for(v):
-  """Returns the ResourceVariable responsible for v, or v if not necessary."""
-  if context.in_eager_mode():
-    return v
-  if v.op.type == "VarHandleOp":
-    for var in variables.trainable_variables():
-      if (isinstance(var, resource_variable_ops.ResourceVariable)
-          and var.handle.op is v.op):
-        return var
-    raise ValueError("Got %s but could not locate source variable." % (str(v)))
-  return v
-
-
 def _deduplicate_indexed_slices(values, indices):
   """Sums `values` associated with any non-unique `indices`.
 
@@ -73,7 +60,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     return var._shared_name  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
@@ -97,6 +84,9 @@ class _RefVariableProcessor(_OptimizableVariable):
 
   def __init__(self, v):
     self._v = v
+
+  def __str__(self):
+    return "<_RefVariableProcessor(%s)>" % self._v
 
   def target(self):
     return self._v._ref()  # pylint: disable=protected-access
@@ -196,7 +186,7 @@ class _TensorProcessor(_OptimizableVariable):
 
 def _get_processor(v):
   """The processor of v."""
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if isinstance(v, ops.Tensor):
       return _TensorProcessor(v)
     else:
@@ -213,7 +203,11 @@ def _get_processor(v):
 
 
 @tf_export("train.Optimizer")
-class Optimizer(checkpointable.Checkpointable):
+class Optimizer(
+    # Optimizers inherit from CheckpointableBase rather than Checkpointable
+    # since they do most of their dependency management themselves (slot
+    # variables are special-cased, and non-slot variables are keyed to graphs).
+    checkpointable.CheckpointableBase):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -453,7 +447,7 @@ class Optimizer(checkpointable.Checkpointable):
         var_list = tape.watched_variables()
       grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
@@ -542,7 +536,7 @@ class Optimizer(checkpointable.Checkpointable):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.init_scope():
-      self._create_slots([_get_variable_for(v) for v in var_list])
+      self._create_slots(var_list)
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
@@ -552,7 +546,7 @@ class Optimizer(checkpointable.Checkpointable):
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        scope_name = var.op.name if context.in_graph_mode() else ""
+        scope_name = "" if context.executing_eagerly() else var.op.name
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
@@ -570,7 +564,7 @@ class Optimizer(checkpointable.Checkpointable):
             else:
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -620,7 +614,7 @@ class Optimizer(checkpointable.Checkpointable):
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.in_eager_mode()
+    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
@@ -642,19 +636,53 @@ class Optimizer(checkpointable.Checkpointable):
 
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
-    if context.in_graph_mode():
-      graph = colocate_with.graph
-    else:
-      graph = None
+    eager = context.executing_eagerly()
+    graph = None if eager else colocate_with.graph
 
     key = (name, graph)
     v = self._non_slot_dict.get(key, None)
     if v is None:
+      self._maybe_initialize_checkpointable()
       with ops.colocate_with(colocate_with):
+        if eager:
+          restored_initial_value = self._preload_simple_restoration(
+              name=name, shape=None)
+          if restored_initial_value is not None:
+            initial_value = restored_initial_value
         v = variable_scope.variable(initial_value, name=name, trainable=False)
+        # Restore this variable by name if necessary, but don't add a
+        # Checkpointable dependency. Optimizers return the current graph's
+        # non-slot variables from _checkpoint_dependencies explicitly rather
+        # than unconditionally adding dependencies (since there may be multiple
+        # non-slot variables with the same name in different graphs, trying to
+        # save all of them would result in errors).
+        self._handle_deferred_dependencies(name=name, checkpointable=v)
       self._non_slot_dict[key] = v
 
     return v
+
+  @property
+  def _checkpoint_dependencies(self):
+    """From Checkpointable. Gather graph-specific non-slot variables to save."""
+    current_graph_non_slot_variables = []
+    current_graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    for (name, _), variable_object in sorted(self._non_slot_dict.items(),
+                                             # Avoid comparing graphs
+                                             key=lambda item: item[0][0]):
+      if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
+        current_graph_non_slot_variables.append(
+            checkpointable.CheckpointableReference(
+                name=name, ref=variable_object))
+    return (super(Optimizer, self)._checkpoint_dependencies
+            + current_graph_non_slot_variables)
+
+  def _lookup_dependency(self, name):
+    """From Checkpointable. Find a non-slot variable in the current graph."""
+    unconditional = super(Optimizer, self)._lookup_dependency(name)
+    if unconditional is not None:
+      return unconditional
+    graph = None if context.executing_eagerly() else ops.get_default_graph()
+    return self._get_non_slot_variable(name, graph=graph)
 
   def _get_non_slot_variable(self, name, graph=None):
     return self._non_slot_dict.get((name, graph), None)
@@ -987,9 +1015,8 @@ class Optimizer(checkpointable.Checkpointable):
     named_slots = self._slot_dict(slot_name)
     variable_key = _var_key(variable)
     slot_variable = named_slots.get(variable_key, None)
-    if (slot_variable is None
-        and context.in_eager_mode()
-        and slot_variable_position.is_simple_variable()):
+    if (slot_variable is None and context.executing_eagerly() and
+        slot_variable_position.is_simple_variable()):
       initializer = checkpointable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self._get_or_make_slot(

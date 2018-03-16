@@ -1168,7 +1168,9 @@ REGISTER_OP("Unique")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(1, c->input(0));
-      return Status::OK();
+      // Assert that the input rank is 1.
+      ShapeHandle dummy;
+      return c->WithRank(c->input(0), 1, &dummy);
     });
 
 REGISTER_OP("UniqueV2")
@@ -1564,6 +1566,9 @@ REGISTER_OP("Tile")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &multiples));
       if (c->RankKnown(input)) {
         TF_RETURN_IF_ERROR(c->WithRank(multiples, c->Rank(input), &multiples));
+        ShapeHandle dummy;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(1), c->Vector(c->Rank(input)), &dummy));
       }
 
       if (!c->RankKnown(multiples)) {

@@ -31,7 +31,7 @@ from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
-from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.keras._impl.keras.engine.base_layer import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
@@ -546,8 +546,8 @@ class RNN(Layer):
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
                          ' Keras tensors and non-Keras tensors'
-                         '(a "Keras tensor" is a tensor that was'
-                         'returned by a Keras layer, or by `Input`)')
+                         ' (a "Keras tensor" is a tensor that was'
+                         ' returned by a Keras layer, or by `Input`)')
 
     if is_keras_tensor:
       # Compute the full input spec, including state and constants
@@ -936,7 +936,7 @@ class SimpleRNNCell(Layer):
 
     # Properly set learning phase on output tensor.
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         output._uses_learning_phase = True
@@ -1384,7 +1384,7 @@ class GRUCell(Layer):
       hh = self.activation(x_h + recurrent_h)
     h = z * h_tm1 + (1 - z) * hh
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         h._uses_learning_phase = True
@@ -1877,7 +1877,7 @@ class LSTMCell(Layer):
 
     h = o * self.activation(c)
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         h._uses_learning_phase = True

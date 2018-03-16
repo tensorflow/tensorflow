@@ -99,7 +99,7 @@ class PowerSignTest(test.TestCase):
         neg_update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
                                          global_step=global_step)
 
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -110,13 +110,13 @@ class PowerSignTest(test.TestCase):
         # last 3 steps with negative gradient (sign(gm) should be -1)
         for t in range(1, 8):
           if t < 5:
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               self.evaluate(update)
             elif t > 1:
               opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
                                   global_step=global_step)
           else:
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               self.evaluate(neg_update)
             elif t > 1:
               opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
