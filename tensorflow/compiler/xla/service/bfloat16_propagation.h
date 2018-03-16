@@ -134,6 +134,11 @@ class BFloat16Propagation : public HloPassInterface {
   void AdjustCalledComputationRoot(HloInstruction* hlo);
 
   // ***************************
+  // Removes no-op conversions (same source and target shapes) that can be
+  // produced this pass.
+  Status RemoveNoopConversions(HloModule* module);
+
+  // ***************************
   // Functions called and state used by two or more passes.
 
   // Returns whether all uses of the given HloInstruction can consume BF16
