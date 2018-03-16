@@ -33,10 +33,10 @@ namespace tflite {
 const char* kEmptyTensorName = "";
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
-    const char* filename, ErrorReporter* error_reporter) {
+    const char* filename, ErrorReporter* error_reporter, bool use_nnapi) {
   std::unique_ptr<FlatBufferModel> model;
   model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter,
-                                  /*use_nnapi=*/true));
+                                  use_nnapi));
   if (!model->initialized()) model.reset();
   return model;
 }
