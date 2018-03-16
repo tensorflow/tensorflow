@@ -60,7 +60,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool enable_try_simplify_and_replace = true;
     bool combine_add_to_addn = false;
     bool hoist_common_factor_out_of_aggregation = true;
-    bool remove_inverse_transpose = true;
+    bool remove_identity_transpose = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
 

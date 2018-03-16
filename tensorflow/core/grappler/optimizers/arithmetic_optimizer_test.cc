@@ -92,7 +92,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.hoist_common_factor_out_of_aggregation = false;
-    options.remove_inverse_transpose = false;
+    options.remove_identity_transpose = false;
     options.remove_redundant_bitcast = false;
     options.remove_redundant_cast = false;
     optimizer->options_ = options;
@@ -112,9 +112,9 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.hoist_common_factor_out_of_aggregation = true;
   }
 
-  void EnableOnlyRemoveInverseTranspose(ArithmeticOptimizer* optimizer) {
+  void EnableOnlyRemoveIdentityTranspose(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.remove_inverse_transpose = true;
+    optimizer->options_.remove_identity_transpose = true;
   }
 
   void EnableOnlyRemoveRedundantBitcast(ArithmeticOptimizer* optimizer) {
@@ -876,7 +876,7 @@ TEST_F(ArithmeticOptimizerTest, NoReorderTransposeCast) {
   EXPECT_EQ(1, num_transposes);
 }
 
-TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
       ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
@@ -884,18 +884,21 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
       ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
   Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
   Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
+  Output perm3 = ops::Const(s.WithOpName("perm2"), {0, 1, 2, 3}, {4});
   Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm1);
   Output transpose2 =
       ops::Transpose(s.WithOpName("transpose2"), transpose1, perm2);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), transpose2);
+  Output transpose3 = ops::Transpose(s.WithOpName("transpose3"), inputs, perm3);
+  Output id1 = ops::Identity(s.WithOpName("id1"), transpose2);
+  Output id2 = ops::Identity(s.WithOpName("id2"), transpose3);
 
   GrapplerItem item;
-  item.fetch = {"outputs"};
+  item.fetch = {"id1", "id2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   std::set<string> nodes_after_optimization;
@@ -903,10 +906,10 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
     nodes_after_optimization.insert(node.name());
   }
   EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"inputs_shape", "inputs", "outputs"}));
+            std::set<string>({"id1", "id2", "inputs_shape", "inputs"}));
 }
 
-TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
       ops::Const(s.WithOpName("inputs_shape"), {8, 9, 28, 28}, {4});
@@ -927,7 +930,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   for (const NodeDef& node : output.node()) {
@@ -955,7 +958,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   NodeMap node_map(&output);
@@ -983,7 +986,7 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveInverseTranspose(&optimizer);
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   EXPECT_EQ(6, output.node_size());

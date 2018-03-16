@@ -933,60 +933,81 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
 };
 
 // Removes inverse transpose nodes
-class RemoveInverseTranspose : public ArithmeticOptimizerStage {
+class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveInverseTranspose(const ArithmeticOptimizerContext& ctx)
-      : ArithmeticOptimizerStage("RemoveInverseTranspose", ctx) {}
-  ~RemoveInverseTranspose() override = default;
+  explicit RemoveIdentityTranspose(const ArithmeticOptimizerContext& ctx)
+      : ArithmeticOptimizerStage("RemoveIdentityTranspose", ctx) {}
+  ~RemoveIdentityTranspose() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
     return IsTranspose(*node) || IsConjugateTranspose(*node);
   }
 
+  // TODO(rmlarsen): Forward control dependencies on the bypassed
+  // transpose nodes.
   Status TrySimplify(const NodeDef* node,
                      string* simplified_node_name) override {
     CHECK(IsSupported(node));
 
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    NodeDef* node_perm;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &node_perm));
+    std::vector<int64> node_perm_values;
+    TF_RETURN_IF_ERROR(GetPermutation(*node_perm, &node_perm_values));
 
     if (input->op() == node->op()) {
-      NodeDef* node_perm;
+      // Remove pairs of transposes that cancel each other.
       NodeDef* input_perm;
-
-      TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &node_perm));
       TF_RETURN_IF_ERROR(GetInputNode(input->input(1), &input_perm));
-
-      // Try 32-bit indices.
-      std::vector<int> node_perm_values;
-      std::vector<int> input_perm_values;
-      if (ValuesFromConstNode(*node_perm, &node_perm_values) &&
-          ValuesFromConstNode(*input_perm, &input_perm_values) &&
-          AreInversePermutations(node_perm_values, input_perm_values)) {
+      std::vector<int64> input_perm_values;
+      TF_RETURN_IF_ERROR(GetPermutation(*input_perm, &input_perm_values));
+      if (AreInversePermutations(node_perm_values, input_perm_values)) {
         *simplified_node_name = input->input(0);
       }
-      // Try 64-bit indices.
-      std::vector<int64> node_perm_values64;
-      std::vector<int64> input_perm_values64;
-      if (ValuesFromConstNode(*node_perm, &node_perm_values64) &&
-          ValuesFromConstNode(*input_perm, &input_perm_values64) &&
-          AreInversePermutations(node_perm_values64, input_perm_values64)) {
-        *simplified_node_name = input->input(0);
+    } else {
+      // Remove simple identity transposes.
+      if (IsIdentityPermutation(node_perm_values)) {
+        *simplified_node_name = node->input(0);
       }
     }
-
     return Status::OK();
   }
 
  private:
-  template <typename T>
-  bool AreInversePermutations(const std::vector<T>& a,
-                              const std::vector<T>& b) {
+  Status GetPermutation(const NodeDef& node_perm,
+                        std::vector<int64>* perm64) const {
+    std::vector<int> perm32;
+    if (ValuesFromConstNode(node_perm, &perm32)) {
+      perm64->reserve(perm32.size());
+      for (int val : perm32) {
+        perm64->push_back(static_cast<int64>(val));
+      }
+      return Status::OK();
+    }
+    if (ValuesFromConstNode(node_perm, perm64)) {
+      return Status::OK();
+    }
+    return errors::InvalidArgument("Couldn't extract permutation from ",
+                                   node_perm.name());
+  }
+
+  bool AreInversePermutations(const std::vector<int64>& a,
+                              const std::vector<int64>& b) {
     if (a.size() != b.size()) {
       return false;
     }
     for (int i = 0; i < a.size(); ++i) {
       if (a[b[i]] != i) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool IsIdentityPermutation(const std::vector<int64>& perm) {
+    for (int64 i = 0; i < perm.size(); ++i) {
+      if (i != perm[i]) {
         return false;
       }
     }
@@ -1663,9 +1684,9 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
     stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
         new HoistCommonFactorOutOfAggregation(ctx)));
   }
-  if (options_.remove_inverse_transpose) {
+  if (options_.remove_identity_transpose) {
     stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
-        new RemoveInverseTranspose(ctx)));
+        new RemoveIdentityTranspose(ctx)));
   }
   if (options_.remove_redundant_bitcast) {
     stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
