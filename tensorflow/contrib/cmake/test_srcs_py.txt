@@ -1,0 +1,26 @@
+tensorflow/python/data/kernel_tests/*.py
+tensorflow/python/debug/cli/*_test.py
+tensorflow/python/debug/lib/*_test.py
+tensorflow/python/debug/wrappers/*_test.py
+tensorflow/contrib/estimator/python/estimator/*_test.py
+tensorflow/python/kernel_tests/*.py
+tensorflow/python/ops/quantized_conv_ops_test.py
+tensorflow/python/ops/quantized_ops_test.py
+tensorflow/python/platform/build_info_test.py
+tensorflow/python/profiler/*_test.py
+tensorflow/python/profiler/internal/*_test.py
+tensorflow/python/saved_model/*_test.py
+tensorflow/python/training/*_test.py
+tensorflow/contrib/coder/*_test.py
+tensorflow/contrib/data/*_test.py
+tensorflow/contrib/factorization/*_test.py
+tensorflow/contrib/feature_column/python/feature_column/*_test.py
+tensorflow/contrib/image/*_test.py
+tensorflow/python/keras/_impl/keras/*_test.py
+tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py
+tensorflow/contrib/nearest_neighbor/python/kernel_tests/*_test.py
+tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py
+tensorflow/contrib/stateless/python/kernel_tests/*_test.py
+# NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
+tensorflow/contrib/tensor_forest/client/*_test.py
+tensorflow/contrib/tensor_forest/python/*_test.py

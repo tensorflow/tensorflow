@@ -137,188 +137,83 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     )
   endif()
 
-  file(GLOB_RECURSE tf_test_src_py
-    ${tf_test_rnn_src_py}
-    "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/*.py"
-    "${tensorflow_source_dir}/tensorflow/python/debug/cli/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
-    "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/ops/quantized_conv_ops_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/ops/quantized_ops_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/platform/build_info_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/coder/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/feature_column/python/feature_column/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/python/kernel_tests/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
-    # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
-  )
+  FILE(READ test_srcs_py.txt test_srcs_py)
+  # Convert file contents into a CMake list (where each element in the list is one line of the file)
+  STRING(REGEX REPLACE ";" "\\\\;" test_srcs_py "${test_srcs_py}")
+  STRING(REGEX REPLACE "\n" ";" test_srcs_py "${test_srcs_py}")
+
+  foreach(test_src_py ${test_srcs_py})
+    if(NOT test_src_py MATCHES "^\#")
+      STRING(REGEX REPLACE " *\#.*" "" test_src_py "${test_src_py}")
+      file(GLOB_RECURSE tf_test_src_py
+          "${tensorflow_source_dir}/${test_src_py}"
+      )
+      list(APPEND tf_test_srcs_py ${tf_test_src_py})
+    endif()
+  endforeach(test_src_py)
+
+  list(APPEND tf_test_srcs_py ${tf_test_rnn_src_py})
 
   if (tensorflow_BUILD_MORE_PYTHON_TESTS)
     # Adding other major packages
-    file(GLOB_RECURSE tf_test_src_py
-      ${tf_test_src_py}
-      "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
-    )
+
+    FILE(READ test_srcs_py_more.txt test_srcs_py_more)
+    # Convert file contents into a CMake list (where each element in the list is one line of the file)
+    STRING(REGEX REPLACE ";" "\\\\;" test_srcs_py_more "${test_srcs_py_more}")
+    STRING(REGEX REPLACE "\n" ";" test_srcs_py_more "${test_srcs_py_more}")
+
+    foreach(test_src_py_more ${test_srcs_py_more})
+      if(NOT test_src_py_more MATCHES "^\#")
+        STRING(REGEX REPLACE " *\#.*" "" test_src_py_more "${test_src_py_more}")
+        file(GLOB_RECURSE tf_test_src_py_more
+            "${tensorflow_source_dir}/${test_src_py_more}"
+        )
+        list(APPEND tf_test_srcs_py_more ${tf_test_src_py_more})
+      endif()
+    endforeach(test_src_py_more)
+
+    list(APPEND tf_test_srcs_py ${tf_test_srcs_py_more})
   endif()
 
   # exclude the ones we don't want
-  set(tf_test_src_py_exclude
-    # Not a test.
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
-    # Flaky because of port collisions.
-    "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"
-    # generally not working
-    "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
-    # flaky test
-    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
-    "${tensorflow_source_dir}/tensorflow/python/profiler/model_analyzer_test.py"
-    # Fails because uses data dependencies with bazel
-    "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
-    # requires scipy
-    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
-    # Takes very long to run without sharding (defined in bazel build file).
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
-    # Loading resources in contrib doesn't seem to work on Windows
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/tensor_forest_test.py"
-    # dask need fix
-    "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/generator_io_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/graph_io_test.py"
-    # Test is flaky on Windows GPU builds (b/38283730).
-    "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
-  )
+
+  FILE(READ test_srcs_py_exclude.txt test_srcs_py_exclude)
+  # Convert file contents into a CMake list (where each element in the list is one line of the file)
+  STRING(REGEX REPLACE ";" "\\\\;" test_srcs_py_exclude "${test_srcs_py_exclude}")
+  STRING(REGEX REPLACE "\n" ";" test_srcs_py_exclude "${test_srcs_py_exclude}")
+
+  foreach(test_src_py_exclude ${test_srcs_py_exclude})
+    if(NOT test_src_py_exclude MATCHES "^\#")
+      STRING(REGEX REPLACE " *\#.*" "" test_src_py_exclude "${test_src_py_exclude}")
+      if(NOT EXISTS "${tensorflow_source_dir}/${test_src_py_exclude}")
+        message(SEND_ERROR "Test python source not found: ${test_src_py_exclude}")
+      endif()
+      list(APPEND tf_test_srcs_py_exclude "${tensorflow_source_dir}/${test_src_py_exclude}")
+    endif()
+  endforeach(test_src_py_exclude)
+
   if (WIN32)
-    set(tf_test_src_py_exclude
-      ${tf_test_src_py_exclude}
-      # TODO: failing tests.
-      # Nothing critical in here but should get this list down to []
-      # The failing list is grouped by failure source
-      # Python source line inspection tests are flaky on Windows (b/36375074).
-      "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
-      # Windows does not have the curses library and uses readline.
-      "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
-      # TFDBG grpc:// mode is not yet available on Windows.
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/grpc_large_data_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/source_remote_test.py"
-      # stl on windows handles overflows different
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/list_ops_test.py"  # Needs portpicker.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
-      # Numerical issues, calculations off.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/periodic_resample_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/data_utils_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/backend_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/preprocessing/image_test.py"
-      # Float division by zero
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
-      # Flaky, for unknown reasons. Cannot reproduce in terminal. Revisit once we can get stack traces.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/batch_matmul_op_test.py"
-      # Flaky because of local cluster creation.
-      "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
-      "${tensorflow_source_dir}tensorflow/python/training/localhost_cluster_performance_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"
-      # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
-      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_test.py"
-      # IteratorGetMax OutOfRangeError
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/batch_dataset_op_test.py"
-      # Depends on gemmlowp -> pthread
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/neon_depthwise_conv_op_test.py"
-      # int32/int64 mixup
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cast_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
-      # Windows file management related issues.
-      "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
-      # training tests
-      "${tensorflow_source_dir}/tensorflow/python/training/basic_session_run_hooks_test.py"  # Needs tf.contrib fix.
-      "${tensorflow_source_dir}/tensorflow/python/training/quantize_training_test.py"  # Needs quantization ops to be included in windows.
-      "${tensorflow_source_dir}/tensorflow/python/training/supervisor_test.py"  # Flaky I/O error on rename.
-      "${tensorflow_source_dir}/tensorflow/python/training/server_lib_test.py"  # Test occasionally deadlocks.
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_multi_gpu_test.py"  # Fails on multiple GPUs.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"  # numerical issues
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_grad_test.py"  # cudaSolver handle creation fails.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
-      # Dataset tests
-      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on windows
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on Windows.
-      "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/interleave_dataset_op_test.py"  # Deadlocks
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/sloppy_transformation_dataset_op_test.py"  # b/65430561
-      # tensor_forest tests (also note that we exclude the hybrid tests for now)
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"  # Bad placement.
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/topn_test.py"  # Results inaccurate
-      "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support
-      # Dask.Dataframe bugs on Window Build
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/tests/dataframe/tensorflow_dataframe_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/data_feeder_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/io_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/graph_actions_test.py"
-      # Need extra build
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_distribution_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_transformed_distribution_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthtospace_op_test.py"  # QuantizeV2
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/spacetodepth_op_test.py"  # QuantizeV2
-      # Windows Path
-      "${tensorflow_source_dir}/tensorflow/contrib/framework/python/ops/checkpoint_ops_test.py" #TODO: Fix path
-      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/kmeans_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/estimators/kmeans_test.py"
-      # Numpy upgrade needed?
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sinh_arcsinh_test.py"
-      # Test should only be run manually
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reduction_ops_test_big.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
-      # Depends on python/framework/test_ops
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/control_flow_util_test.py"
-      # Flaky replicate_model_fn_test
-      "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/replicate_model_fn_test.py"  # b/71901810
-      # Broken io_utils_test
-      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
-  )
+    FILE(READ test_srcs_py_exclude_win.txt test_srcs_py_exclude_win)
+    # Convert file contents into a CMake list (where each element in the list is one line of the file)
+    STRING(REGEX REPLACE ";" "\\\\;" test_srcs_py "${test_srcs_py_exclude_win}")
+    STRING(REGEX REPLACE "\n" ";" test_srcs_py "${test_srcs_py_exclude_win}")
+
+    foreach(test_src_py_exclude_win ${test_srcs_py_exclude_win})
+      if(NOT test_src_py_exclude_win MATCHES "^\#")
+        STRING(REGEX REPLACE " *\#.*" "" test_src_py_exclude_win "${test_src_py_exclude_win}")
+        if(NOT EXISTS "${tensorflow_source_dir}/${test_src_py_exclude_win}")
+          message(SEND_ERROR "Test python source not found: ${test_src_py_exclude_win}")
+        endif()
+        list(APPEND tf_test_srcs_py_exclude_win "${tensorflow_source_dir}/${test_src_py_exclude_win}")
+      endif()
+    endforeach(test_src_py_exclude_win)
+
+    list(APPEND test_src_py_exclude ${test_src_py_exclude_win})
   endif()
-  list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
+  list(REMOVE_ITEM tf_test_srcs_py ${tf_test_srcs_py_exclude})
 
   AddPythonTests(
-    SOURCES ${tf_test_src_py}
+    SOURCES ${tf_test_srcs_py}
   )
 endif(tensorflow_BUILD_PYTHON_TESTS)
 
