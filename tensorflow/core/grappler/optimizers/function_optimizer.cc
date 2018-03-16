@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include <unordered_map>
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -128,6 +134,121 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   return Status::OK();
 }
 
+class FakeCPUDevice : public Device {
+ public:
+  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
+  Status Sync() override { return Status::OK(); }
+};
+
+Status InlineSymbolicGradient(const NodeDef& node,
+                              const FunctionDefLibrary& library,
+                              GraphDef* inlined_graph) {
+  Env* env = Env::Default();
+  DeviceAttributes attr;
+  attr.set_name("/device:CPU:0");
+  attr.set_device_type("CPU");
+  FakeCPUDevice* dev = new FakeCPUDevice(env, attr);
+  std::vector<Device*> devices;
+  devices.push_back(dev);
+  DeviceMgr dvc_mgr(devices);
+  FunctionLibraryDefinition function_library(OpRegistry::Global(), library);
+
+  GraphDef graph_def;
+
+  // Create a node to anchor the gradient inputs
+  NodeDef* inlined_input = graph_def.add_node();
+  inlined_input->set_name("FunctionInputs");
+  inlined_input->set_op("IdentityN");
+  AttrValue::ListValue* type_list =
+      (*inlined_input->mutable_attr())["T"].mutable_list();
+  for (const auto& type : node.attr().at("Tin").list().type()) {
+    type_list->add_type(static_cast<DataType>(type));
+  }
+
+  // Add the gradient node
+  NodeDef* inlined = graph_def.add_node();
+  *inlined = node;
+  inlined->clear_input();
+  for (int i = 0; i < node.attr().at("Tin").list().type_size(); ++i) {
+    inlined->add_input(strings::StrCat(inlined_input->name(), ":", i));
+  }
+
+  // Create a node to anchor the gradient outputs
+  NodeDef* inlined_output = graph_def.add_node();
+  inlined_output->set_name("FunctionOutputs");
+  inlined_output->set_op("IdentityN");
+  type_list = (*inlined_output->mutable_attr())["T"].mutable_list();
+  for (const auto& type : node.attr().at("Tout").list().type()) {
+    type_list->add_type(static_cast<DataType>(type));
+  }
+  for (int i = 0; i < node.attr().at("Tout").list().type_size(); ++i) {
+    inlined_output->add_input(strings::StrCat(inlined->name(), ":", i));
+  }
+
+  // Convert the graphdef to a graph
+  OptimizerOptions optimizer_opts;
+  optimizer_opts.set_do_function_inlining(true);
+  ProcessFunctionLibraryRuntime pflr(&dvc_mgr, env,
+                                     graph_def.versions().producer(),
+                                     &function_library, optimizer_opts);
+  FunctionLibraryRuntime* flr = pflr.GetFLR(dev->name());
+  CHECK(flr);
+  GraphConstructorOptions graph_ctor_opts;
+  graph_ctor_opts.allow_internal_ops = true;
+  graph_ctor_opts.expect_device_spec = false;
+  Graph graph(function_library);
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
+
+  // Recursively inline the functions until there is nothing more to inline. We
+  // should at least expand one function.
+  int counter = 0;
+  while (counter < 50 && ExpandInlineFunctions(flr, &graph)) {
+    ++counter;
+  }
+  if (counter == 0) {
+    // Nothing was inlined
+    return errors::InvalidArgument(
+        strings::StrCat("Failed to inline node ", node.name()));
+  }
+
+  GraphDef inlined_graph_def;
+  graph.ToGraphDef(&inlined_graph_def);
+
+  // Add the default values of attributes to the nodes that have been inlined.
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
+                                               *graph.op_registry(), 0, true));
+
+  // Add the inlined nodes to the graph
+  for (NodeDef& inlined_node : *inlined_graph_def.mutable_node()) {
+    if (inlined_node.name() == "FunctionOutputs") {
+      inlined_node.set_name(node.name());
+      for (int i = 0; i < inlined_node.input_size(); ++i) {
+        inlined_node.set_input(
+            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+      }
+    } else if (inlined_node.name() == "FunctionInputs") {
+      inlined_node.set_name(
+          strings::StrCat(node.name(), "/", inlined_node.name()));
+      inlined_node.clear_input();
+      for (int i = 0; i < node.input_size(); ++i) {
+        inlined_node.add_input(node.input(i));
+      }
+    } else {
+      inlined_node.set_name(
+          strings::StrCat(node.name(), "/", inlined_node.name()));
+      for (int i = 0; i < inlined_node.input_size(); ++i) {
+        inlined_node.set_input(
+            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+      }
+    }
+    inlined_node.set_device(node.device());
+    inlined_graph->add_node()->Swap(&inlined_node);
+  }
+
+  return Status::OK();
+}
+
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   std::unordered_map<string, const FunctionDef*> functions;
@@ -138,7 +259,8 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
     // Don't touch anything marked XLA to prevent XLA failures further down the
     // road.
-    if (func.attr().count("_XlaCompile") != 0) {
+    if (func.attr().count("_XlaCompile") > 0 &&
+        func.attr().at("_XlaCompile").b()) {
       continue;
     }
     // Can't create IdentityN nodes with no input or output: skip these
@@ -158,6 +280,13 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Inline functions when possible.
   for (const NodeDef& node : item.graph.node()) {
+    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+      if (node.op() == "SymbolicGradient") {
+        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, item.graph.library(),
+                                                  optimized_graph));
+        continue;
+      }
+    }
     auto it = functions.find(node.op());
     if (it == functions.end()) {
       *optimized_graph->add_node() = node;

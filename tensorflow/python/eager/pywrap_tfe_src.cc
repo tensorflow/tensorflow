@@ -1323,6 +1323,16 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status) {
+  TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
+  if (!tape_obj->tape->IsPersistent()) {
+    auto* tape_set = GetTapeSet();
+    if (tape_set->find(tape_obj) != tape_set->end()) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "Trying to call tape.gradient on a non-persistent tape "
+                      "while it is still active.");
+      return nullptr;
+    }
+  }
   PyVSpace c_vspace(vspace);
   if (!c_vspace.Initialize().ok()) {
     return nullptr;
@@ -1348,7 +1358,6 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
       Py_INCREF(tensor);
     }
   }
-  TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   std::vector<PyObject*> result;
   status->status = tape_obj->tape->ComputeGradient(
       c_vspace, target_vec, sources_vec, outgrad_vec, &result);

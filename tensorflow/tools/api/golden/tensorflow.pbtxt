@@ -974,7 +974,7 @@ tf_module {
   }
   member_method {
     name: "enable_eager_execution"
-    argspec: "args=[\'config\', \'device_policy\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'config\', \'device_policy\', \'execution_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "encode_base64"

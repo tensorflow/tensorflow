@@ -571,5 +571,56 @@ XLA_TEST_F(ConditionalOpTest, ShapeMismatch) {
                                    "only parameter of true_computation"));
 }
 
+XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({r0f32_, r0f32_});
+  Computation swapper;
+  {
+    ComputationBuilder builder(client_, TestName() + ".swapper");
+    auto param0 = builder.Parameter(0, tuple_shape, "sp0");
+    auto x = builder.GetTupleElement(param0, 0);
+    auto y = builder.GetTupleElement(param0, 1);
+    builder.Tuple({y, x});
+    swapper = builder.Build().ConsumeValueOrDie();
+  }
+  Computation forwarder;
+  {
+    ComputationBuilder builder(client_, TestName() + ".forwarder");
+    auto param0 = builder.Parameter(0, tuple_shape, "fp0");
+    auto x = builder.GetTupleElement(param0, 0);
+    auto y = builder.GetTupleElement(param0, 1);
+    builder.Tuple({x, y});
+    forwarder = builder.Build().ConsumeValueOrDie();
+  }
+  Computation main;
+  {
+    ComputationBuilder builder(client_, TestName() + ".main");
+    auto param0 = builder.Parameter(0, tuple_shape, "mp0");
+    auto x = builder.GetTupleElement(param0, 0);
+    auto y = builder.GetTupleElement(param0, 1);
+    auto lt_pred = builder.Lt(x, y);
+    auto res = builder.Conditional(lt_pred, param0, forwarder, param0, swapper);
+    auto ge_pred = builder.Ge(x, y);
+    builder.Conditional(ge_pred, res, swapper, res, forwarder);
+    main = builder.Build().ConsumeValueOrDie();
+  }
+
+  auto test_swap = [&](float a, float b) {
+    ComputationBuilder builder(client_, TestName());
+    auto x = builder.ConstantR0<float>(a);
+    auto y = builder.ConstantR0<float>(b);
+    auto tuple_operand = builder.Tuple({x, y});
+    builder.Call(main, {tuple_operand});
+
+    ComputeAndCompareTuple(
+        &builder,
+        *Literal::MakeTuple({Literal::CreateR0<float>(a).get(),
+                             Literal::CreateR0<float>(b).get()}),
+        {}, error_spec_);
+  };
+
+  test_swap(3.11f, 9.4f);
+  test_swap(11.24f, 5.55f);
+}
+
 }  // namespace
 }  // namespace xla

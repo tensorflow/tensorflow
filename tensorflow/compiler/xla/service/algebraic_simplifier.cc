@@ -385,7 +385,7 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     auto* c2 = rhs;
 
     TF_ASSIGN_OR_RETURN(auto* sum_of_constants,
-                        CreateBinaryHlo(HloOpcode::kAdd, c1, c2));
+                        MakeBinaryHlo(HloOpcode::kAdd, c1, c2));
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
                                           lhs->mutable_operand(0),
@@ -636,16 +636,14 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide &&
       rhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(
-        auto a_times_d,
-        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(0),
-                        rhs->mutable_operand(1)));
-    TF_ASSIGN_OR_RETURN(
-        auto b_times_c,
-        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1),
-                        rhs->mutable_operand(0)));
-    TF_ASSIGN_OR_RETURN(auto new_divide, CreateBinaryHlo(HloOpcode::kDivide,
-                                                         a_times_d, b_times_c));
+    TF_ASSIGN_OR_RETURN(auto a_times_d, MakeBinaryHlo(HloOpcode::kMultiply,
+                                                      lhs->mutable_operand(0),
+                                                      rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(auto b_times_c, MakeBinaryHlo(HloOpcode::kMultiply,
+                                                      lhs->mutable_operand(1),
+                                                      rhs->mutable_operand(0)));
+    TF_ASSIGN_OR_RETURN(auto new_divide, MakeBinaryHlo(HloOpcode::kDivide,
+                                                       a_times_d, b_times_c));
 
     return ReplaceInstruction(divide, new_divide);
   }
@@ -654,7 +652,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   if (lhs->opcode() == HloOpcode::kDivide) {
     TF_ASSIGN_OR_RETURN(
         auto b_times_c,
-        CreateBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+        MakeBinaryHlo(HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -663,9 +661,8 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
   // A / (B / C) => (A*C) / B
   if (rhs->opcode() == HloOpcode::kDivide) {
-    TF_ASSIGN_OR_RETURN(
-        auto a_times_c,
-        CreateBinaryHlo(HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
+    TF_ASSIGN_OR_RETURN(auto a_times_c, MakeBinaryHlo(HloOpcode::kMultiply, lhs,
+                                                      rhs->mutable_operand(1)));
     return ReplaceWithNewInstruction(
         divide,
         HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
@@ -1300,8 +1297,8 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
-                        CreatePadHlo(pad->mutable_operand(0),
-                                     pad->mutable_operand(1), nonzero_padding));
+                        MakePadHlo(pad->mutable_operand(0),
+                                   pad->mutable_operand(1), nonzero_padding));
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
@@ -1329,7 +1326,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
 
     TF_ASSIGN_OR_RETURN(
         HloInstruction * slice,
-        CreateSliceHlo(nonzero_pad, start_indices, end_indices, strides));
+        MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
 
     // Verify that the slice shape matches the pad shape.
     TF_RET_CHECK(ShapeUtil::Compatible(slice->shape(), pad->shape()));

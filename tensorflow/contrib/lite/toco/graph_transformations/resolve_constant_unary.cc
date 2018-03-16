@@ -28,24 +28,45 @@ limitations under the License.
 
 namespace toco {
 
+bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
+  auto& output_array = model->GetArray(op.outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+  const auto& input_array = model->GetArray(op.inputs[0]);
+  if (!input_array.minmax) {
+    return false;
+  }
+  const auto& input_minmax = input_array.GetMinMax();
+  CHECK(!output_array.minmax);
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = input_minmax.min;
+  output_minmax.max = input_minmax.max;
+  return true;
+}
+
 bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();
-  // Test for unary ops of types that we know how to resolve
-  if (unary_op->type != OperatorType::kCast &&
-      unary_op->type != OperatorType::kNeg &&
-      unary_op->type != OperatorType::kTensorFlowRsqrt &&
-      unary_op->type != OperatorType::kTensorFlowSqrt &&
-      unary_op->type != OperatorType::kTensorFlowSquare &&
-      unary_op->type != OperatorType::kTensorFlowSum &&
-      unary_op->type != OperatorType::kTensorFlowMin &&
-      unary_op->type != OperatorType::kTensorFlowMax &&
-      unary_op->type != OperatorType::kTensorFlowReshape &&
-      unary_op->type != OperatorType::kRelu6 &&
-      unary_op->type != OperatorType::kRelu1 &&
-      unary_op->type != OperatorType::kRelu) {
-    return false;
+  // Test for unary ops of types that we know how to resolve.
+  switch (unary_op->type) {
+    case OperatorType::kCast:
+    case OperatorType::kNeg:
+    case OperatorType::kTensorFlowRsqrt:
+    case OperatorType::kTensorFlowSqrt:
+    case OperatorType::kTensorFlowSquare:
+    case OperatorType::kTensorFlowSum:
+    case OperatorType::kTensorFlowMin:
+    case OperatorType::kTensorFlowMax:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kRelu6:
+    case OperatorType::kRelu1:
+    case OperatorType::kRelu:
+      break;
+    default:
+      return false;
   }
+
   // Check if the input is a constant parameter.
   if (!IsConstantParameterArray(*model, unary_op->inputs[0])) {
     return false;
@@ -77,6 +98,12 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
         " because it has a fused activation function",
         LogName(*unary_op));
     return false;
+  }
+
+  // The min-max is only copied for ops that copy data without arithmetic.
+  // In future trivial transpose, etc, can be handled here.
+  if (unary_op->type == OperatorType::kTensorFlowReshape) {
+    CopyMinMaxFromFirstInput(*unary_op, model);
   }
 
   const auto& input_array = model->GetArray(unary_op->inputs[0]);
@@ -138,8 +165,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     }
   } else if (unary_op->type == OperatorType::kTensorFlowReshape) {
     CHECK(input_buffer_size == output_buffer_size);
-    memcpy(output_float_data.data(), (*input_float_data).data(),
-           output_buffer_size * sizeof(output_float_data[0]));
+    output_float_data = *input_float_data;
   } else if (unary_op->type == OperatorType::kTensorFlowSum) {
     CHECK_EQ(unary_op->inputs.size(), 2) << "Sum needs 2 inputs";
     if (!IsConstantParameterArray(*model, unary_op->inputs[1])) {
