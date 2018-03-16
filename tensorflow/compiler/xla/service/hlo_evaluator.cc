@@ -2771,6 +2771,8 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       gather->gather_dimension_numbers(), /*input_shape=*/operand.shape(),
       /*output_shape=*/shape);
 
+  const Shape& operand_shape = operand.shape();
+
   auto gather_inner_loop_body =
       [&](ArraySlice<int64> output_window_index,
           ArraySlice<int64> input_gather_index,
@@ -2780,9 +2782,16 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
         output_window_index_to_input_index(output_window_index));
     for (int i = 0, e = output_index.size(); i < e; i++) {
       output_index[i] = output_gather_index[i] + output_window_index[i];
+      DCHECK_LT(output_index[i], shape.dimensions(i));
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
-      input_index[i] = input_gather_index[i] + input_window_index[i];
+      // TODO(b/74360564): We should implement whatever out of bounds behavior
+      // we decide for dynamic-slice here as well.
+      input_index[i] = (input_gather_index[i] + input_window_index[i]) %
+                       operand_shape.dimensions(i);
+      if (input_index[i] < 0) {
+        input_index[i] += operand_shape.dimensions(i);
+      }
     }
     TF_RETURN_IF_ERROR(
         result->CopyElementFrom(operand, input_index, output_index));

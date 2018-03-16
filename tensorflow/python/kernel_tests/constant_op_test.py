@@ -881,7 +881,7 @@ versions {
 class PlaceholderWithDefaultTest(test.TestCase):
 
   def testFullShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
       a = array_ops.identity(p)
       self.assertAllEqual([[2, 2], [2, 2]], a.eval())
@@ -892,7 +892,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[6, 6, 6], [6, 6, 6]]})
 
   def testPartialShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([1, 2, 3], shape=[None])
       a = array_ops.identity(p)
       self.assertAllEqual([1, 2, 3], a.eval())
@@ -902,7 +902,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
         a.eval(feed_dict={p: [[2, 2], [2, 2]]})
 
   def testNoShape(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([17], shape=None)
       a = array_ops.identity(p)
       self.assertAllEqual([17], a.eval())
@@ -911,11 +911,12 @@ class PlaceholderWithDefaultTest(test.TestCase):
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       x = array_ops.placeholder(dtypes_lib.float32, [5, 7])
       y = array_ops.placeholder_with_default(x, None)
       err = gradient_checker.compute_gradient_error(x, [5, 7], y, [5, 7])
       self.assertLess(err, 1e-3)
+
 
 if __name__ == "__main__":
   test.main()

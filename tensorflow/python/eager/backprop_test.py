@@ -195,6 +195,17 @@ class BackpropTest(test.TestCase):
     g, = backprop.gradients_function(loss, [0])(logits, labels)
     self.assertAllEqual(g.numpy(), [[-0.5, 0.5]])
 
+  def testGradientWithinTapeBlock(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    with backprop.GradientTape() as t:
+      loss = 2 * v1
+      with self.assertRaises(RuntimeError):
+        t.gradient(loss, [v1])
+    with backprop.GradientTape(persistent=True) as t:
+      loss = 2 * v1
+      grad = t.gradient(loss, [v1])
+    self.assertAllEqual(grad[0], 2.0)
+
   @test_util.assert_no_new_tensors
   def testSecondGrad(self):
 

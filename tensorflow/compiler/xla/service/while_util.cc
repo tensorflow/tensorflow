@@ -155,10 +155,10 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
   HloInstruction* param = cond_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * counter,
-                      CreateGetTupleElementHlo(param, 0));
+                      MakeGetTupleElementHlo(param, 0));
   TF_ASSIGN_OR_RETURN(
       HloInstruction * compare,
-      CreateBinaryHlo(HloOpcode::kLt, counter, trip_count_constant));
+      MakeBinaryHlo(HloOpcode::kLt, counter, trip_count_constant));
   cond_computation->set_root_instruction(compare);
   return std::move(cond_computation);
 }
@@ -175,14 +175,14 @@ static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
 
   HloInstruction* param = body_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
-                      CreateGetTupleElementHlo(param, 0));
+                      MakeGetTupleElementHlo(param, 0));
   TF_ASSIGN_OR_RETURN(HloInstruction * next_indvar,
-                      CreateBinaryHlo(HloOpcode::kAdd, indvar, one));
+                      MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
 
   std::vector<HloInstruction*> loop_body_generator_args;
   for (int64 i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
     TF_ASSIGN_OR_RETURN(HloInstruction * tuple_element,
-                        CreateGetTupleElementHlo(param, i));
+                        MakeGetTupleElementHlo(param, i));
     loop_body_generator_args.push_back(tuple_element);
   }
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> next_state,
@@ -238,7 +238,7 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
   std::vector<HloInstruction*> result;
   for (int64 i = 0, e = init_values.size(); i < e; i++) {
     TF_ASSIGN_OR_RETURN(HloInstruction * user_state,
-                        CreateGetTupleElementHlo(while_instr, i + 1));
+                        MakeGetTupleElementHlo(while_instr, i + 1));
     result.push_back(user_state);
   }
   return result;

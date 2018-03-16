@@ -89,6 +89,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   // should explicitly enable required optimization for tests isolation
   void DisableAllStages(ArithmeticOptimizer* optimizer) {
     ArithmeticOptimizer::ArithmeticOptimizerOptions options;
+    options.enable_try_simplify_and_replace = false;
     options.combine_add_to_addn = false;
     options.hoist_common_factor_out_of_aggregation = false;
     options.remove_inverse_transpose = false;
@@ -1270,7 +1271,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   EXPECT_TRUE(IsNodesDirectlyConnected(node_map, "inputs", "outputs"));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfIdenticalShape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   tensorflow::Scope sx = s.NewSubScope("x");
   tensorflow::Scope sy = s.NewSubScope("y");
@@ -1322,7 +1323,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteCollapseAddsOfIdenticalShape) {
   EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_MultiplePasses) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
@@ -1395,7 +1396,7 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteMultiplePasses) {
   EXPECT_EQ(collapsed_right->name(), updated_mul->input(1));
 }
 
-TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddInputMultipleTimes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   auto a = ops::Variable(s.WithOpName("a"), {2, 2}, DT_FLOAT);
@@ -1438,6 +1439,60 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewriteAddInputThroughMultiplePaths) {
   EXPECT_EQ("b", collapsed_add->input(1));
   EXPECT_EQ("b", collapsed_add->input(2));
   EXPECT_EQ("c", collapsed_add->input(3));
+}
+
+TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // unknown input shape propagated symbolically through the graph
+  auto input = ops::Variable(s.WithOpName("input"), {-1, 2}, DT_FLOAT);
+
+  // [a, b, c] have symbolically equal shapes
+  auto a = ops::Sqrt(s.WithOpName("a"), input);
+  auto b = ops::Square(s.WithOpName("b"), input);
+  auto c = ops::Round(s.WithOpName("c"), input);
+
+  // [add_ab, add_abc] shape must be inferred from inputs
+  auto add_ab = ops::Add(s.WithOpName("Add_ab"), a, b);
+  auto add_abc = ops::Add(s.WithOpName("Add_abc"), add_ab, c);
+
+  auto outputs = ops::Identity(s.WithOpName("outputs"), add_abc);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyAddToAddNCombining(&optimizer);
+
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     +
+  //    / \
+  //   +   c      -->    AddN(a, b, c)
+  //  / \
+  // a   b
+  EXPECT_EQ(6, output.node_size());
+
+  NodeMap node_map(&output);
+
+  // check add tree was replaced with AddN
+  const NodeDef* collapsed_add =
+      node_map.GetNode("ArithmeticOptimizer/AddOpsRewrite_Add_abc_Add_ab");
+  ASSERT_TRUE(collapsed_add != nullptr);
+  EXPECT_EQ("AddN", collapsed_add->op());
+  EXPECT_EQ(3, collapsed_add->input_size());
+  EXPECT_EQ("a", collapsed_add->input(0));
+  EXPECT_EQ("b", collapsed_add->input(1));
+  EXPECT_EQ("c", collapsed_add->input(2));
+
+  // check output was re-wired to new node
+  const NodeDef* updated_outputs = node_map.GetNode("outputs");
+  ASSERT_TRUE(updated_outputs != nullptr);
+  EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
 }
 
 }  // namespace grappler

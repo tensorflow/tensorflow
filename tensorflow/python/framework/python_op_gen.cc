@@ -98,10 +98,7 @@ bool IsOpWithUnderscorePrefix(const string& s) {
        // TODO(annarev): reduce usage of '*' imports and remove these from the
        // list.
        "fused_batch_norm", "histogram_fixed_width", "stack",
-       "batch_norm_with_global_normalization",
-       // TODO(annarev): replace these ops in the next change.
-       "broadcast_gradient_args", "enter", "histogram_summary", "ref_enter",
-       "ref_identity", "scalar_summary"});
+       "batch_norm_with_global_normalization"});
   return kUnderscoreOps->count(s) > 0;
 }
 

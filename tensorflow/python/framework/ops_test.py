@@ -2919,6 +2919,9 @@ class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, c)
+    with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, execution_mode=c)
 
 
 if __name__ == "__main__":

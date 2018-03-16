@@ -26,7 +26,7 @@ namespace ops {
 namespace builtin {
 namespace sub {
 
-// This file has three implementation of Div.
+// This file has three implementation of Sub.
 enum KernelType {
   kReference,
   kGenericOptimized,  // Neon-free
@@ -37,7 +37,23 @@ constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
+struct OpData {
+  bool requires_broadcast;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  data->requires_broadcast = false;
+  return data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -45,49 +61,62 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, NumDimensions(input1), NumDimensions(input2));
-  for (int i = 0; i < NumDimensions(input1); ++i) {
-    TF_LITE_ENSURE_EQ(context, SizeOfDimension(input1, i),
-                      SizeOfDimension(input2, i));
+  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  output->type = input2->type;
+
+  data->requires_broadcast = !HaveSameShapes(input1, input2);
+
+  TfLiteIntArray* output_size = nullptr;
+  if (data->requires_broadcast) {
+    TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
+                                   context, input1, input2, &output_size));
+  } else {
+    output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  TF_LITE_ENSURE_EQ(context, input1->type, output->type);
-  TF_LITE_ENSURE_EQ(context, input2->type, output->type);
-
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input1->dims);
   return context->ResizeTensor(context, output, output_size);
 }
 
 template <KernelType kernel_type>
-void EvalSubFloat(TfLiteContext* context, TfLiteNode* node,
-                  TfLiteSubParams* params, TfLiteTensor* input1,
-                  TfLiteTensor* input2, TfLiteTensor* output) {
+void EvalFloat(TfLiteContext* context, TfLiteNode* node,
+               TfLiteSubParams* params, const OpData* data,
+               TfLiteTensor* input1, TfLiteTensor* input2,
+               TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
-#define TF_LITE_Sub(type)                                        \
-  type::Sub(GetTensorData<float>(input1), GetTensorDims(input1), \
-            GetTensorData<float>(input2), GetTensorDims(input2), \
-            output_activation_min, output_activation_max,        \
-            GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_SUB(type, opname)                                   \
+  type::opname(GetTensorData<float>(input1), GetTensorDims(input1), \
+               GetTensorData<float>(input2), GetTensorDims(input2), \
+               output_activation_min, output_activation_max,        \
+               GetTensorData<float>(output), GetTensorDims(output))
   if (kernel_type == kReference) {
-    TF_LITE_Sub(reference_ops);
+    if (data->requires_broadcast) {
+      TF_LITE_SUB(reference_ops, BroadcastSub);
+    } else {
+      TF_LITE_SUB(reference_ops, Sub);
+    }
   } else {
-    TF_LITE_Sub(optimized_ops);
+    if (data->requires_broadcast) {
+      TF_LITE_SUB(optimized_ops, BroadcastSub);
+    } else {
+      TF_LITE_SUB(optimized_ops, Sub);
+    }
   }
-#undef TF_LITE_Sub
+#undef TF_LITE_SUB
 }
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSubParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
   TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
-    EvalSubFloat<kernel_type>(context, node, params, input1, input2, output);
+    EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
   } else {
     context->ReportError(context, "Inputs and outputs not all float types.");
     return kTfLiteError;
@@ -99,19 +128,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace sub
 
 TfLiteRegistration* Register_SUB_REF() {
-  static TfLiteRegistration r = {nullptr, nullptr, sub::Prepare,
+  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_GENERIC_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, sub::Prepare,
+  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kGenericOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_NEON_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, sub::Prepare,
+  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kNeonOptimized>};
   return &r;
 }

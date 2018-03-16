@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import re
 import threading
+import warnings
 
 import numpy as np
 
@@ -1624,6 +1625,9 @@ class InteractiveSession(BaseSession):
   ```
   """
 
+  _count_lock = threading.Lock()
+  _active_session_count = 0  # GUARDED_BY(_count_lock)
+
   def __init__(self, target='', graph=None, config=None):
     """Creates a new interactive TensorFlow session.
 
@@ -1652,6 +1656,15 @@ class InteractiveSession(BaseSession):
     config.graph_options.place_pruned_graph = True
 
     super(InteractiveSession, self).__init__(target, graph, config)
+    with InteractiveSession._count_lock:
+      if InteractiveSession._active_session_count > 0:
+        warnings.warn('An interactive session is already active. This can '
+                      'cause out-of-memory errors in some cases. You must '
+                      'explicitly call `InteractiveSession.close()` to release '
+                      'resources held by the other session(s).')
+      InteractiveSession._active_session_count += 1
+    self._closed = False
+
     self._default_session = self.as_default()
     self._default_session.enforce_nesting = False
     self._default_session.__enter__()
@@ -1664,6 +1677,12 @@ class InteractiveSession(BaseSession):
   def close(self):
     """Closes an `InteractiveSession`."""
     super(InteractiveSession, self).close()
+    with InteractiveSession._count_lock:
+      if not self._closed:
+        InteractiveSession._active_session_count -= 1
+        self._closed = True
+      else:
+        return
     if self._explicit_graph is not None:
       self._default_graph.__exit__(None, None, None)
     self._default_session.__exit__(None, None, None)

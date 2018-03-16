@@ -777,6 +777,9 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/engine/topology_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
