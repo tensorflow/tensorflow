@@ -144,6 +144,18 @@ void FixOperatorOrdering(Model* model);
 void FixNoMissingArray(Model* model);
 void FixNoOrphanedArray(Model* model);
 
+// Fixes input/output arrays that may have issues during export or inference.
+void FixEdgeArrays(Model* model);
+
+// Inserts a no-op reshape operator between the source array and the target
+// array. This effectively just copies the data.
+void InsertCopyOperator(Model* model, const string& source_array_name,
+                        const string& target_array_name);
+
+// Clones an array with all data and parameters.
+void CloneArray(Model* model, const string& source_array_name,
+                const string& target_array_name);
+
 void ResolveModelFlags(const ModelFlags& model_flags, Model* model);
 
 template <ArrayDataType A>
