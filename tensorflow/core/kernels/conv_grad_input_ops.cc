@@ -723,7 +723,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   ConvBackpropDimensions dims;
   OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensionsV2(
                           "Conv2DSlowBackpropInput", /*num_spatial_dims=*/2,
-                          input_shape, filter_shape, out_backprop.shape(),
+                          /*groups=1*/ 1, input_shape, filter_shape, out_backprop.shape(),
                           dilations, strides, padding, data_format, &dims));
 
   // TODO(yangzihao): The padding computations should be done in
