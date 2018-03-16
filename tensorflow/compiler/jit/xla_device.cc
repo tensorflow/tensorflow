@@ -109,7 +109,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
     const string& platform_name, const string& device_name, int device_ordinal,
     const string& jit_device_name, const SessionOptions& options,
     const string& name_prefix, bool register_device_for_compilation,
-    std::unique_ptr<XlaDevice>* device) {
+    bool transfer_as_literal, std::unique_ptr<XlaDevice>* device) {
   VLOG(1) << "XlaDevice::Create " << platform_name << " " << device_name << ":"
           << device_ordinal;
 
@@ -137,15 +137,17 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
   device->reset(new XlaDevice(options, attrs, device_ordinal,
                               DeviceType(jit_device_name),
-                              platform.ValueOrDie()));
+                              platform.ValueOrDie(), transfer_as_literal));
   return Status::OK();
 }
 
-XlaDevice::Metadata::Metadata(int device_ordinal, se::Platform* platform,
-                              const DeviceType& device_type)
+XlaDevice::Metadata::Metadata(
+    int device_ordinal, se::Platform* platform, const DeviceType& device_type,
+    std::unique_ptr<XlaTensorInfoManager>* tensor_info_manager)
     : device_ordinal_(device_ordinal),
       device_type_(device_type),
-      platform_(platform) {}
+      platform_(platform),
+      tensor_info_manager_(*tensor_info_manager) {}
 
 int XlaDevice::Metadata::device_ordinal() const { return device_ordinal_; }
 
@@ -158,6 +160,10 @@ xla::LocalClient* XlaDevice::Metadata::client() const {
 
 const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
+}
+
+XlaTensorInfoManager& XlaDevice::Metadata::tensor_info_manager() const {
+  return *tensor_info_manager_;
 }
 
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
@@ -177,13 +183,19 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
 
 XlaDevice::XlaDevice(const SessionOptions& options,
                      const DeviceAttributes& attrs, int device_ordinal,
-                     const DeviceType& jit_device_name, se::Platform* platform)
+                     const DeviceType& jit_device_name, se::Platform* platform,
+                     bool transfer_as_literal)
     : LocalDevice(options, attrs),
-      xla_metadata_(device_ordinal, platform, jit_device_name),
+      xla_metadata_(
+          device_ordinal, platform, jit_device_name,
+          // Pass tensor_info_manager_ by reference as it is initialized lazily.
+          &tensor_info_manager_),
       device_ordinal_(device_ordinal),
       jit_device_name_(jit_device_name),
       xla_allocator_(nullptr),
-      platform_(platform) {}
+      platform_(platform),
+      tensor_info_manager_(nullptr),
+      transfer_as_literal_(transfer_as_literal) {}
 
 XlaDevice::~XlaDevice() {}
 
@@ -208,6 +220,7 @@ Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
     xla::Backend* backend = client()->mutable_backend();
     xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
         backend, device_ordinal_);
+    tensor_info_manager_.reset(new XlaTensorInfoManager(xla_allocator_));
   }
   return xla_allocator_;
 }
@@ -225,7 +238,11 @@ Status XlaDevice::FillContextMap(const Graph* graph,
   VLOG(1) << "XlaDevice::FillContextMap";
   device_context_map->resize(graph->num_node_ids());
   TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
-  auto ctx = new XlaDeviceContext(stream);
+  // Call GetAllocator for the side-effect of ensuring the allocator and
+  // XlaTensorInfoManager is created.
+  (void)GetAllocator({});
+  auto ctx = new XlaDeviceContext(stream, tensor_info_manager_.get(),
+                                  transfer_as_literal_);
   for (Node* n : graph->nodes()) {
     VLOG(2) << n->id() << " : " << n->type_string() << " : " << n->name();
     ctx->Ref();
@@ -273,7 +290,8 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
     Notification n;
     TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
-    XlaTransferManager manager(stream);
+    XlaTransferManager manager(stream, tensor_info_manager_.get(),
+                               transfer_as_literal_);
     manager.CopyCPUTensorToDevice(&parsed, this, &copy,
                                   [&n, &status](const Status& s) {
                                     status = s;
