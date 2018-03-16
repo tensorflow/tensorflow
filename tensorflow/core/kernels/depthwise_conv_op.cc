@@ -377,6 +377,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                /*groups*/1,
                 padding_, output, data_format_);
       return;
     }
