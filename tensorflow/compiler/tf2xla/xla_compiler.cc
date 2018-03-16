@@ -718,8 +718,8 @@ Status XlaCompiler::GetChannelHandle(const string& key,
 
 namespace {
 
-void SetTransfer(const string& key, const std::vector<DataType>& types,
-                 const std::vector<TensorShape>& shapes,
+void SetTransfer(const string& key, gtl::ArraySlice<DataType> types,
+                 gtl::ArraySlice<TensorShape> shapes,
                  tf2xla::HostTransferMetadata* transfer) {
   transfer->set_key(key);
   CHECK(types.size() == shapes.size());
@@ -733,8 +733,8 @@ void SetTransfer(const string& key, const std::vector<DataType>& types,
 }  // namespace
 
 Status XlaCompiler::SetDeviceToHostMetadata(
-    const string& key, const std::vector<DataType>& types,
-    const std::vector<TensorShape>& shapes) {
+    const string& key, gtl::ArraySlice<DataType> types,
+    gtl::ArraySlice<TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -760,8 +760,8 @@ Status XlaCompiler::GetDeviceToHostShapes(
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
-    const string& key, const std::vector<DataType>& types,
-    const std::vector<TensorShape>& shapes) {
+    const string& key, gtl::ArraySlice<DataType> types,
+    gtl::ArraySlice<TensorShape> shapes) {
   if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetHostToDeviceMetadata with key ", key);

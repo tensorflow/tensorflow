@@ -22,6 +22,7 @@ import os
 import sys
 import threading
 import time
+import warnings
 
 import numpy as np
 import six
@@ -65,6 +66,10 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 # TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
 # @test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(SessionTest, self).setUp()
+    warnings.simplefilter('always')
 
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
@@ -190,12 +195,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(0.0, shape=[2, 3])
       # NOTE(mrry): The original_op is nonsense, but used here to test that the
       #   errors are reported correctly.
-      # pylint: disable=protected-access
       with sess.graph._original_op(a.op):
         b = array_ops.identity(a, name='id')
       with sess.graph._original_op(b.op):
         c = array_ops.placeholder(dtypes.float32)
-      # pylint: enable=protected-access
 
       def exc_predicate(e):
         return (e.op == c.op and e.op._original_op == b.op and
@@ -1193,6 +1196,32 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  def testMultipleInteractiveSessionsWarning(self):
+    # Reinitialize the global state to ensure that the expected warnings will
+    # be emitted.
+    session.InteractiveSession._active_session_count = 0  # pylint: disable=protected-access
+
+    sess = session.InteractiveSession()
+    sess.close()
+    # Opening and closing interactive sessions serially should not warn.
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+      sess.close()
+    self.assertEqual(0, len(w))
+
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+    self.assertEqual(0, len(w))
+    with warnings.catch_warnings(record=True) as w:
+      sess2 = session.InteractiveSession()
+    self.assertEqual(1, len(w))
+    self.assertTrue('An interactive session is already active. This can cause '
+                    'out-of-memory errors in some cases. You must explicitly '
+                    'call `InteractiveSession.close()` to release resources '
+                    'held by the other session(s).' in str(w[0].message))
+    sess2.close()
+    sess.close()
+
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1785,8 +1814,8 @@ class SessionTest(test_util.TensorFlowTestCase):
     # Ensure that errors from building the graph get propagated.
     data = array_ops.placeholder(dtypes.float32, shape=[])
     # pylint: disable=protected-access
-    enter_1 = gen_control_flow_ops._enter(data, 'foo_1', False)
-    enter_2 = gen_control_flow_ops._enter(data, 'foo_2', False)
+    enter_1 = gen_control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = gen_control_flow_ops.enter(data, 'foo_2', False)
     # pylint: enable=protected-access
     res = math_ops.add(enter_1, enter_2)
     with self.assertRaisesOpError('has inputs from different frames'):

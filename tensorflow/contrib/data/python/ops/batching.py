@@ -374,8 +374,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   @property
   def output_shapes(self):
     return nest.pack_sequence_as(self._output_shapes, [
-        tensor_shape.vector(tensor_util.constant_value(
-            self._batch_size)).concatenate(s)
+        tensor_shape.vector(None).concatenate(s)
         for s in nest.flatten(self._output_shapes)
     ])
 

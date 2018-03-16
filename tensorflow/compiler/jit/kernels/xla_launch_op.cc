@@ -114,10 +114,16 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
+  const XlaDevice::Metadata* metadata;
+  Status s = XlaDevice::GetMetadata(ctx, &metadata);
+
+  XlaTensorInfoManager* tensor_info_manager = nullptr;
+  if (s.ok()) {
+    tensor_info_manager = &metadata->tensor_info_manager();
+  }
+
   // Get the platform_id_ for XLA_* devices.
   if (platform_id_ == nullptr) {
-    const XlaDevice::Metadata* metadata;
-    Status s = XlaDevice::GetMetadata(ctx, &metadata);
     if (s.ok()) {
       platform_id_ = metadata->platform()->id();
     }
@@ -148,8 +154,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   VLOG(1) << "Executing XLA Computation...";
 
-  XlaComputationLaunchContext launch_context(num_resource_args_, client,
-                                             &xla_allocator);
+  XlaComputationLaunchContext launch_context(
+      num_resource_args_, client, &xla_allocator, tensor_info_manager);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
@@ -166,8 +172,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
-  launch_context.PopulateOutputs(ctx, kernel,
-                                 run_result.ConsumeValueOrDie()->release());
+  launch_context.PopulateOutputs(ctx, kernel, run_result.ConsumeValueOrDie());
   VLOG(1) << "Done";
 }
 

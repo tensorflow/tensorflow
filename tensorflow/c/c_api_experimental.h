@@ -25,6 +25,7 @@ limitations under the License.
 // Experimental C API for TensorFlow.
 //
 // The API here is subject to changes in the future.
+// --------------------------------------------------------------------------
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -58,6 +59,31 @@ extern "C" {
 // cannot read/write the tensorflow.ConfigProto proto.
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
+
+// Sets up TPU execution, by rewriting the graph accordingly, and initializing
+// TPU system.
+//
+// On success, returns a shutdown node to be used in a subsequent
+// TF_ShutdownTPUExecution(), and sets the new output nodes in
+// `new_output_nodes` for caller to fetch from. Must be called exactly once
+// before TF_SessionRun().
+//
+// The API and logic is modeled after the python counterparts
+// tpu.{initialize_system(), rewrite(), shutdown_system()}.
+//
+// TODO(b/74774824): Create separate APIs for initializing TPU system and graph
+// rewrite.
+TF_CAPI_EXPORT extern TF_Output TF_SetupTPUExecution(
+    TF_Session* session, int num_input_nodes, const TF_Output* input_nodes,
+    int num_output_nodes, const TF_Output* output_nodes,
+    TF_Output* new_output_nodes, TF_Status* status);
+
+// Shuts down TPU system. For any `session` where TF_SetupTPUExecution() has
+// been successfully called, this call must be made exactly once before the
+// session is closed.
+TF_CAPI_EXPORT extern void TF_ShutdownTPUExecution(TF_Session* session,
+                                                   TF_Output shutdown_node,
+                                                   TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

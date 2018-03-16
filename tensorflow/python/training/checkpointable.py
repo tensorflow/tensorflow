@@ -210,8 +210,8 @@ class _CheckpointPosition(object):
     restore_ops = []
     building_graph = not context.executing_eagerly()
     for serialized_tensor in self.object_proto.attributes:
-      saveable_object = saveables.get(serialized_tensor.name, None)
-      if saveable_object is None:
+      saveable_factory = saveables.get(serialized_tensor.name, None)
+      if saveable_factory is None:
         # Purposefully does not throw an exception if attributes have been added
         # or deleted. Stores unused attributes so an exception can be raised if
         # the user decides to check that everything in the checkpoint was
@@ -225,7 +225,11 @@ class _CheckpointPosition(object):
       else:
         existing_ops = None
       if existing_ops is None:
-        named_saveables[serialized_tensor.checkpoint_key] = saveable_object
+        if callable(saveable_factory):
+          saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
+        else:
+          saveable = saveable_factory
+        named_saveables[serialized_tensor.checkpoint_key] = saveable
     if named_saveables:
       validated_saveables = (
           self._checkpoint.builder._ValidateAndSliceInputs(named_saveables))  # pylint: disable=protected-access
@@ -600,14 +604,30 @@ class CheckpointableBase(object):
     """Returns a dictionary of values to checkpoint with this object.
 
     Keys in the returned dictionary are local to this object and in a separate
-    namespace from dependencies. Values may either be `SaveableObject`s or
-    variables easily converted to `SaveableObject`s (as in `tf.train.Saver`'s
+    namespace from dependencies. Values may either be `SaveableObject` factories
+    or variables easily converted to `SaveableObject`s (as in `tf.train.Saver`'s
     `var_list` constructor argument).
+
+    `SaveableObjects` have a name set, which Checkpointable needs to generate
+    itself. So rather than returning `SaveableObjects` directly, this method
+    should return a dictionary of callables which take `name` arguments and
+    return `SaveableObjects` with that name.
+
+    If this object may also be passed to the global-name-based `tf.train.Saver`,
+    the returned callables should have a default value for their name argument
+    (i.e. be callable with no arguments).
 
     Returned values must be saved only by this object; if any value may be
     shared, it should instead be a dependency. For example, variable objects
     save their own values with the key `VARIABLE_VALUE_KEY`, but objects which
     reference variables simply add a dependency.
+
+    Returns:
+      The dictionary mapping attribute names to `SaveableObject` factories
+      described above. For example:
+      {VARIABLE_VALUE_KEY:
+       lambda name="global_name_for_this_object":
+       SaveableObject(name=name, ...)}
     """
     return {}
 

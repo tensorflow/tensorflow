@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace grappler {
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names) {
+    const GraphDef& graph, const std::vector<string>& node_names) const {
   SessionOptions options;
   std::unique_ptr<tensorflow::Session> session(NewSession(options));
   TF_CHECK_OK(session->Create(graph));
@@ -35,7 +35,8 @@ std::vector<Tensor> GrapplerTest::EvaluateNodes(
   return output_tensors;
 }
 
-std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
+std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(
+    const GrapplerItem& item) const {
   SessionOptions options;
   std::unique_ptr<tensorflow::Session> session(NewSession(options));
   TF_CHECK_OK(session->Create(item.graph));
@@ -52,17 +53,23 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
   return output_tensors;
 }
 
-void GrapplerTest::AddNode(const string& name, const string& op,
-                           const std::vector<string>& inputs, GraphDef* graph) {
-  auto* node = graph->add_node();
+NodeDef* GrapplerTest::AddNode(
+    const string& name, const string& op, const std::vector<string>& inputs,
+    const std::vector<std::pair<string, AttrValue>>& attributes,
+    GraphDef* graph) const {
+  NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op(op);
-  for (const auto& input : inputs) {
+  for (const string& input : inputs) {
     node->add_input(input);
   }
+  for (auto attr : attributes) {
+    (*node->mutable_attr())[attr.first] = attr.second;
+  }
+  return node;
 }
 
-void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
+void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
   auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
     return n1.name() < n2.name();
   };

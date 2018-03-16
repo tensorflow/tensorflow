@@ -29,6 +29,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+const char* const kXlaHostTransferSequencerAttr =
+    "_xla_host_transfer_sequencer";
+
 template <class Tkey, class Tvalue>
 bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
                    const ::tensorflow::protobuf::Map<Tkey, Tvalue>& b,
@@ -248,7 +251,7 @@ bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
 
 // These dummy Op registrations are here because the real Op registrations live
 // in contrib and there can't be a dependence from this test to contrib.
-REGISTER_OP("_XlaHostCompute")
+REGISTER_OP("XlaHostCompute")
     .Input("inputs: Tinputs")
     .Output("outputs: Toutputs")
     .Attr("Tinputs: list(type) >= 0")
@@ -321,8 +324,13 @@ REGISTER_OP("AddNLikeTest")
     .SetIsCommutative()
     .SetIsAggregate();
 
-Node* NoOp(const GraphDefBuilder::Options& opts) {
-  return ops::SourceOp("NoOp", opts);
+Node* Sequencer(const GraphDefBuilder::Options& opts,
+                const string& call_node_name) {
+  if (opts.HaveError()) return nullptr;
+  NodeBuilder node_builder(opts.GetNameForOp("NoOp"), "NoOp",
+                           opts.op_registry());
+  return opts.WithAttr(kXlaHostTransferSequencerAttr, call_node_name)
+      .FinalizeBuilder(&node_builder);
 }
 
 Node* Input(const GraphDefBuilder::Options& opts) {
@@ -870,7 +878,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
            {},
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"C:o:0", "c:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -888,10 +896,6 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    NodeBuilder node_builder("F1", "F1", lib_def.get());
-    node_builder.Input(a).Input(b);
-    Node* call = b2.opts().FinalizeBuilder(&node_builder);
-
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
     Node* recv =
@@ -906,10 +910,16 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
                                   .WithName("outside_compilation_F1_O1_send")
                                   .WithControlInput(e));
 
-    Node* s = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}));
+    Node* s = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
 
-    Binary(a, call, b2.opts().WithName("G").WithControlInputs({s, e}));
+    NodeBuilder node_builder("F1", "F1", lib_def.get());
+    node_builder.Input(a).Input(b);
+    Node* call =
+        b2.opts().WithControlInputs({s}).FinalizeBuilder(&node_builder);
+
+    Binary(a, call, b2.opts().WithName("G").WithControlInputs({e}));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1014,7 +1024,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {},
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O2_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"D:o:0", "F:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1023,7 +1033,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"F"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"C:o:0", "D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1040,10 +1050,6 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
     GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
-
-    NodeBuilder node_builder("F1", "F1", lib_def.get());
-    node_builder.Input(a).Input(b);
-    Node* call = b2.opts().FinalizeBuilder(&node_builder);
 
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
@@ -1070,11 +1076,16 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
         ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2", {h},
         b2.opts().WithName("outside_compilation_F1_O2_send"));
 
-    Node* s = NoOp(b2.opts()
-                       .WithName("F1_sequencer")
-                       .WithControlInputs({recv1, send1, recv2, send2}));
+    Node* s = Sequencer(b2.opts()
+                            .WithName("F1_sequencer")
+                            .WithControlInputs({recv1, send1, recv2, send2}),
+                        "F1");
 
-    Binary(g, call, b2.opts().WithName("J").WithControlInput(s));
+    NodeBuilder node_builder("F1", "F1", lib_def.get());
+    node_builder.Input(a).Input(b);
+    Node* call = b2.opts().WithControlInput(s).FinalizeBuilder(&node_builder);
+
+    Binary(g, call, b2.opts().WithName("J"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1156,7 +1167,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            {},
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"C:o:0", "D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1176,7 +1187,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            "BinaryTest",
            {"f_0_arg", "outside_compilation_O1_host_compute:outputs:0"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"G:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1207,32 +1218,34 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
                                b2.opts()
                                    .WithName("outside_compilation_F1_O1_send")
                                    .WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
+
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
     Node* key_constant2 =
         KeyPlaceholder("F2", b2.opts().WithName("F2_key_placeholder"));
     Node* recv2 = RecvAtHost(
         ops::NodeOut(key_constant2, 0), "host_compute_channel_F2_O1",
         {DT_FLOAT}, b2.opts().WithName("outside_compilation_F2_O1_recv"));
-    Node* h = Binary(ops::NodeOut(call1, 1), recv2,
-                     b2.opts().WithName("H").WithControlInput(s1));
+    Node* h = Binary(ops::NodeOut(call1, 1), recv2, b2.opts().WithName("H"));
     Node* send2 = SendFromHost(
         ops::NodeOut(key_constant2, 0), "host_compute_channel_F2_O1", {h},
         b2.opts().WithName("outside_compilation_F2_O1_send"));
 
+    Node* s2 = Sequencer(
+        b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}),
+        "F2");
     NodeBuilder node_builder2("F2", "F2", lib_def.get());
     node_builder2.Input(e).Input(call1);
     Node* call2 = b2.opts()
-                      .WithControlInputs({s1, e, call1})
+                      .WithControlInputs({s2, e, call1})
                       .FinalizeBuilder(&node_builder2);
-    Node* s2 = NoOp(
-        b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}));
-    Binary(call2, ops::NodeOut(call2, 1),
-           b2.opts().WithName("J").WithControlInput(s2));
+    Binary(call2, ops::NodeOut(call2, 1), b2.opts().WithName("J"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1280,7 +1293,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
            "BinaryTest",
            {"D:o:0", "outside_compilation_O1_host_compute:outputs:0"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {},
            {{"Tinputs", gtl::ArraySlice<DataType>({})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1304,12 +1317,14 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
     Node* send1 = SendFromHost(
         ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {e},
         b2.opts().WithName("outside_compilation_F1_O1_send"));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInput(send1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(b2.opts().WithName("F1_sequencer").WithControlInput(send1));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Unary(call1, b2.opts().WithName("G").WithControlInput(s1));
+    Unary(call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1358,7 +1373,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
            "BinaryTest",
            {"D:o:0", "outside_compilation_O1_host_compute:outputs:0"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {},
            {{"Tinputs", gtl::ArraySlice<DataType>({})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1386,13 +1401,15 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
     Node* send1 = SendFromHost(
         ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {e},
         b2.opts().WithName("outside_compilation_F1_O1_send"));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Unary(call1, b2.opts().WithName("G").WithControlInput(s1));
+    Unary(call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1434,7 +1451,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
           {{"F"}, "UnaryTest", {"D:o:0"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({})},
@@ -1457,12 +1474,14 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
         ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1", {DT_FLOAT},
         b2.opts().WithName("outside_compilation_F1_O1_recv"));
     Node* e = Unary(recv1, b2.opts().WithName("E"));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInput(recv1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(b2.opts().WithName("F1_sequencer").WithControlInput(recv1));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Binary(e, call1, b2.opts().WithName("G").WithControlInput(s1));
+    Binary(e, call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1509,7 +1528,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
            {},
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({})},
@@ -1537,13 +1556,15 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
                                b2.opts()
                                    .WithName("outside_compilation_F1_O1_send")
                                    .WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Binary(e, call1, b2.opts().WithName("G").WithControlInput(s1));
+    Binary(e, call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1668,7 +1689,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
            {},
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
-           "_XlaHostCompute",
+           "XlaHostCompute",
            {"c:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
@@ -1687,11 +1708,6 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
     Node* b = Input(b2.opts().WithName("B"));
     Node* c = Unary(a, b2.opts().WithName("C"));
 
-    NodeBuilder node_builder("F1", "F1", lib_def.get());
-    node_builder.Input(b).Input(c);
-    Node* call =
-        b2.opts().WithControlInputs({c}).FinalizeBuilder(&node_builder);
-
     Node* key_constant =
         KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
     Node* recv = RecvAtHost(
@@ -1706,10 +1722,16 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
                                   .WithName("outside_compilation_F1_O1_send")
                                   .WithControlInput(e));
 
-    Node* s = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}));
+    Node* s = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
 
-    Binary(a, call, b2.opts().WithName("G").WithControlInputs({s, e}));
+    NodeBuilder node_builder("F1", "F1", lib_def.get());
+    node_builder.Input(b).Input(c);
+    Node* call =
+        b2.opts().WithControlInputs({s, c}).FinalizeBuilder(&node_builder);
+
+    Binary(a, call, b2.opts().WithName("G").WithControlInputs({e}));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
