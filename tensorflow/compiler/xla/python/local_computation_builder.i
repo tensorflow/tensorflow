@@ -833,6 +833,19 @@ tensorflow::ImportNumpy();
     }
     Py_DECREF(o);
 
+    o = PyObject_GetAttrString($input, "hlo_profile");
+    if (o == NULL) {
+      return NULL;
+    }
+    if (o != Py_None) {
+      if (!PyBool_Check(o)) {
+        PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
+        return NULL;
+      }
+      build_options.set_hlo_profile(o == Py_True);
+    }
+    Py_DECREF(o);
+
     o = PyObject_GetAttrString($input, "result_shape");
     if (o == nullptr) {
       return nullptr;
