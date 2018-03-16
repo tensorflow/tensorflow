@@ -212,7 +212,7 @@ def sliced_wasserstein_distance(real_images,
   Args:
       real_images: (tensor) Real images (batch, height, width, channels).
       fake_images: (tensor) Fake images (batch, height, width, channels).
-      resolution_min: (int) Minimum resolution for the Laplacion pyramid.
+      resolution_min: (int) Minimum resolution for the Laplacian pyramid.
       patches_per_image: (int) Number of patches to extract per image per
         Laplacian level.
       patch_size: (int) Width of a square patch.
@@ -221,7 +221,7 @@ def sliced_wasserstein_distance(real_images,
       use_svd: experimental method to compute a more accurate distance.
   Returns:
       List of tuples (distance_real, distance_fake) for each level of the
-      Laplacian pyramid from the highest resoluion to the lowest.
+      Laplacian pyramid from the highest resolution to the lowest.
         distance_real is the Wasserstein distance between real images
         distance_fake is the Wasserstein distance between real and fake images.
   Raises:
