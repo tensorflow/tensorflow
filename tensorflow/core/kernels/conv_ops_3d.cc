@@ -377,6 +377,7 @@ struct LaunchConvOp<GPUDevice, T> {
         {{in_planes, in_rows, in_cols}},
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
+        1, // groups
         // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
         // conv is supported.
         /*dilation=*/{{1, 1, 1}},

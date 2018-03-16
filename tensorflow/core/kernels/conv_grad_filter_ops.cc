@@ -898,6 +898,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       dims.out_depth,                        // out_depths
       {{dims.spatial_dims[0].filter_size,    // filter_rows
         dims.spatial_dims[1].filter_size}},  // filter_cols
+      1,                                     // groups
       {{dims.spatial_dims[0].dilation,       // dilation_rows
         dims.spatial_dims[1].dilation}},     // dilation_cols
       {{dims.spatial_dims[0].stride,         // stride_rows

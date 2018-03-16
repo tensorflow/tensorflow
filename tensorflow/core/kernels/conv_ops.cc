@@ -696,6 +696,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       out_depths,        // out_depths
       {{patch_rows,      // filter_rows
         patch_cols}},    // filter_cols
+      1,                 // groups
       {{row_dilation,    // dilation_rows
         col_dilation}},  // dilation_cols
       {{row_stride,      // stride_rows

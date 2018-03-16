@@ -40,6 +40,10 @@ struct DepthwiseArgs {
   int out_cols;
   int out_depth;
 
+  // Cudnn configuration
+  bool use_cudnn;
+  bool cudnn_use_autotune;
+
   DepthwiseArgs()
       : batch(0),
         in_rows(0),

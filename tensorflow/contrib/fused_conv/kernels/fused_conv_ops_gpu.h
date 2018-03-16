@@ -34,7 +34,7 @@ class FusedConvParameters : public ConvParameters {
                       const SpatialArray& padding, DataType dtype,
                       int device_id, bool has_side_input,
                       ActivationMode activation_mode)
-      : ConvParameters(batch, in_depths, in, out_depths, filter, dilation,
+      : ConvParameters(batch, in_depths, in, out_depths, filter, /* groups */ 1, dilation,
                        stride, padding, dtype, device_id),
         activation_mode_(activation_mode),
         has_side_input_(has_side_input) {
