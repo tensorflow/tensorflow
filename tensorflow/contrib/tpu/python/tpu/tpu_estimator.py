@@ -25,6 +25,7 @@ import threading
 import time
 import traceback
 
+import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -69,6 +70,7 @@ _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
+_ONE_GIGABYTE = 1024 * 1024 * 1024
 
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
@@ -2083,6 +2085,10 @@ class TPUEstimator(estimator_lib.Estimator):
           host_ops = host_call_ret['host_call']
 
         predictions = host_call_ret['predictions']
+        _verify_cross_hosts_transfer_size(
+            predictions, message=(
+                'The estimated size for TPUEstimatorSpec.predictions is too '
+                'large.'))
         stopping_signals = host_call_ret['signals']
 
         with ops.control_dependencies(host_ops):
@@ -2095,13 +2101,6 @@ class TPUEstimator(estimator_lib.Estimator):
             TPUInfeedOutfeedSessionHookForPrediction(ctx, enqueue_ops,
                                                      host_ops),
         ] + input_hooks
-
-        # TODO(b/73813593): Delete this logging once the bug is resolved.
-        logging.info(
-            'If the Tensors in TPUEstimatorSpec.predictions dict are large, '
-            'you might observe the TPU program getting stuck (b/73813593). '
-            'Consider using small Tensors in the predictions dict to verify '
-            'the issue and report on the bug.')
 
         return model_fn_lib.EstimatorSpec(
             mode,
@@ -2515,3 +2514,21 @@ class _SignalsHelper(object):
   @staticmethod
   def as_tensor_list(signals):
     return [signals[key] for key in sorted(signals.iterkeys())]
+
+
+def _verify_cross_hosts_transfer_size(tensor_dict, message):
+  total_size = 0
+  tensor_structure = {}
+  for key, tensor in tensor_dict.items():
+    shape = tensor.shape
+    size = np.product(shape) * tensor.dtype.size
+    tensor_structure[key] = shape
+    total_size += size
+  if total_size >= _ONE_GIGABYTE:
+    raise ValueError(
+        '{} The transfer size is larger than the protobuf limit. Please '
+        'consider to use Tensors with smaller shapes or reduce batch '
+        'size. Given:\n'
+        '{}'.format(message, '\n'.join([
+            ' -- Key: {}, Shape: {}'.format(k, v)
+            for k, v in tensor_structure.items()])))
