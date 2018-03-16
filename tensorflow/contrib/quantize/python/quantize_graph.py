@@ -72,6 +72,8 @@ def _create_graph(input_graph=None,
 def create_training_graph(input_graph=None, quant_delay=0):
   """Rewrites a training input_graph in place for simulated quantization.
 
+  Variables added by the rewrite get added to the global variables collection.
+
   The graph has fake quantization ops inserted to simulate the error
   introduced by quantization. Since the graph is transformed in place,
   the expected behavior of previously held references to nodes and tensors may
@@ -118,6 +120,8 @@ def create_training_graph(input_graph=None, quant_delay=0):
 def create_eval_graph(input_graph=None):
   """Rewrites an eval input_graph in place for simulated quantization.
 
+  Variables added by the rewrite get added to the global variables collection.
+
   The graph has fake quantization ops inserted to simulate the error
   introduced by quantization. Since the graph is transformed in place,
   the expected behavior of previously held references to nodes and tensors may
@@ -140,6 +144,8 @@ def experimental_create_training_graph(input_graph=None,
                                        quant_delay=0,
                                        freeze_bn_delay=int(2e5)):
   """Rewrites a training input_graph in place for simulated quantization.
+
+  Variables added by the rewrite get added to the global variables collection.
 
   This function has additional experimental options not (yet) available to
   create_training_graph. The resulting behavior may be undefined.
@@ -187,6 +193,8 @@ def experimental_create_eval_graph(input_graph=None,
                                    weight_bits=8,
                                    activation_bits=8):
   """Rewrites an eval input_graph in place for simulated quantization.
+
+  Variables added by the rewrite get added to the global variables collection.
 
   This function has additional experimental options not (yet) available to
   create_eval_graph. The resulting behavior may be undefined.
