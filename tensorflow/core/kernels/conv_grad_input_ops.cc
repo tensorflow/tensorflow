@@ -101,8 +101,10 @@ template <typename T>
 struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
-                  int row_stride, int col_stride, const Padding& padding,
+                  int row_stride, int col_stride, int groups, const Padding& padding,
                   Tensor* in_backprop, TensorFormat data_format) {
+    OP_REQUIRES(ctx, groups == 1,
+                errors::Unimplemented("groups > 1 not implemented for CPU Conv2DBackpropFilter"));
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
     functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
         d, in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
@@ -280,7 +282,8 @@ class Conv2DFastBackpropInputOp : public OpKernel {
 
     LaunchConv2DBackpropInputOp<Device, T>()(
         context, false, false, out_backprop, filter,
-        dims.spatial_dims[0].stride, dims.spatial_dims[1].stride, padding_,
+        dims.spatial_dims[0].stride, dims.spatial_dims[1].stride,
+        /*groups=*/1, padding_,
         in_backprop, data_format_);
   }
 
@@ -683,7 +686,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     const int dilation_cols = GetTensorDim(dilations_, data_format_, 'W');
 
     launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, filter,
-              dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
+              dilation_rows, dilation_cols, stride_rows, stride_cols,
+              /*groups=*/1, padding_,
               in_backprop, data_format_);
   }
 
@@ -703,7 +707,7 @@ template <typename T>
 void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& out_backprop, const Tensor& filter, int row_dilation,
-    int col_dilation, int row_stride, int col_stride, const Padding& padding,
+    int col_dilation, int row_stride, int col_stride, int groups, const Padding& padding,
     Tensor* in_backprop, TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
   using perftools::gputools::dnn::AlgorithmDesc;
@@ -723,7 +727,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   ConvBackpropDimensions dims;
   OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensionsV2(
                           "Conv2DSlowBackpropInput", /*num_spatial_dims=*/2,
-                          /*groups=1*/ 1, input_shape, filter_shape, out_backprop.shape(),
+                          groups, input_shape, filter_shape, out_backprop.shape(),
                           dilations, strides, padding, data_format, &dims));
 
   // TODO(yangzihao): The padding computations should be done in
@@ -764,6 +768,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   if (dims.spatial_dims[0].filter_size == 1 &&
       dims.spatial_dims[1].filter_size == 1 &&
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
+      groups == 1 &&
       data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
     const uint64 m = dims.batch_size * dims.spatial_dims[0].input_size *
@@ -795,6 +800,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                  dims.spatial_dims[0].input_size &&
              dims.spatial_dims[1].filter_size ==
                  dims.spatial_dims[1].input_size &&
+             groups == 1 &&
              padding == VALID && data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, so call cublas
     // directly.
@@ -864,7 +870,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       .set_vertical_filter_stride(dims.spatial_dims[0].stride)
       .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
       .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2);
+      .set_zero_padding_width(padding_cols / 2)
+      .set_group_count(groups);
 
   // NOTE(keveman):
   // cuDNN only supports the following layouts :
@@ -947,7 +954,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       dims.out_depth,                        // out_depths
       {{dims.spatial_dims[0].filter_size,    // filter_rows
         dims.spatial_dims[1].filter_size}},  // filter_cols
-      1,                                     // groups
+      groups,                                // groups
       {{dims.spatial_dims[0].dilation,       // dilation_rows
         dims.spatial_dims[1].dilation}},     // dilation_cols
       {{dims.spatial_dims[0].stride,         // stride_rows

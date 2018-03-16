@@ -176,7 +176,7 @@ struct LaunchConv2DBackpropInputOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
                   int row_dilation, int col_dilation, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* in_backprop,
+                  int col_stride, int groups, const Padding& padding, Tensor* in_backprop,
                   TensorFormat data_format);
 };
 
@@ -194,7 +194,7 @@ template <typename T>
 struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
+                  int col_dilation, int row_stride, int col_stride, int groups,
                   const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };
