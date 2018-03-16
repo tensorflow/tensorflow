@@ -144,7 +144,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions()));
+                      ExecutableBuildOptions().set_hlo_profile(true)));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
