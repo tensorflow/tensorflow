@@ -2759,7 +2759,7 @@ cuda_py_test(
     additional_deps = [
         ":array_ops",
         ":metrics",
-	":variables",
+        ":variables",
         ":framework_test_lib",
         ":platform_test",
     ],
