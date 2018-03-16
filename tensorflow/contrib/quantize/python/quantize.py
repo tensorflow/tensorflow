@@ -44,7 +44,7 @@ def Quantize(graph,
              activation_bits=8,
              ema_decay=0.999,
              quant_delay=None,
-             vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES):
+             vars_collection=ops.GraphKeys.GLOBAL_VARIABLES):
   """Updates graph with quantization operations.
 
   Args:
@@ -262,7 +262,7 @@ def _InsertQuantOp(context,
                    bits=8,
                    ema_decay=0.999,
                    quant_delay=None,
-                   vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+                   vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
                    narrow_range=False):
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 

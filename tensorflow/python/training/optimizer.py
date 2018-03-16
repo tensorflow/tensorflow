@@ -61,7 +61,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 def _var_key(var):
   if context.executing_eagerly():
-    return var._shared_name  # pylint: disable=protected-access
+    return var._unique_id  # pylint: disable=protected-access
   return (var.op.graph, var.op.name)
 
 

@@ -144,6 +144,10 @@ int NumNonControlInputs(const NodeDef& node);
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
 
+// Number of connected non-control data outputs (Ops that consume output tensor
+// data, not just it's shape).
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
+
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);
 

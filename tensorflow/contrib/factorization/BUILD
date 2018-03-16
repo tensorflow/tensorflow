@@ -66,6 +66,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -241,6 +242,7 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )

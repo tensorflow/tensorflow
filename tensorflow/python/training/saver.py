@@ -578,9 +578,11 @@ class BaseSaverBuilder(object):
           names_to_saveables[name] = [var]
       elif (isinstance(var, checkpointable.CheckpointableBase)
             and not isinstance(var, variables.Variable)):
+        checkpointable_saveables = [
+            (factory() if callable(factory) else factory)
+            for factory in var._gather_saveables_for_checkpoint().values()]
         names_to_saveables.update(
-            BaseSaverBuilder.OpListToDict(
-                list(var._gather_saveables_for_checkpoint().values())))
+            BaseSaverBuilder.OpListToDict(checkpointable_saveables))
       else:
         if context.executing_eagerly():
           if not isinstance(var, resource_variable_ops.ResourceVariable):

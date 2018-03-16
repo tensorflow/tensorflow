@@ -39,7 +39,7 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     }
   }
   permutation.push_back(index_vector_dim);
-  return CreateTransposeHlo(gather_indices, permutation);
+  return MakeTransposeHlo(gather_indices, permutation);
 }
 
 // If the gather_indices holds scalar indices (i.e. gather_indices has rank N
@@ -133,16 +133,16 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
         dim_numbers.gather_dims_to_operand_dims_size()) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * component_to_concat,
-          CreateSliceHlo(
-              index_vector, /*start_indices=*/{index_vector_dim_index},
-              /*limit_indices=*/{index_vector_dim_index + 1}, /*strides=*/{1}));
+          MakeSliceHlo(index_vector, /*start_indices=*/{index_vector_dim_index},
+                       /*limit_indices=*/{index_vector_dim_index + 1},
+                       /*strides=*/{1}));
       expanded_index_components.push_back(component_to_concat);
     } else {
       expanded_index_components.push_back(zero);
     }
   }
 
-  return CreateConcatHlo(expanded_index_components, /*dimension=*/0);
+  return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
 }
 
 // This generates the body of the while that implements the main data movement
@@ -159,8 +159,8 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * induction_var_as_vector,
-      CreateBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
-                         /*result_shape_bounds=*/{1}));
+      MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
+                       /*result_shape_bounds=*/{1}));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * index_into_gather_indices,
@@ -169,8 +169,8 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * index_vector_2d,
-      CreateDynamicSliceHlo(gather_indices, index_into_gather_indices,
-                            {1, index_vector_size}));
+      MakeDynamicSliceHlo(gather_indices, index_into_gather_indices,
+                          {1, index_vector_size}));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * index_vector,
                       ElideDegenerateDims(index_vector_2d, {0}));
@@ -181,8 +181,8 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
                           operand->shape().dimensions_size()));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * gathered_slice,
-                      CreateDynamicSliceHlo(operand, gathered_slice_start,
-                                            gather.gather_window_bounds()));
+                      MakeDynamicSliceHlo(operand, gathered_slice_start,
+                                          gather.gather_window_bounds()));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * gathered_slice_for_update,
@@ -197,8 +197,8 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * updated_accumulator,
-      CreateDynamicUpdateSliceHlo(output_accumulator, gathered_slice_for_update,
-                                  index_vector_into_accumulator));
+      MakeDynamicUpdateSliceHlo(output_accumulator, gathered_slice_for_update,
+                                index_vector_into_accumulator));
 
   // New loop state -- only the accumulator has changed.  The
   // WhileUtil::MakeCountedLoop functions takes care of the induction variable
@@ -250,7 +250,7 @@ static StatusOr<HloInstruction*> PermuteGatherAndWindowDims(
     }
   }
 
-  return CreateTransposeHlo(accumulator, permutation);
+  return MakeTransposeHlo(accumulator, permutation);
 }
 
 // High Level Algorithm

@@ -1213,8 +1213,11 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     // Note that `h` may not be currently ready. However execution order will
     // make sure that `h` is ready before the copy is actually done.
     CopyToDeviceNode* node = new CopyToDeviceNode(h, dstd, ctx);
+    TFE_TensorHandle* output = node->dst();
+    // Note that calling Add makes `node` accessible by the TFE_Executor thread.
+    // So further accesses need to be thread-safe.
     ctx->executor.Add(node);
-    return node->dst();
+    return output;
   } else {
     TFE_TensorHandle* output = nullptr;
     status->status = TensorHandleCopyToDevice(h, ctx, dstd, &output);

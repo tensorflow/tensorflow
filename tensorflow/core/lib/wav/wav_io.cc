@@ -95,10 +95,6 @@ Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
     return errors::InvalidArgument("Initial offset is outside data range: ",
                                    old_offset);
   }
-  if (increment < 0) {
-    return errors::InvalidArgument("Negative increments are not allowed: ",
-                                   old_offset);
-  }
   *new_offset = old_offset + increment;
   if (*new_offset > max_size) {
     return errors::InvalidArgument("Data too short when trying to read string");

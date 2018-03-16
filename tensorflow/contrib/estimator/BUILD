@@ -354,6 +354,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
+        "//third_party/py/absl/testing:parameterized",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:export_export",
