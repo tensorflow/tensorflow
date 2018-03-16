@@ -27,12 +27,14 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
+#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
@@ -516,6 +518,11 @@ extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
+// Extern template instantiated in conv_grad_input_ops.cc
+extern template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
+extern template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
+extern template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;
+
 #endif  // GOOGLE_CUDA
 
 // Kernel to compute the input backprop for depthwise convolution.
@@ -548,6 +555,9 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+
+    use_cudnn_ = CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
   void Compute(OpKernelContext* context) override {
@@ -578,6 +588,18 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     if (input_shape.num_elements() == 0) {
       return;
     }
+
+    #if GOOGLE_CUDA
+    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
+        LaunchConv2DBackpropInputOp<Device, T>()(
+            context, use_cudnn_, cudnn_use_autotune_, out_backprop,
+            filter, /*row_dilation=*/1, /*col_dilation=*/1,
+            stride_, stride_, /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
+            padding_, in_backprop, data_format_);
+        return;
+    }
+    #endif
+
     LaunchDepthwiseConvBackpropInputOp<Device, T>()(
         context, args, out_backprop_ptr, filter_ptr, in_backprop_ptr,
         data_format_);
@@ -588,6 +610,8 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
   int64 stride_;
+  bool use_cudnn_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
 };
@@ -892,6 +916,11 @@ extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
+// extern templates from conv_grad_filter_ops.cc
+extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::half>;
+extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, float>;
+extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, double>;
+
 #endif  // GOOGLE_CUDA
 
 // Kernel to compute the filter backprop for depthwise convolution.
@@ -924,6 +953,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+
+    use_cudnn_ = CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
   void Compute(OpKernelContext* context) override {
@@ -956,6 +988,20 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     if (filter_shape.num_elements() == 0) {
       return;
     }
+
+    #if GOOGLE_CUDA
+    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
+        LaunchConv2DBackpropFilterOp<Device, T>()(
+            context, use_cudnn_, cudnn_use_autotune_,
+            out_backprop, input,
+            /*row_dilation=*/1, /*col_dilation=*/1,
+            stride_, stride_,
+            /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
+            padding_, filter_backprop, data_format_);
+        return;
+    }
+    #endif
+
     LaunchDepthwiseConvBackpropFilterOp<Device, T>()(
         context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr,
         data_format_);
@@ -966,6 +1012,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
   int64 stride_;
+  bool use_cudnn_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
 };

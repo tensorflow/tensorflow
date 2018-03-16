@@ -382,12 +382,12 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       return;
     }
 
-    #if CUDNN_VERSION >= 7000
-    // CUDNN_VERSION >= 7000 introduces convolution groups for convolutions.
+    #if GOOGLE_CUDA
+    // CUDNN 7 introduces convolution groups for convolutions.
     // we can thus use the standard conv2d launcher with groups = in_depth
     // when CUDNN is enabled.
     if (use_cudnn_) {
-      launcher_(context, us_cudnn_, cudnn_use_autotune_, input, filter,
+      launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
                 /*groups=*/in_depth, padding_, output, data_format_);
       return;
