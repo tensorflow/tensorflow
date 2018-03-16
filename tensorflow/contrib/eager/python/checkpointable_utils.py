@@ -523,6 +523,18 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
+def _copy_saver_with_new_var_list(old_saver, new_var_list):
+  """Copy a `tf.train.Saver`'s state to a new Saver with different variables."""
+  new_saver = saver_lib.Saver(var_list=new_var_list)
+  # TODO(allenl): Move to copying functionality to Saver?
+  # pylint: disable=protected-access
+  new_saver._last_checkpoints = old_saver._last_checkpoints
+  new_saver._checkpoints_to_be_deleted = old_saver._checkpoints_to_be_deleted
+  new_saver._next_checkpoint_time = old_saver._next_checkpoint_time
+  # pylint: enable=protected-access
+  return new_saver
+
+
 class CheckpointableSaver(object):
   """Saves and restores a `Checkpointable` object and its dependencies.
 
@@ -623,19 +635,13 @@ class CheckpointableSaver(object):
         name=_OBJECT_GRAPH_PROTO_KEY)
     if self._last_save_object_graph != graph_proto:
       if self._last_save_object_graph is not None:
-        raise NotImplementedError(
-            "Using a single Saver to save a mutated object graph is not "
-            "currently supported when graph building. Use a different Saver "
-            "when the object graph changes (save ops will be duplicated when "
-            "graph building), or file a feature request if this limitation "
-            "bothers you.")
-      saver = saver_lib.Saver(var_list=named_variables)
-      self._last_save_saver = saver
+        self._last_save_saver = _copy_saver_with_new_var_list(
+            old_saver=self._last_save_saver, new_var_list=named_variables)
+      else:
+        self._last_save_saver = saver_lib.Saver(var_list=named_variables)
       self._last_save_object_graph = graph_proto
-    else:
-      saver = self._last_save_saver
     with ops.device("/cpu:0"):
-      save_path = saver.save(
+      save_path = self._last_save_saver.save(
           sess=_SessionWithFeedDictAdditions(
               session=session, feed_additions=feed_additions),
           save_path=file_prefix,
