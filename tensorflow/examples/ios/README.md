@@ -119,8 +119,9 @@ rundown:
    `tensorflow/contrib/makefile/gen/lib` to the Library Search Paths setting.
 
  - You'll also need to add `libprotobuf.a` and `libprotobuf-lite.a` from
-   `tensorflow/contrib/makefile/gen/protobuf_ios/lib` and `nsync.a` from `tensorflow/contrib/makefile/downloads/nsync/builds/lipo.ios.c++11` to your _Build Stages_ and
-   _Library Search Paths_.
+   `tensorflow/contrib/makefile/gen/protobuf_ios/lib`
+   and `nsync.a` from `tensorflow/contrib/makefile/downloads/nsync/builds/lipo.ios.c++11` 
+   to your _Build Stages_ and _Library Search Paths_.
 
  - The _Header Search_ paths needs to contain:
    - the root folder of tensorflow,
