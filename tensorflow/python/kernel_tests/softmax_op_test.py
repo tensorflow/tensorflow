@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -166,7 +165,7 @@ class SoftmaxTest(test.TestCase):
 
   def testEmptyInput(self):
     with self.test_session():
-      x = constant_op.constant([[]], shape=[0, 3])
+      x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
       self.assertEqual(0, array_ops.size(x).eval())
       # reshape would raise if logits is empty
       with self.assertRaises(errors_impl.InvalidArgumentError):

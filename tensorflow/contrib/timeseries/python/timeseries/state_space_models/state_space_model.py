@@ -112,11 +112,11 @@ class StateSpaceModelConfiguration(
       exogenous_noise_decreases: If True, exogenous regressors can "set" model
           state, decreasing uncertainty. If both this parameter and
           exogenous_noise_increases are False, exogenous regressors are ignored.
-      exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
-          objects (for example tf.contrib.layers.embedding_column) corresponding
-          to exogenous features which provide extra information to the model but
-          are not part of the series to be predicted. Passed to
-          tf.contrib.layers.input_from_feature_columns.
+      exogenous_feature_columns: A list of `tf.feature_column`s (for example
+          `tf.feature_column.embedding_column`) corresponding to exogenous
+          features which provide extra information to the model but are not part
+          of the series to be predicted. Passed to
+          `tf.feature_column.input_layer`.
       exogenous_update_condition: A function taking two Tensor arguments `times`
           (shape [batch size]) and `features` (a dictionary mapping exogenous
           feature keys to Tensors with shapes [batch size, ...]) and returning a

@@ -308,7 +308,7 @@ def mean(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean is not supported when eager execution '
                        'is enabled.')
 
@@ -394,7 +394,7 @@ def accuracy(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.accuracy is not supported when eager '
                        'execution is enabled.')
 
@@ -644,7 +644,7 @@ def auc(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.auc is not supported when eager execution '
                        'is enabled.')
 
@@ -672,7 +672,7 @@ def auc(labels,
         x = fp_rate
         y = rec
       else:  # curve == 'PR'.
-        prec = math_ops.div(tp, tp + fp + epsilon)
+        prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
       if summation_method == 'trapezoidal':
@@ -758,7 +758,7 @@ def mean_absolute_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_absolute_error is not supported '
                        'when eager execution is enabled.')
 
@@ -818,7 +818,7 @@ def mean_cosine_distance(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_cosine_distance is not supported when '
                        'eager execution is enabled.')
 
@@ -891,7 +891,7 @@ def mean_per_class_accuracy(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_per_class_accuracy is not supported '
                        'when eager execution is enabled.')
 
@@ -923,8 +923,8 @@ def mean_per_class_accuracy(labels,
         weights = array_ops.reshape(weights, [-1])
       weights = math_ops.to_float(weights)
 
-      is_correct *= weights
-      ones *= weights
+      is_correct = is_correct * weights
+      ones = ones * weights
 
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
@@ -996,7 +996,7 @@ def mean_iou(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_iou is not supported when '
                        'eager execution is enabled.')
 
@@ -1098,7 +1098,7 @@ def mean_relative_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_relative_error is not supported when '
                        'eager execution is enabled.')
 
@@ -1165,7 +1165,7 @@ def mean_squared_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_squared_error is not supported when '
                        'eager execution is enabled.')
 
@@ -1223,7 +1223,7 @@ def mean_tensor(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean_tensor is not supported when '
                        'eager execution is enabled.')
 
@@ -1304,7 +1304,7 @@ def percentage_below(values,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.percentage_below is not supported when '
                        'eager execution is enabled.')
 
@@ -1397,7 +1397,7 @@ def false_negatives(labels,
       or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_negatives is not supported when '
                        'eager execution is enabled.')
 
@@ -1453,7 +1453,7 @@ def false_negatives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_negatives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1507,7 +1507,7 @@ def false_positives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_positives is not supported when '
                        'eager execution is enabled.')
 
@@ -1563,7 +1563,7 @@ def false_positives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.false_positives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1617,7 +1617,7 @@ def true_negatives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_negatives is not '
                        'supported when eager execution is enabled.')
 
@@ -1673,7 +1673,7 @@ def true_negatives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_negatives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1727,7 +1727,7 @@ def true_positives(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_positives is not '
                        'supported when eager execution is enabled.')
 
@@ -1783,7 +1783,7 @@ def true_positives_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.true_positives_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -1851,7 +1851,7 @@ def precision(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision is not '
                        'supported when eager execution is enabled.')
 
@@ -1947,7 +1947,7 @@ def precision_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -2023,7 +2023,7 @@ def recall(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall is not supported is not '
                        'supported when eager execution is enabled.')
 
@@ -2400,7 +2400,7 @@ def recall_at_k(labels,
     are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -2549,7 +2549,7 @@ def recall_at_thresholds(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.recall_at_thresholds is not '
                        'supported when eager execution is enabled.')
 
@@ -2626,7 +2626,7 @@ def root_mean_squared_error(labels,
       tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.root_mean_squared_error is not '
                        'supported when eager execution is enabled.')
 
@@ -2707,7 +2707,7 @@ def sensitivity_at_specificity(labels,
       or `updates_collections` are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sensitivity_at_specificity is not '
                        'supported when eager execution is enabled.')
 
@@ -3098,7 +3098,7 @@ def average_precision_at_k(labels,
     ValueError: if k is invalid.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sparse_average_precision_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3267,7 +3267,7 @@ def precision_at_top_k(labels,
       are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.precision_at_top_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3396,7 +3396,7 @@ def precision_at_k(labels,
       are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.sparse_precision_at_k is not '
                        'supported when eager execution is enabled.')
 
@@ -3473,7 +3473,7 @@ def specificity_at_sensitivity(labels,
       or `updates_collections` are not a list or tuple.
     RuntimeError: If eager execution is enabled.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError('tf.metrics.specificity_at_sensitivity is not '
                        'supported when eager execution is enabled.')
 

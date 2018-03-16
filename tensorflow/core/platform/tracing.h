@@ -103,7 +103,7 @@ class Tracing {
   friend class ScopedAnnotation;
   friend class TraceMe;
 
-  static std::atomic<Tracing::Engine*> tracing_engine_;
+  TF_EXPORT static std::atomic<Tracing::Engine*> tracing_engine_;
   static Tracing::Engine* engine() {
     return tracing_engine_.load(std::memory_order_acquire);
   }

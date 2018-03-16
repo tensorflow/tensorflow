@@ -1,10 +1,13 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
 
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 py_binary(
     name = "upgrade_schema",
@@ -80,3 +83,5 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+tflite_portable_test_suite()

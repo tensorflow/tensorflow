@@ -118,8 +118,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python 2.7, the command to install
      TensorFlow in the active Virtualenv is as follows:
 
-     <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl</b></pre>
+     <pre> $ <b>pip install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -241,8 +241,8 @@ take the following steps:
      you are installing TensorFlow for Mac OS and Python 2.7
      issue the following command:
 
-     <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl</b> </pre>
+     <pre> $ <b>sudo pip install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -292,24 +292,23 @@ where:
     to 6006.
   * <i>TensorFlowImage</i> is required. It identifies the Docker container.
     You must specify one of the following values:
-    * <code>gcr.io/tensorflow/tensorflow</code>: TensorFlow binary image.
-    * <code>gcr.io/tensorflow/tensorflow:latest-devel</code>: TensorFlow
+    * <code>tensorflow/tensorflow</code>: TensorFlow binary image.
+    * <code>tensorflow/tensorflow:latest-devel</code>: TensorFlow
       Binary image plus source code.
 
-<code>gcr.io</code> is the Google Container Registry. Note that some
-TensorFlow images are also available at
+The TensorFlow images are available at
 [dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/).
 
 For example, the following command launches a TensorFlow CPU binary image
 in a Docker container from which you can run TensorFlow programs in a shell:
 
-<pre>$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b></pre>
+<pre>$ <b>docker run -it tensorflow/tensorflow bash</b></pre>
 
 The following command also launches a TensorFlow CPU binary image in a
 Docker container. However, in this Docker container, you can run
 TensorFlow programs in a Jupyter notebook:
 
-<pre>$ <b>docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow</b></pre>
+<pre>$ <b>docker run -it -p 8888:8888 tensorflow/tensorflow</b></pre>
 
 Docker will download the TensorFlow binary image the first time you launch it.
 
@@ -351,7 +350,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -376,7 +375,7 @@ do the following:
 If you installed through Docker, start a Docker container that runs bash.
 For example:
 
-<pre>$ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b></pre>
+<pre>$ <b>docker run -it tensorflow/tensorflow bash</b></pre>
 
 
 
@@ -524,7 +523,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py2-none-any.whl
 </pre>
 
 
@@ -532,5 +531,5 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py2-none-a
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0rc1-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.6.0-py3-none-any.whl
 </pre>

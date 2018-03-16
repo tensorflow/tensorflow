@@ -35,6 +35,12 @@ def _safe_shape_div(x, y):
   return x // math_ops.maximum(y, 1)
 
 
+@ops.RegisterGradient("ArgMax")
+def _ArgMaxGrad(op, grad):
+  del op, grad
+  return [None, None]
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
@@ -46,10 +52,18 @@ def _SumGrad(op, grad):
     if axes is not None:
       rank = len(input_0_shape)
       if np.array_equal(axes, np.arange(rank)):  # Reduce all dims.
-        grad = array_ops.reshape(grad, [1] * rank)
+        if context.executing_eagerly():
+          ctx = context.context()
+          new_shape = ctx.ones_rank_cache().get(rank)
+          if new_shape is None:
+            new_shape = constant_op.constant([1] * rank, dtype=dtypes.int32)
+            ctx.ones_rank_cache().put(rank, new_shape)
+        else:
+          new_shape = [1] * rank
+        grad = array_ops.reshape(grad, new_shape)
         # If shape is not fully defined (but rank is), we use Shape.
         if None not in input_0_shape:
-          input_shape = input_0_shape
+          input_shape = constant_op.constant(input_0_shape, dtype=dtypes.int32)
         else:
           input_shape = array_ops.shape(op.inputs[0])
         return [array_ops.tile(grad, input_shape), None]
@@ -382,16 +396,14 @@ def _NegGrad(_, grad):
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
-  # pylint: disable=protected-access
-  return gen_math_ops._reciprocal_grad(y, grad)
+  return gen_math_ops.reciprocal_grad(y, grad)
 
 
 @ops.RegisterGradient("Reciprocal")
 def _ReciprocalGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
-  # pylint: disable=protected-access
-  return gen_math_ops._reciprocal_grad(y, grad)
+  return gen_math_ops.reciprocal_grad(y, grad)
 
 
 @ops.RegisterGradient("InvGrad")
@@ -401,8 +413,7 @@ def _InvGradGrad(op, grad):
   with ops.control_dependencies([grad]):
     ca = math_ops.conj(op.inputs[0])
     cg = math_ops.conj(grad)
-    # pylint: disable=protected-access
-    return cg * -2.0 * b * ca, gen_math_ops._reciprocal_grad(ca, grad)
+    return cg * -2.0 * b * ca, gen_math_ops.reciprocal_grad(ca, grad)
 
 
 @ops.RegisterGradient("ReciprocalGrad")
@@ -412,8 +423,7 @@ def _ReciprocalGradGrad(op, grad):
   with ops.control_dependencies([grad]):
     ca = math_ops.conj(op.inputs[0])
     cg = math_ops.conj(grad)
-    # pylint: disable=protected-access
-    return cg * -2.0 * b * ca, gen_math_ops._reciprocal_grad(ca, grad)
+    return cg * -2.0 * b * ca, gen_math_ops.reciprocal_grad(ca, grad)
 
 
 @ops.RegisterGradient("Square")
@@ -422,15 +432,14 @@ def _SquareGrad(op, grad):
   # Added control dependencies to prevent 2*x from being computed too early.
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return math_ops.multiply(grad, math_ops.multiply(x, 2.0))
+    y = constant_op.constant(2.0, dtype=x.dtype)
+    return math_ops.multiply(grad, math_ops.multiply(x, y))
 
 
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
-  # pylint: disable=protected-access
-  return gen_math_ops._sqrt_grad(y, grad)
-  # pylint: enable=protected-access
+  return gen_math_ops.sqrt_grad(y, grad)
 
 
 @ops.RegisterGradient("SqrtGrad")
@@ -446,9 +455,7 @@ def _SqrtGradGrad(op, grad):
 def _RsqrtGrad(op, grad):
   """Returns -0.5 * grad * conj(y)^3."""
   y = op.outputs[0]  # y = x^(-1/2)
-  # pylint: disable=protected-access
-  return gen_math_ops._rsqrt_grad(y, grad)
-  # pylint: enable=protected-access
+  return gen_math_ops.rsqrt_grad(y, grad)
 
 
 @ops.RegisterGradient("RsqrtGrad")
@@ -460,8 +467,7 @@ def _RsqrtGradGrad(op, grad):
     ca = math_ops.conj(a)
     cg = math_ops.conj(grad)
     grad_a = -1.5 * cg * b * math_ops.square(ca)
-    # pylint: disable=protected-access
-    grad_b = gen_math_ops._rsqrt_grad(ca, grad)
+    grad_b = gen_math_ops.rsqrt_grad(ca, grad)
     return grad_a, grad_b
 
 
@@ -526,8 +532,7 @@ def _TanhGrad(op, grad):
   y = op.outputs[0]  # y = tanh(x)
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    # pylint: disable=protected-access
-    return gen_math_ops._tanh_grad(y, grad)
+    return gen_math_ops.tanh_grad(y, grad)
 
 
 @ops.RegisterGradient("Asinh")
@@ -565,8 +570,7 @@ def _TanhGradGrad(op, grad):
   with ops.control_dependencies([grad]):
     a = math_ops.conj(op.inputs[0])
     b = math_ops.conj(op.inputs[1])
-    # pylint: disable=protected-access
-    return grad * -2.0 * b * a, gen_math_ops._tanh_grad(a, grad)
+    return grad * -2.0 * b * a, gen_math_ops.tanh_grad(a, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -714,8 +718,7 @@ def _SigmoidGrad(op, grad):
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    # pylint: disable=protected-access
-    return gen_math_ops._sigmoid_grad(y, grad)
+    return gen_math_ops.sigmoid_grad(y, grad)
 
 
 @ops.RegisterGradient("SigmoidGrad")
@@ -724,8 +727,7 @@ def _SigmoidGradGrad(op, grad):
     a = math_ops.conj(op.inputs[0])
     b = math_ops.conj(op.inputs[1])
     gb = grad * b
-    # pylint: disable=protected-access
-    return gb - 2.0 * gb * a, gen_math_ops._sigmoid_grad(a, grad)
+    return gb - 2.0 * gb * a, gen_math_ops.sigmoid_grad(a, grad)
 
 
 @ops.RegisterGradient("Sign")
@@ -872,7 +874,7 @@ def _MulGrad(op, grad):
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad) and
       grad.dtype in (dtypes.int32, dtypes.float32)):
-    return gen_math_ops._mul(grad, y), gen_math_ops._mul(grad, x)
+    return gen_math_ops.mul(grad, y), gen_math_ops.mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
@@ -880,9 +882,9 @@ def _MulGrad(op, grad):
   x = math_ops.conj(x)
   y = math_ops.conj(y)
   return (array_ops.reshape(
-      math_ops.reduce_sum(gen_math_ops._mul(grad, y), rx), sx),
+      math_ops.reduce_sum(gen_math_ops.mul(grad, y), rx), sx),
           array_ops.reshape(
-              math_ops.reduce_sum(gen_math_ops._mul(x, grad), ry), sy))
+              math_ops.reduce_sum(gen_math_ops.mul(x, grad), ry), sy))
   # pylint: enable=protected-access
 
 
@@ -1056,20 +1058,18 @@ def _MatMulGrad(op, grad):
   t_b = op.get_attr("transpose_b")
   a = math_ops.conj(op.inputs[0])
   b = math_ops.conj(op.inputs[1])
-  # pylint: disable=protected-access
   if not t_a and not t_b:
-    grad_a = gen_math_ops._mat_mul(grad, b, transpose_b=True)
-    grad_b = gen_math_ops._mat_mul(a, grad, transpose_a=True)
+    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True)
+    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True)
   elif not t_a and t_b:
-    grad_a = gen_math_ops._mat_mul(grad, b)
-    grad_b = gen_math_ops._mat_mul(grad, a, transpose_a=True)
+    grad_a = gen_math_ops.mat_mul(grad, b)
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True)
   elif t_a and not t_b:
-    grad_a = gen_math_ops._mat_mul(b, grad, transpose_b=True)
-    grad_b = gen_math_ops._mat_mul(a, grad)
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True)
+    grad_b = gen_math_ops.mat_mul(a, grad)
   elif t_a and t_b:
-    grad_a = gen_math_ops._mat_mul(b, grad, transpose_a=True, transpose_b=True)
-    grad_b = gen_math_ops._mat_mul(grad, a, transpose_a=True, transpose_b=True)
-  # pylint: enable=protected-access
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
   return grad_a, grad_b
 
 
@@ -1083,7 +1083,7 @@ def _SparseMatMulGrad(op, grad):
       op.inputs[0]: op.get_attr("a_is_sparse"),
       op.inputs[1]: op.get_attr("b_is_sparse"),
       # Use heuristic to figure out if grad might be sparse
-      grad: context.in_graph_mode() and (grad.op.type == "ReluGrad")
+      grad: not context.executing_eagerly() and (grad.op.type == "ReluGrad")
   }
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):

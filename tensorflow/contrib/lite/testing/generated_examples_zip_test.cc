@@ -92,6 +92,9 @@ std::map<string, string> kBrokenTests = {
 
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
+
+    // Lstm kernel gets different results on tsan, asan, msan.
+    {R"(^\/lstmdtype=tf.float32.*)", "73830845"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes

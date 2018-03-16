@@ -382,7 +382,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
 
 Status WindowsFileSystem::FileExists(const string& fname) {
   constexpr int kOk = 0;
-  if (_access(TranslateName(fname).c_str(), kOk) == 0) {
+  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
+  if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
     return Status::OK();
   }
   return errors::NotFound(fname, " not found");
