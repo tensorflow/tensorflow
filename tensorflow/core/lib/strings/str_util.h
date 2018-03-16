@@ -141,6 +141,21 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 bool SplitAndParseAsFloats(StringPiece text, char delim,
                            std::vector<float>* result);
 
+// StartsWith()
+//
+// Returns whether a given string `text` begins with `prefix`.
+bool StartsWith(StringPiece text, StringPiece prefix);
+
+// EndsWith()
+//
+// Returns whether a given string `text` ends with `suffix`.
+bool EndsWith(StringPiece text, StringPiece suffix);
+
+// StrContains()
+//
+// Returns whether a given string `haystack` contains the substring `needle`.
+bool StrContains(StringPiece haystack, StringPiece needle);
+
 // ------------------------------------------------------------------
 // Implementation details below
 template <typename T>
