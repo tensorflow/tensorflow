@@ -181,7 +181,7 @@ def quadrature_scheme_softmaxnormal_quantiles(
       edges = array_ops.reshape(edges, shape=array_ops.concat([
           [-1], array_ops.ones([batch_ndims], dtype=dtypes.int32)], axis=0))
       quantiles = dist.quantile(edges)
-      quantiles = SoftmaxCentered(event_ndims=1).forward(quantiles)
+      quantiles = SoftmaxCentered().forward(quantiles)
       # Cyclically permute left by one.
       perm = array_ops.concat([
           math_ops.range(1, 1 + batch_ndims), [0]], axis=0)
