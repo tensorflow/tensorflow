@@ -25,7 +25,7 @@ import numpy as np
 
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.keras._impl.keras.engine.training import _weighted_masked_objective
+from tensorflow.python.keras._impl.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import test
 
@@ -340,20 +340,21 @@ class TrainingTest(test.TestCase):
     if scipy_sparse is None:
       return
 
-    test_inputs = [
-        scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)]
-    test_outputs = [
-        scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)]
-    in1 = keras.layers.Input(shape=(3,))
-    in2 = keras.layers.Input(shape=(3,))
-    out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
-    out2 = keras.layers.Dense(4, name='dense_1')(in2)
-    model = keras.Model([in1, in2], [out1, out2])
-    model.predict(test_inputs, batch_size=2)
-    model.compile('rmsprop', 'mse')
-    model.fit(test_inputs, test_outputs,
-              epochs=1, batch_size=2, validation_split=0.5)
-    model.evaluate(test_inputs, test_outputs, batch_size=2)
+    with self.test_session():
+      test_inputs = [
+          scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)]
+      test_outputs = [
+          scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)]
+      in1 = keras.layers.Input(shape=(3,))
+      in2 = keras.layers.Input(shape=(3,))
+      out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
+      out2 = keras.layers.Dense(4, name='dense_1')(in2)
+      model = keras.Model([in1, in2], [out1, out2])
+      model.predict(test_inputs, batch_size=2)
+      model.compile('rmsprop', 'mse')
+      model.fit(test_inputs, test_outputs,
+                epochs=1, batch_size=2, validation_split=0.5)
+      model.evaluate(test_inputs, test_outputs, batch_size=2)
 
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
@@ -705,7 +706,7 @@ class LossMaskingTest(test.TestCase):
 
   def test_loss_masking(self):
     with self.test_session():
-      weighted_loss = _weighted_masked_objective(keras.losses.get('mae'))
+      weighted_loss = weighted_masked_objective(keras.losses.get('mae'))
       shape = (3, 4, 2)
       x = np.arange(24).reshape(shape)
       y = 2 * x
@@ -876,9 +877,9 @@ class TestGeneratorMethods(test.TestCase):
 
     def custom_generator():
       batch_size = 10
-      n_samples = 50
+      num_samples = 50
       while True:
-        batch_index = np.random.randint(0, n_samples - batch_size)
+        batch_index = np.random.randint(0, num_samples - batch_size)
         start = batch_index
         end = start + batch_size
         x = arr_data[start: end]
@@ -957,9 +958,9 @@ class TestGeneratorMethods(test.TestCase):
 
     def custom_generator():
       batch_size = 10
-      n_samples = 50
+      num_samples = 50
       while True:
-        batch_index = np.random.randint(0, n_samples - batch_size)
+        batch_index = np.random.randint(0, num_samples - batch_size)
         start = batch_index
         end = start + batch_size
         x = arr_data[start: end]
@@ -1033,20 +1034,66 @@ class TestGeneratorMethods(test.TestCase):
                                  max_queue_size=10,
                                  use_multiprocessing=False)
 
+  def test_training_with_sequences(self):
+
+    class DummySequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.zeros([10, 2]), np.ones([10])
+
+      def __len__(self):
+        return 10
+
+    arr_data = np.random.random((50, 2))
+    arr_labels = np.random.random((50,))
+    arr_sample_weights = np.random.random((50,))
+
+    def custom_generator():
+      batch_size = 10
+      num_samples = 50
+      while True:
+        batch_index = np.random.randint(0, num_samples - batch_size)
+        start = batch_index
+        end = start + batch_size
+        x = arr_data[start: end]
+        y = arr_labels[start: end]
+        w = arr_sample_weights[start: end]
+        yield x, y, w
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1, input_shape=(2,)))
+      model.compile(loss='mse', optimizer='sgd')
+
+    model.fit_generator(DummySequence(),
+                        steps_per_epoch=10,
+                        validation_data=custom_generator(),
+                        validation_steps=1,
+                        max_queue_size=10,
+                        workers=0,
+                        use_multiprocessing=True)
+    model.fit_generator(DummySequence(),
+                        steps_per_epoch=10,
+                        validation_data=custom_generator(),
+                        validation_steps=1,
+                        max_queue_size=10,
+                        workers=0,
+                        use_multiprocessing=False)
+
 
 class TestTrainingUtils(test.TestCase):
 
   def test_check_array_lengths(self):
-    keras.engine.training._check_array_lengths(None, None, None)
+    keras.engine.training_utils.check_array_lengths(None, None, None)
     a_np = np.random.random((4, 3, 3))
-    keras.engine.training._check_array_lengths(a_np, a_np, a_np)
-    keras.engine.training._check_array_lengths(
+    keras.engine.training_utils.check_array_lengths(a_np, a_np, a_np)
+    keras.engine.training_utils.check_array_lengths(
         [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    keras.engine.training._check_array_lengths([None], [None], [None])
+    keras.engine.training_utils.check_array_lengths([None], [None], [None])
 
     b_np = np.random.random((3, 4))
     with self.assertRaises(ValueError):
-      keras.engine.training._check_array_lengths([a_np], [b_np], None)
+      keras.engine.training_utils.check_array_lengths([a_np], [b_np], None)
 
   def test_slice_arrays(self):
     input_a = np.random.random((10, 3))

@@ -202,11 +202,12 @@ def toco_convert(input_data,
 
     input_array.name = _tensor_name(input_tensor)
     input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
-    toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:
     model.output_arrays.append(_tensor_name(output_tensor))
 
+  # TODO(aselle): Consider handling the case of allowing quantized
+  # inputs to be converted to float (via the toco.inference_input_type field).
   data = toco_convert_protos(model.SerializeToString(),
                              toco.SerializeToString(),
                              input_data.SerializeToString())

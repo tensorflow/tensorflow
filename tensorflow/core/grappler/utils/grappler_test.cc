@@ -90,5 +90,20 @@ void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
   }
 }
 
+bool GrapplerTest::IsNodesDirectlyConnected(const NodeMap& node_map,
+                                            const string& src,
+                                            const string& dst, int position) {
+  const NodeDef* src_node = node_map.GetNode(src);
+  const NodeDef* dst_node = node_map.GetNode(dst);
+  EXPECT_TRUE(src_node != nullptr) << src << " node not found";
+  EXPECT_TRUE(dst_node != nullptr) << dst << " node not found";
+  return src_node && dst_node && dst_node->input(position) == src_node->name();
+}
+
+int GrapplerTest::CountOpNodes(const GraphDef& graph, const string& op) {
+  return std::count_if(graph.node().begin(), graph.node().end(),
+                       [&op](const NodeDef& node) { return node.op() == op; });
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

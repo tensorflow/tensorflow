@@ -1664,7 +1664,7 @@ class Conv2DTranspose(Conv2D):
         padding=self.padding.upper(),
         data_format=utils.convert_data_format(self.data_format, ndim=4))
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Infer the static output shape:
       out_shape = inputs.get_shape().as_list()
       out_shape[c_axis] = self.filters
@@ -1969,7 +1969,7 @@ class Conv3DTranspose(Conv3D):
         data_format=utils.convert_data_format(self.data_format, ndim=5),
         padding=self.padding.upper())
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       # Infer the static output shape:
       out_shape = inputs.get_shape().as_list()
       out_shape[c_axis] = self.filters

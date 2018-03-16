@@ -80,7 +80,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   def _ExtractInputShapes(inputs):
     """Extract the shapes of a set of input tensors."""
-    if not context.in_graph_mode():
+    if context.executing_eagerly():
       return array_ops.shape_n(inputs)
     sizes = []
     fully_known = True
@@ -106,7 +106,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
       non_neg_concat_dim = (
@@ -428,7 +428,7 @@ def _GatherV2Grad(op, grad):
 
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       params_tail_shape = params_shape.cpu()[1:]
     else:
       params_tail_shape = params_shape[1:]
@@ -578,7 +578,7 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
-  if context.in_graph_mode():
+  if not context.executing_eagerly():
     input_grad.set_shape(op.inputs[0].get_shape())
   return [input_grad, None]
 

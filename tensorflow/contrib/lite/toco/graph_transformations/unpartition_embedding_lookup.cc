@@ -191,6 +191,8 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
   model->GetOrCreateArray(gather_params_permute_op->outputs[0]);
   const auto& partition_array = model->GetArray(gather_ops[0]->inputs[0]);
   const auto& partition_array_dims = partition_array.shape().dims();
+  gather_params_permute_op->input_rank =
+      partition_array.shape().dimensions_count();
   auto& perm_array =
       model->GetOrCreateArray(gather_params_permute_op->inputs[1]);
   perm_array.data_type = ArrayDataType::kInt32;
@@ -209,6 +211,7 @@ bool UnpartitionEmbeddingLookup::Run(Model* model, std::size_t op_index) {
   merged_gather_op->inputs = {gather_params_permute_op->outputs[0],
                               mod_op->inputs[0]};
   merged_gather_op->outputs = {stitch_op->outputs[0]};
+  merged_gather_op->input_rank = partition_array.shape().dimensions_count();
   model->operators.emplace(op_it, merged_gather_op);
 
   AddMessageF(

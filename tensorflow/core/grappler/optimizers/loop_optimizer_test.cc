@@ -546,12 +546,17 @@ TEST_F(LoopOptimizerTest, NoOp) {
 
 namespace {
 NodeDef* AddNode(const string& name, const string& op,
-                 const std::vector<string>& inputs, GraphDef* graph) {
+                 const std::vector<string>& inputs,
+                 const std::vector<std::pair<string, AttrValue>>& attributes,
+                 GraphDef* graph) {
   NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op(op);
   for (const string& input : inputs) {
     node->add_input(input);
+  }
+  for (auto attr : attributes) {
+    (*node->mutable_attr())[attr.first] = attr.second;
   }
   return node;
 }
@@ -559,21 +564,30 @@ NodeDef* AddNode(const string& name, const string& op,
 
 TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   GrapplerItem item;
+  AttrValue frame_name;
+  frame_name.set_s("foo");
+  AttrValue type;
+  type.set_type(DT_RESOURCE);
   GraphDef& graph = item.graph;
+  AddNode("c", "Const", {}, {}, &graph);
   // Stack with corresponding push/pop.
-  AddNode("stack1", "StackV2", {}, &graph);
-  AddNode("push1", "StackPushV2", {"stack1"}, &graph);
-  AddNode("pop1", "StackPopV2", {"stack1"}, &graph);
+  AddNode("stack1", "StackV2", {}, {}, &graph);
+  AddNode("push1", "StackPushV2", {"stack1", "c"}, {}, &graph);
+  AddNode("pop1", "StackPopV2", {"stack1"}, {}, &graph);
+  AddNode("id1", "Identity", {"pop1"}, {}, &graph);
   // Stack with corresponding push/pop behind Enter.
-  AddNode("stack2", "StackV2", {}, &graph);
-  AddNode("push_enter", "Enter", {"stack1"}, &graph);
-  AddNode("push2", "StackPushV2", {"push_enter"}, &graph);
-  AddNode("pop_enter", "Enter", {"stack1"}, &graph);
-  AddNode("pop2", "StackPopV2", {"pop_enter"}, &graph);
+  AddNode("stack2", "StackV2", {}, {}, &graph);
+  AddNode("push_enter", "Enter", {"stack2"},
+          {{"T", type}, {"frame_name", frame_name}}, &graph);
+  AddNode("push2", "StackPushV2", {"push_enter", "c"}, {}, &graph);
+  AddNode("pop_enter", "Enter", {"stack2"},
+          {{"T", type}, {"frame_name", frame_name}}, &graph);
+  AddNode("pop2", "StackPopV2", {"pop_enter"}, {}, &graph);
+  AddNode("id2", "Identity", {"pop2"}, {}, &graph);
   // Stack with unexpected op type in fanout of Stack.
-  AddNode("stack3", "StackV2", {}, &graph);
-  AddNode("push3", "StackPushV2", {"stack3"}, &graph);
-  AddNode("stop", "StopGradient", {"stack3"}, &graph);
+  AddNode("stack3", "StackV2", {}, {}, &graph);
+  AddNode("push3", "StackPushV2", {"stack3", "c"}, {}, &graph);
+  AddNode("stop", "StopGradient", {"stack3"}, {}, &graph);
   LoopOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -584,23 +598,51 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
 TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   GrapplerItem item;
   GraphDef& graph = item.graph;
-  AddNode("stack1", "StackV2", {}, &graph);
-  AddNode("push1", "StackPushV2", {"stack1"}, &graph);
-  AddNode("stack2", "StackV2", {}, &graph);
-  AddNode("push_enter", "Enter", {"stack2"}, &graph);
-  AddNode("push2", "StackPushV2", {"push_enter"}, &graph);
+  AttrValue frame_name;
+  frame_name.set_s("foo");
+  AttrValue type;
+  type.set_type(DT_RESOURCE);
+  AddNode("c", "Const", {}, {}, &graph);
+  // Push without Pop.
+  AddNode("stack1", "StackV2", {}, {}, &graph);
+  AddNode("push1", "StackPushV2", {"stack1", "c"}, {}, &graph);
+  // Push without Pop behind Enter.
+  AddNode("stack2", "StackV2", {}, {}, &graph);
+  AddNode("push_enter", "Enter", {"stack2"},
+          {{"T", type}, {"frame_name", frame_name}}, &graph);
+  AddNode("push2", "StackPushV2", {"push_enter", "c"}, {}, &graph);
+  // Pop without consumer.
+  AddNode("stack3", "StackV2", {}, {}, &graph);
+  AddNode("push3", "StackPushV2", {"stack3", "c"}, {}, &graph);
+  AddNode("pop3", "StackPopV2", {"stack3"}, {}, &graph);
+
   LoopOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(3, output.node_size());
-  int found = 0;
+  EXPECT_EQ(9, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
-    if (output.node(i).name() == "stack1") ++found;
-    if (output.node(i).name() == "push_enter") ++found;
-    if (output.node(i).name() == "stack2") ++found;
+    const NodeDef& node = output.node(i);
+    if (node.name() == "push1") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("c", node.input(0));
+      EXPECT_EQ("^stack1", node.input(1));
+    } else if (node.name() == "push2") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("c", node.input(0));
+      EXPECT_EQ("^push_enter", node.input(1));
+    } else if (node.name() == "push3") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("c", node.input(0));
+      EXPECT_EQ("^stack3", node.input(1));
+    } else {
+      const NodeDef& orig_node = item.graph.node(i);
+      EXPECT_EQ(orig_node.ShortDebugString(), node.ShortDebugString());
+    }
   }
-  EXPECT_EQ(3, found);
 }
 
 }  // namespace

@@ -35,8 +35,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct StringPieceHasher;
-
 class StringPiece {
  public:
   typedef size_t size_type;
@@ -67,7 +65,7 @@ class StringPiece {
   iterator begin() const { return data_; }
   iterator end() const { return data_ + size_; }
 
-  static const size_t npos;
+  static const size_t npos = size_type(-1);
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
@@ -129,10 +127,6 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
-};
-
-struct StringPieceHasher {
-  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {

@@ -1048,7 +1048,10 @@ def set_tf_tensorrt_install_path(environ_cp):
 
     for lib_file in possible_files:
       if is_compatible(lib_file, cuda_ver, cudnn_ver):
-        ver_str = nvinfer_pattern.search(lib_file).group(1)
+        matches = nvinfer_pattern.search(lib_file)
+        if len(matches.groups()) == 0:
+          continue
+        ver_str = matches.group(1)
         ver = convert_version_to_int(ver_str) if len(ver_str) else 0
         if ver > highest_ver[0]:
           highest_ver = [ver, ver_str, lib_file]
@@ -1377,7 +1380,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.5.4')
+  check_bazel_version('0.10.0')
 
   reset_tf_configure_bazelrc(args.workspace)
   cleanup_makefile()

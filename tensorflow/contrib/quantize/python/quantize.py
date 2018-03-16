@@ -35,8 +35,7 @@ _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
 _ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
 
 # Weight types that are supported by the quantization rewrite.
-# TODO(suharshs): Add support for ResourceVariable.
-_WEIGHT_TYPES = {'Variable', 'VariableV2'}
+_WEIGHT_TYPES = {'Variable', 'VariableV2', 'VarHandleOp'}
 
 
 def Quantize(graph,
@@ -137,7 +136,7 @@ def _FindLayersToQuantize(graph):
   input_pattern = graph_matcher.OpTypePattern('*')
   weight_var_pattern = graph_matcher.OpTypePattern('|'.join(_WEIGHT_TYPES))
   weight_pattern = graph_matcher.OpTypePattern(
-      'Identity', inputs=[weight_var_pattern])
+      'Identity|ReadVariableOp', inputs=[weight_var_pattern])
 
   folded_weight_pattern = graph_matcher.OpTypePattern('Mul')
 
@@ -268,7 +267,7 @@ def _InsertQuantOp(context,
   """Inserts a quant op between a producer op and (multiple) consumer ops.
 
   Args:
-    context: Context w,here producer and consumer operations are nested.
+    context: Context where producer and consumer operations are nested.
     name: Name for the new quantization op within the context.
     producer: Producer operation of the pairs where quantization will be
       inserted.

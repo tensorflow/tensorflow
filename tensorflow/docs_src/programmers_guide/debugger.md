@@ -23,8 +23,13 @@ debuggers such as Python's `pdb` due to TensorFlow's computation-graph paradigm.
 > installed using `pip install <your_version>.whl`, however curses on Windows
 > may not work as reliably as curses on Linux or Mac.
 
-This tutorial demonstrates how to use the **tfdbg** command-line interface
-(CLI) to debug the appearance of [`nan`s](https://en.wikipedia.org/wiki/NaN)
+> NOTE: This guide focuses on the command-line interface (CLI) of tfdbg. For
+> guide on how to use the graphical user interface (GUI) of tfdbg, i.e., the
+> **TensorBoard Debugger Plugin**, please visit
+> [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).
+
+This tutorial demonstrates how to use the **tfdbg** CLI to debug the appearance
+of [`nan`s](https://en.wikipedia.org/wiki/NaN)
 and [`inf`s](https://en.wikipedia.org/wiki/Infinity), a frequently-encountered
 type of bug in TensorFlow model development.
 The following example is for users who use the low-level
@@ -454,7 +459,7 @@ accuracy_score = classifier.evaluate(x=test_set.data,
 
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on {$tflearn$tf-learn's iris tutorial}, contains a full example of how to
+based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.2/get_started/tflearn), contains a full example of how to
 use the tfdbg with `Estimator`s. To run this example, do:
 
 ```none
@@ -748,6 +753,7 @@ There are three possible workarounds or solutions:
    # For LocalCLIDebugHook
    hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
    ```
+
    Make sure that the directory pointed to by dump_root is empty or nonexistent.
    tfdbg cleans up the dump directories before exiting.
 *  Reduce the batch size used during the runs.
@@ -806,3 +812,13 @@ sess.run(b)
 
 the constant-folding would not occur and `tfdbg` should show the intermediate
 tensor dumps.
+
+**Q**: Is there a GUI for tfdbg?
+
+**A**: Yes, the **TensorBoard Debugger Plugin** is the GUI of tfdbg.
+       It offers features such as inspection of the computation graph,
+       real-time visualization of tensor values, continuation to tensor
+       and conditional breakpoints, and tying tensors to their
+       graph-construction source code, all in the browser environment.
+       To get started, please visit
+       [its README](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/plugins/debugger/README.md).

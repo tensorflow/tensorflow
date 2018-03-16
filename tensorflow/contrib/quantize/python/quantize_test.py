@@ -144,7 +144,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       stddev: Standard deviation of normal variable.
 
     Returns:
-      An initialized that initialzes with a truncated normal variable.
+      An initialized that initializes with a truncated normal variable.
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 

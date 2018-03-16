@@ -317,7 +317,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
 
   NOTE: This function consumes images, computes their logits, and then
   computes the classifier score. If you would like to precompute many logits for
-  large batches, use clasifier_score_from_logits(), which this method also
+  large batches, use classifier_score_from_logits(), which this method also
   uses.
 
   Args:
@@ -450,7 +450,7 @@ def frechet_classifier_distance(real_images,
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
   |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
@@ -463,7 +463,7 @@ def frechet_classifier_distance(real_images,
   Frechet distance is biased. It is more biased for small sample sizes. (e.g.
   even if the two distributions are the same, for a small sample size, the
   expected Frechet distance is large). It is important to use the same
-  sample size to compute frechet classifier distance when comparing two
+  sample size to compute Frechet classifier distance when comparing two
   generative models.
 
   NOTE: This function consumes images, computes their activations, and then
@@ -523,7 +523,7 @@ def frechet_classifier_distance_from_activations(
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
   |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 

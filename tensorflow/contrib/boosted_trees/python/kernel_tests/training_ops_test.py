@@ -1588,7 +1588,7 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           2, tree_ensemble_config.tree_metadata[2].num_tree_weight_updates)
 
-  def testGrowExistingEnsembleTreeWithFeatureSelectionCanStillGrow(self):
+  def testGrowExistingEnsembleTreeWithFeatureSelectionUsedHandlers(self):
     """Test growing a tree with feature selection."""
     with self.test_session() as session:
       # Create existing ensemble with one root split and one bias tree.
@@ -1649,7 +1649,6 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           num_trees_attempted: 2
           num_layers_attempted: 2
           used_handler_ids: 2
-          used_handler_ids: 5
         }
       """, tree_ensemble_config)
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1668,9 +1667,8 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
           growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
-      # There are 2 handler_ids in used_handler_ids already but one of them
-      # is handler 2, so we can still grow trees.
-      learner_config.constraints.max_number_of_unique_feature_columns = 2
+
+      learner_config.constraints.max_number_of_unique_feature_columns = 3
       learner_config = learner_config.SerializeToString()
       # Prepare handler inputs.
       handler1_partitions = np.array([0], dtype=np.int32)
@@ -1699,189 +1697,13 @@ class GrowTreeEnsembleOpTest(test_util.TensorFlowTestCase):
           center_bias=True)
       session.run(grow_op)
 
-      # Expect a new tree to be added with the split from handler 1.
       _, serialized = session.run(
           model_ops.tree_ensemble_serialize(tree_ensemble_handle))
       tree_ensemble_config.ParseFromString(serialized)
       self.assertEqual(3, len(tree_ensemble_config.trees))
-      self.assertEqual(
-          2, len(tree_ensemble_config.growing_metadata.used_handler_ids))
-
-  def testGrowExistingEnsembleTreeWithFeatureSelectionEmptyEnsemble(self):
-    """Test growing a tree with feature selection with empty ensemble."""
-    with self.test_session() as session:
-      # Create existing ensemble with one root split and one bias tree.
-      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
-      tree_ensemble_handle = model_ops.tree_ensemble_variable(
-          stamp_token=0,
-          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
-          name="tree_ensemble")
-      resources.initialize_resources(resources.shared_resources()).run()
-
-      # Prepare learner config.
-      learner_config = _gen_learner_config(
-          num_classes=2,
-          l1_reg=0,
-          l2_reg=0,
-          tree_complexity=0,
-          max_depth=1,
-          min_node_weight=0,
-          pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
-      learner_config.constraints.max_number_of_unique_feature_columns = 2
-      learner_config = learner_config.SerializeToString()
-      # Prepare handler inputs.
-      handler1_partitions = np.array([0], dtype=np.int32)
-      handler1_gains = np.array([7.62], dtype=np.float32)
-      handler1_split = [_gen_dense_split_info(5, 0.52, -4.375, 7.143)]
-      handler2_partitions = np.array([0], dtype=np.int32)
-      handler2_gains = np.array([0.63], dtype=np.float32)
-      handler2_split = [_gen_dense_split_info(2, 0.23, -0.6, 0.24)]
-      handler3_partitions = np.array([0], dtype=np.int32)
-      handler3_gains = np.array([7.62], dtype=np.float32)
-      handler3_split = [_gen_categorical_split_info(8, 7, -4.375, 7.143)]
-
-      # Grow tree ensemble.
-      grow_op = training_ops.grow_tree_ensemble(
-          tree_ensemble_handle,
-          stamp_token=0,
-          next_stamp_token=1,
-          learning_rate=1,
-          partition_ids=[
-              handler1_partitions, handler2_partitions, handler3_partitions
-          ],
-          gains=[handler1_gains, handler2_gains, handler3_gains],
-          splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
-          dropout_seed=123,
-          center_bias=True)
-      session.run(grow_op)
-
-      _, serialized = session.run(
-          model_ops.tree_ensemble_serialize(tree_ensemble_handle))
-      tree_ensemble_config.ParseFromString(serialized)
-      self.assertEqual(1, len(tree_ensemble_config.trees))
-      self.assertEqual(
-          1, len(tree_ensemble_config.growing_metadata.used_handler_ids))
-
-  def testGrowExistingEnsembleTreeWithFeatureSelectionCantGrow(self):
-    """Test growing a tree with feature selection with empty ensemble."""
-    with self.test_session() as session:
-      # Create existing ensemble with one root split and one bias tree.
-      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
-      text_format.Merge("""
-        trees {
-          nodes {
-            leaf {
-              vector {
-                value: -0.32
-                value: 0.28
-              }
-            }
-          }
-        }
-        trees {
-          nodes {
-            categorical_id_binary_split {
-              feature_column: 3
-              feature_id: 7
-              left_id: 1
-              right_id: 2
-            }
-            node_metadata {
-              gain: 1.3
-            }
-          }
-          nodes {
-            leaf {
-              sparse_vector {
-                index: 0
-                value: 2.3
-              }
-            }
-          }
-          nodes {
-            leaf {
-              sparse_vector {
-                index: 0
-                value: -0.9
-              }
-            }
-          }
-        }
-        tree_weights: 0.7
-        tree_weights: 1
-        tree_metadata {
-          num_tree_weight_updates: 1
-          num_layers_grown: 1
-          is_finalized: true
-        }
-        tree_metadata {
-          num_tree_weight_updates: 5
-          num_layers_grown: 1
-          is_finalized: true
-        }
-        growing_metadata {
-          num_trees_attempted: 2
-          num_layers_attempted: 2
-          used_handler_ids: 4
-          used_handler_ids: 5
-        }
-      """, tree_ensemble_config)
-      tree_ensemble_handle = model_ops.tree_ensemble_variable(
-          stamp_token=0,
-          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
-          name="tree_ensemble")
-      resources.initialize_resources(resources.shared_resources()).run()
-
-      # Prepare learner config.
-      learner_config = _gen_learner_config(
-          num_classes=2,
-          l1_reg=0,
-          l2_reg=0,
-          tree_complexity=0,
-          max_depth=1,
-          min_node_weight=0,
-          pruning_mode=learner_pb2.LearnerConfig.PRE_PRUNE,
-          growing_mode=learner_pb2.LearnerConfig.WHOLE_TREE)
-      learner_config.constraints.max_number_of_unique_feature_columns = 2
-      learner_config = learner_config.SerializeToString()
-      # Prepare handler inputs.
-      handler1_partitions = np.array([0], dtype=np.int32)
-      handler1_gains = np.array([7.62], dtype=np.float32)
-      handler1_split = [_gen_dense_split_info(5, 0.52, -4.375, 7.143)]
-      handler2_partitions = np.array([0], dtype=np.int32)
-      handler2_gains = np.array([0.63], dtype=np.float32)
-      handler2_split = [_gen_dense_split_info(2, 0.23, -0.6, 0.24)]
-      handler3_partitions = np.array([0], dtype=np.int32)
-      handler3_gains = np.array([7.62], dtype=np.float32)
-      handler3_split = [_gen_categorical_split_info(8, 7, -4.375, 7.143)]
-
-      # Grow tree ensemble.
-      grow_op = training_ops.grow_tree_ensemble(
-          tree_ensemble_handle,
-          stamp_token=0,
-          next_stamp_token=1,
-          learning_rate=1,
-          partition_ids=[
-              handler1_partitions, handler2_partitions, handler3_partitions
-          ],
-          gains=[handler1_gains, handler2_gains, handler3_gains],
-          splits=[handler1_split, handler2_split, handler3_split],
-          learner_config=learner_config,
-          dropout_seed=123,
-          center_bias=True)
-      session.run(grow_op)
-
-      _, serialized = session.run(
-          model_ops.tree_ensemble_serialize(tree_ensemble_handle))
-      tree_ensemble_config.ParseFromString(serialized)
-      # We can't grow a tree since we have reached the limit of 2 unique
-      # features [4, 5] and the only available splits are from
-      # handlers [0, 1, 2].
-      self.assertEqual(2, len(tree_ensemble_config.trees))
-      self.assertEqual(
-          2, len(tree_ensemble_config.growing_metadata.used_handler_ids))
+      # 2 was already used. handler 0 is being added in this tree.
+      self.assertAllEqual(
+          [0, 2], tree_ensemble_config.growing_metadata.used_handler_ids)
 
 
 if __name__ == "__main__":

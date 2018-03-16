@@ -41,6 +41,16 @@ void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
 // error. The default is true.
 void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 
+// Extends `session` with any new operations added to its associated graph.
+// Usually this happens automatically in TF_SessionRun. After this is called,
+// TF_SessionRun will no longer extend the session on every call.
+//
+// We expose this here to allow fine-grained synchronization in multi-threaded
+// workloads, which is required since the Python implementation depends on the
+// above mutation methods. This allows us to prevent modifications to nodes in
+// the graph after the session has been made aware of them.
+void ExtendSession(TF_Session* session, TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

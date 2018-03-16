@@ -12,6 +12,8 @@ load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compil
 load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
+     "def_file_filter_configure")
 
 def _extract_version_number(bazel_version):
   """Extracts the semantic version number from a version string
@@ -67,13 +69,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  check_bazel_version_at_least("0.5.4")
+  check_bazel_version_at_least("0.10.0")
   clang6_configure(name="local_config_clang6")
   cuda_configure(name="local_config_cuda")
   tensorrt_configure(name="local_config_tensorrt")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  # For windows bazel build
+  # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
+  def_file_filter_configure(name = "local_config_def_file_filter")
 
   # Point //external/local_config_arm_compiler to //external/arm_compiler
   arm_compiler_configure(
@@ -475,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9a6e78e4adc959d2825f7af35b4ed0e09394d840.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/9a6e78e4adc959d2825f7af35b4ed0e09394d840.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
       ],
-      sha256 = "7990b4d446de971e0acc481942920452a182d2f87a8164bdc117fd9b9ace591d",
-      strip_prefix = "llvm-9a6e78e4adc959d2825f7af35b4ed0e09394d840",
+      sha256 = "4442ed6a05c13752338036b1b9f16b09264de24b6c0bf62325fb9ff75a09340f",
+      strip_prefix = "llvm-738ee045416377e8c2094f7f61508ac1c178ff37",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -643,11 +649,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   java_import_external(
-      name = "javax_validation",
-      jar_sha256 = "e459f313ebc6db2483f8ceaad39af07086361b474fa92e40f442e8de5d9895dc",
+      name = "org_checkerframework_qual",
+      jar_sha256 = "a17501717ef7c8dda4dba73ded50c0d7cde440fd721acfeacbf19786ceac1ed6",
       jar_urls = [
-          "http://mirror.bazel.build/repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
-          "http://repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+          "http://mirror.bazel.build/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
+          "http://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
       ],
       licenses = ["notice"],  # Apache 2.0
   )
@@ -695,16 +701,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
       sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
   )
-
-  tf_http_archive(
-      name = "rbe_integration_test",
-      urls = [
-          "http://mirror.bazel.build/github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-          "https://github.com/google/rbe-integration-test/archive/78a6194c7dda200b9522cf07707e3bc695804d1e.tar.gz",
-      ],
-      sha256 = "66d93b3919a165d486c31f5290d312abe9fda2685242f812c110653c124e1db4",
-      strip_prefix = "rbe-integration-test-78a6194c7dda200b9522cf07707e3bc695804d1e",
-   )
 
   tf_http_archive(
       name = "arm_neon_2_x86_sse",

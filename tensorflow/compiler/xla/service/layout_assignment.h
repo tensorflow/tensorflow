@@ -403,7 +403,6 @@ class LayoutAssignment : public HloPassInterface {
   Status CheckLayouts(HloModule* module);
 
   ComputationLayout* entry_computation_layout_;
-  ChannelLayoutConstraints* channel_layout_constraints_;
 
  protected:
   // Map containing the layouts of all computations assigned so
@@ -411,6 +410,7 @@ class LayoutAssignment : public HloPassInterface {
   // handled before their caller instructions so the layouts of caller
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
+  ChannelLayoutConstraints* channel_layout_constraints_;
 };
 
 }  // namespace xla

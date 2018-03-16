@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 
 namespace tensorflow {
@@ -53,13 +54,17 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   AttrValue::ListValue* type_list =
       (*func_inputs->mutable_attr())["T"].mutable_list();
   for (const OpDef::ArgDef& arg : func.signature().input_arg()) {
-    auto it = attr.find(arg.type_attr());
-    if (it == attr.end()) {
-      return errors::InvalidArgument("Invalid input argument ", arg.name(),
-                                     " for function ", node.op(),
-                                     " instantiated by ", node.name());
+    if (arg.type() != DT_INVALID) {
+      type_list->add_type(arg.type());
+    } else {
+      auto it = attr.find(arg.type_attr());
+      if (it == attr.end()) {
+        return errors::InvalidArgument("Invalid input argument ", arg.name(),
+                                       " for function ", node.op(),
+                                       " instantiated by ", node.name());
+      }
+      type_list->add_type(it->second.type());
     }
-    type_list->add_type(it->second.type());
   }
 
   for (NodeDef& func_body_node : *item->graph.mutable_node()) {
@@ -73,9 +78,15 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
       func_body_node.add_input(
           strings::StrCat(func_inputs->name(), ":", input_id));
     } else {
-      // Update the input names.
+      // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
-        input = strings::StrCat(node.name(), "/", input);
+        input = AddPrefixToNodeName(input, node.name());
+      }
+      // If the node has no input, make hook it up to the func_inputs node to
+      // ensure it runs in the same frame as the other nodes of the function
+      // body.
+      if (func_body_node.input_size() == 0) {
+        *func_body_node.add_input() = AsControlDependency(func_inputs->name());
       }
     }
 
@@ -97,15 +108,21 @@ Status InlineFunction(const NodeDef& node, const FunctionDef& func,
   func_outputs->set_op("IdentityN");
   func_outputs->set_device(node.device());
   type_list = (*func_outputs->mutable_attr())["T"].mutable_list();
-  for (const OpDef::ArgDef& arg : func.signature().output_arg()) {
-    auto it = attr.find(arg.type_attr());
-    if (it == attr.end()) {
-      return errors::InvalidArgument("Invalid output argument ", arg.name(),
-                                     " for function ", node.op(),
-                                     " instantiated by ", node.name());
+  for (int i = 0; i < func.signature().output_arg_size(); ++i) {
+    const OpDef::ArgDef& arg = func.signature().output_arg(i);
+    if (arg.type() != DT_INVALID) {
+      type_list->add_type(arg.type());
+    } else {
+      auto it = attr.find(arg.type_attr());
+      if (it == attr.end()) {
+        return errors::InvalidArgument("Invalid output argument ", arg.name(),
+                                       " for function ", node.op(),
+                                       " instantiated by ", node.name());
+      }
+      type_list->add_type(it->second.type());
     }
-    type_list->add_type(it->second.type());
-    func_outputs->add_input(strings::StrCat(node.name(), "/", arg.name()));
+    // Use the fetch names since they take into account the output mapping.
+    func_outputs->add_input(strings::StrCat(node.name(), "/", item->fetch[i]));
   }
 
   return Status::OK();
@@ -115,9 +132,22 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   std::unordered_map<string, const FunctionDef*> functions;
   for (const FunctionDef& func : item.graph.library().function()) {
-    if (func.attr().count("_noinline") == 0) {
-      functions[func.signature().name()] = &func;
+    // Don't inline functions marked as noinline
+    if (func.attr().count("_noinline") != 0) {
+      continue;
     }
+    // Don't touch anything marked XLA to prevent XLA failures further down the
+    // road.
+    if (func.attr().count("_XlaCompile") != 0) {
+      continue;
+    }
+    // Can't create IdentityN nodes with no input or output: skip these
+    // functions for now.
+    if (func.signature().input_arg_size() == 0 ||
+        func.signature().output_arg_size() == 0) {
+      continue;
+    }
+    functions[func.signature().name()] = &func;
   }
 
   // Nothing to do.

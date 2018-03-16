@@ -1220,19 +1220,12 @@ class BaseSession(SessionInterface):
           compat.as_bytes(options.SerializeToString())) if options else None
       run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
       try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._created_with_new_api:
-            results = tf_session.TF_SessionRun_wrapper(
-                self._session, options_ptr, {}, fetch_list, target_list,
-                run_metadata_ptr, status)
-          else:
-            results = tf_session.TF_Run(self._session, options_ptr, {},
-                                        fetch_list, target_list, status,
-                                        run_metadata_ptr)
-          if fetch_handler:
-            results = fetch_handler.build_results(self, results)
-          else:
-            results = results[0] if results else None
+        results = self._call_tf_sessionrun(
+            options_ptr, {}, fetch_list, target_list, run_metadata_ptr)
+        if fetch_handler:
+          results = fetch_handler.build_results(self, results)
+        else:
+          results = results[0] if results else None
         if run_metadata:
           proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
           run_metadata.ParseFromString(compat.as_bytes(proto_data))
@@ -1253,13 +1246,7 @@ class BaseSession(SessionInterface):
       assert len(target_list) == 1
 
       def _single_operation_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._created_with_new_api:
-            tf_session.TF_SessionRun_wrapper(self._session, None, {}, [],
-                                             target_list, None, status)
-          else:
-            tf_session.TF_Run(self._session, None, {}, [], target_list, status,
-                              None)
+        self._call_tf_sessionrun(None, {}, [], target_list, None)
 
       return _single_operation_run
     elif isinstance(fetches, ops.Tensor):
@@ -1269,13 +1256,7 @@ class BaseSession(SessionInterface):
       assert not target_list
 
       def _single_tensor_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._created_with_new_api:
-            results = tf_session.TF_SessionRun_wrapper(
-                self._session, None, {}, fetch_list, [], None, status)
-          else:
-            results = tf_session.TF_Run(self._session, None, {}, fetch_list, [],
-                                        status, None)
+        results = self._call_tf_sessionrun(None, {}, fetch_list, [], None)
         return results[0]
 
       return _single_tensor_run
@@ -1283,13 +1264,8 @@ class BaseSession(SessionInterface):
       # In all other cases, we must use `fetch_handler` to build the
       # results for us.
       def _fetch_handler_run():
-        with errors.raise_exception_on_not_ok_status() as status:
-          if self._created_with_new_api:
-            results = tf_session.TF_SessionRun_wrapper(
-                self._session, None, {}, fetch_list, target_list, None, status)
-          else:
-            results = tf_session.TF_Run(self._session, None, {}, fetch_list,
-                                        target_list, status, None)
+        results = self._call_tf_sessionrun(
+            None, {}, fetch_list, target_list, None)
         return fetch_handler.build_results(self, results)
 
       return _fetch_handler_run
@@ -1329,35 +1305,22 @@ class BaseSession(SessionInterface):
       fetches = _name_list(fetch_list)
       targets = _name_list(target_list)
 
-    def _run_fn(session, feed_dict, fetch_list, target_list, options,
-                run_metadata):
+    def _run_fn(feed_dict, fetch_list, target_list, options, run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
       self._extend_graph()
-      with errors.raise_exception_on_not_ok_status() as status:
-        if self._created_with_new_api:
-          return tf_session.TF_SessionRun_wrapper(session, options, feed_dict,
-                                                  fetch_list, target_list,
-                                                  run_metadata, status)
-        else:
-          return tf_session.TF_Run(session, options, feed_dict, fetch_list,
-                                   target_list, status, run_metadata)
+      return self._call_tf_sessionrun(
+          options, feed_dict, fetch_list, target_list, run_metadata)
 
-    def _prun_fn(session, handle, feed_dict, fetch_list):
+    def _prun_fn(handle, feed_dict, fetch_list):
       if target_list:
         raise RuntimeError('partial_run() requires empty target_list.')
-      with errors.raise_exception_on_not_ok_status() as status:
-        if self._created_with_new_api:
-          return tf_session.TF_SessionPRun_wrapper(session, handle, feed_dict,
-                                                   fetch_list, status)
-        else:
-          return tf_session.TF_PRun(session, handle, feed_dict, fetch_list,
-                                    status)
+      return self._call_tf_sessionprun(handle, feed_dict, fetch_list)
 
     if handle is None:
-      return self._do_call(_run_fn, self._session, feeds, fetches, targets,
-                           options, run_metadata)
+      return self._do_call(_run_fn, feeds, fetches, targets, options,
+                           run_metadata)
     else:
-      return self._do_call(_prun_fn, self._session, handle, feeds, fetches)
+      return self._do_call(_prun_fn, handle, feeds, fetches)
 
   def _do_call(self, fn, *args):
     try:
@@ -1377,23 +1340,23 @@ class BaseSession(SessionInterface):
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
-    # Nothing to do if we're using the new session interface
-    # TODO(skyewm): remove this function altogether eventually
     if self._created_with_new_api:
-      return
-
-    # Ensure any changes to the graph are reflected in the runtime.
-    with self._extend_lock:
-      if self._graph.version > self._current_version:
-        # pylint: disable=protected-access
-        graph_def, self._current_version = self._graph._as_graph_def(
-            from_version=self._current_version, add_shapes=self._add_shapes)
-        # pylint: enable=protected-access
-
+      with self._graph._lock:  # pylint: disable=protected-access
         with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_ExtendGraph(self._session,
-                                    graph_def.SerializeToString(), status)
-        self._opened = True
+          tf_session.ExtendSession(self._session, status)
+    else:
+      # Ensure any changes to the graph are reflected in the runtime.
+      with self._extend_lock:
+        if self._graph.version > self._current_version:
+          # pylint: disable=protected-access
+          graph_def, self._current_version = self._graph._as_graph_def(
+              from_version=self._current_version, add_shapes=self._add_shapes)
+          # pylint: enable=protected-access
+
+          with errors.raise_exception_on_not_ok_status() as status:
+            tf_session.TF_ExtendGraph(self._session,
+                                      graph_def.SerializeToString(), status)
+          self._opened = True
 
   # The threshold to run garbage collection to delete dead tensors.
   _DEAD_HANDLES_THRESHOLD = 10
@@ -1443,6 +1406,27 @@ class BaseSession(SessionInterface):
         feed_tensor = feed_map[feed_name][0]
         feed_dict[feed_tensor] = np_val
       return handles
+
+  def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
+                          run_metadata):
+    with errors.raise_exception_on_not_ok_status() as status:
+      if self._created_with_new_api:
+        return tf_session.TF_SessionRun_wrapper(
+            self._session, options, feed_dict, fetch_list, target_list,
+            run_metadata, status)
+      else:
+        return tf_session.TF_Run(
+            self._session, options, feed_dict, fetch_list, target_list,
+            status, run_metadata)
+
+  def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
+    with errors.raise_exception_on_not_ok_status() as status:
+      if self._created_with_new_api:
+        return tf_session.TF_SessionPRun_wrapper(
+            self._session, handle, feed_dict, fetch_list, status)
+      else:
+        return tf_session.TF_PRun(
+            self._session, handle, feed_dict, fetch_list, status)
 
 
 @tf_export('Session')

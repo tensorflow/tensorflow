@@ -44,7 +44,7 @@ class PrivateThreadPool(object):
 
   def __init__(self, num_threads, display_name=None):
     """Creates a `PrivateThreadPool` with the given number of threads."""
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       shared_name = _generate_shared_name("privatethreadpool")
       self._resource = gen_dataset_ops.thread_pool_handle(
           num_threads=num_threads,

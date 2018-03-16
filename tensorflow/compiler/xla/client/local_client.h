@@ -69,7 +69,7 @@ class LocalExecutable {
   // of the computation.
   tensorflow::Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options, const Backend& backend);
+      const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.

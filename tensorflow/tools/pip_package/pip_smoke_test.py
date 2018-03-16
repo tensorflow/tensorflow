@@ -58,6 +58,10 @@ BLACKLIST = [
     # contrib
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
+    "//tensorflow/contrib/lite/python:interpreter",
+    "//tensorflow/contrib/lite/python:interpreter_test",
+    "//tensorflow/contrib/lite/python:interpreter.py",
+    "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",

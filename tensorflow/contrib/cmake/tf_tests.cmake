@@ -222,6 +222,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
       # TFDBG grpc:// mode is not yet available on Windows.
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/grpc_large_data_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/source_remote_test.py"
       # stl on windows handles overflows different
@@ -473,6 +474,10 @@ if (tensorflow_BUILD_CC_TESTS)
   file(GLOB tf_core_profiler_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*_test.cc"
+  )
+
+  list(REMOVE_ITEM tf_test_src_simple
+    ${tf_core_profiler_test_srcs}
   )
 
   set(tf_test_lib tf_test_lib)

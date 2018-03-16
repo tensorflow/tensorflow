@@ -70,3 +70,8 @@ def delanno(node, key, field_name='___pyct_anno'):
   if not annotations:
     delattr(node, field_name)
     node._fields = tuple(f for f in node._fields if f != field_name)
+
+
+def copyanno(from_node, to_node, key, field_name='___pyct_anno'):
+  if hasanno(from_node, key, field_name):
+    setanno(to_node, key, getanno(from_node, key, field_name), field_name)

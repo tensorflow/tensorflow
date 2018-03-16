@@ -398,12 +398,12 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
 void SimpleGraphView::DepthFirstSearch(
     const std::unordered_set<string>& op_types_to_traverse, int node_idx,
     std::set<int>* nodes_found) const {
-  const NodeDef& node = graph_->node(node_idx);
-  if (op_types_to_traverse.find(node.op()) == op_types_to_traverse.end()) {
-    nodes_found->insert(node_idx);
+  if (nodes_found->find(node_idx) != nodes_found->end()) {
     return;
   }
-  if (nodes_found->find(node_idx) != nodes_found->end()) {
+  nodes_found->insert(node_idx);
+  const string& op_type = graph_->node(node_idx).op();
+  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
   for (auto output_idx : this->outputs(node_idx)) {

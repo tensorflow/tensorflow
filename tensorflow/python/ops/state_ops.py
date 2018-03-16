@@ -186,7 +186,7 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if context.in_eager_mode() or ref.op.type == "VarHandleOp":
+  if context.executing_eagerly() or ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
 

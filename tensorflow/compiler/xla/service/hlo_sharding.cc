@@ -348,4 +348,30 @@ OpSharding HloSharding::ToProto() const {
   return result;
 }
 
+HloSharding HloSharding::TransformShardedTileShape(
+    const Shape& new_shape,
+    const std::function<int64(int64, int64)>& transform) const {
+  CHECK(!IsTuple());
+  if (IsTileMaximal()) {
+    return *this;
+  }
+  CHECK_EQ(ShapeUtil::Rank(new_shape), ShapeUtil::Rank(tile_shape()));
+  Shape new_tile_shape;
+  new_tile_shape.set_element_type(tile_shape().element_type());
+  for (int64 i = 0; i < ShapeUtil::Rank(new_shape); ++i) {
+    int64 dim;
+    if (tile_assignment().dim(i) == 1) {
+      dim = new_shape.dimensions(i);
+    } else if (transform) {
+      dim = transform(i, tile_shape().dimensions(i));
+    } else {
+      dim = tile_shape().dimensions(i);
+    }
+    new_tile_shape.add_dimensions(dim);
+  }
+  TF_CHECK_OK(
+      LayoutUtil::CopyLayoutBetweenShapes(tile_shape_, &new_tile_shape));
+  return HloSharding::Tile(new_tile_shape, tile_assignment());
+}
+
 }  // namespace xla

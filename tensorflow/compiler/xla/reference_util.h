@@ -199,9 +199,10 @@ class ReferenceUtil {
       const tensorflow::gtl::ArraySlice<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
-  static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
-      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& stride,
+      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+  static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
+      const Array2D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride,
@@ -227,6 +228,7 @@ class ReferenceUtil {
 
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
+  // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,

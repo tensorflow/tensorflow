@@ -18,11 +18,11 @@ The `tf.data` API introduces two new abstractions to TensorFlow:
   tensors representing the image data and a label. There are two distinct
   ways to create a dataset:
 
-  * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
+    * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
     dataset from
     one or more `tf.Tensor` objects.
 
-  * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
+    * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
     from one or more `tf.data.Dataset` objects.
 
 * A `tf.data.Iterator` provides the main way to extract elements from a
