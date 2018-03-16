@@ -216,7 +216,7 @@ def _partitioned_variable_assign(partitioned_var, new_value):
   """Assign op for partitioned variables.
 
   Args:
-    partitioned_var: A partitioned tensotflow variable
+    partitioned_var: A partitioned tensorflow variable
     new_value: Value to be assigned to the variable var
 
   Returns:
