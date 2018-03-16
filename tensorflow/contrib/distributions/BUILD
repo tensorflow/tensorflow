@@ -454,7 +454,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 cuda_py_test(
@@ -1144,7 +1143,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 cuda_py_test(
