@@ -281,6 +281,14 @@ class CrfTest(test.TestCase):
         self.assertEqual(list(tf_actual_max_sequence[:sequence_lengths]),
                          expected_max_sequence[:sequence_lengths])
 
+  def testCrfDecodeZeroSeqLength(self):
+    with self.test_session() as sess:
+      inputs = constant_op.constant(np.zeros([2, 10, 5], dtype=np.float32))
+      transition_params = constant_op.constant(np.zeros([5, 5], dtype=np.float32))
+      sequence_lengths = constant_op.constant(np.zeros([2], dtype=np.int32))
+      values = crf.crf_decode(inputs, transition_params, sequence_lengths)
+
+      sess.run(values)
 
 if __name__ == "__main__":
   test.main()
