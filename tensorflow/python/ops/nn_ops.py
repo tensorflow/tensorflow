@@ -2391,13 +2391,15 @@ def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefine
     "`NHWC` for data_format is deprecated, use `NWC` instead",
     warn_once=True,
     data_format="NHWC")
-def conv1d(value,
-           filters,
-           stride,
-           padding,
+def conv1d(input=None,
+           filter=None,
+           stride=None,
+           padding=None,
            use_cudnn_on_gpu=None,
            data_format=None,
-           name=None):
+           name=None,
+           value=None,
+           filters=None):
   r"""Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
@@ -2423,8 +2425,8 @@ def conv1d(value,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
-    filters: A 3D `Tensor`.  Must have the same type as `value`.
+    input: A 3D `Tensor`.  Must be of type `float16` or `float32`.
+    filter: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
@@ -2434,6 +2436,8 @@ def conv1d(value,
       [batch, in_width, in_channels].  The `"NCW"` format stores
       data as [batch, in_channels, in_width].
     name: A name for the operation (optional).
+    value: Deprecated alias for `input`.
+    filters: Deprecated alias for `filter`.
 
   Returns:
     A `Tensor`.  Has the same type as input.
@@ -2441,7 +2445,11 @@ def conv1d(value,
   Raises:
     ValueError: if `data_format` is invalid.
   """
-  with ops.name_scope(name, "conv1d", [value, filters]) as name:
+  input = deprecation.deprecated_argument_lookup("input", input,
+                                                 "value", value)
+  filter = deprecation.deprecated_argument_lookup("filter", filter,
+                                                  "filters", filters)
+  with ops.name_scope(name, "conv1d", [input, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
@@ -2453,11 +2461,11 @@ def conv1d(value,
       strides = [1, 1, 1, stride]
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
-    value = array_ops.expand_dims(value, spatial_start_dim)
-    filters = array_ops.expand_dims(filters, 0)
+    input = array_ops.expand_dims(input, spatial_start_dim)
+    filter = array_ops.expand_dims(filter, 0)
     result = gen_nn_ops.conv2d(
-        value,
-        filters,
+        input,
+        filter,
         strides,
         padding,
         use_cudnn_on_gpu=use_cudnn_on_gpu,
