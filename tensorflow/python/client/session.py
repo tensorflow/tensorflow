@@ -889,6 +889,8 @@ class BaseSession(SessionInterface):
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list, or a dictionary with the
       same keys as `fetches` if that is a dictionary (described above).
+      Order in which `fetches` operations are evaluated inside the call
+      is undefined.
 
     Raises:
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
