@@ -509,101 +509,6 @@ func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQua
 	return op.Output(0)
 }
 
-// Scatter `updates` into a new (initially zero) tensor according to `indices`.
-//
-// Creates a new tensor by applying sparse `updates` to individual
-// values or slices within a zero tensor of the given `shape` according to
-// indices.  This operator is the inverse of the @{tf.gather_nd} operator which
-// extracts values or slices from a given tensor.
-//
-// **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates.
-//
-// `indices` is an integer tensor containing indices into a new tensor of shape
-// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
-//
-//     indices.shape[-1] <= shape.rank
-//
-// The last dimension of `indices` corresponds to indices into elements
-// (if `indices.shape[-1] = shape.rank`) or slices
-// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-// `shape`.  `updates` is a tensor with shape
-//
-//     indices.shape[:-1] + shape[indices.shape[-1]:]
-//
-// The simplest form of scatter is to insert individual elements in a tensor by
-// index. For example, say we want to insert 4 scattered elements in a rank-1
-// tensor with 8 elements.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
-// </div>
-//
-// In Python, this scatter operation would look like this:
-//
-// ```python
-//     indices = tf.constant([[4], [3], [1], [7]])
-//     updates = tf.constant([9, 10, 11, 12])
-//     shape = tf.constant([8])
-//     scatter = tf.scatter_nd(indices, updates, shape)
-//     with tf.Session() as sess:
-//       print(sess.run(scatter))
-// ```
-//
-// The resulting tensor would look like this:
-//
-//     [0, 11, 0, 10, 9, 0, 0, 12]
-//
-// We can also, insert entire slices of a higher rank tensor all at once. For
-// example, if we wanted to insert two slices in the first dimension of a
-// rank-3 tensor with two matrices of new values.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
-// </div>
-//
-// In Python, this scatter operation would look like this:
-//
-// ```python
-//     indices = tf.constant([[0], [2]])
-//     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
-//                             [7, 7, 7, 7], [8, 8, 8, 8]],
-//                            [[5, 5, 5, 5], [6, 6, 6, 6],
-//                             [7, 7, 7, 7], [8, 8, 8, 8]]])
-//     shape = tf.constant([4, 4, 4])
-//     scatter = tf.scatter_nd(indices, updates, shape)
-//     with tf.Session() as sess:
-//       print(sess.run(scatter))
-// ```
-//
-// The resulting tensor would look like this:
-//
-//     [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-//      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
-//
-// Arguments:
-//	indices: Index tensor.
-//	updates: Updates to scatter into output.
-//	shape: 1-D. The shape of the resulting tensor.
-//
-// Returns A new tensor with the given shape and updates applied according
-// to the indices.
-func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ScatterNd",
-		Input: []tf.Input{
-			indices, updates, shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Replaces the contents of the table with the specified keys and values.
 //
 // The tensor `keys` must be of the same type as the keys of the table.
@@ -25061,6 +24966,101 @@ func Snapshot(scope *Scope, input tf.Output) (output tf.Output) {
 		Type: "Snapshot",
 		Input: []tf.Input{
 			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Scatter `updates` into a new (initially zero) tensor according to `indices`.
+//
+// Creates a new tensor by applying sparse `updates` to individual
+// values or slices within a zero tensor of the given `shape` according to
+// indices.  This operator is the inverse of the @{tf.gather_nd} operator which
+// extracts values or slices from a given tensor.
+//
+// **WARNING**: The order in which updates are applied is nondeterministic, so the
+// output will be nondeterministic if `indices` contains duplicates.
+//
+// `indices` is an integer tensor containing indices into a new tensor of shape
+// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+//
+//     indices.shape[-1] <= shape.rank
+//
+// The last dimension of `indices` corresponds to indices into elements
+// (if `indices.shape[-1] = shape.rank`) or slices
+// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+// `shape`.  `updates` is a tensor with shape
+//
+//     indices.shape[:-1] + shape[indices.shape[-1]:]
+//
+// The simplest form of scatter is to insert individual elements in a tensor by
+// index. For example, say we want to insert 4 scattered elements in a rank-1
+// tensor with 8 elements.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
+// </div>
+//
+// In Python, this scatter operation would look like this:
+//
+// ```python
+//     indices = tf.constant([[4], [3], [1], [7]])
+//     updates = tf.constant([9, 10, 11, 12])
+//     shape = tf.constant([8])
+//     scatter = tf.scatter_nd(indices, updates, shape)
+//     with tf.Session() as sess:
+//       print(sess.run(scatter))
+// ```
+//
+// The resulting tensor would look like this:
+//
+//     [0, 11, 0, 10, 9, 0, 0, 12]
+//
+// We can also, insert entire slices of a higher rank tensor all at once. For
+// example, if we wanted to insert two slices in the first dimension of a
+// rank-3 tensor with two matrices of new values.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
+// </div>
+//
+// In Python, this scatter operation would look like this:
+//
+// ```python
+//     indices = tf.constant([[0], [2]])
+//     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+//                             [7, 7, 7, 7], [8, 8, 8, 8]],
+//                            [[5, 5, 5, 5], [6, 6, 6, 6],
+//                             [7, 7, 7, 7], [8, 8, 8, 8]]])
+//     shape = tf.constant([4, 4, 4])
+//     scatter = tf.scatter_nd(indices, updates, shape)
+//     with tf.Session() as sess:
+//       print(sess.run(scatter))
+// ```
+//
+// The resulting tensor would look like this:
+//
+//     [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+//      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+//      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
+//      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+//
+// Arguments:
+//	indices: Index tensor.
+//	updates: Updates to scatter into output.
+//	shape: 1-D. The shape of the resulting tensor.
+//
+// Returns A new tensor with the given shape and updates applied according
+// to the indices.
+func ScatterNd(scope *Scope, indices tf.Output, updates tf.Output, shape tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ScatterNd",
+		Input: []tf.Input{
+			indices, updates, shape,
 		},
 	}
 	op := scope.AddOperation(opspec)
