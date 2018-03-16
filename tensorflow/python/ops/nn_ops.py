@@ -2391,6 +2391,10 @@ def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefine
     "`NHWC` for data_format is deprecated, use `NWC` instead",
     warn_once=True,
     data_format="NHWC")
+@deprecation.deprecated_args(
+    None, "value is deprecated, use input instead", "value")
+@deprecation.deprecated_args(
+    None, "filters is deprecated, use filter instead", "filters")
 def conv1d(input=None,
            filter=None,
            stride=None,
