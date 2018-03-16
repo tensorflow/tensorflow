@@ -216,6 +216,7 @@ tensorflow::ImportNumpy();
         PyExc_RuntimeError, $1.ToString().c_str());
     return NULL;
   }
+  Py_INCREF(Py_None);
   $result = Py_None;
 }
 
