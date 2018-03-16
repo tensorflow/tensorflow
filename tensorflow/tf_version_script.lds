@@ -6,6 +6,7 @@ tensorflow {
     *TFE_*;
     *nsync_*;
     *pywrap_xla*;
+    *protobuf*;
   local:
     *;
 };
