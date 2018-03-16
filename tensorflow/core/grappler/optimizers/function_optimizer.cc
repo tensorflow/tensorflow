@@ -189,7 +189,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
   OptimizerOptions optimizer_opts;
   optimizer_opts.set_do_function_inlining(true);
   ProcessFunctionLibraryRuntime pflr(&dvc_mgr, env,
-                                     graph_def.versions().producer(),
+                                     inlined_graph->versions().producer(),
                                      &function_library, optimizer_opts);
   FunctionLibraryRuntime* flr = pflr.GetFLR(dev->name());
   CHECK(flr);
@@ -205,11 +205,6 @@ Status InlineSymbolicGradient(const NodeDef& node,
   int counter = 0;
   while (counter < 50 && ExpandInlineFunctions(flr, &graph)) {
     ++counter;
-  }
-  if (counter == 0) {
-    // Nothing was inlined
-    return errors::InvalidArgument(
-        strings::StrCat("Failed to inline node ", node.name()));
   }
 
   GraphDef inlined_graph_def;
@@ -278,7 +273,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
-  // Inline functions when possible.
+  *optimized_graph->mutable_versions() = item.graph.versions();
   for (const NodeDef& node : item.graph.node()) {
     if (opt_level_ == RewriterConfig::AGGRESSIVE) {
       if (node.op() == "SymbolicGradient") {
@@ -301,7 +296,6 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // TODO(bsteiner): trim the library to remove unused function definitions
   *optimized_graph->mutable_library() = item.graph.library();
-  *optimized_graph->mutable_versions() = item.graph.versions();
 
   return Status::OK();
 }
