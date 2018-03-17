@@ -85,8 +85,6 @@ def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
     if ((not is_matrix_norm and ord_ == "fro") or
         (is_matrix_norm and is_fancy_p_norm)):
       self.skipTest("Not supported by neither numpy.linalg.norm nor tf.norm")
-    if is_matrix_norm and ord_ == 2:
-      self.skipTest("Not supported by tf.norm")
     if ord_ == 'euclidean' or (axis_ is None and len(shape) > 2):
       self.skipTest("Not supported by numpy.linalg.norm")
     matrix = np.random.randn(*shape_).astype(dtype_)
