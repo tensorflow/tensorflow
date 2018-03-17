@@ -26,7 +26,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_ops
-from tensorflow.python.util.tf_export import tf_export
 
 
 class AdaMaxOptimizer(adam.AdamOptimizer):
