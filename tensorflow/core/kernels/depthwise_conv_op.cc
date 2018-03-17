@@ -252,6 +252,8 @@ extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
 extern template struct LaunchConv2DOp<GPUDevice, float>;
+extern template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+extern template struct LaunchConv2DOp<GPUDevice, double>;
 
 #endif
 
@@ -386,7 +388,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // CUDNN 7 introduces convolution groups for convolutions.
     // we can thus use the standard conv2d launcher with groups = in_depth
     // when CUDNN is enabled.
-    if (use_cudnn_) {
+    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
                 /*groups=*/in_depth, padding_, output, data_format_);

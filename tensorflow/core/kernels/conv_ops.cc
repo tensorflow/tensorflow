@@ -840,9 +840,9 @@ REGISTER_KERNEL_BUILDER(
     Conv2DOp<GPUDevice, double>);
 
 // To be used inside depthwise_conv_op.cc.
-// template class LaunchConv2DOp<GPUDevice, Eigen::half>;
-// template class LaunchConv2DOp<GPUDevice, float>;
-// template class LaunchConv2DOp<GPUDevice, double>;
+template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+template struct LaunchConv2DOp<GPUDevice, float>;
+template struct LaunchConv2DOp<GPUDevice, double>;
 
 #endif  // GOOGLE_CUDA
 
