@@ -364,10 +364,10 @@ def assert_element_shape(shapes):
 
   def _apply_fn(dataset):
     return _RestructuredDataset(
-      dataset,
-      dataset.output_types,
-      output_shapes=shapes,
-      output_classes=dataset.output_classes)
+        dataset,
+        dataset.output_types,
+        output_shapes=shapes,
+        output_classes=dataset.output_classes)
 
   return _apply_fn
 
