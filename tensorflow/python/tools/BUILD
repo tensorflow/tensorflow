@@ -249,7 +249,10 @@ py_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no-internal-py3",
+    ],
     deps = [
         ":saved_model_cli",
         "//tensorflow/core:protos_all_py",

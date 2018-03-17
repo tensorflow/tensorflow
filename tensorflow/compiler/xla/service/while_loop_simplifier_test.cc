@@ -68,7 +68,7 @@ void WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
       hlo_string_template, "{{LOOP_BOUND}}",
       tensorflow::strings::StrCat(42 + num_iters),
       /*replace_all=*/true);
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
 }
 
 void WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
@@ -107,7 +107,7 @@ void WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
       hlo_string_template, "{{LOOP_BOUND}}",
       tensorflow::strings::StrCat(42 + num_iters),
       /*replace_all=*/true);
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimiplified) {
@@ -235,7 +235,7 @@ TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -267,7 +267,7 @@ TEST_F(WhileLoopSimplifierTest, LoopSwappingTupleElementsNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -296,7 +296,7 @@ TEST_F(WhileLoopSimplifierTest,
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -319,7 +319,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithEmptyTupleNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -347,7 +347,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithElemUsedTwiceNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -389,7 +389,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   HloModule* the_module = &module();
   EXPECT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
 
@@ -439,7 +439,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -472,7 +472,7 @@ TEST_F(WhileLoopSimplifierTest,
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
@@ -504,7 +504,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
   }
   )";
 
-  ParseAndVerifyModule(hlo_string.c_str());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 

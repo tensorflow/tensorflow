@@ -196,7 +196,7 @@ def _Identity(data, name=None):
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
-      return gen_array_ops._ref_identity(data, name=name)
+      return gen_array_ops.ref_identity(data, name=name)
     else:
       return array_ops.identity(data, name=name)
   else:
@@ -264,10 +264,10 @@ def _Enter(data,
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
-      result = gen_control_flow_ops._ref_enter(
+      result = gen_control_flow_ops.ref_enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     else:
-      result = gen_control_flow_ops._enter(
+      result = gen_control_flow_ops.enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     if use_input_shape:
       result.set_shape(data.get_shape())
@@ -282,7 +282,7 @@ def _Enter(data,
         parallel_iterations=parallel_iterations,
         use_input_shape=use_input_shape,
         name=name)
-    indices = gen_control_flow_ops._enter(
+    indices = gen_control_flow_ops.enter(
         data.indices,
         frame_name,
         is_constant,
@@ -293,7 +293,7 @@ def _Enter(data,
     if isinstance(data, ops.IndexedSlices):
       dense_shape = data.dense_shape
       if dense_shape is not None:
-        dense_shape = gen_control_flow_ops._enter(
+        dense_shape = gen_control_flow_ops.enter(
             dense_shape,
             frame_name,
             is_constant,
@@ -303,7 +303,7 @@ def _Enter(data,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = gen_control_flow_ops._enter(
+      dense_shape = gen_control_flow_ops.enter(
           data.dense_shape,
           frame_name,
           is_constant,
@@ -1467,7 +1467,10 @@ def ZerosLikeOutsideLoop(op, index):
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+      # Ensure ops created within array_ops.zeros are dominated by switch in
+      # cond context.
+      with ops.control_dependencies([switch_val]):
+        return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
 

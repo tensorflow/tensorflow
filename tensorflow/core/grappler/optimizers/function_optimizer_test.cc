@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
+#include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -40,7 +42,7 @@ TEST_F(FunctionOptimizerTest, SimpleFunction) {
           test::function::XTimesTwo(),
       });
 
-  FunctionOptimizer optimizer;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -133,7 +135,7 @@ TEST_F(FunctionOptimizerTest, FixedTypeFunction) {
           x_times_two,
       });
 
-  FunctionOptimizer optimizer;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -219,7 +221,7 @@ TEST_F(FunctionOptimizerTest, FunctionWithOutputMapping) {
           func,
       });
 
-  FunctionOptimizer optimizer;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -317,7 +319,7 @@ TEST_F(FunctionOptimizerTest, FunctionWithInputForwarding) {
           func,
       });
 
-  FunctionOptimizer optimizer;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -368,13 +370,56 @@ TEST_F(FunctionOptimizerTest, FunctionWithoutInput) {
           func,
       });
 
-  FunctionOptimizer optimizer;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // For now we won't inline the function.
   EXPECT_EQ(item.graph.DebugString(), output.DebugString());
+}
+
+TEST_F(FunctionOptimizerTest, SymbolicGradients) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  //  auto T = DT_FLOAT;
+  FunctionDef func = FunctionDefHelper::Define(
+      "TestFunc", {"x:float", "y:float"}, {"l:float"}, {},
+      {
+          {{"z"}, "Add", {"x", "y"}, {{"T", DT_FLOAT}}},
+          FunctionDefHelper::Const("zero", 0),
+          FunctionDefHelper::Const("one", 1),
+          {{"r"}, "Rank", {"z"}, {{"T", DT_FLOAT}}},
+          {{"indices"}, "Range", {"zero", "r", "one"}},
+          {{"l"}, "Sum", {"z", "indices"}, {{"T", DT_FLOAT}}},
+      });
+
+  auto dummy_variable = ops::Variable(scope, {2, 2}, DT_FLOAT);
+  auto x = ops::Const(scope, 1.0f);
+  auto y = ops::Const(scope, 2.0f);
+  auto dl = ops::Const(scope, 3.0f);
+
+  NameAttrList fn;
+  fn.set_name("TestFunc");
+  (*fn.mutable_attr())["T"].set_type(DT_FLOAT);
+  auto g0 = ops::SymbolicGradient(scope, std::initializer_list<Input>{x, y, dl},
+                                  {DT_FLOAT, DT_FLOAT}, fn);
+  auto out1 = ops::Identity(scope.WithOpName("out1"), g0.output[0]);
+  auto out2 = ops::Identity(scope.WithOpName("out2"), g0.output[1]);
+
+  GrapplerItem item;
+  TF_EXPECT_OK(scope.ToGraphDef(&item.graph));
+  *item.graph.mutable_library()->add_function() = func;
+
+  FunctionOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out1", "out2"});
+  std::vector<Tensor> optimized = EvaluateNodes(output, {"out1", "out2"});
+  test::ExpectTensorEqual<float>(expected[0], optimized[0]);
+  test::ExpectTensorEqual<float>(expected[1], optimized[1]);
 }
 
 }  // namespace

@@ -19,8 +19,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/xla_tensor_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -52,16 +54,8 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   Status Deallocate(int device_ordinal,
                     perftools::gputools::DeviceMemoryBase* mem) override;
 
-  // Register an Tensor (input or resource variable) with the allocator. If
-  // the operation returns an alias to one of its inputs, then the allocator
-  // needs to be able to handle it.
-  Status RegisterArgument(const Tensor* t);
-
-  // Makes 'tensor' a wrapper around the data buffer at 'ptr'. The buffer is
-  // interpreted as having data type 'dtype' and shape 'shape'.
-  Status MakeTensorFromBuffer(perftools::gputools::DeviceMemoryBase buffer,
-                              DataType dtype, const TensorShape& shape,
-                              Tensor* out_tensor) const;
+  // Un-track 'ptr' - do not delete it on destruction.
+  void Release(void* ptr);
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -74,11 +68,7 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
 
  private:
   OpKernelContext* const op_context_;
-
-  // Map from pointer address to the owning Tensor; used by
-  // MakeTensorFromBuffer. Also used to automatically release Tensors when the
-  // allocator is freed.
-  std::unordered_map<void*, Tensor> tensors_;
+  std::unordered_set<void*> allocated_;
 };
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
@@ -86,7 +76,8 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
 class XlaComputationLaunchContext {
  public:
   XlaComputationLaunchContext(int64 num_resource_args, xla::LocalClient* client,
-                              XlaAllocator* xla_allocator);
+                              XlaAllocator* xla_allocator,
+                              XlaTensorInfoManager* tensor_info_manager);
 
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
   // `variables` is a map from TensorFlow argument number to resource variable.
@@ -97,7 +88,7 @@ class XlaComputationLaunchContext {
   // Given the XLA output in `output`, populate all outputs of `ctx`.
   void PopulateOutputs(OpKernelContext* ctx,
                        const XlaCompiler::CompilationResult* kernel,
-                       std::unique_ptr<xla::ShapedBuffer> output);
+                       std::unique_ptr<xla::ScopedShapedBuffer> output);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
@@ -107,8 +98,50 @@ class XlaComputationLaunchContext {
   int64 num_resource_args_;
   xla::LocalClient* client_;
   XlaAllocator* xla_allocator_;
+  XlaTensorInfoManager* tensor_info_manager_;
   std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;
   std::vector<xla::ShapedBuffer*> arg_ptrs_;
+};
+
+// A simple TensorBuffer implementation that allows us to create Tensors that
+// take ownership of pre-allocated memory.
+class XlaTensorBuffer : public TensorBuffer {
+ public:
+  XlaTensorBuffer(const void* ptr, size_t expected_size, size_t actual_size,
+                  Allocator* allocator)
+      : expected_size_(expected_size),
+        actual_size_(actual_size),
+        allocator_(allocator) {
+    data_ = const_cast<void*>(ptr);
+  }
+
+  ~XlaTensorBuffer() override { allocator_->DeallocateRaw(data_); }
+
+  void* data() const override { return data_; }
+  size_t size() const override { return expected_size_; }
+
+  TensorBuffer* root_buffer() override { return this; }
+
+  void FillAllocationDescription(AllocationDescription* proto) const override {
+    proto->set_allocated_bytes(actual_size_);
+  }
+
+  static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
+                           perftools::gputools::DeviceMemoryBase buffer,
+                           Allocator* allocator) {
+    size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
+    auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
+                                              buffer.size(), allocator);
+    Tensor t(dtype, shape, tensor_buffer);
+    tensor_buffer->Unref();
+    return t;
+  }
+
+ private:
+  void* data_;
+  size_t expected_size_;
+  size_t actual_size_;
+  Allocator* allocator_;
 };
 
 }  // namespace tensorflow

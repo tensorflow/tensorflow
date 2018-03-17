@@ -31,12 +31,16 @@ class GatherOperationTest : public HloTestBase {
  protected:
   void RunTest(const string& hlo_text, Literal* operand,
                Literal* gather_indices) {
+    RunTest(hlo_text, {operand, gather_indices});
+  }
+
+  void RunTest(const string& hlo_text,
+               tensorflow::gtl::ArraySlice<Literal*> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             tools::Parse(hlo_text, config));
-    EXPECT_TRUE(
-        RunAndCompare(std::move(module), {operand, gather_indices}, nullopt));
+    EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
 
@@ -257,6 +261,78 @@ ENTRY main {
   std::unique_ptr<Literal> operand = Literal::CreateR2<int32>({{}, {}, {}});
   std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex) {
+  // Out of bounds indices must not crash, and the indices in range should
+  // produce the same values across all backends.
+  //
+  // TODO(b/74360564): Once we have a well defined semantics for OOB accesses,
+  // we should get rid of the mask and check that backends produce the same
+  // value for OOB indices too.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s32[6,2]{1,0} parameter(1)
+  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1}
+  gather_reshaped = s32[6]{0} reshape(gather)
+  in_bounds_mask = s32[6]{0} parameter(2)
+  ROOT result = s32[6]{0} multiply(gather_reshaped, in_bounds_mask)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
+  std::unique_ptr<Literal> in_bounds_mask =
+      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+
+  RunTest(hlo_text,
+          {operand.get(), gather_indices.get(), in_bounds_mask.get()});
+}
+
+XLA_TEST_F(GatherOperationTest, NegativeIndex) {
+  // Negative indices must not crash, and the indices in range should produce
+  // the same values across all backends.
+  //
+  // TODO(b/74360564): Once we have a well defined semantics for negative
+  // accesses, we should get rid of the mask and check that backends produce the
+  // same value for negative indices too.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s32[6,2]{1,0} parameter(1)
+  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1}
+  gather_reshaped = s32[6]{0} reshape(gather)
+  in_bounds_mask = s32[6]{0} parameter(2)
+  ROOT result = s32[6]{0} multiply(gather_reshaped, in_bounds_mask)
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  std::unique_ptr<Literal> in_bounds_mask =
+      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+
+  RunTest(hlo_text,
+          {operand.get(), gather_indices.get(), in_bounds_mask.get()});
 }
 
 }  // namespace

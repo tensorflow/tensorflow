@@ -69,7 +69,10 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
+    tags = [
+        "no-internal-py3",
+        "no_oss",
+    ],
     deps = [
         ":lite",
         ":op_hint",

@@ -197,33 +197,37 @@ bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 
 const char kOutputShapesAttr[] = "_output_shapes";
 
-PartialTensorShape GetInputShape(const string& input, const NodeMap& node_map) {
-  int output_pos;
-  string node_name = ParseNodeName(input, &output_pos);
-  const NodeDef* input_node = node_map.GetNode(node_name);
-  auto attr = input_node->attr();
-  if (attr.find(kOutputShapesAttr) == attr.end()) {
-    return PartialTensorShape();  // unknown shape
-  } else {
-    return attr.at(kOutputShapesAttr).list().shape(output_pos);
-  }
+// Shape is symbolically defined if it has a known rank, and each dimension is
+// defined, or is an unknown symbol (dim.size <= -2).
+bool ShapeIsSymbolicallyDefined(const TensorShapeProto& shape) {
+  return !shape.unknown_rank() &&
+         std::all_of(
+             shape.dim().begin(), shape.dim().end(),
+             [](const TensorShapeProto::Dim& dim) { return dim.size() != -1; });
 }
 
-bool ShapesEqual(const string& input_x, const string& input_y,
-                 const NodeMap& node_map) {
-  PartialTensorShape x_shape = GetInputShape(input_x, node_map);
-  PartialTensorShape y_shape = GetInputShape(input_y, node_map);
-  if (x_shape.unknown_rank() || y_shape.unknown_rank() ||
-      x_shape.dims() != y_shape.dims()) {
+bool ShapeIsSymbolicallyDefined(const OpInfo::TensorProperties& properties) {
+  return ShapeIsSymbolicallyDefined(properties.shape());
+}
+
+bool ShapesSymbolicallyEqual(const TensorShapeProto& left,
+                             const TensorShapeProto& right) {
+  if (left.unknown_rank() || right.unknown_rank() ||
+      left.dim_size() != right.dim_size()) {
     return false;
   }
-  for (int i = 0; i < x_shape.dims(); ++i) {
-    if (x_shape.dim_size(i) == -1 || y_shape.dim_size(i) == -1 ||
-        x_shape.dim_size(i) != y_shape.dim_size(i)) {
+  for (int i = 0; i < left.dim_size(); ++i) {
+    if (left.dim(i).size() == -1 || right.dim(i).size() == -1 ||
+        left.dim(i).size() != right.dim(i).size()) {
       return false;
     }
   }
   return true;
+}
+
+bool ShapesSymbolicallyEqual(const OpInfo::TensorProperties& left,
+                             const OpInfo::TensorProperties& right) {
+  return ShapesSymbolicallyEqual(left.shape(), right.shape());
 }
 
 // Returns whether `reshape` is an identity op. The tensor that `reshape`
@@ -290,16 +294,19 @@ NodeDef* GetTailOfValuePreservingChain(
 struct ArithmeticOptimizerContext {
   ArithmeticOptimizerContext(
       const std::unordered_set<string>* nodes_to_preserve,
-      GraphDef* optimized_graph, NodeMap* node_map, FrameMap* frame_map,
+      GraphDef* optimized_graph, GraphProperties* graph_properties,
+      NodeMap* node_map, FrameMap* frame_map,
       SetVector<NodeDef*>* nodes_to_simplify)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
+        graph_properties(graph_properties),
         node_map(node_map),
         frame_map(frame_map),
         nodes_to_simplify(nodes_to_simplify) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
+  GraphProperties* graph_properties;
   NodeMap* node_map;
   FrameMap* frame_map;
   SetVector<NodeDef*>* nodes_to_simplify;
@@ -388,7 +395,7 @@ class ArithmeticOptimizerStage {
     ctx_.nodes_to_simplify->PushBack(node);
   }
 
-  // Get a node by input name from a node map. Return a error if node was not
+  // Get a node by input name from a node map. Return an error if node was not
   // found.
   Status GetInputNode(const string& input, NodeDef** node) const {
     string node_name = NodeName(input);
@@ -401,22 +408,31 @@ class ArithmeticOptimizerStage {
     return Status::OK();
   }
 
-  // Get input shape from a node map. If node doesn't exists return unknown
-  // shape.
-  PartialTensorShape GetInputShape(const string& input) const {
-    int position;
-    string node_name = ParseNodeName(input, &position);
-    NodeDef* node;
-    Status node_status = GetInputNode(node_name, &node);
-    if (!node_status.ok()) {
-      return PartialTensorShape();  // unknown shape
+  // Lookup tensor properties by name. Tensor name might have non-zero port
+  // number. Return an error if tensor node doesn't exists in a graph, or it
+  // doesn't have properties defined for requested port.
+  Status GetTensorProperties(const string& tensor,
+                             OpInfo::TensorProperties* properties) const {
+    int port;
+    string tensor_node_name = ParseNodeName(tensor, &port);
+    if (port < 0) {
+      return errors::InvalidArgument(
+          "Can't get tensor properties of control dependency ", tensor);
     }
-    auto attr = node->attr();
-    if (attr.find(kOutputShapesAttr) == attr.end()) {
-      return PartialTensorShape();  // unknown shape
-    } else {
-      return attr.at(kOutputShapesAttr).list().shape(position);
+
+    const auto& output_properties =
+        ctx_.graph_properties->GetOutputProperties(tensor_node_name);
+    auto num_outputs = output_properties.size();
+
+    if (num_outputs == 0 || port > num_outputs - 1) {
+      return errors::InvalidArgument(
+          "Node ", tensor_node_name,
+          " is missing output properties at position :", port,
+          " (num_outputs=", num_outputs, ")");
     }
+
+    properties->CopyFrom(output_properties[port]);
+    return Status::OK();
   }
 
   NodeDef* AddCopyNode(const string& name, const NodeDef* node_to_copy) {
@@ -509,8 +525,8 @@ class ArithmeticOptimizerStage {
 // Rewrite a tree of Add/AddN with a single AddN operation, consuming all the
 // original inputs of absorbed nodes.
 //
-// All nodes in a Add/AddN subgraph must have fully specified and identical
-// shape. All nodes must have the same device placement.
+// All nodes in a Add/AddN subgraph must have symbolically equal shape. All
+// nodes must have the same device placement.
 //
 // Example:
 //                AddN_1
@@ -533,16 +549,12 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
     if (!IsRewritable(node)) {
       return false;
     }
-    // and must have fully defined shape
-    // TODO(ezhulenev): support partially defined shapes, when we can prove that
-    // unknown dimensions in the rewritten subgraph are the same.
-    PartialTensorShape shape = GetInputShape(node->name());
-    if (!shape.IsFullyDefined()) {
-      return false;
-    }
-    // and must have inputs of fully defined shape identical to the output
-    // TODO(ezhulenev): relax this condition to support equal unknown dimensions
-    return HasAllInputsOfIdenticalShape(*node, shape);
+
+    // shape must be symbolically defined and all inputs compatible with it
+    OpInfo::TensorProperties properties;
+    Status has_properties = GetTensorProperties(node->name(), &properties);
+    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
+           HasAllInputsOfSymbolicallyEqualShape(*node, properties);
   }
 
   Status TrySimplify(const NodeDef* node,
@@ -567,23 +579,26 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
   //   input_nodes: [x, y, z, w, q, e]
   struct AddOpsGroup {
     const NodeDef* root_node;
-    PartialTensorShape root_shape;
+    TensorShapeProto root_shape;
     // Add/AddN operations below the root level that were absorbed by this group
     std::vector<NodeDef*> absorbed_nodes;
     // Inputs of absorbed nodes that will be forwarded to rewritten AddN node
     std::vector<string> inputs;
   };
 
-  // Check if all inputs are fully defined and identical to expected shape
-  bool HasAllInputsOfIdenticalShape(const NodeDef& node,
-                                    const PartialTensorShape& shape) const {
+  // Check if all inputs have symbolically equal shapes
+  bool HasAllInputsOfSymbolicallyEqualShape(
+      const NodeDef& node, const OpInfo::TensorProperties& properties) const {
     const AddOpsRewriteStage* self = this;
-    return std::all_of(node.input().begin(), node.input().end(),
-                       [self, &shape](const string& input) {
-                         auto input_shape = self->GetInputShape(input);
-                         return input_shape.IsFullyDefined() &&
-                                input_shape.IsIdenticalTo(shape);
-                       });
+    return std::all_of(
+        node.input().begin(), node.input().end(),
+        [self, &properties](const string& input) {
+          OpInfo::TensorProperties input_properties;
+          Status has_input_properties =
+              self->GetTensorProperties(input, &input_properties);
+          return has_input_properties.ok() &&
+                 ShapesSymbolicallyEqual(properties, input_properties);
+        });
   }
 
   // TODO(ezhulenev): use GraphRewriter?
@@ -614,27 +629,25 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
     if (!node_status.ok()) {
       return false;
     }
-
-    PartialTensorShape shape = GetInputShape(name);
-    CHECK(shape.IsIdenticalTo(group.root_shape))
-        << "Cannot absorb a node of incompatible shape";
-
     // check basic preconditions
     if (!IsRewritable(node)) {
       return false;
     }
-    // with a single output consumer (presumably if we reach this node from
+    // with a single output data consumer (presumably if we reach this node from
     // previously absorbed or a root node, it means that this node is not used
     // as an input to any other op, outside of the group)
-    if (ctx_.node_map->GetOutputs(node->name()).size() != 1) {
+    if (NumNonControlDataOutputs(*node, *ctx_.node_map) != 1) {
       return false;
     }
     // must be on the same device as a root node
     if (node->device() != group.root_node->device()) {
       return false;
     }
-    // All input shapes must be fully defined and equal to the node shape
-    return HasAllInputsOfIdenticalShape(*node, shape);
+    // All input shapes must be symbolically defined and equal to the node shape
+    OpInfo::TensorProperties properties;
+    Status has_properties = GetTensorProperties(name, &properties);
+    return has_properties.ok() &&
+           HasAllInputsOfSymbolicallyEqualShape(*node, properties);
   }
 
   // Node requirements both for a root node and an absorbed node
@@ -660,15 +673,19 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
   }
 
   // Check that optimized group node name doesn't exists. It might happen if
-  // graph optimized multiple times without pruning beween invocations.
+  // graph optimized multiple times without pruning between invocations.
   bool IsRewritten(const AddOpsGroup& group) const {
     return ctx_.node_map->NodeExists(AddOpsGroupName(group));
   }
 
   // Create an AddOpsGroup with a root in a given node
   Status CreateAddOpsGroup(const NodeDef* root_node, AddOpsGroup* group) {
+    OpInfo::TensorProperties root_node_output_properties;
+    TF_RETURN_IF_ERROR(
+        GetTensorProperties(root_node->name(), &root_node_output_properties));
+
     group->root_node = root_node;
-    group->root_shape = GetInputShape(root_node->name());
+    group->root_shape = root_node_output_properties.shape();
 
     group->absorbed_nodes.reserve(root_node->input_size());
     for (int i = 0; i < root_node->input_size(); ++i) {
@@ -736,6 +753,9 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
       ctx_.node_map->AddOutput(input, node_name);
       added_node->add_input(input);
     }
+
+    // Add frame dependencies that the original node might have had.
+    AddFrameControlDeps(group.root_node, {added_node}, "", {});
 
     VLOG(1) << "Absorbed " << group.absorbed_nodes.size()
             << " Add/AddN nodes from the graph";
@@ -891,8 +911,11 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
           mul_node->input(0) == common_factor ? 1 : 0;
       unique_factors->push_back(mul_node->input(unique_factor_index));
       if (i > 0 && !IsAdd(*node)) {
-        *shapes_match = ShapesEqual(unique_factors->front(),
-                                    unique_factors->back(), *ctx_.node_map);
+        OpInfo::TensorProperties lhs;
+        OpInfo::TensorProperties rhs;
+        TF_RETURN_IF_ERROR(GetTensorProperties(unique_factors->front(), &lhs));
+        TF_RETURN_IF_ERROR(GetTensorProperties(unique_factors->back(), &rhs));
+        *shapes_match = ShapesSymbolicallyEqual(lhs, rhs);
       }
     }
     return Status::OK();
@@ -1627,8 +1650,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
   }
 
   const ArithmeticOptimizerContext ctx(&nodes_to_preserve_, optimized_graph_,
-                                       node_map_.get(), &frame_map_,
-                                       &nodes_to_simplify);
+                                       graph_properties_.get(), node_map_.get(),
+                                       &frame_map_, &nodes_to_simplify);
 
   std::vector<std::unique_ptr<ArithmeticOptimizerStage>> stages;
 
@@ -1660,8 +1683,10 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
     const NodeDef* node = nodes_to_simplify.PopBack();
 
     // TODO(ezhulenev): move all rewrites into separate stages
-    string simplified_tensor =
-        TrySimplifyAndReplaceUses(node, &nodes_to_simplify);
+    string simplified_tensor = "";
+    if (options_.enable_try_simplify_and_replace) {
+      simplified_tensor = TrySimplifyAndReplaceUses(node, &nodes_to_simplify);
+    }
 
     // if it was not simplified try to run it through all configured stages
     if (simplified_tensor.empty()) {

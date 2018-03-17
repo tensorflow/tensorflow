@@ -53,6 +53,8 @@ DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
 DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
+SYNC = 0
+ASYNC = 1
 
 
 class _TensorCache(object):
@@ -89,24 +91,35 @@ class _EagerContext(threading.local):
     self.summary_writer_resource = None
     self.scalar_cache = {}
     self.ones_rank_cache = _TensorCache()
+    self.execution_mode = None
 
 
-ContextStackEntry = collections.namedtuple(
-    "ContextStackEntry", ["is_building_function", "enter_context_fn"])
+ContextSwitch = collections.namedtuple(
+    "ContextSwitch", ["is_building_function", "enter_context_fn"])
 
 
-class ContextStack(threading.local):
+# `_ContextSwitchStack` is a `threading.local` to match the semantics of
+# ``DefaultGraphStack`, which is also a `threading.local`.
+class _ContextSwitchStack(threading.local):
   """A thread-local stack of context switches."""
 
-  def __init__(self):
-    super(ContextStack, self).__init__()
+  def __init__(self, eager):
+    super(_ContextSwitchStack, self).__init__()
     self.stack = []
+    if eager:
+      # Initialize the stack with a pointer to enter the eager context; this
+      # ensures that the fact that eager execution was enabled is propagated
+      # across threads, since (1) `enable_eager_execution` modifies a
+      # process-level flag (`_default_mode`) and (2) `__init__` is called each
+      # time a threading.local object is used in a separate thread.
+      self.push(is_building_function=False, enter_context_fn=eager_mode)
 
   def push(self, is_building_function, enter_context_fn):
     """Push metadata about a context switch onto the stack.
 
     A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context.
+    default graph, or entering the eager context. For each context switch,
+    we record whether or not the entered context is building a function.
 
     Args:
       is_building_function: (bool.) Whether the context is building a function.
@@ -115,7 +128,7 @@ class ContextStack(threading.local):
     """
 
     self.stack.append(
-        ContextStackEntry(is_building_function, enter_context_fn))
+        ContextSwitch(is_building_function, enter_context_fn))
 
   def pop(self):
     """Pop the stack."""
@@ -123,34 +136,49 @@ class ContextStack(threading.local):
     self.stack.pop()
 
 
-context_stack = ContextStack()
-
-
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, config=None, device_policy=None):
+  # TODO(agarwal): create and link in some documentation for `execution_mode`.
+  # pylint: disable=redefined-outer-name
+  def __init__(self, config=None, device_policy=None, execution_mode=None):
     """Creates a new Context.
 
     Args:
       config: (Optional.) A `ConfigProto` protocol buffer with configuration
-       options for the Context. Note that a lot of these options may be
-       currently unimplemented or irrelevant when eager execution is enabled.
+        options for the Context. Note that a lot of these options may be
+        currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-       operation on a device with inputs which are not on that device.
-       Valid values:
-         tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
-           correct.
-         tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+         operation on a device with inputs which are not on that device.
+         When set to None, an appropriate value will be picked automatically.
+         The value picked may change between TensorFlow releases.
+
+         Defaults to tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32.
+         Valid values:
+         - tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
+           not correct.
+         - tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
            right device but raises a warning.
-         tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+         - tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
            hide performance problems.
-         tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+         - tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
            raising errors on the other ones.
+      execution_mode: (Optional.) Policy controlling how operations dispatched
+        are actually executed. When set to None, an appropriate value will be
+        picked automatically. The value picked may change between TensorFlow
+        releases.
+        Valid values:
+        - tf.contrib.eager.SYNC: executes each operation synchronously.
+        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+          operations may return "non-ready" handles.
+
+    Raises:
+     ValueError: If execution_mode is not valid.
     """
     self._eager_context = _EagerContext()
+    self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
     self._post_execution_callbacks = []
@@ -158,6 +186,14 @@ class Context(object):
     self._seed = None
     self._initialize_lock = threading.Lock()
     self._device_policy = device_policy
+    if execution_mode not in (None, SYNC, ASYNC):
+      raise ValueError(
+          "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
+    if execution_mode is None:
+      execution_mode = SYNC
+    self._execution_mode = execution_mode
+
+  # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
@@ -195,6 +231,8 @@ class Context(object):
           if self._device_policy is not None:
             pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
                 opts, self._device_policy)
+          if self._execution_mode == ASYNC:
+            pywrap_tensorflow.TFE_ContextOptionsSetAsync(True)
           self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
@@ -253,13 +291,16 @@ class Context(object):
     old_mode = ctx.mode
     ctx.mode = mode
     if mode == EAGER_MODE:
-      context_stack.push(False, eager_mode)
+      # Entering graph mode does not provide us with sufficient information to
+      # record a context switch; graph-based context switches are only logged
+      # when a graph is registered as the default graph.
+      self.context_switches.push(False, eager_mode)
     try:
       yield
     finally:
       ctx.mode = old_mode
       if mode == EAGER_MODE:
-        context_stack.pop()
+        self.context_switches.pop()
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
@@ -355,6 +396,43 @@ class Context(object):
   def devices(self):
     """List of the names of devices available to execute operations."""
     return self._devices
+
+  def get_execution_mode(self):
+    mode = self._eager_context.execution_mode
+    if mode is None:
+      mode = self._execution_mode
+    return mode
+
+  def set_execution_mode(self, mode):
+    """Sets execution mode for current thread."""
+    if mode not in (None, SYNC, ASYNC):
+      raise ValueError(
+          "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+    if mode is None:
+      mode = SYNC
+    self._eager_context.execution_mode = mode
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle,
+                                                     mode == ASYNC, status)
+
+  @tf_contextlib.contextmanager
+  def execution_mode(self, mode):
+    """Context manager for setting execution mode for current thread."""
+    old_mode = self.get_execution_mode()
+    try:
+      self.set_execution_mode(mode)
+      yield
+    finally:
+      self.set_execution_mode(old_mode)
+
+  def async_wait(self):
+    """Waits for ops dispatched in ASYNC mode to finish."""
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAsyncWait(self._handle, status)
+
+  def async_clear_error(self):
+    """Clears errors raised during ASYNC execution."""
+    pywrap_tensorflow.TFE_ContextAsyncClearError(self._handle)
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
@@ -478,6 +556,11 @@ class Context(object):
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
 
+  @property
+  def context_switches(self):
+    """Returns a stack of context switches."""
+    return self._context_switches
+
 _context = None
 _context_lock = threading.Lock()
 
@@ -593,6 +676,26 @@ def list_devices():
     Names of the available devices, as a `list`.
   """
   return context().devices()
+
+
+def set_execution_mode(mode):
+  """Sets execution mode for the current thread."""
+  context().set_execution_mode(mode)
+
+
+def execution_mode(mode):
+  """Context manager for setting execution mode for current thread."""
+  return context().execution_mode(mode)
+
+
+def async_wait():
+  """Waits for ops dispatched in ASYNC mode to finish."""
+  return context().async_wait()
+
+
+def async_clear_error():
+  """Clears errors raised during ASYNC execution mode."""
+  return context().async_clear_error()
 
 
 def num_gpus():
