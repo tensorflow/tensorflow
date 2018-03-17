@@ -2585,6 +2585,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":user_ops_gen",
+        ":util",
         "@six_archive//:six",
     ],
 )
