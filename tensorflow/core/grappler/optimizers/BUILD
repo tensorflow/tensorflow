@@ -141,6 +141,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
@@ -156,6 +158,7 @@ tf_cc_test(
         ":function_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -538,13 +541,7 @@ cc_library(
 
 tf_cc_test(
     name = "loop_optimizer_test",
-    size = "small",
     srcs = ["loop_optimizer_test.cc"],
-    tags = [
-        "manual",
-        "no_oss",  # b/74111495
-        "notap",
-    ],
     deps = [
         ":loop_optimizer",
         "//tensorflow/cc:cc_ops",
@@ -554,5 +551,6 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )

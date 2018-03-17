@@ -119,6 +119,21 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_tensor_info",
+    srcs = ["xla_tensor_info.cc"],
+    hdrs = ["xla_tensor_info.h"],
+    deps = [
+        ":common",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "xla_device",
     srcs = [
         "xla_device.cc",
@@ -136,6 +151,7 @@ cc_library(
         ":common",
         ":jit_compilation_passes",
         ":xla_launch_util",
+        ":xla_tensor_info",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -182,6 +198,7 @@ cc_library(
     deps = [
         ":common",
         ":xla_compilation_cache",
+        ":xla_tensor_info",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

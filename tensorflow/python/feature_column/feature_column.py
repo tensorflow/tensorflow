@@ -1889,12 +1889,12 @@ class _LazyBuilder(object):
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
-    if not isinstance(key, (str, _FeatureColumn)):
-      raise TypeError('"key" must be either a "str" or "_FeatureColumn". '
-                      'Provided: {}'.format(key))
+    if isinstance(key, str):
+      raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, _FeatureColumn):
-      raise ValueError('Feature {} is not in features dictionary.'.format(key))
+      raise TypeError('"key" must be either a "str" or "_FeatureColumn". '
+                      'Provided: {}'.format(key))
 
     column = key
     logging.debug('Transforming feature_column %s.', column)

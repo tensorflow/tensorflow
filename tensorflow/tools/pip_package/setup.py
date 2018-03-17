@@ -200,8 +200,7 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')) +
-           list(find_files('*.h', 'external/nsync/public')))
+           list(find_files('*', 'external/eigen_archive')))
 
 setup(
     name=project_name,

@@ -177,6 +177,24 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
 }
 
+XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
+  ComputationBuilder builder(client_, TestName());
+  std::vector<float> arg{0.0f,        1.0f,          16777216.0f,
+                         16777218.0f, 2147483647.0f, 4294967040.0f};
+  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<float>({arg});
+  auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
+  std::unique_ptr<GlobalData> arg_data =
+      client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
+
+  builder.ConvertElementType(arg_param, U32);
+
+  std::vector<uint32> expected(arg.size());
+  for (int64 i = 0; i < arg.size(); ++i) {
+    expected[i] = static_cast<uint32>(arg[i]);
+  }
+  ComputeAndCompareR1<uint32>(&builder, expected, {arg_data.get()});
+}
+
 XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   ComputationBuilder builder(client_, TestName());
   std::vector<uint32> arg{0, 1, 0x1000, 0x7fffffff, 0x80000082, 0xFFFFFFFF};
