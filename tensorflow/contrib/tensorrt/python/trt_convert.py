@@ -41,7 +41,7 @@ def create_inference_graph(input_graph_def,
                            max_workspace_size_bytes=2 << 20,
                            precision_mode="FP32",
                            minimum_segment_size=3):
-  """Python wrapper for the TRT transormation.
+  """Python wrapper for the TRT transformation.
 
   Args:
     input_graph_def: GraphDef object containing a model to be transformed.

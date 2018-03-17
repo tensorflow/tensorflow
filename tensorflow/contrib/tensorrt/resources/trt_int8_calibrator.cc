@@ -61,7 +61,7 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
 
     // TODO(aaroey): we should not use sync copy on default stream. Make sure
     // stream->ThenMemcpy() is used in future PRs.
-    // TODO(sami,aaroey): Need to figureout a way to ensure synchronization
+    // TODO(sami,aaroey): Need to figure out a way to ensure synchronization
     // between stream, perhaps using a tensor?
     auto status = cudaMemcpyAsync(d.first, it.second, d.second,
                                   cudaMemcpyDeviceToDevice, stream);
