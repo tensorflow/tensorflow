@@ -591,8 +591,8 @@ class BeamSearchDecoder(decoder.Decoder):
       sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
     Returns:
-      A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if it
-      is not a `TensorArray` or does not meet shape requirements.
+      A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if
+      it is not a `TensorArray` or does not meet shape requirements.
     """
     if not isinstance(t, tensor_array_ops.TensorArray):
       return t
