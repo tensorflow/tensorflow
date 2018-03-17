@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
@@ -538,19 +539,27 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
-    rank = len(tensor.get_shape().as_list())
-    axis = tuple(map(lambda i: i if i >= 0 else i + rank, axis))
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
-        axes = list(range(rank))
-        perm_before = list(filter(lambda i: i not in axis, axes)) + list(axis)
-        perm_after = list(map(perm_before.index, axes))
-        result = array_ops.transpose(array_ops.expand_dims(
-            math_ops.reduce_max(gen_linalg_ops.svd(
-                array_ops.transpose(tensor, perm=perm_before),
-                compute_uv=False)[0], axis=-1, keepdims=True), axis=-1),
-                                     perm=perm_after)
+        rank = array_ops.rank(tensor)
+        axis = functional_ops.map_fn(
+            lambda i: control_flow_ops.cond(i >= 0, lambda: i,
+                                            lambda: i + rank),
+            ops.convert_to_tensor(axis)).eval()
+        axes = math_ops.range(rank)
+        perm_before = array_ops.concat(
+            [array_ops.setdiff1d(axes, axis)[0], axis], axis=0)
+        perm_after = functional_ops.map_fn(
+            lambda i: math_ops.cast(
+                array_ops.squeeze(
+                    array_ops.where(math_ops.equal(perm_before, i))),
+                dtype=dtypes.int32), axes)
+        permed = array_ops.transpose(tensor, perm=perm_before)
+        matrix_2_norm = array_ops.expand_dims(
+            math_ops.reduce_max(gen_linalg_ops.svd(permed, compute_uv=False)[0],
+                                axis=-1, keepdims=True), axis=-1)
+        result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
         result = math_ops.sqrt(
             math_ops.reduce_sum(
