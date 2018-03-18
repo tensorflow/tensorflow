@@ -590,13 +590,27 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     }
 
     #if GOOGLE_CUDA
+    // If we have CUDNN group convolutions for conv2d, we can
+    // dispatch a standard conv2d with groups = in_depth.
     if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
-        LaunchConv2DBackpropInputOp<Device, T>()(
-            context, use_cudnn_, cudnn_use_autotune_, out_backprop,
-            filter, /*row_dilation=*/1, /*col_dilation=*/1,
-            stride_, stride_, /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
-            padding_, in_backprop, data_format_);
-        return;
+      // Currently, our filter is arranged as:
+      // [rows, cols, in_depth, depth_mul].
+      // However, in the grouped convolution, we should have the filter
+      // arranged as: [rows, cols, 1, in_depth * depth_mul]
+
+      Tensor filter_reshape;
+      TensorShape filter_conv2d_shape = {
+          filter.dim_size(0), filter.dim_size(1), 1,
+          filter.dim_size(2) * filter.dim_size(3) };
+    
+      CHECK(filter_reshape.CopyFrom(filter, filter_conv2d_shape));
+
+      LaunchConv2DBackpropInputOp<Device, T>()(
+          context, use_cudnn_, cudnn_use_autotune_, out_backprop,
+          filter_reshape, /*row_dilation=*/1, /*col_dilation=*/1,
+          stride_, stride_, /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
+          padding_, in_backprop, data_format_);
+      return;
     }
     #endif
 
@@ -966,6 +980,10 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
         errors::InvalidArgument(
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
             filter_sizes.dims()));
+    OP_REQUIRES(
+        context, filter_sizes.NumElements() == 4,
+        errors::InvalidArgument("Conv2DBackpropFilter: filter_sizes input"
+                                " must have 4 elements, not ", filter_sizes.NumElements()));
     TensorShape filter_shape;
     const int32* filter_sizes_data = filter_sizes.template flat<int32>().data();
     for (int i = 0; i < filter_sizes.NumElements(); ++i) {
@@ -990,15 +1008,29 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     }
 
     #if GOOGLE_CUDA
+    // Use standard conv2d launcher with groups = in_depth.
     if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
-        LaunchConv2DBackpropFilterOp<Device, T>()(
-            context, use_cudnn_, cudnn_use_autotune_,
-            out_backprop, input,
-            /*row_dilation=*/1, /*col_dilation=*/1,
-            stride_, stride_,
-            /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
-            padding_, filter_backprop, data_format_);
-        return;
+      // Currently, our filter backprop is arranged as:
+      // [rows, cols, in_depth, depth_mul].
+      // However, in the grouped convolution, we should have the filter
+      // arranged as:
+      // [rows, cols, 1, in_depth * depth_mul]
+
+      Tensor filter_backprop_reshape;
+      TensorShape filter_conv2d_shape = {
+            filter_sizes_data[0], filter_sizes_data[1], 1,
+            filter_sizes_data[2] * filter_sizes_data[3] };
+    
+      CHECK(filter_backprop_reshape.CopyFrom(*filter_backprop, filter_conv2d_shape));
+
+      LaunchConv2DBackpropFilterOp<Device, T>()(
+        context, use_cudnn_, cudnn_use_autotune_,
+        out_backprop, input,
+        /*row_dilation=*/1, /*col_dilation=*/1,
+        stride_, stride_,
+        /*groups=*/GetTensorDim(input_shape, data_format_, 'C'),
+        padding_, &filter_backprop_reshape, data_format_);
+      return;
     }
     #endif
 
