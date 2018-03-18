@@ -546,7 +546,7 @@ def norm(tensor,
         axis = functional_ops.map_fn(
             lambda i: control_flow_ops.cond(i >= 0, lambda: i,
                                             lambda: i + rank),
-            ops.convert_to_tensor(axis)).eval()
+            ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat(
             [array_ops.setdiff1d(axes, axis)[0], axis], axis=0)
