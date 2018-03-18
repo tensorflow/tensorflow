@@ -1,7 +1,7 @@
 # Improving Linear Models Using Explicit Kernel Methods
 
 Note: This document uses a deprecated version of @{tf.estimator},
-which has a different interface (see `tf.contrib.learn Estimator`).
+which has a @{tf.contrib.learn.Estimator$different interface}.
 It also uses other `contrib` methods whose
 @{$version_compat#not_covered$API may not be stable}.
 
