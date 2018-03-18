@@ -22,6 +22,7 @@ import os
 import sys
 import threading
 import time
+import warnings
 
 import numpy as np
 import six
@@ -37,6 +38,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -46,6 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -60,8 +63,13 @@ from tensorflow.python.util import compat
 ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
-@test_util.with_c_api
+# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
+# @test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(SessionTest, self).setUp()
+    warnings.simplefilter('always')
 
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
@@ -187,12 +195,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(0.0, shape=[2, 3])
       # NOTE(mrry): The original_op is nonsense, but used here to test that the
       #   errors are reported correctly.
-      # pylint: disable=protected-access
       with sess.graph._original_op(a.op):
         b = array_ops.identity(a, name='id')
       with sess.graph._original_op(b.op):
         c = array_ops.placeholder(dtypes.float32)
-      # pylint: enable=protected-access
 
       def exc_predicate(e):
         return (e.op == c.op and e.op._original_op == b.op and
@@ -1052,6 +1058,43 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
+  def testParallelRunAndBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          self.assertEqual(sess.run(c), 5.0)
+
+      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      for t in threads:
+        t.start()
+
+      # Do some graph construction. Try to exercise non-trivial paths.
+      graph = ops.get_default_graph()
+      gdef = None
+      for _ in range(10):
+        x = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.colocate_with(x):
+          y = array_ops.placeholder(dtype=dtypes.float32)
+        with ops.device('/cpu:0'):
+          z = control_flow_ops.while_loop(
+              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+          gradients_impl.gradients(z, [x, y])
+          if gdef is None:
+            gdef = graph.as_graph_def()
+          else:
+            # NOTE(skyewm): import_graph_def breaks the running threads without
+            # the C API enabled. This is not a regression so I didn't fix it.
+            if ops._USE_C_API:
+              importer.import_graph_def(gdef, name='import')
+
+      stop.set()
+      for t in threads:
+        t.join()
+
   def testRunFeedDict(self):
     with session.Session() as s:
       x = array_ops.zeros([2])
@@ -1152,6 +1195,32 @@ class SessionTest(test_util.TensorFlowTestCase):
       e = math_ops.matmul(c, d)
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
+
+  def testMultipleInteractiveSessionsWarning(self):
+    # Reinitialize the global state to ensure that the expected warnings will
+    # be emitted.
+    session.InteractiveSession._active_session_count = 0  # pylint: disable=protected-access
+
+    sess = session.InteractiveSession()
+    sess.close()
+    # Opening and closing interactive sessions serially should not warn.
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+      sess.close()
+    self.assertEqual(0, len(w))
+
+    with warnings.catch_warnings(record=True) as w:
+      sess = session.InteractiveSession()
+    self.assertEqual(0, len(w))
+    with warnings.catch_warnings(record=True) as w:
+      sess2 = session.InteractiveSession()
+    self.assertEqual(1, len(w))
+    self.assertTrue('An interactive session is already active. This can cause '
+                    'out-of-memory errors in some cases. You must explicitly '
+                    'call `InteractiveSession.close()` to release resources '
+                    'held by the other session(s).' in str(w[0].message))
+    sess2.close()
+    sess.close()
 
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
@@ -1745,8 +1814,8 @@ class SessionTest(test_util.TensorFlowTestCase):
     # Ensure that errors from building the graph get propagated.
     data = array_ops.placeholder(dtypes.float32, shape=[])
     # pylint: disable=protected-access
-    enter_1 = gen_control_flow_ops._enter(data, 'foo_1', False)
-    enter_2 = gen_control_flow_ops._enter(data, 'foo_2', False)
+    enter_1 = gen_control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = gen_control_flow_ops.enter(data, 'foo_2', False)
     # pylint: enable=protected-access
     res = math_ops.add(enter_1, enter_2)
     with self.assertRaisesOpError('has inputs from different frames'):

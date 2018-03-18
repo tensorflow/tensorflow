@@ -156,9 +156,7 @@ py_test(
         "head_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
+    tags = ["no_pip_gpu"],  # b/63391119
     deps = [
         ":feature_keys",
         ":head",
@@ -427,6 +425,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip_gpu",  # b/63391119
+        "no_windows",  # TODO: needs investigation on Windows
     ],
     deps = [
         ":feature_keys",

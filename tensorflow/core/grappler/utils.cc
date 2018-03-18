@@ -40,6 +40,16 @@ bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   tensor->flat<T>()(0) = static_cast<T>(value);
   return true;
 }
+
+// Is 'node' an operator that consumes only the shape of its input, not the
+// data itself?
+// TODO(ezhulenev): move to op_types.h. Requires to break circular dependency.
+// TODO(ezhulenev): what about Identity passing tensor to Shape consumer?
+bool IsShapeConsumer(const NodeDef& node) {
+  const string& op = node.op();
+  return op == "Shape" || op == "ShapeN" || op == "Rank" || op == "Size";
+}
+
 }  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
@@ -270,6 +280,22 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   return num_outputs;
 }
 
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_data_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    if (IsShapeConsumer(*output)) continue;
+
+    for (int i = 0; i < output->input_size(); ++i) {
+      const string& input = output->input(i);
+      if (!IsControlInput(input) && NodeName(input) == node.name()) {
+        ++num_data_outputs;
+        break;
+      }
+    }
+  }
+  return num_data_outputs;
+}
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
 DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
@@ -398,12 +424,12 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
 void SimpleGraphView::DepthFirstSearch(
     const std::unordered_set<string>& op_types_to_traverse, int node_idx,
     std::set<int>* nodes_found) const {
-  const NodeDef& node = graph_->node(node_idx);
-  if (op_types_to_traverse.find(node.op()) == op_types_to_traverse.end()) {
-    nodes_found->insert(node_idx);
+  if (nodes_found->find(node_idx) != nodes_found->end()) {
     return;
   }
-  if (nodes_found->find(node_idx) != nodes_found->end()) {
+  nodes_found->insert(node_idx);
+  const string& op_type = graph_->node(node_idx).op();
+  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
     return;
   }
   for (auto output_idx : this->outputs(node_idx)) {

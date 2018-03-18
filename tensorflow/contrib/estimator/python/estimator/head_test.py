@@ -447,7 +447,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
-        keys.AUC_PR: 0.5972,
+        keys.AUC_PR: 0.7639,
     }
     self._test_eval(
         head=head,
@@ -479,7 +479,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
-        keys.AUC_PR: 0.5972,
+        keys.AUC_PR: 0.7639,
     }
     self._test_eval(
         head=head,
@@ -510,7 +510,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
-        keys.AUC_PR: 0.5972,
+        keys.AUC_PR: 0.7639,
     }
     self._test_eval(
         head=head,
@@ -544,7 +544,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
-        keys.AUC_PR: 0.5972,
+        keys.AUC_PR: 0.7639,
     }
     self._test_eval(
         head=head,
@@ -574,7 +574,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
-        keys.AUC_PR: 0.5972,
+        keys.AUC_PR: 0.7639,
         keys.ACCURACY_AT_THRESHOLD % thresholds[0]: 2. / 4.,
         keys.PRECISION_AT_THRESHOLD % thresholds[0]: 2. / 3.,
         keys.RECALL_AT_THRESHOLD % thresholds[0]: 2. / 3.,
@@ -622,7 +622,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.2000,
-        keys.AUC_PR: 0.5833,
+        keys.AUC_PR: 0.7833,
     }
 
     # Assert spec contains expected tensors.
@@ -1096,7 +1096,7 @@ class MultiLabelHead(test.TestCase):
         # auc and auc_pr cannot be reliably calculated for only 4 samples, but
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.4977,
-        keys.AUC_PR: 0.4037,
+        keys.AUC_PR: 0.6645,
     }
     self._test_eval(
         head=head,

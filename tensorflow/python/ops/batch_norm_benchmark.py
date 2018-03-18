@@ -41,7 +41,7 @@ def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   # _batch_norm_with_global_normalization is deprecated in v9
   ops.get_default_graph().graph_def_versions.producer = 8
   # pylint: disable=protected-access
-  return gen_nn_ops.batch_norm_with_global_normalization(
+  return gen_nn_ops._batch_norm_with_global_normalization(
       tensor, mean, variance, beta, gamma, 0.001, scale)
   # pylint: enable=protected-access
 

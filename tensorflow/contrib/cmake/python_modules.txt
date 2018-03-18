@@ -165,6 +165,7 @@ tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
 tensorflow/contrib/distributions/python/ops/bijectors
 tensorflow/contrib/eager
+tensorflow/contrib/eager/proto
 tensorflow/contrib/eager/python
 tensorflow/contrib/estimator
 tensorflow/contrib/estimator/python

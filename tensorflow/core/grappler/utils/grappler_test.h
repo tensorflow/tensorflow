@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -28,15 +30,24 @@ namespace grappler {
 
 class GrapplerTest : public ::testing::Test {
  protected:
-  std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
-                                    const std::vector<string>& node_names);
+  std::vector<Tensor> EvaluateNodes(
+      const GraphDef& graph, const std::vector<string>& node_names) const;
 
-  std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item);
+  std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item) const;
 
-  void AddNode(const string& name, const string& op,
-               const std::vector<string>& inputs, GraphDef* graph);
+  NodeDef* AddNode(const string& name, const string& op,
+                   const std::vector<string>& inputs,
+                   const std::vector<std::pair<string, AttrValue>>& attributes,
+                   GraphDef* graph) const;
 
-  void CompareGraphs(GraphDef want, GraphDef got);
+  void CompareGraphs(GraphDef want, GraphDef got) const;
+
+  // Check if node 'src' is directly connected to the input($position) of 'dst'.
+  bool IsNodesDirectlyConnected(const NodeMap& node_map, const string& src,
+                                const string& dst, int position = 0);
+
+  // Count nodes of the given op-type in a graph.
+  int CountOpNodes(const GraphDef& graph, const string& op);
 };
 
 }  // end namespace grappler

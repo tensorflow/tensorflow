@@ -33,15 +33,15 @@ class AstUtilTest(test.TestCase):
         ast.Name('b', ast.Load()),
         ast.Attribute(ast.Name('b', None), 'c', ast.Store()),
         ast.Attribute(
-            ast.Attribute(ast.Name('b', None), 'c', ast.Load()), 'd',
-            None)
+            ast.Attribute(ast.Name('b', None), 'c', ast.Load()), 'd', None)
     ], None)
     node = qual_names.resolve(node)
     node = ast_util.rename_symbols(
-        node,
-        {
-            qual_names.QN('a'): qual_names.QN('renamed_a'),
-            qual_names.QN('b.c'): qual_names.QN('renamed_b_c'),
+        node, {
+            qual_names.QN('a'):
+                qual_names.QN('renamed_a'),
+            qual_names.QN(qual_names.QN('b'), attr='c'):
+                qual_names.QN('renamed_b_c'),
         })
 
     self.assertEqual(node.elts[0].id, 'renamed_a')

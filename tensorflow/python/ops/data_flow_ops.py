@@ -159,7 +159,7 @@ class QueueBase(object):
       ValueError: If one of the arguments is invalid.
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "Queues are not supported when eager execution is enabled. "
           "Instead, please use tf.data to get data into your model.")
@@ -177,10 +177,10 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    if context.in_graph_mode():
-      self._name = self._queue_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+    else:
+      self._name = self._queue_ref.op.name.split("/")[-1]
 
   @staticmethod
   def from_list(index, queues):
@@ -231,9 +231,9 @@ class QueueBase(object):
   @property
   def name(self):
     """The name of the underlying queue."""
-    if context.in_graph_mode():
-      return self._queue_ref.op.name
-    return self._name
+    if context.executing_eagerly():
+      return self._name
+    return self._queue_ref.op.name
 
   @property
   def dtypes(self):
@@ -444,7 +444,7 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       for output, shape in zip(op.values(), self._shapes):
         output.set_shape(shape)
@@ -484,7 +484,7 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       batch_dim = tensor_shape.Dimension(
           tensor_util.constant_value(op.inputs[1]))
@@ -528,7 +528,7 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       for output, shape in zip(op.values(), self._shapes):
         output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
@@ -990,10 +990,10 @@ class Barrier(object):
         shapes=self._shapes,
         shared_name=shared_name,
         name=name)
-    if context.in_graph_mode():
-      self._name = self._barrier_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+    else:
+      self._name = self._barrier_ref.op.name.split("/")[-1]
 
   @property
   def barrier_ref(self):
@@ -1003,9 +1003,9 @@ class Barrier(object):
   @property
   def name(self):
     """The name of the underlying barrier."""
-    if context.in_graph_mode():
-      return self._barrier_ref.op.name
-    return self._name
+    if context.executing_eagerly():
+      return self._name
+    return self._barrier_ref.op.name
 
   def insert_many(self, component_index, keys, values, name=None):
     """For each key, assigns the respective value to the specified component.
@@ -1083,7 +1083,7 @@ class Barrier(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Barrier object.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       op = ret[0].op
       if allow_small_batch:
         batch_dim = None
@@ -1183,10 +1183,10 @@ class ConditionalAccumulatorBase(object):
     else:
       self._shape = tensor_shape.unknown_shape()
     self._accumulator_ref = accumulator_ref
-    if context.in_graph_mode():
-      self._name = self._accumulator_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       self._name = context.context().scope_name
+    else:
+      self._name = self._accumulator_ref.op.name.split("/")[-1]
 
   @property
   def accumulator_ref(self):

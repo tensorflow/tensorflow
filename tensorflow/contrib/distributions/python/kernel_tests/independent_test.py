@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bernoulli as bernoulli_lib
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -125,6 +126,100 @@ class ProductDistributionTest(test.TestCase):
       self.assertAllClose(sample_std_, actual_std_, rtol=0.02, atol=0.)
       self.assertAllClose(sample_entropy_, actual_entropy_, rtol=0.01, atol=0.)
       self.assertAllClose(loc, actual_mode_, rtol=1e-6, atol=0.)
+
+  def testKLRaises(self):
+    ind1 = independent_lib.Independent(
+        distribution=normal_lib.Normal(
+            loc=np.float32([-1., 1]),
+            scale=np.float32([0.1, 0.5])),
+        reinterpreted_batch_ndims=1)
+    ind2 = independent_lib.Independent(
+        distribution=normal_lib.Normal(
+            loc=np.float32(-1),
+            scale=np.float32(0.5)),
+        reinterpreted_batch_ndims=0)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Event shapes do not match"):
+      kullback_leibler.kl_divergence(ind1, ind2)
+
+    ind1 = independent_lib.Independent(
+        distribution=normal_lib.Normal(
+            loc=np.float32([-1., 1]),
+            scale=np.float32([0.1, 0.5])),
+        reinterpreted_batch_ndims=1)
+    ind2 = independent_lib.Independent(
+        distribution=mvn_diag_lib.MultivariateNormalDiag(
+            loc=np.float32([-1., 1]),
+            scale_diag=np.float32([0.1, 0.5])),
+        reinterpreted_batch_ndims=0)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError, "different event shapes"):
+      kullback_leibler.kl_divergence(ind1, ind2)
+
+  def testKLScalarToMultivariate(self):
+    normal1 = normal_lib.Normal(
+        loc=np.float32([-1., 1]),
+        scale=np.float32([0.1, 0.5]))
+    ind1 = independent_lib.Independent(
+        distribution=normal1, reinterpreted_batch_ndims=1)
+
+    normal2 = normal_lib.Normal(
+        loc=np.float32([-3., 3]),
+        scale=np.float32([0.3, 0.3]))
+    ind2 = independent_lib.Independent(
+        distribution=normal2, reinterpreted_batch_ndims=1)
+
+    normal_kl = kullback_leibler.kl_divergence(normal1, normal2)
+    ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_sum(normal_kl, axis=-1)),
+        self.evaluate(ind_kl))
+
+  def testKLIdentity(self):
+    normal1 = normal_lib.Normal(
+        loc=np.float32([-1., 1]),
+        scale=np.float32([0.1, 0.5]))
+    # This is functionally just a wrapper around normal1,
+    # and doesn't change any outputs.
+    ind1 = independent_lib.Independent(
+        distribution=normal1, reinterpreted_batch_ndims=0)
+
+    normal2 = normal_lib.Normal(
+        loc=np.float32([-3., 3]),
+        scale=np.float32([0.3, 0.3]))
+    # This is functionally just a wrapper around normal2,
+    # and doesn't change any outputs.
+    ind2 = independent_lib.Independent(
+        distribution=normal2, reinterpreted_batch_ndims=0)
+
+    normal_kl = kullback_leibler.kl_divergence(normal1, normal2)
+    ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
+    self.assertAllClose(
+        self.evaluate(normal_kl), self.evaluate(ind_kl))
+
+  def testKLMultivariateToMultivariate(self):
+    # (1, 1, 2) batch of MVNDiag
+    mvn1 = mvn_diag_lib.MultivariateNormalDiag(
+        loc=np.float32([[[[-1., 1, 3.], [2., 4., 3.]]]]),
+        scale_diag=np.float32([[[0.2, 0.1, 5.], [2., 3., 4.]]]))
+    ind1 = independent_lib.Independent(
+        distribution=mvn1, reinterpreted_batch_ndims=2)
+
+    # (1, 1, 2) batch of MVNDiag
+    mvn2 = mvn_diag_lib.MultivariateNormalDiag(
+        loc=np.float32([[[[-2., 3, 2.], [1., 3., 2.]]]]),
+        scale_diag=np.float32([[[0.1, 0.5, 3.], [1., 2., 1.]]]))
+
+    ind2 = independent_lib.Independent(
+        distribution=mvn2, reinterpreted_batch_ndims=2)
+
+    mvn_kl = kullback_leibler.kl_divergence(mvn1, mvn2)
+    ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_sum(mvn_kl, axis=[-1, -2])),
+        self.evaluate(ind_kl))
 
   def _testMnistLike(self, static_shape):
     sample_shape = [4, 5]

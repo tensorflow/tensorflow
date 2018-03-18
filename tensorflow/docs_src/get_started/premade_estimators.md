@@ -397,9 +397,9 @@ predictions and their probabilities:
 
 
 ``` python
-for pred_dict, expec in zip(predictions, expected):
-    template = ('\nPrediction is "{}" ({:.1f}%), expected "{}"')
+template = ('\nPrediction is "{}" ({:.1f}%), expected "{}"')
 
+for pred_dict, expec in zip(predictions, expected):
     class_id = pred_dict['class_ids'][0]
     probability = pred_dict['probabilities'][class_id]
 

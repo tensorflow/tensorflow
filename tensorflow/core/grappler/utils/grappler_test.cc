@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace grappler {
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names) {
+    const GraphDef& graph, const std::vector<string>& node_names) const {
   SessionOptions options;
   std::unique_ptr<tensorflow::Session> session(NewSession(options));
   TF_CHECK_OK(session->Create(graph));
@@ -35,7 +35,8 @@ std::vector<Tensor> GrapplerTest::EvaluateNodes(
   return output_tensors;
 }
 
-std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
+std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(
+    const GrapplerItem& item) const {
   SessionOptions options;
   std::unique_ptr<tensorflow::Session> session(NewSession(options));
   TF_CHECK_OK(session->Create(item.graph));
@@ -52,17 +53,23 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(const GrapplerItem& item) {
   return output_tensors;
 }
 
-void GrapplerTest::AddNode(const string& name, const string& op,
-                           const std::vector<string>& inputs, GraphDef* graph) {
-  auto* node = graph->add_node();
+NodeDef* GrapplerTest::AddNode(
+    const string& name, const string& op, const std::vector<string>& inputs,
+    const std::vector<std::pair<string, AttrValue>>& attributes,
+    GraphDef* graph) const {
+  NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op(op);
-  for (const auto& input : inputs) {
+  for (const string& input : inputs) {
     node->add_input(input);
   }
+  for (auto attr : attributes) {
+    (*node->mutable_attr())[attr.first] = attr.second;
+  }
+  return node;
 }
 
-void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
+void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
   auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
     return n1.name() < n2.name();
   };
@@ -88,6 +95,21 @@ void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) {
       EXPECT_TRUE(IsSameInput(want.node(i).input(j), got.node(i).input(j)));
     }
   }
+}
+
+bool GrapplerTest::IsNodesDirectlyConnected(const NodeMap& node_map,
+                                            const string& src,
+                                            const string& dst, int position) {
+  const NodeDef* src_node = node_map.GetNode(src);
+  const NodeDef* dst_node = node_map.GetNode(dst);
+  EXPECT_TRUE(src_node != nullptr) << src << " node not found";
+  EXPECT_TRUE(dst_node != nullptr) << dst << " node not found";
+  return src_node && dst_node && dst_node->input(position) == src_node->name();
+}
+
+int GrapplerTest::CountOpNodes(const GraphDef& graph, const string& op) {
+  return std::count_if(graph.node().begin(), graph.node().end(),
+                       [&op](const NodeDef& node) { return node.op() == op; });
 }
 
 }  // namespace grappler

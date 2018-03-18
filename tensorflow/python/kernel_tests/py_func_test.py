@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 import numpy as np
 from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -356,12 +358,22 @@ class PyFuncTest(test.TestCase):
 
   def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
 
-    def raise_exception():
+    def inner_exception():
       raise py_exp("blah")  # pylint: disable=not-callable
 
+    def raise_exception():
+      inner_exception()
+
+    expected_regexp = r": blah.*"               # Error at the top
+    expected_regexp += r"in raise_exception.*"  # Stacktrace outer
+    expected_regexp += r"in inner_exception.*"  # Stacktrace inner
+    expected_regexp += r": blah"                # Stacktrace of raise
+    def expected_error_check(exception):
+      return re.search(expected_regexp, str(exception), re.DOTALL)
+
     if eager:
-      if context.in_eager_mode():
-        with self.assertRaisesRegexp(tf_exp, "blah"):
+      if context.executing_eagerly():
+        with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
           f = script_ops.eager_py_func(raise_exception, [], [])
         return
       else:
@@ -370,7 +382,7 @@ class PyFuncTest(test.TestCase):
       f = script_ops.py_func(raise_exception, [], [])
 
     with self.test_session():
-      with self.assertRaisesRegexp(tf_exp, "blah"):
+      with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
         self.evaluate(f)
 
   def testExceptionHandling(self):
@@ -432,7 +444,7 @@ class PyFuncTest(test.TestCase):
 
       output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
       ret = self.evaluate(output)
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         self.assertEquals(len(ret), 0)
       else:
         self.assertIsNone(ret)

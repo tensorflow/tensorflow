@@ -56,14 +56,24 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@save_network_checkpoint
 @@restore_network_checkpoint
 
+@@Checkpoint
+@@Checkpointable
+@@CheckpointableSaver
+
+@@executing_eagerly
 @@in_eager_mode
-@@in_graph_mode
+@@set_execution_mode
+@@execution_mode
+@@async_wait
+@@async_clear_error
 
 @@run_test_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
 @@DEVICE_PLACEMENT_SILENT
+@@SYNC
+@@ASYNC
 """
 
 from __future__ import absolute_import
@@ -74,6 +84,8 @@ from __future__ import print_function
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.contrib.eager.python.checkpointable_utils import CheckpointableSaver
+from tensorflow.contrib.eager.python.checkpointable_utils import Checkpoint
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
@@ -87,11 +99,15 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
-from tensorflow.python.eager.context import in_eager_mode
-from tensorflow.python.eager.context import in_graph_mode
+from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.context import list_devices
+from tensorflow.python.eager.context import set_execution_mode
+from tensorflow.python.eager.context import execution_mode
+from tensorflow.python.eager.context import async_wait
+from tensorflow.python.eager.context import async_clear_error
+from tensorflow.python.eager.context import SYNC
+from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
-from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
 from tensorflow.python.eager.execution_callbacks import inf_callback
@@ -101,10 +117,12 @@ from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
+from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
+from tensorflow.python.training.checkpointable import Checkpointable
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func
@@ -115,5 +133,6 @@ implicit_value_and_gradients = backprop.implicit_val_and_grad
 gradients_function = backprop.gradients_function
 value_and_gradients_function = backprop.val_and_grad_function
 GradientTape = backprop.GradientTape  # pylint: disable=invalid-name
+in_eager_mode = executing_eagerly
 
 remove_undocumented(__name__)

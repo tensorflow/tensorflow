@@ -182,6 +182,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
+  CHECK(ShapeUtil::IsTuple(operand->shape()));
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kGetTupleElement, shape));
   instruction->tuple_index_ = index;

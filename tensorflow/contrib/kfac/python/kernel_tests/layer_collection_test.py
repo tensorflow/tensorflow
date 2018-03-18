@@ -104,14 +104,31 @@ class LayerCollectionTest(test.TestCase):
           array_ops.constant(3),
           approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_conv2d(
-          array_ops.constant(4), [1, 1, 1, 1], 'SAME',
-          array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=array_ops.ones((1, 2, 3, 4)),
+          outputs=array_ops.ones((1, 1, 1, 5)))
       lc.register_conv2d(
-          array_ops.constant(4), [1, 1, 1, 1],
-          'SAME',
-          array_ops.ones((1, 1, 1, 1)),
-          array_ops.constant(3),
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=array_ops.ones((1, 2, 3, 4)),
+          outputs=array_ops.ones((1, 1, 1, 5)),
           approx=layer_collection.APPROX_DIAGONAL_NAME)
+      lc.register_separable_conv2d(
+          depthwise_params=array_ops.ones((3, 3, 1, 2)),
+          pointwise_params=array_ops.ones((1, 1, 2, 4)),
+          inputs=array_ops.ones((32, 5, 5, 1)),
+          depthwise_outputs=array_ops.ones((32, 5, 5, 2)),
+          pointwise_outputs=array_ops.ones((32, 5, 5, 4)),
+          strides=[1, 1, 1, 1],
+          padding='SAME')
+      lc.register_convolution(
+          params=array_ops.ones((3, 3, 1, 8)),
+          inputs=array_ops.ones((32, 5, 5, 1)),
+          outputs=array_ops.ones((32, 5, 5, 8)),
+          padding='SAME')
       lc.register_generic(
           array_ops.constant(5), 16, approx=layer_collection.APPROX_FULL_NAME)
       lc.register_generic(
@@ -119,7 +136,7 @@ class LayerCollectionTest(test.TestCase):
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
 
-      self.assertEqual(6, len(lc.get_blocks()))
+      self.assertEqual(9, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
@@ -237,16 +254,16 @@ class LayerCollectionTest(test.TestCase):
 
       # Create a new loss function by name.
       lc.register_categorical_predictive_distribution(logits, name='loss1')
-      self.assertEqual(1, len(lc.losses))
+      self.assertEqual(1, len(lc.towers_by_loss))
 
       # Add logits to same loss function.
       lc.register_categorical_predictive_distribution(
           logits, name='loss1', reuse=True)
-      self.assertEqual(1, len(lc.losses))
+      self.assertEqual(1, len(lc.towers_by_loss))
 
       # Add another new loss function.
       lc.register_categorical_predictive_distribution(logits, name='loss2')
-      self.assertEqual(2, len(lc.losses))
+      self.assertEqual(2, len(lc.towers_by_loss))
 
   def testLossFunctionWithoutName(self):
     """Ensure loss functions get unique names if 'name' not specified."""
@@ -298,13 +315,9 @@ class LayerCollectionTest(test.TestCase):
             name='loss1',
             reuse=layer_collection.VARIABLE_SCOPE)
 
-      self.assertEqual(len(lc.losses), 1)
-      loss = lc.losses[0]
-
+      self.assertEqual(len(lc.towers_by_loss), 1)
       # Three successful registrations.
-      self.assertEqual(loss.params.shape.as_list(),
-                       [3 * batch_size, output_size])
-      self.assertEqual(loss.targets.shape.as_list(), [3 * batch_size])
+      self.assertEqual(len(lc.towers_by_loss[0]), 3)
 
   def testRegisterCategoricalPredictiveDistributionBatchSize1(self):
     with ops.Graph().as_default():
@@ -479,17 +492,6 @@ class LayerCollectionTest(test.TestCase):
       variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertTrue(all([var.name.startswith(scope) for var in variables]))
 
-  def testGetUseCountMap(self):
-    """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
-    lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {
-        'a': MockFisherBlock(),
-        ('a', 'c'): MockFisherBlock(),
-        ('b', 'c'): MockFisherBlock()
-    }
-    use_count_map = lc.get_use_count_map()
-    self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
-
   def testIdentifyLinkedParametersSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', shape=())
     y = variable_scope.get_variable('y', shape=())
@@ -549,6 +551,32 @@ class LayerCollectionTest(test.TestCase):
         b_1, batch_size=1, approx=layer_collection.APPROX_DIAGONAL_NAME)
     self.assertIsInstance(lc.fisher_blocks[b_0], fisher_blocks.FullFB)
     self.assertIsInstance(lc.fisher_blocks[b_1], fisher_blocks.NaiveDiagonalFB)
+
+  def testDefaultLayerCollection(self):
+    with ops.Graph().as_default():
+      # Can't get default if there isn't one set.
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
+
+      # Can't set default twice.
+      lc = layer_collection.LayerCollection()
+      layer_collection.set_default_layer_collection(lc)
+      with self.assertRaises(ValueError):
+        layer_collection.set_default_layer_collection(lc)
+
+      # Same as one set.
+      self.assertTrue(lc is layer_collection.get_default_layer_collection())
+
+      # Can set to None.
+      layer_collection.set_default_layer_collection(None)
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
+
+      # as_default() is the same as setting/clearing.
+      with lc.as_default():
+        self.assertTrue(lc is layer_collection.get_default_layer_collection())
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
 
 
 if __name__ == '__main__':

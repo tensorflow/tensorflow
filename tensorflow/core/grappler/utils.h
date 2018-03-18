@@ -144,6 +144,10 @@ int NumNonControlInputs(const NodeDef& node);
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
 
+// Number of connected non-control data outputs (Ops that consume output tensor
+// data, not just it's shape).
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
+
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);
 
@@ -178,6 +182,7 @@ class SimpleGraphView {
   Status Initialize(const GraphDef& graph, bool dedup_inputs,
                     bool dedup_outputs);
 
+  const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
   inline const int index(const string& node_name) const {
     const auto& it = name_to_index_.find(node_name);

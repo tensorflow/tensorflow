@@ -152,44 +152,64 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
 
   std::vector<PrimitiveType> operand_types(crs->operand_count());
   std::vector<PrimitiveType> output_types(crs->operand_count());
-  bool has_f32 = false;
-  bool has_bf16 = false;
-  bool has_bf16_output = false;
+  int64 f32_count = 0;
+  int64 bf16_count = 0;
+  bool has_unsupported_bf16_operand = false;
+  bool has_unsupported_bf16_output = false;
   for (int64 i = 0; i < crs->operand_count(); ++i) {
     operand_types[i] = crs->operand(i)->shape().element_type();
     output_types[i] = ShapeUtil::GetSubshape(crs->shape(), {i}).element_type();
-    if (operand_types[i] == F32 || output_types[i] == F32) {
-      has_f32 = true;
+    if (operand_types[i] == F32) {
+      f32_count += 1;
     } else if (operand_types[i] == BF16) {
-      has_bf16 = true;
+      bf16_count += 1;
+      if (!bfloat16_support_->SupportsBF16Operand(*crs, i)) {
+        has_unsupported_bf16_operand = true;
+      }
     }
-    if (output_types[i] == BF16) {
-      has_bf16 = true;
-      has_bf16_output = true;
+    if (output_types[i] == F32) {
+      f32_count += 1;
+    } else if (output_types[i] == BF16) {
+      bf16_count += 1;
+      if (!bfloat16_support_->SupportsBF16Output(*crs)) {
+        has_unsupported_bf16_output = true;
+      }
     }
   }
+
+  if (bf16_count == 0) {
+    return Status::OK();
+  }
+
+  auto should_convert_operand = [&](int64 i) {
+    if (operand_types[i] != BF16) {
+      return false;
+    }
+    if (!bfloat16_support_->SupportsBF16Operand(*crs, i)) {
+      return true;
+    }
+    if (bfloat16_support_->SupportsMixedPrecisions(*crs)) {
+      return false;
+    }
+    return has_unsupported_bf16_operand || has_unsupported_bf16_output ||
+           f32_count > 0;
+  };
 
   for (int64 i = 0; i < crs->operand_count(); ++i) {
-    if (operand_types[i] != BF16) {
-      continue;
+    if (should_convert_operand(i)) {
+      TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(crs, i, F32, computation_));
+      f32_count += 1;
+      bf16_count -= 1;
     }
-    if (bfloat16_support_->SupportsBF16Operand(*crs, i) &&
-        (bfloat16_support_->SupportsMixedPrecisions(*crs) || !has_f32)) {
-      continue;
-    }
-    TF_RETURN_IF_ERROR(InsertConvertBeforeOperand(crs, i, F32, computation_));
-    has_f32 = true;
   }
 
-  if (!has_bf16_output) {
+  if (!has_unsupported_bf16_output &&
+      (bfloat16_support_->SupportsMixedPrecisions(*crs) || f32_count == 0 ||
+       bf16_count == 0)) {
     return Status::OK();
   }
 
-  if (bfloat16_support_->SupportsBF16Output(*crs) &&
-      (bfloat16_support_->SupportsMixedPrecisions(*crs) || !has_f32)) {
-    return Status::OK();
-  }
-
+  std::vector<HloInstruction*> materialized_users = crs->users();
   std::vector<HloInstruction*> output_elements(crs->operand_count());
   auto original_shape = crs->shape();
   for (int64 i = 0; i < crs->operand_count(); ++i) {
@@ -209,7 +229,6 @@ Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
   auto tuple = computation_->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
 
-  std::vector<HloInstruction*> materialized_users = crs->users();
   // Use the crs' shape temporarily, in order to pass checks in
   // ReplaceUseWith.
   *tuple->mutable_shape() = crs->shape();

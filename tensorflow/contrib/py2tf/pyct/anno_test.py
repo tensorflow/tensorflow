@@ -24,6 +24,9 @@ from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.python.platform import test
 
 
+# TODO(mdan): Consider strong types instead of primitives.
+
+
 class AnnoTest(test.TestCase):
 
   def test_basic(self):
@@ -41,6 +44,17 @@ class AnnoTest(test.TestCase):
     self.assertFalse(anno.hasanno(node, 'foo'))
     with self.assertRaises(AttributeError):
       anno.getanno(node, 'foo')
+
+  def test_copyanno(self):
+    node_1 = ast.Name()
+    anno.setanno(node_1, 'foo', 3)
+
+    node_2 = ast.Name()
+    anno.copyanno(node_1, node_2, 'foo')
+    anno.copyanno(node_1, node_2, 'bar')
+
+    self.assertTrue(anno.hasanno(node_2, 'foo'))
+    self.assertFalse(anno.hasanno(node_2, 'bar'))
 
 
 if __name__ == '__main__':

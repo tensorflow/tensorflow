@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -32,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
@@ -194,6 +194,17 @@ class BackpropTest(test.TestCase):
     # gradient wrt the second is None.
     g, = backprop.gradients_function(loss, [0])(logits, labels)
     self.assertAllEqual(g.numpy(), [[-0.5, 0.5]])
+
+  def testGradientWithinTapeBlock(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    with backprop.GradientTape() as t:
+      loss = 2 * v1
+      with self.assertRaises(RuntimeError):
+        t.gradient(loss, [v1])
+    with backprop.GradientTape(persistent=True) as t:
+      loss = 2 * v1
+      grad = t.gradient(loss, [v1])
+    self.assertAllEqual(grad[0], 2.0)
 
   @test_util.assert_no_new_tensors
   def testSecondGrad(self):

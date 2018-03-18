@@ -512,6 +512,10 @@ class ComputationBuilder {
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
+  ComputationDataHandle Xor(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   ComputationDataHandle Not(const ComputationDataHandle& operand);
 
   ComputationDataHandle ShiftLeft(
@@ -872,7 +876,7 @@ class ComputationBuilder {
                   Window* window);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  ComputationDataHandle UnaryOp(UnaryOperation binop,
+  ComputationDataHandle UnaryOp(UnaryOperation unop,
                                 const ComputationDataHandle& operand);
 
   // Internal helper method that does the building for an arbitrary binary op.

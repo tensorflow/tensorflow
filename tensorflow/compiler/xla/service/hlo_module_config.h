@@ -63,9 +63,10 @@ class HloModuleConfig {
     return &(*entry_computation_layout_);
   }
 
-  // Sets/returns whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
-  void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
+  // Returns whether to enable HLO-level profiling.
+  bool hlo_profiling_enabled() const {
+    return debug_options_.xla_hlo_profile();
+  }
 
   // Sets/returns whether this is a "host module".  Host modules are used to
   // record the data- and control-flow dependencies of host side computation
@@ -109,9 +110,6 @@ class HloModuleConfig {
   // If you add new members, be sure to update compilation_cache_key.
 
   tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
-
-  // Whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled_ = false;
 
   // Whether this is a 'host module'.
   bool is_host_module_ = false;

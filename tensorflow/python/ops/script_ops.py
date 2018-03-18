@@ -25,6 +25,9 @@ from __future__ import print_function
 
 import threading
 
+# Used by py_util.cc to get tracebacks.
+import traceback  # pylint: disable=unused-import
+
 import numpy as np
 import six
 
@@ -317,7 +320,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     result = func(*[x.numpy() for x in inp])
     result = nest.flatten(result)
 

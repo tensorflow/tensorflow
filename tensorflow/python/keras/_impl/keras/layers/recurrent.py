@@ -546,8 +546,8 @@ class RNN(Layer):
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
                          ' Keras tensors and non-Keras tensors'
-                         '(a "Keras tensor" is a tensor that was'
-                         'returned by a Keras layer, or by `Input`)')
+                         ' (a "Keras tensor" is a tensor that was'
+                         ' returned by a Keras layer, or by `Input`)')
 
     if is_keras_tensor:
       # Compute the full input spec, including state and constants
@@ -936,7 +936,7 @@ class SimpleRNNCell(Layer):
 
     # Properly set learning phase on output tensor.
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         output._uses_learning_phase = True
@@ -1384,7 +1384,7 @@ class GRUCell(Layer):
       hh = self.activation(x_h + recurrent_h)
     h = z * h_tm1 + (1 - z) * hh
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         h._uses_learning_phase = True
@@ -1877,7 +1877,7 @@ class LSTMCell(Layer):
 
     h = o * self.activation(c)
     if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.in_eager_mode():
+      if training is None and not context.executing_eagerly():
         # This would be harmless to set in eager mode, but eager tensors
         # disallow setting arbitrary attributes.
         h._uses_learning_phase = True

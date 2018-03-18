@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -74,17 +76,16 @@ class TPUClusterResolverTest(test.TestCase):
     """
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
     self.assertProtoEquals(
-        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def())
-    self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
-    self.assertProtoEquals(
-        expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+    self.assertProtoEquals(expected_proto,
+                           server_lib.ClusterSpec(
+                               cluster_spec.as_cluster_def()).as_cluster_def())
+    self.assertProtoEquals(expected_proto,
+                           server_lib.ClusterSpec(
+                               cluster_spec.as_dict()).as_cluster_def())
 
-  def mock_service_client(
-      self,
-      tpu_map=None):
+  def mock_service_client(self, tpu_map=None):
 
     if tpu_map is None:
       tpu_map = {}
@@ -100,8 +101,7 @@ class TPUClusterResolverTest(test.TestCase):
 
     return mock_client
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
+  @mock.patch.object(TPUClusterResolver, '_requestComputeMetadata',
                      mock_request_compute_metadata)
   def testRetrieveProjectAndZoneFromMetadata(self):
     tpu_map = {
@@ -350,10 +350,23 @@ class TPUClusterResolverTest(test.TestCase):
 
   def testNoCallComputeMetadata(self):
     tpu_cluster_resolver = TPUClusterResolver(tpu='/bns/foo/bar')
-    self.assertEqual(compat.as_bytes('/bns/foo/bar'),
-                     tpu_cluster_resolver.master())
+    self.assertEqual(
+        compat.as_bytes('/bns/foo/bar'), tpu_cluster_resolver.master())
     self.assertEqual(
         server_lib.ClusterSpec({}), tpu_cluster_resolver.cluster_spec())
+
+  def testGkeEnvironment(self):
+    os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
+    self.assertTrue('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS' in os.environ)
+    tpu_cluster_resolver = TPUClusterResolver()
+    self.assertTrue(tpu_cluster_resolver._inGke())
+    self.assertEqual(
+        compat.as_bytes('grpc://10.120.27.5:8470'),
+        compat.as_bytes(tpu_cluster_resolver._gkeMaster()))
+    self.assertEqual(
+        compat.as_bytes('grpc://10.120.27.5:8470'),
+        compat.as_bytes(tpu_cluster_resolver.get_master()))
+    del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
 
 if __name__ == '__main__':

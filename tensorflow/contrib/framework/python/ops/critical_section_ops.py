@@ -154,7 +154,7 @@ class CriticalSection(object):
         self._handle = gen_resource_variable_ops.mutex_v2(
             shared_name=shared_name, container=container, name=name)
 
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       ops.add_to_collections(CRITICAL_SECTIONS, self)
 
   @property
@@ -221,7 +221,7 @@ class CriticalSection(object):
                          "This is illegal and would cause deadlocks.  "
                          "CriticalSection: %s." % self._handle)
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         # Collections and op introspection does not work in eager
         # mode.  This is generally ok; since eager mode (as of
         # writing) executes sequentially anyway.
@@ -250,7 +250,7 @@ class CriticalSection(object):
           return x.identity()
         elif isinstance(x, ops.Operation):
           return control_flow_ops.group(x)
-        elif context.in_eager_mode() and x is None:
+        elif context.executing_eagerly() and x is None:
           return None
         else:
           return array_ops.identity(x)
@@ -274,7 +274,7 @@ class CriticalSection(object):
       with ops.control_dependencies([ensure_lock_exists]):
         outputs = nest.map_structure(identity, r)
 
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         signature = _ExecutionSignature(
             op=lock.op,
             handle=self._handle,

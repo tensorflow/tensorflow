@@ -53,6 +53,39 @@ class BuiltinsTest(test.TestCase):
 
     self.assertEqual(5, builtins.dynamic_builtin(len, a))
 
+  def test_dynamic_range_all_python(self):
+    self.assertListEqual(list(builtins.dynamic_builtin(range, 3)), [0, 1, 2])
+    self.assertListEqual(list(builtins.dynamic_builtin(range, 1, 3)), [1, 2])
+    self.assertListEqual(
+        list(builtins.dynamic_builtin(range, 2, 0, -1)), [2, 1])
+
+  def test_dynamic_range_tf(self):
+    with self.test_session() as sess:
+      self.assertAllEqual(
+          sess.run(builtins.dynamic_builtin(range, constant_op.constant(3))),
+          [0, 1, 2])
+      self.assertAllEqual(
+          sess.run(builtins.dynamic_builtin(range, 1, constant_op.constant(3))),
+          [1, 2])
+      self.assertAllEqual(
+          sess.run(
+              builtins.dynamic_builtin(range, 2, 0, constant_op.constant(-1))),
+          [2, 1])
+
+  def test_dynamic_range_detection(self):
+    def range(x):  # pylint:disable=redefined-builtin
+      return x
+
+    # Functions that just have the names of builtins are ignored.
+    self.assertEqual(builtins.dynamic_builtin(range, 1), 1)
+    if six.PY2:
+      self.assertListEqual(
+          list(builtins.dynamic_builtin(xrange, 3)), [0, 1, 2])
+    self.assertListEqual(
+        list(builtins.dynamic_builtin(six.moves.range, 3)), [0, 1, 2])
+    self.assertListEqual(
+        list(builtins.dynamic_builtin(six.moves.xrange, 3)), [0, 1, 2])
+
   def test_dynamic_print_tf(self):
     try:
       out_capturer = six.StringIO()

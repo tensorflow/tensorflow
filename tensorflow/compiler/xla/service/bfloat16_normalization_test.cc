@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -74,6 +75,10 @@ class BFloat16NormalizationTest : public HloTestBase {
     BFloat16Normalization normalization(&bfloat16_support_);
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
+
+    HloVerifier verifier(/*allow_mixed_precision=*/true);
+    EXPECT_IS_OK(verifier.Run(module).status());
+
     return result.ValueOrDie();
   }
 };
@@ -170,7 +175,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
   Shape f32_input_shape = ShapeUtil::MakeShape(F32, {2, 4});
   Shape f32_output_shape = ShapeUtil::MakeShape(F32, {4});
 
-  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {});
 
   auto reduce_comp_builder = HloComputation::Builder("reduce_comp");
   auto reduce_comp_param0 = reduce_comp_builder.AddInstruction(
@@ -260,8 +265,11 @@ TEST_F(BFloat16NormalizationTest, DoNotAddUnsupportedMixedPrecision) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "b"));
 
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kDot, a, b));
+      HloInstruction::CreateDot(bf16_shape, a, b, dot_dnums));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());

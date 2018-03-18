@@ -522,6 +522,28 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis7) {
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
+
+// This tests catches a very subtle bug that was fixed by cl/188403234.
+TEST(StridedSliceOpTest, RunTwice) {
+  StridedSliceOpModel m({2, 3}, {2}, {2}, {2}, 1, 0, 0, 0, 0);
+
+  auto setup_inputs = [&m]() {
+    m.SetInput({1, 2, 3, 4, 5, 6});
+    m.SetBegin({1, 0});
+    m.SetEnd({2, 2});
+    m.SetStrides({1, 1});
+  };
+
+  setup_inputs();
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
+
+  setup_inputs();
+  m.Invoke();
+  // Prior to cl/188403234 this was {4, 5}.
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
+}
+
 }  // namespace
 }  // namespace tflite
 

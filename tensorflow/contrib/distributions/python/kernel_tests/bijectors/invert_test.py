@@ -35,8 +35,7 @@ class InvertBijectorTest(test.TestCase):
       for fwd in [
           bijectors.Identity(),
           bijectors.Exp(event_ndims=1),
-          bijectors.Affine(
-              shift=[0., 1.], scale_diag=[2., 3.], event_ndims=1),
+          bijectors.Affine(shift=[0., 1.], scale_diag=[2., 3.]),
           bijectors.Softplus(event_ndims=1),
           bijectors.SoftmaxCentered(event_ndims=1),
           bijectors.SigmoidCentered(),

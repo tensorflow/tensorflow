@@ -905,6 +905,14 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
+    enable_text_relocation_linkopt = select({
+          clean_dep("//tensorflow:darwin"): [],
+          "//conditions:default": ['-Wl,-z,notext'],})
+    if 'linkopts' in kwargs:
+      kwargs['linkopts'] += enable_text_relocation_linkopt
+    else:
+      kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1158,22 +1166,6 @@ def transitive_hdrs(name, deps=[], **kwargs):
 # the libraries in deps.
 def cc_header_only_library(name, deps=[], includes=[], **kwargs):
   _transitive_hdrs(name=name + "_gather", deps=deps)
-
-  # We could generalize the following, but rather than complicate things
-  # here, we'll do the minimal use case for now, and hope bazel comes up
-  # with a better solution before too long.  We'd expect it to compute
-  # the right include path by itself, but it doesn't, possibly because
-  # _transitive_hdrs lost some information about the include path.
-  if "@nsync//:nsync_headers" in deps:
-    # Buiding tensorflow from @org_tensorflow finds this two up.
-    nsynch = "../../external/nsync/public"
-    # Building tensorflow from elsewhere finds it four up.
-    # Note that native.repository_name() is not yet available in TF's Kokoro.
-    if REPOSITORY_NAME != "@":
-      nsynch = "../../" + nsynch
-    includes = includes[:]
-    includes.append(nsynch)
-
   native.cc_library(name=name,
                     hdrs=[":" + name + "_gather"],
                     includes=includes,
@@ -1182,9 +1174,24 @@ def cc_header_only_library(name, deps=[], includes=[], **kwargs):
 def tf_custom_op_library_additional_deps():
   return [
       "@protobuf_archive//:protobuf_headers",
-      "@nsync//:nsync_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
+  ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
+
+# A list of targets that contains the implemenation of
+# tf_custom_op_library_additional_deps. It's used to generate a DEF file for
+# exporting symbols from _pywrap_tensorflow.dll on Windows.
+def tf_custom_op_library_additional_deps_impl():
+  return [
+      # for @protobuf_archive//:protobuf_headers
+      "@protobuf_archive//:protobuf",
+      # for @nsync//:nsync_headers
+      "@nsync//:nsync_cpp",
+      # for //third_party/eigen3
+      clean_dep("//third_party/eigen3"),
+      # for //tensorflow/core:framework_headers_lib
+      clean_dep("//tensorflow/core:framework"),
+      clean_dep("//tensorflow/core:reader_base"),
   ]
 
 # Traverse the dependency graph along the "deps" attribute of the
@@ -1271,6 +1278,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(is_external=True),
+      features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({
           "//conditions:default": [
               "-lm",
@@ -1417,7 +1425,8 @@ def tf_py_wrap_cc(name,
       ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
-      deps=deps + extra_deps)
+      deps=deps + extra_deps,
+      **kwargs)
   native.genrule(
       name="gen_" + cc_library_pyd_name,
       srcs=[":" + cc_library_name],
