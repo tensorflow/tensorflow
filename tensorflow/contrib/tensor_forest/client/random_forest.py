@@ -399,7 +399,7 @@ def get_combined_model_fn(model_fns):
   training ops: tf.group them.
   loss: average them.
   predictions: concat probabilities such that predictions[*][0-C1] are the
-    probablities for output 1 (where C1 is the number of classes in output 1),
+    probabilities for output 1 (where C1 is the number of classes in output 1),
     predictions[*][C1-(C1+C2)] are the probabilities for output 2 (where C2
     is the number of classes in output 2), etc.  Also stack predictions such
     that predictions[i][j] is the class prediction for example i and output j.
