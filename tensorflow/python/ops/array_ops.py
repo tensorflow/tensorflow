@@ -2521,11 +2521,11 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
     off_values_list = [None] * n_features
 
   multi_tensor = one_hot(indices[:,0], depth_list[0], on_values_list[0],
-                         off_values_list[0], dtype=tf.float32)
+                         off_values_list[0], dtype=dtypes.float32)
 
   for col in range(1, n_features):
     add = one_hot(indices[:,col], depth_list[col], on_values_list[col],
-                  off_values_list[col], dtype=tf.float32)
+                  off_values_list[col], dtype=dtypes.float32)
     multi_tensor = concat([multi_tensor, add], axis=-1, name=name)
 
   return multi_tensor
