@@ -477,7 +477,7 @@ class FlattenTest(test.TestCase):
     self.assertEqual(shape.as_list(), [None, None])
 
   def testDataFormat(self):
-    np_input_channels_last = np.arange(3, 7).reshape([1, 2, 3, 2])
+    np_input_channels_last = np.arange(12, dtype='float32').reshape([1, 2, 3, 2])
 
     with self.test_session() as sess:
       x = array_ops.placeholder(shape=(1, 2, 3, 2), dtype='float32')
