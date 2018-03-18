@@ -38,8 +38,8 @@ To try the code for this tutorial:
 1.  [Download the data](#download-the-data) in `TFRecord` format from
     [here](http://download.tensorflow.org/data/quickdraw_tutorial_dataset_v1.tar.gz) and unzip it. More details about [how to
     obtain the original Quick, Draw!
-    data](#optional-download-the-full-quick-draw-data) and [how to convert that
-    to `TFRecord` files](#optional-converting-the-data) is available below.
+    data](#optional_download_the_full_quick_draw_data) and [how to convert that
+    to `TFRecord` files](#optional_converting_the_data) is available below.
 
 1.  Execute the tutorial code with the following command to train the RNN-based
     model described in this tutorial. Make sure to adjust the paths to point to
