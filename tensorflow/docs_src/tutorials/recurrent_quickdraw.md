@@ -108,7 +108,7 @@ This download will take a while and download a bit more than 23GB of data.
 ### Optional: Converting the data
 
 To convert the `ndjson` files to
-@{$python/python_io#tfrecords_format_details$TFRecord} files containing
+@{$python/python_io#TFRecords_Format_Details$TFRecord} files containing
 [`tf.train.Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos run the following command.
 
@@ -118,7 +118,7 @@ protos run the following command.
 ```
 
 This will store the data in 10 shards of
-@{$python/python_io#tfrecords_format_details$TFRecord} files with 10000 items
+@{$python/python_io#TFRecords_Format_Details$TFRecord} files with 10000 items
 per class for the training data and 1000 items per class as eval data.
 
 This conversion process is described in more detail in the following.
