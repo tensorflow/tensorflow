@@ -304,8 +304,8 @@ class XlaCompiler {
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
   Status SetDeviceToHostMetadata(const string& key,
-                                 const std::vector<DataType>& types,
-                                 const std::vector<TensorShape>& shapes);
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
 
   // Gets the shapes the device to host transfer associated with 'key'.
   Status GetDeviceToHostShapes(const string& key,
@@ -314,8 +314,8 @@ class XlaCompiler {
   // Sets the shapes and types for the host to device transfer associated with
   // 'key'.
   Status SetHostToDeviceMetadata(const string& key,
-                                 const std::vector<DataType>& types,
-                                 const std::vector<TensorShape>& shapes);
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }

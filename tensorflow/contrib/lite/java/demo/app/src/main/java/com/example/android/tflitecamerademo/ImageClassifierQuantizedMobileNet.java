@@ -16,7 +16,6 @@ limitations under the License.
 package com.example.android.tflitecamerademo;
 
 import android.app.Activity;
-
 import java.io.IOException;
 
 /**
@@ -49,7 +48,7 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
   @Override
   protected String getLabelPath() {
-    return "labels.txt";
+    return "labels_mobilenet_quant_v1_224.txt";
   }
 
   @Override

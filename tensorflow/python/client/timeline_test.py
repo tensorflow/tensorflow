@@ -155,9 +155,12 @@ class TimelineTest(test.TestCase):
     ctf = step_analysis.chrome_trace.format_to_string()
     self._validateTrace(ctf)
     maximums = step_analysis.allocator_maximums
-    self.assertTrue('cpu' in maximums)
+    cpuname = 'cpu'
+    if 'mklcpu' in maximums:
+      cpuname = 'mkl' + cpuname
+    self.assertTrue(cpuname in maximums)
     cpu_max = maximums[
-        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums['cpu']
+        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
     # At least num1 + num2, both float32s (4 bytes each)
     self.assertGreater(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)

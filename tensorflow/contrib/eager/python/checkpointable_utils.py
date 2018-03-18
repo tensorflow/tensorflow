@@ -220,12 +220,16 @@ def _serialize_checkpointables(
     object_proto = object_graph_proto.nodes.add()
     object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
     object_name = object_names[checkpointable]
-    for name, saveable in (
+    for name, saveable_factory in (
         checkpointable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
       attribute = object_proto.attributes.add()
       attribute.name = name
       attribute.checkpoint_key = "%s/%s/%s" % (
           object_name, _OBJECT_ATTRIBUTES_NAME, _escape_local_name(name))
+      if callable(saveable_factory):
+        saveable = saveable_factory(name=attribute.checkpoint_key)
+      else:
+        saveable = saveable_factory
       # Figure out the name-based Saver's name for this variable.
       saver_dict = saver_lib.BaseSaverBuilder.OpListToDict(
           [saveable], convert_variable_to_tensor=False)
@@ -598,8 +602,7 @@ class CheckpointableSaver(object):
     """
     named_variables, graph_proto = _serialize_object_graph(
         self._root_checkpointable)
-    in_graph_mode = not context.executing_eagerly()
-    if in_graph_mode:
+    if not context.executing_eagerly():
       if session is None:
         session = ops.get_default_session()
       if self._object_graph_feed_tensor is None:
@@ -618,17 +621,17 @@ class CheckpointableSaver(object):
     named_variables[_OBJECT_GRAPH_PROTO_KEY] = _NoRestoreSaveable(
         tensor=object_graph_tensor,
         name=_OBJECT_GRAPH_PROTO_KEY)
-    if not in_graph_mode or self._last_save_object_graph != graph_proto:
-      if self._last_save_object_graph is not None and in_graph_mode:
+    if self._last_save_object_graph != graph_proto:
+      if self._last_save_object_graph is not None:
         raise NotImplementedError(
             "Using a single Saver to save a mutated object graph is not "
             "currently supported when graph building. Use a different Saver "
-            "when the object graph changes (save ops will be duplicated), or "
-            "file a feature request if this limitation bothers you.")
+            "when the object graph changes (save ops will be duplicated when "
+            "graph building), or file a feature request if this limitation "
+            "bothers you.")
       saver = saver_lib.Saver(var_list=named_variables)
-      if in_graph_mode:
-        self._last_save_saver = saver
-        self._last_save_object_graph = graph_proto
+      self._last_save_saver = saver
+      self._last_save_object_graph = graph_proto
     else:
       saver = self._last_save_saver
     with ops.device("/cpu:0"):

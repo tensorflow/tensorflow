@@ -316,6 +316,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
   interpreter->UseNNAPI(static_cast<bool>(state));
 }
 
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                             jclass clazz,
+                                                             jlong handle,
+                                                             jint num_threads) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetNumThreads(static_cast<int>(num_threads));
+}
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
@@ -323,6 +333,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
       new BufferErrorReporter(env, static_cast<int>(size));
   return reinterpret_cast<jlong>(error_reporter);
 }
+
+// Verifies whether the model is a flatbuffer file.
+class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
+ public:
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    if (!VerifyModel(data, length)) {
+      reporter->Report("The model is not a valid Flatbuffer file");
+      return false;
+    }
+    return true;
+  }
+};
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
@@ -332,17 +355,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   if (error_reporter == nullptr) return 0;
   const char* path = env->GetStringUTFChars(model_file, nullptr);
 
-  {
-    tflite::FileCopyAllocation allocation(path, nullptr);
-    if (!VerifyModel(allocation.base(), allocation.bytes())) {
-      throwException(env, kIllegalArgumentException,
-                     "Contents of %s is not a valid flatbuffer model", path);
-      env->ReleaseStringUTFChars(model_file, path);
-      return 0;
-    }
-  }
+  std::unique_ptr<tflite::TfLiteVerifier> verifier;
+  verifier.reset(new JNIFlatBufferVerifier());
 
-  auto model = tflite::FlatBufferModel::BuildFromFile(path, error_reporter);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      path, verifier.get(), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid TensorFlowLite "

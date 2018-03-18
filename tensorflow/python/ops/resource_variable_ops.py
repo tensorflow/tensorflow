@@ -46,10 +46,6 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
     container = ""
-  if not graph_mode:
-    # When in eager mode use a uid for the shared_name, to prevent accidental
-    # sharing.
-    shared_name = str(ops.uid())
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -368,6 +364,12 @@ class ResourceVariable(variables.Variable):
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
         handle_name = ops._name_from_scope_name(name)
+        if self._in_graph_mode:
+          shared_name = handle_name
+        else:
+          # When in eager mode use a uid for the shared_name, to prevent
+          # accidental sharing.
+          shared_name = "%s_%d" % (handle_name, ops.uid())
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
@@ -383,7 +385,7 @@ class ResourceVariable(variables.Variable):
               self._handle = _eager_safe_variable_handle(
                   shape=initial_value.get_shape(),
                   dtype=initial_value.dtype.base_dtype,
-                  shared_name=handle_name,
+                  shared_name=shared_name,
                   name=name,
                   graph_mode=self._in_graph_mode)
               self._shape = initial_value.get_shape()
@@ -395,7 +397,7 @@ class ResourceVariable(variables.Variable):
             self._handle = _eager_safe_variable_handle(
                 shape=initial_value.get_shape(),
                 dtype=initial_value.dtype.base_dtype,
-                shared_name=handle_name,
+                shared_name=shared_name,
                 name=name,
                 graph_mode=False)
             self._shape = initial_value.get_shape()
@@ -418,11 +420,12 @@ class ResourceVariable(variables.Variable):
           self._handle = _eager_safe_variable_handle(
               shape=initial_value.get_shape(),
               dtype=initial_value.dtype.base_dtype,
-              shared_name=handle_name,
+              shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
           self._shape = initial_value.get_shape()
 
+        self._unique_id = shared_name
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
         self._dtype = initial_value.dtype.base_dtype
@@ -503,6 +506,7 @@ class ResourceVariable(variables.Variable):
     self._shape = tensor_shape.TensorShape(
         self._handle.op.get_attr("shape"))
     self._handle_name = self._handle.name
+    self._unique_id = self._handle_name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
@@ -851,7 +855,8 @@ class ResourceVariable(variables.Variable):
       tape.watch_variable(self)
     return _UnreadVariable(
         self._handle, self.dtype, self._shape, self._in_graph_mode,
-        self._handle_deleter if not self._in_graph_mode else None, op)
+        self._handle_deleter if not self._in_graph_mode else None, op,
+        self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -966,7 +971,7 @@ class _UnreadVariable(ResourceVariable):
   """
 
   def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
-               shape, in_graph_mode, deleter, parent_op):
+               shape, in_graph_mode, deleter, parent_op, unique_id):
     # We do not call super init on purpose.
     self._trainable = False
     self._save_slice_info = None
@@ -979,6 +984,7 @@ class _UnreadVariable(ResourceVariable):
       self._handle_name = ""
     else:
       self._handle_name = self._handle.name
+    self._unique_id = unique_id
     self._dtype = dtype
     self._constraint = None
     self._cached_value = None
