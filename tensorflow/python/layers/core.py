@@ -268,14 +268,14 @@ def dropout(inputs,
 @tf_export('layers.Flatten')
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
-  
+
   Arguments:
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
       `(batch, ..., channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, ...)`.
-      
+
   Examples:
 
   ```
