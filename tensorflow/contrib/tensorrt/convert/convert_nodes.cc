@@ -1833,51 +1833,38 @@ tensorflow::Status ConvertFusedBatchNorm(
         "only is_training=false is supported, at " + node_def.name());
   }
   nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
-  TRT_ShapedWeights scale_weights = inputs.at(1).weights();
-  TRT_ShapedWeights offset_weights = inputs.at(2).weights();
-  TRT_ShapedWeights mean_weights = inputs.at(3).weights();
-  TRT_ShapedWeights variance_weights = inputs.at(4).weights();
-  TRT_ShapedWeights dummy_power_weights(scale_weights.type_);
-  size_t scale_weights_count = scale_weights.count();
-  size_t nweight = scale_weights_count;
-  size_t offset_weights_count = offset_weights.count();
-  nweight = std::max(nweight, offset_weights_count);
-  size_t mean_weights_count = mean_weights.count();
-  nweight = std::max(nweight, mean_weights_count);
-  size_t variance_weights_count = variance_weights.count();
-  nweight = std::max(nweight, variance_weights_count);
 
-  TRT_ShapedWeights* ptr_shape_weights = NULL;
-  if (scale_weights_count == 1 && offset_weights_count == 1 &&
-      mean_weights_count == 1 && variance_weights_count == 1) {
-    ptr_shape_weights = &scale_weights;
-  } else {
-    if (scale_weights_count == nweight) {
-      ptr_shape_weights = &scale_weights;
-    } else if (scale_weights_count != 1) {
-      return tensorflow::errors::InvalidArgument(
-          "Inconsistent scale_weights count, at" + node_def.name());
-    }
-    if (offset_weights_count == nweight) {
-      ptr_shape_weights = &offset_weights;
-    } else if (offset_weights_count != 1) {
-      return tensorflow::errors::InvalidArgument(
-          "Inconsistent offset_weights count, at" + node_def.name());
-    }
-    if (mean_weights_count == nweight) {
-      ptr_shape_weights = &mean_weights;
-    } else if (mean_weights_count != 1) {
-      return tensorflow::errors::InvalidArgument(
-          "Inconsistent mean_weights count, at" + node_def.name());
-    }
-    if (variance_weights_count == nweight) {
-      ptr_shape_weights = &variance_weights;
-    } else if (variance_weights_count != 1) {
-      return tensorflow::errors::InvalidArgument(
-          "Inconsistent variance_weights count, at" + node_def.name());
+  //  Check parameter types
+  auto parameter_type = inputs.at(1).weights().type_;
+  if ((parameter_type != tensorflow::DataType::DT_FLOAT) &&
+      (parameter_type != tensorflow::DataType::DT_HALF)) {
+    return tensorflow::errors::Unimplemented(
+        "only float32 or float16 weight data type is supported, for node " +
+        node_def.name() + " got " + tensorflow::DataTypeString(parameter_type));
+  }
+  for (int i = 1; i < 5; i++) {
+    if (inputs.at(i).weights().type_ != parameter_type) {
+      return tensorflow::errors::Unimplemented(
+          "Inconsistent parameter type for batchnormis not supported, at: " +
+          node_def.name());
     }
   }
 
+  TRT_ShapedWeights dummy_power_weights(parameter_type);
+  size_t nweight = 0;
+  for (int i = 1; i < 5; i++) {
+    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+  }
+  TRT_ShapedWeights* ptr_shape_weights = nullptr;
+  for (int i = 1; i < 5; i++) {
+    if (inputs.at(i).weights().count() == nweight) {
+      ptr_shape_weights =
+          const_cast<TRT_ShapedWeights*>(&(inputs.at(i).weights()));
+    } else if (inputs.at(i).weights().count() != 1) {
+      return tensorflow::errors::InvalidArgument(
+          "Inconsistent batchnorm parameter count, at: " + node_def.name());
+    }
+  }
   //  We could technically have two weights with different shape.
   //  that requires two addScale op, arguably less performant
   TRT_ShapedWeights combined_scale_weights =
@@ -1885,77 +1872,59 @@ tensorflow::Status ConvertFusedBatchNorm(
   TRT_ShapedWeights combined_offset_weights =
       ctx.get_temp_weights_like(*ptr_shape_weights);
 
-  if ((scale_weights.type_ == offset_weights.type_) &&
-      (mean_weights.type_ == variance_weights.type_) &&
-      (scale_weights.type_ == variance_weights.type_)) {
-    if ((scale_weights.type_ != tensorflow::DataType::DT_FLOAT) &&
-        (scale_weights.type_ != tensorflow::DataType::DT_HALF)) {
-      return tensorflow::errors::Unimplemented(
-          "only float32 or float16 weight data type is supported, for node " +
-          node_def.name() + " got " +
-          tensorflow::DataTypeString(scale_weights.type_));
+  if (parameter_type == tensorflow::DT_FLOAT) {
+    for (size_t i = 0; i < nweight; ++i) {
+      float batchnorm_data[4];
+      for (int j = 0; j < 4; j++) {
+        if (inputs.at(j + 1).weights().count() != 1) {
+          batchnorm_data[j] = (static_cast<float const*>(
+              inputs.at(j + 1).weights().GetValues()))[i];
+        } else {
+          batchnorm_data[j] = (static_cast<float const*>(
+              inputs.at(j + 1).weights().GetValues()))[0];
+        }
+      }
+      float scale = batchnorm_data[0];
+      float offset = batchnorm_data[1];
+      float mean = batchnorm_data[2];
+      float variance = batchnorm_data[3];
+      float& combined_scale_ref = const_cast<float*>(
+          static_cast<float const*>(combined_scale_weights.GetValues()))[i];
+      float& combined_offset_ref = const_cast<float*>(
+          static_cast<float const*>(combined_offset_weights.GetValues()))[i];
+      combined_scale_ref = scale / sqrtf(variance + epsilon);
+      combined_offset_ref = offset - mean * combined_scale_ref;
     }
-    if (scale_weights.type_ == tensorflow::DT_FLOAT) {
-      for (size_t i = 0; i < nweight; ++i) {
-        float scale, offset, mean, variance;
-        if (scale_weights_count != 1) {
-          scale = (static_cast<float const*>(scale_weights.GetValues()))[i];
+  } else {
+    const Eigen::half* cast_vals_array[4];
+    for (int j = 0; j < 4; j++) {
+      cast_vals_array[j] = static_cast<Eigen::half const*>(
+          inputs.at(j + 1).weights().GetValues());
+    }
+    Eigen::half* comb_scale_vals = const_cast<Eigen::half*>(
+        static_cast<Eigen::half const*>(combined_scale_weights.GetValues()));
+    Eigen::half* comb_off_vals = const_cast<Eigen::half*>(
+        static_cast<Eigen::half const*>(combined_offset_weights.GetValues()));
+    for (size_t i = 0; i < nweight; ++i) {
+      Eigen::half batchnorm_data[4];
+      for (int j = 0; j < 4; j++) {
+        if (inputs.at(j + 1).weights().count() != 1) {
+          batchnorm_data[j] = cast_vals_array[j][i];
         } else {
-          scale = (static_cast<float const*>(scale_weights.GetValues()))[0];
+          batchnorm_data[j] = cast_vals_array[j][0];
         }
-        if (offset_weights_count != 1) {
-          offset = (static_cast<float const*>(offset_weights.GetValues()))[i];
-        } else {
-          offset = (static_cast<float const*>(offset_weights.GetValues()))[0];
-        }
-        if (mean_weights_count != 1) {
-          mean = (static_cast<float const*>(mean_weights.GetValues()))[i];
-        } else {
-          mean = (static_cast<float const*>(mean_weights.GetValues()))[0];
-        }
-        if (variance_weights_count != 1) {
-          variance =
-              (static_cast<float const*>(variance_weights.GetValues()))[i];
-        } else {
-          variance =
-              (static_cast<float const*>(variance_weights.GetValues()))[0];
-        }
-        float& combined_scale_ref = const_cast<float*>(
-            static_cast<float const*>(combined_scale_weights.GetValues()))[i];
-        float& combined_offset_ref = const_cast<float*>(
-            static_cast<float const*>(combined_offset_weights.GetValues()))[i];
-        combined_scale_ref = scale / sqrtf(variance + epsilon);
-        combined_offset_ref = offset - mean * combined_scale_ref;
       }
-    } else {
-      const Eigen::half* scale_vals =
-          (static_cast<Eigen::half const*>(scale_weights.GetValues()));
-      const Eigen::half* off_vals =
-          (static_cast<Eigen::half const*>(offset_weights.GetValues()));
-      const Eigen::half* mean_vals =
-          (static_cast<Eigen::half const*>(mean_weights.GetValues()));
-      const Eigen::half* variance_vals =
-          (static_cast<Eigen::half const*>(variance_weights.GetValues()));
-      Eigen::half* comb_scale_vals = const_cast<Eigen::half*>(
-          static_cast<Eigen::half const*>(combined_scale_weights.GetValues()));
-      Eigen::half* comb_off_vals = const_cast<Eigen::half*>(
-          static_cast<Eigen::half const*>(combined_offset_weights.GetValues()));
-      for (size_t i = 0; i < nweight; ++i) {
-        int si = scale_weights_count != 1 ? i : 0;
-        int oi = offset_weights_count != 1 ? i : 0;
-        int mi = mean_weights_count != 1 ? i : 0;
-        int vi = variance_weights_count != 1 ? i : 0;
-        float scale(scale_vals[si]);
-        float offset(off_vals[oi]);
-        float mean(mean_vals[mi]);
-        float variance(variance_vals[vi]);
-        float combined_scale_ref = scale / sqrtf(variance + epsilon);
-        comb_scale_vals[i] = Eigen::half(combined_scale_ref);
-        float combined_offset_ref = offset - mean * combined_scale_ref;
-        comb_off_vals[i] = Eigen::half(combined_offset_ref);
-      }
+      float scale(batchnorm_data[0]);
+      float offset(batchnorm_data[1]);
+      float mean(batchnorm_data[2]);
+      float variance(batchnorm_data[3]);
+      float combined_scale_ref = scale / sqrtf(variance + epsilon);
+      comb_scale_vals[i] = Eigen::half(combined_scale_ref);
+      float combined_offset_ref = offset - mean * combined_scale_ref;
+      comb_off_vals[i] = Eigen::half(combined_offset_ref);
     }
   }
+
   nvinfer1::ScaleMode mode = nweight == 1 ? nvinfer1::ScaleMode::kUNIFORM
                                           : nvinfer1::ScaleMode::kCHANNEL;
   nvinfer1::IScaleLayer* layer =
