@@ -163,7 +163,7 @@ class DatasetSerializationTestBase(test.TestCase):
                                  num_outputs,
                                  sparse_tensors=False,
                                  verify_exhausted=True):
-    """Verifies that restoring into an already initilized iterator works.
+    """Verifies that restoring into an already initialized iterator works.
 
     Args:
       ds_fn: See `run_core_tests`.

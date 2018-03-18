@@ -123,7 +123,7 @@ bool BestSplitDominatesRegression(const Tensor& total_sums,
                                   const Tensor& split_squares,
                                   int32 accumulator);
 
-// Performs booststrap_samples bootstrap samples of the best split's class
+// Performs bootstrap_samples bootstrap samples of the best split's class
 // counts and the second best splits's class counts, and returns true if at
 // least dominate_fraction of the time, the former has a better (lower)
 // Gini impurity.  Does not take over ownership of *rand.

@@ -83,7 +83,7 @@ Grows the tree for finished nodes and allocates waiting nodes.
 params: A serialized TensorForestParams proto.
 tree_handle: The handle to the tree.
 stats_handle: The handle to the stats.
-finshed_nodes: A 1-d Tensor of finished node ids from ProcessInput.
+finished_nodes: A 1-d Tensor of finished node ids from ProcessInput.
 )doc");
 
 REGISTER_OP("ProcessInputV4")
@@ -119,7 +119,7 @@ sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
 input_labels: The training batch's labels as a 1 or 2-d tensor.
   'input_labels[i][j]' gives the j-th label/target for the i-th input.
-input_weights: The training batch's eample weights as a 1-d tensor.
+input_weights: The training batch's weights as a 1-d tensor.
   'input_weights[i]' gives the weight for the i-th input.
 finished_nodes: A 1-d tensor of node ids that have finished and are ready to
   grow.

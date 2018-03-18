@@ -421,7 +421,7 @@ double getChebyshevEpsilon(const std::vector<float>& mu1,
                            const std::vector<float>& mu2) {
   // Math time!!
   // We are trying to minimize d = |mu1 - x|^2 + |mu2 - y|^2 over the surface.
-  // Using Langrange multipliers, we get
+  // Using Lagrange multipliers, we get
   //   partial d / partial x = -2 mu1 + 2 x = lambda_1 1 + 2 lambda_3 x
   //   partial d / partial y = -2 mu2 + 2 y = lambda_2 1 - 2 lambda_3 y
   // or
@@ -485,7 +485,7 @@ double getChebyshevEpsilon(const std::vector<float>& mu1,
   }
 
   double sdiscrim = sqrt(discrim);
-  // TODO(thomaswc): Analyze whetever one of these is always closer.
+  // TODO(thomaswc): Analyze whatever one of these is always closer.
   double v1 = (-b + sdiscrim) / (2 * a);
   double v2 = (-b - sdiscrim) / (2 * a);
   double dist1 = getDistanceFromLambda3(v1, mu1, mu2);

@@ -60,7 +60,7 @@ class InequalityDecisionNodeEvaluator : public BinaryDecisionNodeEvaluator {
   bool include_equals_;
 };
 
-// Evalutor for splits with multiple weighted features.
+// Evaluator for splits with multiple weighted features.
 class ObliqueInequalityDecisionNodeEvaluator
     : public BinaryDecisionNodeEvaluator {
  public:

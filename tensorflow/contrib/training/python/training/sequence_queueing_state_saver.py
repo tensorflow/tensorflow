@@ -876,7 +876,7 @@ class SequenceQueueingStateSaver(object):
         ]):
           self._length = array_ops.identity(self._length)
 
-        # Only create barrier; enqueu and dequeue operations happen when you
+        # Only create barrier; enqueue and dequeue operations happen when you
         # access prefetch_op and next_batch.
         self._create_barrier()
         self._scope = scope
@@ -1637,7 +1637,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
 
   For `key, value` pairs in `input_context` with `SparseTensor` `value` removes
   them from `input_context` and transforms the `value` into a sequence and
-  then adding `key`, transformed `value` into `input_seuqences`.
+  then adding `key`, transformed `value` into `input_sequences`.
   The transformation is done by adding a new first dimension of `value_length`
   equal to that of the other values in input_sequences` and tiling the `value`
   every `num_unroll` steps.
