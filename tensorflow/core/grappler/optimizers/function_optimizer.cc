@@ -189,7 +189,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
   OptimizerOptions optimizer_opts;
   optimizer_opts.set_do_function_inlining(true);
   ProcessFunctionLibraryRuntime pflr(&dvc_mgr, env,
-                                     graph_def.versions().producer(),
+                                     inlined_graph->versions().producer(),
                                      &function_library, optimizer_opts);
   FunctionLibraryRuntime* flr = pflr.GetFLR(dev->name());
   CHECK(flr);
@@ -206,11 +206,6 @@ Status InlineSymbolicGradient(const NodeDef& node,
   while (counter < 50 && ExpandInlineFunctions(flr, &graph)) {
     ++counter;
   }
-  if (counter == 0) {
-    // Nothing was inlined
-    return errors::InvalidArgument(
-        strings::StrCat("Failed to inline node ", node.name()));
-  }
 
   GraphDef inlined_graph_def;
   graph.ToGraphDef(&inlined_graph_def);
@@ -225,21 +220,27 @@ Status InlineSymbolicGradient(const NodeDef& node,
       inlined_node.set_name(node.name());
       for (int i = 0; i < inlined_node.input_size(); ++i) {
         inlined_node.set_input(
-            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
       }
     } else if (inlined_node.name() == "FunctionInputs") {
       inlined_node.set_name(
-          strings::StrCat(node.name(), "/", inlined_node.name()));
+          AddPrefixToNodeName(inlined_node.name(), node.name()));
       inlined_node.clear_input();
       for (int i = 0; i < node.input_size(); ++i) {
         inlined_node.add_input(node.input(i));
       }
     } else {
       inlined_node.set_name(
-          strings::StrCat(node.name(), "/", inlined_node.name()));
+          AddPrefixToNodeName(inlined_node.name(), node.name()));
       for (int i = 0; i < inlined_node.input_size(); ++i) {
         inlined_node.set_input(
-            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
+      }
+      // If the node has no input, hook it up to the function input node to make
+      // sure it runs in the same frame as the other nodes of the function body.
+      if (inlined_node.input_size() == 0) {
+        *inlined_node.add_input() = AsControlDependency(
+            AddPrefixToNodeName("FunctionInputs", node.name()));
       }
     }
     inlined_node.set_device(node.device());
@@ -278,14 +279,12 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
-  // Inline functions when possible.
+  *optimized_graph->mutable_versions() = item.graph.versions();
   for (const NodeDef& node : item.graph.node()) {
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      if (node.op() == "SymbolicGradient") {
-        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, item.graph.library(),
-                                                  optimized_graph));
-        continue;
-      }
+    if (node.op() == "SymbolicGradient") {
+      TF_RETURN_IF_ERROR(
+          InlineSymbolicGradient(node, item.graph.library(), optimized_graph));
+      continue;
     }
     auto it = functions.find(node.op());
     if (it == functions.end()) {
@@ -301,7 +300,6 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // TODO(bsteiner): trim the library to remove unused function definitions
   *optimized_graph->mutable_library() = item.graph.library();
-  *optimized_graph->mutable_versions() = item.graph.versions();
 
   return Status::OK();
 }

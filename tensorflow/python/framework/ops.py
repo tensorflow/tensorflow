@@ -838,41 +838,51 @@ class _EagerTensorBase(Tensor):
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
       raise ValueError(
-          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          "Tensor's shape %s is not compatible with supplied shape %s" %
           (self.shape, shape))
 
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise AttributeError("op not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.op is meaningless when eager execution is enabled.")
 
   @property
   def graph(self):
-    raise AttributeError("graph not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.graph is meaningless when eager execution is enabled.")
 
   @property
   def name(self):
-    raise AttributeError("name not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.name is meaningless when eager execution is enabled.")
 
   @property
   def value_index(self):
-    raise AttributeError("value_index not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.value_index is meaningless when eager execution is enabled.")
 
   def consumers(self):
-    raise NotImplementedError("consumers not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "Tensor.consumers is meaningless when eager execution is enabled.")
 
   def _add_consumer(self, consumer):
-    raise NotImplementedError("_add_consumer not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_add_consumer not supported when eager execution is enabled.")
 
   def _as_node_def_input(self):
     raise NotImplementedError(
-        "_as_node_def_input not supported for Eager Tensors.")
+        "_as_node_def_input not supported when eager execution is enabled.")
 
   def _as_tf_output(self):
-    raise NotImplementedError("_as_tf_output not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_as_tf_output not supported when eager execution is enabled.")
 
   def eval(self, feed_dict=None, session=None):
-    raise NotImplementedError("eval not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "eval is not supported when eager execution is enabled, "
+        "is .numpy() what you're looking for?"
+    )
 
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
@@ -5937,8 +5947,9 @@ def get_from_proto_function(collection_name):
 def _assert_collection_is_ok(collection_name):
   if context.executing_eagerly():
     if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
-      raise ValueError("When Eager Execution is enabled, variable "
-                       "collections are not supported.")
+      raise ValueError(
+          "variable collections are not supported when eager execution is enabled."
+      )
 
 
 def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):

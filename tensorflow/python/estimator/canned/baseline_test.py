@@ -1071,6 +1071,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: 1.3133,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.2689,
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
@@ -1132,6 +1134,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
           metric_keys.MetricKeys.ACCURACY: 0.5,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.2689,
           metric_keys.MetricKeys.LABEL_MEAN: 0.5,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1207,6 +1211,8 @@ class BaselineClassifierEvaluationTest(test.TestCase):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: loss_mean,
           metric_keys.MetricKeys.ACCURACY: 2. / (1. + 2.),
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: predictions_mean,
           metric_keys.MetricKeys.LABEL_MEAN: label_mean,
           metric_keys.MetricKeys.ACCURACY_BASELINE: (
@@ -1542,4 +1548,3 @@ class BaselineLogitFnTest(test.TestCase):
 
 if __name__ == '__main__':
   test.main()
-

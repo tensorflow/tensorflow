@@ -659,6 +659,14 @@ class PartitionedTensor(object):
   def __hash__(self):
     return hash(tuple(self.tensors))
 
+  def __eq__(self, other):
+    if not isinstance(other, PartitionedTensor):
+      return False
+    return self.tensors == other.tensors
+
+  def __ne__(self, other):
+    return not self == other  # pylint: disable=g-comparison-negation
+
   def as_tensor(self, dtype=None, name=None, as_ref=False):
     with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
       assert not as_ref

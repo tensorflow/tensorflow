@@ -223,4 +223,6 @@ message TfOpStats {
   optional RunEnvironmentResult run_environment = 7;
   // The result for the host operations.
   optional HostOpsResult host_ops = 8;
+  // A map from core ID to name.
+  map<uint32, string> core_id_to_name_map = 9;
 }

@@ -272,7 +272,9 @@ class Interpreter {
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate,
+                                       bool allow_dynamic_tensors = false);
 
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
@@ -447,6 +449,20 @@ class Interpreter {
     }
   }
 
+  // The state of the Interpreter.
+  enum State {
+    // The interpreter isn't ready to be invoked.
+    // `AllocateTensor` need to be called to enter an invokable state.
+    kStateUninvokable = 0,
+    // The interpreter is ready to be invoked.
+    kStateInvokable,
+    // The interpreter is ready to be invoked, and graph can't be further
+    // modified. The interpreter will enter this state when calling
+    // `ModifyGraphWithDelegate` with `allow_dynamic_tensors=false`.
+    kStateInvokableAndImmutable,
+  };
+  State state_ = kStateUninvokable;
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -461,10 +477,6 @@ class Interpreter {
   // of every node and the global inputs and outputs are valid indexes into
   // the tensor array.
   bool consistent_ = true;
-
-  // Whether the model is safe to invoke (if any errors occurred this
-  // will be false).
-  bool invokable_ = false;
 
   // Array of indices representing the tensors that are inputs to the
   // interpreter.

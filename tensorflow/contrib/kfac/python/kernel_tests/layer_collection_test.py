@@ -135,8 +135,22 @@ class LayerCollectionTest(test.TestCase):
           array_ops.constant(6),
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
+      lc.register_fully_connected_multi(
+          array_ops.constant(1),
+          (array_ops.constant(2), array_ops.constant(3)),
+          (array_ops.constant(4), array_ops.constant(5)))
+      lc.register_conv2d_multi(
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=(array_ops.ones((1, 2, 3, 4)), array_ops.ones((5, 6, 7, 8))),
+          outputs=(array_ops.ones((1, 1, 1, 5)), array_ops.ones((2, 2, 2, 10))))
+      lc.register_embedding_multi(
+          array_ops.constant((1,)),
+          (array_ops.constant(2), array_ops.constant(3)),
+          (array_ops.constant(4), array_ops.constant(5)))
 
-      self.assertEqual(9, len(lc.get_blocks()))
+      self.assertEqual(12, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
