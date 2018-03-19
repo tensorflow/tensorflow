@@ -220,21 +220,27 @@ Status InlineSymbolicGradient(const NodeDef& node,
       inlined_node.set_name(node.name());
       for (int i = 0; i < inlined_node.input_size(); ++i) {
         inlined_node.set_input(
-            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
       }
     } else if (inlined_node.name() == "FunctionInputs") {
       inlined_node.set_name(
-          strings::StrCat(node.name(), "/", inlined_node.name()));
+          AddPrefixToNodeName(inlined_node.name(), node.name()));
       inlined_node.clear_input();
       for (int i = 0; i < node.input_size(); ++i) {
         inlined_node.add_input(node.input(i));
       }
     } else {
       inlined_node.set_name(
-          strings::StrCat(node.name(), "/", inlined_node.name()));
+          AddPrefixToNodeName(inlined_node.name(), node.name()));
       for (int i = 0; i < inlined_node.input_size(); ++i) {
         inlined_node.set_input(
-            i, strings::StrCat(node.name(), "/", inlined_node.input(i)));
+            i, AddPrefixToNodeName(inlined_node.input(i), node.name()));
+      }
+      // If the node has no input, hook it up to the function input node to make
+      // sure it runs in the same frame as the other nodes of the function body.
+      if (inlined_node.input_size() == 0) {
+        *inlined_node.add_input() = AsControlDependency(
+            AddPrefixToNodeName("FunctionInputs", node.name()));
       }
     }
     inlined_node.set_device(node.device());
@@ -275,12 +281,10 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   *optimized_graph->mutable_versions() = item.graph.versions();
   for (const NodeDef& node : item.graph.node()) {
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      if (node.op() == "SymbolicGradient") {
-        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, item.graph.library(),
-                                                  optimized_graph));
-        continue;
-      }
+    if (node.op() == "SymbolicGradient") {
+      TF_RETURN_IF_ERROR(
+          InlineSymbolicGradient(node, item.graph.library(), optimized_graph));
+      continue;
     }
     auto it = functions.find(node.op());
     if (it == functions.end()) {
