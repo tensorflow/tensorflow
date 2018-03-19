@@ -962,6 +962,7 @@ def resize_image_aspect_with_pad(image, target_height, target_width,
            3-D Tensor of shape `[height, width, channels]`.
     target_height: Target height.
     target_width: Target width.
+    method: Method to use for resizing image. See `resize_images()`
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
