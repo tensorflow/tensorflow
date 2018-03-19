@@ -807,7 +807,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   perftools::gputools::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
-      .set_input_feature_map_count(dims.in_depth)
+      .set_input_feature_map_count(dims.in_depth / groups)
       .set_output_feature_map_count(dims.out_depth);
   perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
@@ -835,7 +835,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   Tensor pre_transformed_filter_backprop;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                              TensorShape({dims.out_depth, dims.in_depth,
+                              TensorShape({dims.out_depth, dims.in_depth / groups,
                                            dims.spatial_dims[0].filter_size,
                                            dims.spatial_dims[1].filter_size}),
                               &pre_transformed_filter_backprop));
@@ -904,7 +904,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       dims.out_depth,                        // out_depths
       {{dims.spatial_dims[0].filter_size,    // filter_rows
         dims.spatial_dims[1].filter_size}},  // filter_cols
-      groups,                                     // groups
+      groups,                                // groups
       {{dims.spatial_dims[0].dilation,       // dilation_rows
         dims.spatial_dims[1].dilation}},     // dilation_cols
       {{dims.spatial_dims[0].stride,         // stride_rows
