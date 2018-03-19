@@ -30,8 +30,8 @@ tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
     deps = [
-        "//third_party/tensorflow/contrib/data/kernels:dataset_kernels",
-        "//third_party/tensorflow/core:lib_proto_parsing",
+        "//tensorflow/contrib/data/kernels:dataset_kernels",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
