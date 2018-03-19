@@ -4399,7 +4399,7 @@ class Graph(object):
     for controller in self._control_dependencies_stack:
       controller.add_op(op)
 
-  def control_dependencies(self, control_inputs):
+  def control_dependencies(self, *control_inputs):
     """Returns a context manager that specifies control dependencies.
 
     Use with the `with` keyword to specify that all operations constructed
@@ -4480,6 +4480,8 @@ class Graph(object):
     #   redundant control inputs.
     control_ops = []
     current = self._current_control_dependencies()
+    if type(control_inputs[0]) is list:
+        control_inputs = control_inputs[0]
     for c in control_inputs:
       if isinstance(c, IndexedSlices):
         c = c.op
