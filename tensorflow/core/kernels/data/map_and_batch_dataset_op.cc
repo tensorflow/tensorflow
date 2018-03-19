@@ -183,7 +183,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               TensorShape component_shape(
                   batch_results_[current_batch_index_].output[i].shape());
               component_shape.set_dim(0, num_elements);
-              Tensor component(ctx->allocator({}), output[i].dtype(),
+              AllocatorAttributes attr;
+              attr.set_gpu_compatible(true);
+              Tensor component(ctx->allocator(attr), output[i].dtype(),
                                component_shape);
               TF_RETURN_IF_ERROR(
                   CopyPartialBatch(&component, output[i], num_elements));
@@ -255,7 +257,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({dataset()->batch_size_});
           component_shape.AppendShape(return_values[i].shape());
-          Tensor component(ctx->allocator({}), return_values[i].dtype(),
+          AllocatorAttributes attr;
+          attr.set_gpu_compatible(true);
+          Tensor component(ctx->allocator(attr), return_values[i].dtype(),
                            component_shape);
           batch_result->output.emplace_back(std::move(component));
         }
