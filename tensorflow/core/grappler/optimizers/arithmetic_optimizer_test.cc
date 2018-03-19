@@ -126,6 +126,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     DisableAllStages(optimizer);
     optimizer->options_.remove_redundant_cast = true;
   }
+
+  void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_negation = true;
+  }
 };
 
 TEST_F(ArithmeticOptimizerTest, NoOp) {
@@ -1496,6 +1501,78 @@ TEST_F(ArithmeticOptimizerTest, AddOpsRewrite_AddOpsOfSymbolicallyEqualShape) {
   const NodeDef* updated_outputs = node_map.GetNode("outputs");
   ASSERT_TRUE(updated_outputs != nullptr);
   EXPECT_EQ(collapsed_add->name(), updated_outputs->input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Variable(s.WithOpName("x"), {2, 2}, DT_FLOAT);
+  auto y = ops::Variable(s.WithOpName("y"), {2, 2}, DT_FLOAT);
+  Output neg_x = ops::Neg(s.WithOpName("Neg_x"), x);
+  Output neg_y = ops::Neg(s.WithOpName("Neg_y"), y);
+  Output add_x_y = ops::Add(s.WithOpName("Add_x_y"), x, y);
+  Output add_negx_y = ops::Add(s.WithOpName("Add_negx_y"), neg_x, y);
+  Output add_x_negy = ops::Add(s.WithOpName("Add_x_negy"), x, neg_y);
+  Output add_negx_negy = ops::Add(s.WithOpName("Add_negx_negy"), neg_x, neg_y);
+  Output sub_x_y = ops::Sub(s.WithOpName("Sub_x_y"), x, y);
+  Output sub_negx_y = ops::Sub(s.WithOpName("Sub_negx_y"), neg_x, y);
+  Output sub_x_negy = ops::Sub(s.WithOpName("Sub_x_negy"), x, neg_y);
+  Output sub_negx_negy = ops::Sub(s.WithOpName("Sub_negx_negy"), neg_x, neg_y);
+  auto add_all = ops::AddN(s.WithOpName("add_all"),
+                           {add_x_y, add_negx_y, add_x_negy, add_negx_negy,
+                            sub_x_y, sub_negx_y, sub_x_negy, sub_negx_negy});
+
+  GrapplerItem item;
+  item.fetch = {"add_all"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveNegation(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  int found = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "Add_negx_y") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_x", node.input(2));
+    } else if (node.name() == "Add_x_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+    } else if (node.name() == "Add_negx_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Neg_y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_x", node.input(2));
+    } else if (node.name() == "Sub_x_negy") {
+      ++found;
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+    } else if (node.name() == "Sub_negx_negy") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Neg_y", node.input(2));
+      EXPECT_EQ("^Neg_x", node.input(3));
+    }
+  }
+  EXPECT_EQ(5, found);
 }
 
 }  // namespace grappler

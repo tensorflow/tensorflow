@@ -344,8 +344,7 @@ class ArithmeticOptimizerStage {
   // will be automatically added to the optimization queue. If a simplified node
   // has the same name as original node it has to be explicitly added to the
   // optimization queue for second pass.
-  virtual Status TrySimplify(const NodeDef* node,
-                             string* simplified_node_name) = 0;
+  virtual Status TrySimplify(NodeDef* node, string* simplified_node_name) = 0;
 
  protected:
   struct ScopedNodeName {
@@ -557,8 +556,7 @@ class AddOpsRewriteStage : public ArithmeticOptimizerStage {
            HasAllInputsOfSymbolicallyEqualShape(*node, properties);
   }
 
-  Status TrySimplify(const NodeDef* node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     CHECK(IsSupported(node));
     AddOpsGroup group;
     TF_RETURN_IF_ERROR(CreateAddOpsGroup(node, &group));
@@ -794,8 +792,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
            !IsRewritten(node);
   }
 
-  Status TrySimplify(const NodeDef* node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     CHECK(IsSupported(node));
 
     std::set<string> common_factors;
@@ -945,8 +942,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
 
   // TODO(rmlarsen): Forward control dependencies on the bypassed
   // transpose nodes.
-  Status TrySimplify(const NodeDef* node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     CHECK(IsSupported(node));
 
     NodeDef* input;
@@ -1028,8 +1024,7 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     return IsBitcast(*node);
   }
 
-  Status TrySimplify(const NodeDef* node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     CHECK(IsSupported(node));
 
     // Bypass Bitcast whose source type and destination type are equal.
@@ -1066,12 +1061,62 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override { return IsCast(*node); }
 
-  Status TrySimplify(const NodeDef* node,
-                     string* simplified_node_name) override {
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     CHECK(IsSupported(node));
     // Bypass Cast whose source type and destination type are equal.
     if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
       *simplified_node_name = node->input(0);
+    }
+    return Status::OK();
+  }
+};
+
+class RemoveNegationStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveNegationStage(const ArithmeticOptimizerContext& ctx)
+      : ArithmeticOptimizerStage("RemoveNegation", ctx) {}
+  ~RemoveNegationStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAdd(*node) || IsSub(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    const string node_name = node->name();
+    NodeDef* x;
+    NodeDef* y;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+    bool updated = false;
+    if (IsAdd(*node)) {
+      if (IsNeg(*x)) {
+        // (-a) + b = b - a
+        node->set_op("Sub");
+        node->mutable_input()->SwapElements(0, 1);
+        node->set_input(1, x->input(0));
+        node->add_input(AsControlDependency(x->name()));
+        ctx_.node_map->AddOutput(NodeName(x->input(0)), node_name);
+        updated = true;
+      } else if (IsNeg(*y)) {
+        // a + (-b) = a - b
+        node->set_op("Sub");
+        node->set_input(1, y->input(0));
+        node->add_input(AsControlDependency(y->name()));
+        ctx_.node_map->AddOutput(NodeName(y->input(0)), node_name);
+        updated = true;
+      }
+    } else if (IsSub(*node)) {
+      if (IsNeg(*y)) {
+        // a - (-b) = a + b
+        node->set_op("Add");
+        node->set_input(1, y->input(0));
+        node->add_input(AsControlDependency(y->name()));
+        ctx_.node_map->AddOutput(NodeName(y->input(0)), node_name);
+        updated = true;
+      }
+    }
+    if (updated) {
+      AddToOptimizationQueue(node);
     }
     return Status::OK();
   }
@@ -1696,12 +1741,16 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps() {
     stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
         new RemoveRedundantCastStage(ctx)));
   }
+  if (options_.remove_negation) {
+    stages.push_back(std::unique_ptr<ArithmeticOptimizerStage>(
+        new RemoveNegationStage(ctx)));
+  }
 
   VLOG(1) << "Simplify arithmetic ops using " << stages.size()
           << " arithmetic optimization stages";
 
   while (!nodes_to_simplify.Empty()) {
-    const NodeDef* node = nodes_to_simplify.PopBack();
+    NodeDef* node = nodes_to_simplify.PopBack();
 
     // TODO(ezhulenev): move all rewrites into separate stages
     string simplified_tensor = "";
