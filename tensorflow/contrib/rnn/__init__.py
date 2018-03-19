@@ -58,6 +58,7 @@ See @{$python/contrib.rnn} guide.
 @@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
+@@IndRNNCell
 
 <!--RNNCell wrappers-->
 @@AttentionCellWrapper
