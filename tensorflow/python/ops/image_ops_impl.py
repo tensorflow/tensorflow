@@ -947,6 +947,119 @@ def resize_images(images,
     return images
 
 
+@tf_export('image.resize_image_aspect_with_pad')
+def resize_image_aspect_with_pad(image, target_height, target_width,
+                                 method=ResizeMethod.BILINEAR):
+  """
+  Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion and padding
+  it evenly with zeros.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `resize_images()`
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+  with ops.name_scope(None, 'resize_image_aspect_with_pad', [image]):
+    image = ops.convert_to_tensor(image, name='image')
+    image_shape = image.get_shape()
+    is_batch = True
+    if image_shape.ndims == 3:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+    elif image_shape.ndims is None:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+      image.set_shape([None] * 4)
+    elif image_shape.ndims != 4:
+      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+    assert_ops = _CheckAtLeast3DImage(image, require_static=False)
+    assert_ops += _assert(target_width > 0, ValueError,
+                          'target_width must be > 0.')
+    assert_ops += _assert(target_height > 0, ValueError,
+                          'target_height must be > 0.')
+
+    image = control_flow_ops.with_dependencies(assert_ops, image)
+    if _is_tensor(target_height):
+      target_height = control_flow_ops.with_dependencies(
+          assert_ops, target_height)
+    if _is_tensor(target_width):
+      target_width = control_flow_ops.with_dependencies(assert_ops,
+                                                        target_width)
+
+    def max_(x, y):
+      if _is_tensor(x) or _is_tensor(y):
+        return math_ops.maximum(x, y)
+      else:
+        return max(x, y)
+
+    def equal_(x, y):
+      if _is_tensor(x) or _is_tensor(y):
+        return math_ops.equal(x, y)
+      else:
+        return x == y
+
+    _, height, width, _ = _ImageDimensions(image, rank=4)
+
+    # convert values to float, to ease divisions
+    f_height = math_ops.cast(height, dtype=dtypes.float64)
+    f_width = math_ops.cast(width, dtype=dtypes.float64)
+    f_target_height = math_ops.cast(target_height, dtype=dtypes.float64)
+    f_target_width = math_ops.cast(target_width, dtype=dtypes.float64)
+
+    # Find the ratio by which the image must be adjusted
+    # to fit within the target
+    ratio = max_(f_width / f_target_width, f_height / f_target_height)
+    p_height_float = max_((f_target_height - (f_height / ratio)) * ratio / 2, 0)
+    p_width_float = max_((f_target_width - (f_width / ratio)) * ratio / 2, 0)
+    p_height = math_ops.cast(math_ops.ceil(p_height_float), dtype=dtypes.int32)
+    p_width = math_ops.cast(math_ops.ceil(p_width_float), dtype=dtypes.int32)
+
+    padded_height = height + (p_height * 2)
+    padded_width = width + (p_width * 2)
+
+    # Pad first, then resize to meet requested dimensions
+    padded = pad_to_bounding_box(image, p_height, p_width,
+                                 padded_height, padded_width)
+
+    resized = resize_images(padded, [target_height, target_width], method)
+
+    if resized.get_shape().ndims is None:
+      raise ValueError('resized contains no shape.')
+
+    _, resized_height, resized_width, _ = _ImageDimensions(resized, rank=4)
+
+    assert_ops = []
+    assert_ops += _assert(
+        equal_(resized_height, target_height), ValueError,
+        'resized height is not correct.')
+    assert_ops += _assert(
+        equal_(resized_width, target_width), ValueError,
+        'resized width is not correct.')
+
+    resized = control_flow_ops.with_dependencies(assert_ops, resized)
+
+    if not is_batch:
+      resized = array_ops.squeeze(resized, squeeze_dims=[0])
+
+    return resized
+
+
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
   """Linearly scales `image` to have zero mean and unit norm.

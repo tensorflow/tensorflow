@@ -34,6 +34,7 @@ See the @{$python/image} guide.
 @@resize_bilinear
 @@resize_nearest_neighbor
 @@resize_image_with_crop_or_pad
+@@resize_image_aspect_with_pad
 @@central_crop
 @@pad_to_bounding_box
 @@crop_to_bounding_box
