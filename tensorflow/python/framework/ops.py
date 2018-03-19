@@ -4481,7 +4481,7 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     if type(control_inputs[0]) is list:
-        control_inputs = control_inputs[0]
+      control_inputs = control_inputs[0]
     for c in control_inputs:
       if isinstance(c, IndexedSlices):
         c = c.op
