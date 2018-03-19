@@ -29,7 +29,10 @@ py_library(
 tf_custom_op_library(
     name = "_dataset_ops.so",
     srcs = ["ops/dataset_ops.cc"],
-    deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"],
+    deps = [
+        "//third_party/tensorflow/contrib/data/kernels:dataset_kernels",
+        "//third_party/tensorflow/core:lib_proto_parsing",
+    ],
 )
 
 tf_gen_op_libs(
