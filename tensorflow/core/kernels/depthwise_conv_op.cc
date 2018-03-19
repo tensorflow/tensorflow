@@ -388,7 +388,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // CUDNN 7 introduces convolution groups for convolutions.
     // we can thus use the standard conv2d launcher with groups = in_depth
     // when CUDNN is enabled.
-    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
+    if (std::is_same<Device, GPUDevice>::value &&
+        DepthwiseConvUseGroupedConv() && use_cudnn_) {
       // Currently, our filter is arranged as:
       // [rows, cols, in_depth, depth_mul].
       // However, in the grouped convolution, we should have the filter

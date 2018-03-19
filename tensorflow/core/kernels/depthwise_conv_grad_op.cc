@@ -592,7 +592,8 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     #if GOOGLE_CUDA
     // If we have CUDNN group convolutions for conv2d, we can
     // dispatch a standard conv2d with groups = in_depth.
-    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
+    if (std::is_same<Device, GPUDevice>::value &&
+        DepthwiseConvUseGroupedConv() && use_cudnn_) {
       // Currently, our filter is arranged as:
       // [rows, cols, in_depth, depth_mul].
       // However, in the grouped convolution, we should have the filter
@@ -1009,7 +1010,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     #if GOOGLE_CUDA
     // Use standard conv2d launcher with groups = in_depth.
-    if (std::is_same<Device, GPUDevice>::value && use_cudnn_) {
+    if (std::is_same<Device, GPUDevice>::value &&
+        DepthwiseConvUseGroupedConv() && use_cudnn_) {
       // Currently, our filter backprop is arranged as:
       // [rows, cols, in_depth, depth_mul].
       // However, in the grouped convolution, we should have the filter
