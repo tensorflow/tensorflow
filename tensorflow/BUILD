@@ -65,10 +65,12 @@ config_setting(
 
 config_setting(
     name = "rpi3",
+    define_values = {
+        "target_system": "rpi3"
+    },
     values = {
         "host_crosstool_top": "@bazel_tools//tools/cpp:toolchain",
-        "crosstool_top": "//tools/arm_compiler:toolchain",
-        "cpu": "rpi-armeabi",
+        "cpu": "armv7",
     },
     visibility = ["//visibility:public"],
 )

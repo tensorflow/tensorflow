@@ -51,12 +51,11 @@ new_http_archive(
 )
 
 new_http_archive(
-    name = "GccArmRpi",
-    build_file = "compilers/gcc_arm_rpi.BUILD",
-    strip_prefix = "tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/",
-    # Prefer tar over ZIP, bazel complains about "Zip entries cannot refer to files outside of their directory: raspberry-tools-master.zip has a symlink to ../../lib/libBrokenLocale.so.1"
-    url = "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz",
-    sha256 = "4c622a5c7b9feb9615d4723b03a13142a7f3f813f9296861d5401282b9fbea96",
+    name = "LinaroArmGcc72",
+    build_file = "compilers/linaro-gcc72-armeabi.BUILD",
+    strip_prefix = "gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabihf/",
+    url = "https://releases.linaro.org/components/toolchain/binaries/7.2-2017.11/arm-linux-gnueabihf/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz",
+    sha256 = "cee0087b1f1205b73996651b99acd3a926d136e71047048f1758ffcec69b1ca2",
 )
 
 new_http_archive(

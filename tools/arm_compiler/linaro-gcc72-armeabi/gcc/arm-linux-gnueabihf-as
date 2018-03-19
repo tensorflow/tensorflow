@@ -1,0 +1,5 @@
+#!/bin/bash --norc
+
+exec -a arm-linux-gnueabihf-as \
+    external/LinaroArmGcc72/bin/arm-linux-gnueabihf-as \
+    "$@"

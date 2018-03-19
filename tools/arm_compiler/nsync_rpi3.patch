@@ -5,7 +5,7 @@
  
  config_setting(
 +    name = "gcc_linux_rpi",
-+    values = {"cpu": "rpi-armeabi"}
++    values = {"cpu": "armv7"}
 +)
 +
 +config_setting(
