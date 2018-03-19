@@ -293,6 +293,7 @@ class Variable(checkpointable.CheckpointableBase):
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+      RuntimeError: If lifted into the eager context.
     """
     _ = expected_shape
     if initial_value is None:
@@ -319,6 +320,11 @@ class Variable(checkpointable.CheckpointableBase):
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
+      # Ensure that we weren't lifted into the eager context.
+      if context.executing_eagerly():
+        raise RuntimeError(
+            "tf.Variable not supported when eager execution is enabled. "
+            "Please use tf.contrib.eager.Variable instead")
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
 
