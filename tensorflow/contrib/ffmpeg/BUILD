@@ -11,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 filegroup(
     name = "test_data",
@@ -63,11 +64,11 @@ cc_library(
 
 tf_custom_op_library(
     name = "ffmpeg.so",
-    deps = [
+    deps = if_not_windows([
         ":decode_audio_op_cc",
         ":decode_video_op_cc",
         ":encode_audio_op_cc",
-    ],
+    ]),
 )
 
 cc_library(
