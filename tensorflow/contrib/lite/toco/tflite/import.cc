@@ -162,8 +162,19 @@ void ImportIOTensors(const ::tflite::Model& input_model,
   }
 }
 
+namespace {
+bool Verify(const void* buf, size_t len) {
+  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
+  return ::tflite::VerifyModelBuffer(verifier);
+}
+}  // namespace
+
 std::unique_ptr<Model> Import(const ModelFlags& model_flags,
                               const string& input_file_contents) {
+  if (!Verify(input_file_contents.data(), input_file_contents.size())) {
+    LOG(FATAL) << "Invalid flatbuffer.";
+  }
+
   const ::tflite::Model* input_model =
       ::tflite::GetModel(input_file_contents.data());
 
