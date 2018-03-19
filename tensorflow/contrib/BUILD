@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",  # unix dependency, need to fix code for Windows
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
@@ -109,7 +110,6 @@ py_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
     ]) + if_not_windows([
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",  # unix dependency, need to fix code
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
         "//tensorflow/contrib/kafka",  # has some linking issue on opensssl.
     ]),
