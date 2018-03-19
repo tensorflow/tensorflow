@@ -8,6 +8,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "using_mkl_lnx_x64",
+    values = {
+        "cpu": "k8",
+        "define": "using_mkl=true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
