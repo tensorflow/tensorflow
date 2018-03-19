@@ -45,12 +45,10 @@ class ResampleTest(test.TestCase):
                 target_dist=target_dist,
                 initial_dist=initial_dist,
                 class_func=lambda c, _: c,
-                seed=27)).make_initializable_iterator())
-    init_op = iterator.initializer
+                seed=27)).make_one_shot_iterator())
     get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      sess.run(init_op)
       returned = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
