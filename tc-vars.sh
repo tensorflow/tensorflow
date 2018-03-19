@@ -96,7 +96,7 @@ fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
 TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
-BAZEL_ARM_FLAGS="--config=rpi3"
+BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_CUDA_FLAGS="--config=cuda"
 BAZEL_EXTRA_FLAGS="--copt=-fvisibility=hidden"
 

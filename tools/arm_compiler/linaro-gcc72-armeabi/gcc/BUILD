@@ -1,9 +1,9 @@
-package(default_visibility = ['//tools/arm_compiler:__pkg__'])
+package(default_visibility = ['//tools/arm_compiler/linaro-gcc72-armeabi:__pkg__'])
 
 filegroup(
   name = 'gcc',
   srcs = [
-    '@GccArmRpi//:gcc',
+    '@LinaroArmGcc72//:gcc',
     'arm-linux-gnueabihf-gcc',
   ],
 )
@@ -11,7 +11,7 @@ filegroup(
 filegroup(
   name = 'ar',
   srcs = [
-    '@GccArmRpi//:ar',
+    '@LinaroArmGcc72//:ar',
     'arm-linux-gnueabihf-ar',
   ],
 )
@@ -19,7 +19,7 @@ filegroup(
 filegroup(
   name = 'ld',
   srcs = [
-    '@GccArmRpi//:ld',
+    '@LinaroArmGcc72//:ld',
     'arm-linux-gnueabihf-ld',
   ],
 )
@@ -27,7 +27,7 @@ filegroup(
 filegroup(
   name = 'nm',
   srcs = [
-    '@GccArmRpi//:nm',
+    '@LinaroArmGcc72//:nm',
     'arm-linux-gnueabihf-nm',
   ],
 )
@@ -35,7 +35,7 @@ filegroup(
 filegroup(
   name = 'objcopy',
   srcs = [
-    '@GccArmRpi//:objcopy',
+    '@LinaroArmGcc72//:objcopy',
     'arm-linux-gnueabihf-objcopy',
   ],
 )
@@ -43,7 +43,7 @@ filegroup(
 filegroup(
   name = 'objdump',
   srcs = [
-    '@GccArmRpi//:objdump',
+    '@LinaroArmGcc72//:objdump',
     'arm-linux-gnueabihf-objdump',
   ],
 )
@@ -51,7 +51,7 @@ filegroup(
 filegroup(
   name = 'strip',
   srcs = [
-    '@GccArmRpi//:strip',
+    '@LinaroArmGcc72//:strip',
     'arm-linux-gnueabihf-strip',
   ],
 )
@@ -59,7 +59,7 @@ filegroup(
 filegroup(
   name = 'as',
   srcs = [
-    '@GccArmRpi//:as',
+    '@LinaroArmGcc72//:as',
     'arm-linux-gnueabihf-as',
   ],
 )

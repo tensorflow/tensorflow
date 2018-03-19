@@ -50,8 +50,11 @@ build:sycl_trisycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl_trisycl --define=using_sycl=true --define=using_trisycl=true
 
 build:rpi3 --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-build:rpi3 --crosstool_top=//tools/arm_compiler:toolchain
-build:rpi3 --cpu=rpi-armeabi
+build:rpi3 --crosstool_top=//tools/arm_compiler/linaro-gcc72-armeabi:toolchain
+build:rpi3 --cpu=armv7 --define=target_system=rpi3
+build:rpi3 --copt=-march=armv7-a --copt=-mtune=cortex-a53 --copt=-mfloat-abi=hard --copt=-DRASPBERRY_PI --copt=-D_GLIBCXX_USE_CXX11_ABI=0
+build:rpi3_opt --copt=-funsafe-math-optimizations --copt=-ftree-vectorize --copt=-pipe
+# --copt=-mfpu=neon-fp-armv8
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
