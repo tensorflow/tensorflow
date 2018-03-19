@@ -17,6 +17,8 @@ limitations under the License.
 // operators using XLA via the XLA "Host" (CPU) backend.
 
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/legacy_flags/xla_device_flags.h"
+#include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -34,6 +36,15 @@ class XlaCpuDeviceFactory : public DeviceFactory {
 Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
+  legacy_flags::XlaDeviceFlags* flags = legacy_flags::GetXlaDeviceFlags();
+  bool compile_on_demand = flags->tf_xla_compile_on_demand;
+
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
+  registration.requires_compilation = !compile_on_demand;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_CPU, DEVICE_CPU_XLA_JIT);
   (void)registrations;
@@ -41,7 +52,7 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
   std::unique_ptr<XlaDevice> device;
   TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
                                        DEVICE_CPU_XLA_JIT, options, name_prefix,
-                                       /*register_device_for_compilation=*/true,
+                                       registration,
                                        /*transfer_as_literal=*/false, &device));
   devices->push_back(device.release());
   return Status::OK();

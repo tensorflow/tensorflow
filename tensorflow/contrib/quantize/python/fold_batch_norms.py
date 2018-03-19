@@ -317,7 +317,8 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
   """
 
   g = ops.get_default_graph()
-  with g.name_scope(context + '/batch_norm_correction'):
+  prefix = '' if not context else context + '/'
+  with g.name_scope(prefix + 'batch_norm_correction'):
     recip_sigma_mv = math_ops.rsqrt(
         match.moving_variance_tensor + match.batch_epsilon)
     recip_sigma = math_ops.rsqrt(match.variance_tensor + match.batch_epsilon)

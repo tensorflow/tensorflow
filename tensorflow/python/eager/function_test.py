@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_descent
 
 
 class FunctionTest(test.TestCase):
@@ -761,6 +762,37 @@ class AutomaticControlDependenciesTest(test.TestCase):
         return v.read_value()
 
       self.assertAllEqual(f().eval(), 4.0)
+
+  def testOptimizerInDefun(self):
+    def loss(v):
+      return v**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(v)
+      optimizer.apply_gradients(grad)
+      return v.read_value()
+
+    value = train()
+    self.assertEqual(value.numpy(), -1.0)
+
+  def testOptimizerInDefunWithCapturedVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    def loss():
+      return v**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      grad = backprop.implicit_grad(loss)()
+      optimizer.apply_gradients(grad)
+
+    train()
+    self.assertEqual(v.numpy(), -1.0)
 
 
 if __name__ == '__main__':

@@ -594,6 +594,7 @@ cc_library(
         "platform/prefetch.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "platform/cpu_info.h",
     ] + if_windows(["platform/windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
@@ -792,6 +793,7 @@ tf_cuda_library(
     hdrs = [
         "common_runtime/device.h",
         "common_runtime/device_factory.h",
+        "common_runtime/eager/eager_executor.h",
         "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
@@ -2140,6 +2142,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
+    "common_runtime/eager/eager_executor.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
@@ -2159,6 +2162,7 @@ tf_cuda_library(
         "common_runtime/device_factory.cc",
         "common_runtime/device_mgr.cc",
         "common_runtime/device_set.cc",
+        "common_runtime/eager/eager_executor.cc",
         "common_runtime/executor.cc",
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",

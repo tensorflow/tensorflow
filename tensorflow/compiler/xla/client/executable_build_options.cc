@@ -76,4 +76,11 @@ ExecutableBuildOptions::generate_hlo_graph() const {
   return generate_hlo_graph_;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_hlo_profile(bool enabled) {
+  hlo_profile_ = enabled;
+  return *this;
+}
+
+bool ExecutableBuildOptions::hlo_profile() const { return hlo_profile_; }
+
 }  // namespace xla

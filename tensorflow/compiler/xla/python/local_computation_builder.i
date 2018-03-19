@@ -216,6 +216,7 @@ tensorflow::ImportNumpy();
         PyExc_RuntimeError, $1.ToString().c_str());
     return NULL;
   }
+  Py_INCREF(Py_None);
   $result = Py_None;
 }
 
@@ -829,6 +830,19 @@ tensorflow::ImportNumpy();
         return NULL;
       }
       build_options.set_generate_hlo_graph(PyString_AsString(o));
+    }
+    Py_DECREF(o);
+
+    o = PyObject_GetAttrString($input, "hlo_profile");
+    if (o == NULL) {
+      return NULL;
+    }
+    if (o != Py_None) {
+      if (!PyBool_Check(o)) {
+        PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
+        return NULL;
+      }
+      build_options.set_hlo_profile(o == Py_True);
     }
     Py_DECREF(o);
 

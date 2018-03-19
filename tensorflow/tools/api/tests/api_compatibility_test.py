@@ -270,17 +270,6 @@ class ApiCompatibilityTest(test.TestCase):
         for filename in golden_file_list
     }
 
-    # user_ops is an empty module. It is currently available in TensorFlow API
-    # but we don't keep empty modules in the new API.
-    # We delete user_ops from golden_proto_dict to make sure assert passes
-    # when diffing new API against goldens.
-    # TODO(annarev): remove user_ops from goldens once we switch to new API.
-    tf_module = golden_proto_dict['tensorflow'].tf_module
-    for i in range(len(tf_module.member)):
-      if tf_module.member[i].name == 'user_ops':
-        del tf_module.member[i]
-        break
-
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
     self._AssertProtoDictEquals(

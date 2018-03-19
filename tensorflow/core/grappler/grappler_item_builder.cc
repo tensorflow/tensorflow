@@ -78,7 +78,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
-  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
     return Status::OK();
   }
 
@@ -88,7 +88,7 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   // Make a local copy of graph def, because we need to change some things.
   GraphDef graph_def(graph_def_arg);
 
-  if (cfg.inline_functions && cfg.erase_noinline_attributes) {
+  if (cfg.erase_noinline_attributes) {
     // TF optimizer doesn't inline functions with "_noinline" attribute,
     // so let's go over the function library and erase it.
     for (auto& func : *graph_def.mutable_library()->mutable_function()) {
@@ -113,7 +113,6 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   } else {
     optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
   }
-  optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(

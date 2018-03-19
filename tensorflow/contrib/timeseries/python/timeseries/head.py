@@ -150,6 +150,12 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     with variable_scope.variable_scope("model", reuse=True):
       filtering_outputs = self.create_loss(
           features, estimator_lib.ModeKeys.EVAL)
+    with variable_scope.variable_scope("model", reuse=True):
+      no_state_features = {
+          k: v for k, v in features.items()
+          if not k.startswith(feature_keys.State.STATE_PREFIX)}
+      cold_filtering_outputs = self.create_loss(
+          no_state_features, estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
@@ -157,7 +163,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(prediction_outputs),
             feature_keys.SavedModelLabels.FILTER:
                 export_lib.PredictOutput(
-                    state_to_dictionary(filtering_outputs.end_state))
+                    state_to_dictionary(filtering_outputs.end_state)),
+            feature_keys.SavedModelLabels.COLD_START_FILTER:
+                export_lib.PredictOutput(
+                    state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
         # the Estimator's error checking.

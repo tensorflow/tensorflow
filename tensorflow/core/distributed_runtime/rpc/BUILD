@@ -259,6 +259,7 @@ cc_library(
     hdrs = ["grpc_serialization_traits.h"],
     deps = [
         "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
 )
 

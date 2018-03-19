@@ -31,50 +31,25 @@ If you are installing TensorFlow with GPU support using one of the
 mechanisms described in this guide, then the following NVIDIA software
 must be installed on your system:
 
-  * CUDA® Toolkit 9.0. For details, see
-    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
-    Ensure that you append the relevant Cuda pathnames to the
+  * [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
+    Ensure that you append the relevant CUDA pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
-  * cuDNN v7.0. For details, see
-    [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
+  * [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
+    [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
   * GPU card with CUDA Compute Capability 3.0 or higher for building
     from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for
     a list of supported GPU cards.
-  * The libcupti-dev library, which is the NVIDIA CUDA Profile Tools Interface.
-    This library provides advanced profiling support. To install this library,
-    issue the following command for CUDA Toolkit >= 8.0:
-
-    <pre>
-    $ <b>sudo apt-get install cuda-command-line-tools</b>
-    </pre>
-
-    and add its path to your `LD_LIBRARY_PATH` environment variable:
-
-    <pre>
-    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b>
-    </pre>
-
-    For CUDA Toolkit <= 7.5 do:
-
-    <pre>
-    $ <b>sudo apt-get install libcupti-dev</b>
-    </pre>
+  * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
+    Toolkit.
 
 If you have an earlier version of the preceding packages, please upgrade to
 the specified versions. If upgrading is not possible, then you may still run
-TensorFlow with GPU support, but only if you do the following:
-
-  * Install TensorFlow from sources as documented in
-    @{$install_sources$Installing TensorFlow from Sources}.
-  * Install or upgrade to at least the following NVIDIA versions:
-    * CUDA toolkit 7.0 or greater
-    * cuDNN v3 or greater
-    * GPU card with CUDA Compute Capability 3.0 or higher.
+TensorFlow with GPU support, if you @{$install_sources$install TensorFlow from Sources}.
 
 
 ## Determine how to install TensorFlow
