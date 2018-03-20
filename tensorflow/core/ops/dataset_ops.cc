@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,6 +66,23 @@ REGISTER_OP("SparseTensorSliceDataset")
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GeneratorDataset")
+    .Input("init_func_other_args: Tinit_func_args")
+    .Input("next_func_other_args: Tnext_func_args")
+    .Input("finalize_func_other_args: Tfinalize_func_args")
+    .Output("handle: variant")
+    .Attr("init_func: func")
+    .Attr("next_func: func")
+    .Attr("finalize_func: func")
+    .Attr("Tinit_func_args: list(type) >= 0")
+    .Attr("Tnext_func_args: list(type) >= 0")
+    .Attr("Tfinalize_func_args: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ZipDataset")
     .Input("input_datasets: N * variant")
     .Output("handle: variant")
@@ -102,13 +119,6 @@ REGISTER_OP("TakeDataset")
 REGISTER_OP("SkipDataset")
     .Input("input_dataset: variant")
     .Input("count: int64")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("IgnoreErrorsDataset")
-    .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -255,6 +265,16 @@ REGISTER_OP("BatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(mrry): move SlideDataset to contrib in the future.
+REGISTER_OP("SlideDataset")
+    .Input("input_dataset: variant")
+    .Input("window_size: int64")
+    .Input("stride: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("PaddedBatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")
@@ -331,13 +351,6 @@ REGISTER_OP("ShuffleAndRepeatDataset")
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")
     .Input("filename: string")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("UniqueDataset")
-    .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -490,5 +503,30 @@ REGISTER_OP("StatsAggregatorSummary")
     .Input("iterator: resource")
     .Output("summary: string")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("PrependFromQueueAndPaddedBatchDataset")
+    .Input("input_dataset: variant")
+    .Input("batch_size: int64")
+    .Input("padded_shapes: N * int64")
+    .Input("padding_values: Toutput_types")
+    .Output("handle: variant")
+    .Attr("Toutput_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("N: int >= 1")
+    // TODO(ebrevdo): Validate that `padded_shapes` are all vectors, the lengths
+    // of `Toutput_types` and `output_shapes` are `N`, that the
+    // length of `output_types` is `N`, the `output_shapes` are
+    // (as far as possible to tell statically) compatible with `padded_shapes`,
+    // and that `padding_values` are all scalars.
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("EnqueueInQueueDataset")
+    .Input("queue: variant")
+    .Input("components: Tcomponents")
+    .Attr("Tcomponents: list(type) >= 1")
+    .SetIsStateful()  // To avoid CSE on multiple calls to Enqueue.
+    // TODO(ebrevdo): SetShapeFn to test input dtypes and shapes by
+    // reading from queue handle (is that even possible?).
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

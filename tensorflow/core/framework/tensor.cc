@@ -886,8 +886,9 @@ bool Tensor::CanUseDMA() const {
 namespace {
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
-                 int shape_size, T* data, int64* data_index, string* result) {
+void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+                 int64 limit, int shape_size, const T* data, int64* data_index,
+                 string* result) {
   if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
@@ -1024,9 +1025,8 @@ StringPiece Tensor::tensor_data() const {
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {
-  CHECK_NE(nullptr, buf_);
-  CHECK_NE(nullptr, b.buf_);
-  return buf_->root_buffer() == b.buf_->root_buffer();
+  return buf_ != nullptr && b.buf_ != nullptr &&
+         buf_->root_buffer() == b.buf_->root_buffer();
 }
 
 string Tensor::DebugString() const {

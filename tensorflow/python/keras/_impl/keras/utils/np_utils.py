@@ -18,8 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.utils.to_categorical')
 def to_categorical(y, num_classes=None):
   """Converts a class vector (integers) to binary class matrix.
 
@@ -48,6 +50,7 @@ def to_categorical(y, num_classes=None):
   return categorical
 
 
+@tf_export('keras.utils.normalize')
 def normalize(x, axis=-1, order=2):
   """Normalizes a Numpy array.
 

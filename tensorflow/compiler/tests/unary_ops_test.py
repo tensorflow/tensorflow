@@ -154,6 +154,21 @@ class UnaryOpsTest(XLATestCase):
 
   def testFloatOps(self):
     for dtype in self.float_types:
+      x = np.arange(-0.90, 0.90, 0.25)
+      self._assertOpOutputMatchesExpected(
+          math_ops.acos,
+          x.astype(dtype),
+          expected=np.arccos(x).astype(dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.asin,
+          x.astype(dtype),
+          expected=np.arcsin(x).astype(dtype))
+      x = np.arange(-3, 3).reshape(1, 3, 2)
+      self._assertOpOutputMatchesExpected(
+          math_ops.atan,
+          x.astype(dtype),
+          expected=np.arctan(x).astype(dtype))
+
       self._assertOpOutputMatchesExpected(
           math_ops.acosh,
           np.array([1, 2, 3, 4], dtype=dtype),

@@ -42,7 +42,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import input
+from tensorflow.python.training import input  # pylint: disable=redefined-builtin
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 
@@ -236,7 +236,7 @@ class SingleEvaluationTest(test.TestCase):
   def _prepareCheckpoint(self, checkpoint_path):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
-    saver = saver_lib.Saver()
+    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
     with self.test_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)

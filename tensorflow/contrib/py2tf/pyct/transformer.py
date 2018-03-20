@@ -23,6 +23,7 @@ import sys
 import gast
 import six
 
+from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import pretty_printer
 
 
@@ -43,17 +44,26 @@ class Base(gast.NodeTransformer):
     self._col_offset = 0
     self.context = context
 
+  def debug_print(self, node):
+    """Helper method useful for debugging."""
+    if __debug__:
+      print(pretty_printer.fmt(node))
+    return node
+
   def visit(self, node):
+    source_code = self.context.source_code
+    source_file = self.context.source_file
     try:
-      source_code = self.context.source_code
-      source_file = self.context.source_file
       if source_code and hasattr(node, 'lineno'):
         self._lineno = node.lineno
         self._col_offset = node.col_offset
+      if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
+        return node
       return super(Base, self).visit(node)
-    except (ValueError, AttributeError, NotImplementedError) as e:
-      msg = '%s: %s\nOccurred at node:\n%s' % (e.__class__.__name__, str(e),
-                                               pretty_printer.fmt(node))
+    except (ValueError, AttributeError, KeyError, NotImplementedError,
+            AssertionError) as e:
+      msg = '%s: %s\nOccurred at node:\n%s' % (
+          e.__class__.__name__, str(e), pretty_printer.fmt(node, color=False))
       if source_code:
         line = source_code.splitlines()[self._lineno - 1]
       else:

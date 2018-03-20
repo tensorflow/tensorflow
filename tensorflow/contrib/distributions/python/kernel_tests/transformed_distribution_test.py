@@ -245,9 +245,8 @@ class TransformedDistributionTest(test.TestCase):
     with self.test_session() as sess:
       exp2 = self._cls()(
           ds.Exponential(rate=0.25),
-          bijector=ds.bijectors.Affine(
-              scale_identity_multiplier=2.,
-              event_ndims=0))
+          bijector=ds.bijectors.AffineScalar(scale=2.)
+      )
       log_prob = exp2.log_prob(1.)
       log_prob_ = sess.run(log_prob)
       base_log_prob = -0.5 * 0.25 + np.log(0.25)

@@ -595,6 +595,7 @@ tf_cc_test(
     srcs = ["recent_request_ids_test.cc"],
     deps = [
         ":recent_request_ids",
+        ":request_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

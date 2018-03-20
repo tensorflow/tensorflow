@@ -374,8 +374,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
   @property
   def output_shapes(self):
     return nest.pack_sequence_as(self._output_shapes, [
-        tensor_shape.vector(tensor_util.constant_value(
-            self._batch_size)).concatenate(s)
+        tensor_shape.vector(None).concatenate(s)
         for s in nest.flatten(self._output_shapes)
     ])
 
@@ -403,7 +402,7 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
     num_parallel_batches: A `tf.int64` scalar `tf.Tensor`, representing the
       number of batches to create in parallel. On one hand, higher values can
       help mitigate the effect of stragglers. On the other hand, higher values
-      can increasing contention if CPU is scarce.
+      can increase contention if CPU is scarce.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

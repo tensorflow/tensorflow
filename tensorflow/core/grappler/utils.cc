@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -28,6 +29,28 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
+template <typename T>
+bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > std::numeric_limits<RealType>::max() ||
+      value < std::numeric_limits<RealType>::min()) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+
+// Is 'node' an operator that consumes only the shape of its input, not the
+// data itself?
+// TODO(ezhulenev): move to op_types.h. Requires to break circular dependency.
+// TODO(ezhulenev): what about Identity passing tensor to Shape consumer?
+bool IsShapeConsumer(const NodeDef& node) {
+  const string& op = node.op();
+  return op == "Shape" || op == "ShapeN" || op == "Rank" || op == "Size";
+}
+
+}  // namespace
 
 NodeMap::NodeMap(GraphDef* graph) {
   CHECK(graph != nullptr);
@@ -131,7 +154,7 @@ string ParseNodeName(const string& name, int* position) {
   strings::Scanner scan(name);
   scan.ZeroOrOneLiteral("^")
       .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT)
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
       .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
   StringPiece capture;
   StringPiece remaining;
@@ -207,7 +230,7 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
-int NumOutputs(const NodeDef& node) {
+int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
   auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -221,6 +244,12 @@ int NumOutputs(const NodeDef& node) {
       } else {
         num_outputs++;
       }
+    }
+  } else {
+    FunctionLibraryDefinition fdef(OpRegistry::Global(), graph->library());
+    auto status = fdef.LookUpOpDef(node.op(), &op_def);
+    if (status.ok()) {
+      num_outputs = op_def->output_arg_size();
     }
   }
   return num_outputs;
@@ -249,6 +278,22 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
     }
   }
   return num_outputs;
+}
+
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_data_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    if (IsShapeConsumer(*output)) continue;
+
+    for (int i = 0; i < output->input_size(); ++i) {
+      const string& input = output->input(i);
+      if (!IsControlInput(input) && NodeName(input) == node.name()) {
+        ++num_data_outputs;
+        break;
+      }
+    }
+  }
+  return num_data_outputs;
 }
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
@@ -305,6 +350,20 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
   }
 }
 
+void DedupControlInputs(NodeDef* node) {
+  std::unordered_set<string> inputs;
+  int pos = 0;
+  while (pos < node->input_size()) {
+    const string& input = node->input(pos);
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
+      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+    } else {
+      ++pos;
+    }
+  }
+}
+
 namespace {
 template <typename T>
 inline void STLSortAndRemoveDuplicates(T* v) {
@@ -315,6 +374,7 @@ inline void STLSortAndRemoveDuplicates(T* v) {
 
 Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
                                    bool dedup_outputs) {
+  graph_ = &graph;
   const int num_nodes = graph.node_size();
   inputs_.clear();
   inputs_.resize(num_nodes);
@@ -361,6 +421,22 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
   return Status::OK();
 }
 
+void SimpleGraphView::DepthFirstSearch(
+    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    std::set<int>* nodes_found) const {
+  if (nodes_found->find(node_idx) != nodes_found->end()) {
+    return;
+  }
+  nodes_found->insert(node_idx);
+  const string& op_type = graph_->node(node_idx).op();
+  if (op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+    return;
+  }
+  for (auto output_idx : this->outputs(node_idx)) {
+    DepthFirstSearch(op_types_to_traverse, output_idx, nodes_found);
+  }
+}
+
 string SimpleGraphView::PrintToString() const {
   string str;
   for (int i = 0; i < num_nodes(); ++i) {
@@ -380,6 +456,44 @@ string SimpleGraphView::PrintToString() const {
   }
   return str;
 }
+
+#define HANDLE_CASE(DTYPE)                                          \
+  case DTYPE:                                                       \
+    if (!SafeSetScalarTensorValue<EnumToDataType<DTYPE>::Type>(     \
+            static_cast<double>(value), tensor)) {                  \
+      return errors::InvalidArgument("Cannot store value ", value,  \
+                                     " in tensor of type " #DTYPE); \
+    }                                                               \
+    break
+
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
+  // TODO(rmlarsen): Support more general shapes.
+  if (tensor->NumElements() != 1) {
+    return errors::InvalidArgument(
+        "Expected scalar tensor, got num_elements = ", tensor->NumElements());
+  }
+  switch (dtype) {
+    // TODO(rmlarsen): Handle DT_HALF.
+    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BOOL);
+    HANDLE_CASE(DT_FLOAT);
+    HANDLE_CASE(DT_DOUBLE);
+    HANDLE_CASE(DT_UINT8);
+    HANDLE_CASE(DT_INT8);
+    HANDLE_CASE(DT_UINT16);
+    HANDLE_CASE(DT_INT16);
+    HANDLE_CASE(DT_INT32);
+    HANDLE_CASE(DT_INT64);
+    HANDLE_CASE(DT_COMPLEX64);
+    HANDLE_CASE(DT_COMPLEX128);
+    default:
+      return errors::InvalidArgument("Unsupported type ",
+                                     DataTypeString(dtype));
+  }
+  return Status::OK();
+}
+
+#undef HANDLE_CASE
 
 }  // end namespace grappler
 }  // end namespace tensorflow

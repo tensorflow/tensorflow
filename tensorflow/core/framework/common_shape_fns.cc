@@ -49,7 +49,11 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
       break;
   }
   if (*output_size < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
+    return errors::InvalidArgument(
+        "Computed output size would be negative: ", *output_size,
+        " [input_size: ", input_size,
+        ", effective_filter_size: ", effective_filter_size,
+        ", stride: ", stride, "]");
   }
   return Status::OK();
 }

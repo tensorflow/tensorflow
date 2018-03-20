@@ -42,7 +42,15 @@ cc_library(
         "bitmap_helpers_impl.h",
         "label_image.h",
     ],
-    deps = ["//tensorflow/contrib/lite:string"],
+    deps = [
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:schema_fbs_version",
+        "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
+    ],
 )
 
 # TODO(ahentz): Test disabled as it has a memory leek from read_bmp

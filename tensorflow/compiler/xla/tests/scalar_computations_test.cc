@@ -163,7 +163,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   auto a = builder.Parameter(0, ShapeUtil::MakeShape(S64, {}), "a");
   builder.ConvertElementType(a, F32);
 
-  int64 value = 3LL << 32;
+  int64 value = 3LL << 35;
   std::unique_ptr<Literal> a_literal = Literal::CreateR0<int64>(value);
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
@@ -737,7 +737,61 @@ XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarHigh) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(5),   // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, 3, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(2),   // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, 2, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(-5),  // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, -1, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(5),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 3, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(2),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(0),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 1, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(5.0f),   // The operand to be clamped.
@@ -746,7 +800,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarHigh) {
   ComputeAndCompareR0<float>(&builder, 3.0, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(2.5f),   // The operand to be clamped.
@@ -755,7 +809,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
   ComputeAndCompareR0<float>(&builder, 2.5, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarLow) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(-5.0f),  // The operand to be clamped.
@@ -806,12 +860,24 @@ XLA_TEST_F(ScalarComputationsTest, MinF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, -100.1f, &ComputationBuilder::Min);
 }
 
+XLA_TEST_F(ScalarComputationsTest, MinPropagatesNan) {
+  SetFastMathDisabled(true);
+  TestMinMax<float>(NAN, 3.1f, NAN, &ComputationBuilder::Min);
+  TestMinMax<float>(-3.1f, NAN, NAN, &ComputationBuilder::Min);
+}
+
 XLA_TEST_F(ScalarComputationsTest, MaxF32Above) {
   TestMinMax<float>(10.1f, 3.1f, 10.1f, &ComputationBuilder::Max);
 }
 
 XLA_TEST_F(ScalarComputationsTest, MaxF32Below) {
   TestMinMax<float>(-100.1f, 3.1f, 3.1f, &ComputationBuilder::Max);
+}
+
+XLA_TEST_F(ScalarComputationsTest, MaxPropagatesNan) {
+  SetFastMathDisabled(true);
+  TestMinMax<float>(NAN, 3.1f, NAN, &ComputationBuilder::Max);
+  TestMinMax<float>(-3.1f, NAN, NAN, &ComputationBuilder::Max);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
@@ -850,6 +916,13 @@ XLA_TEST_F(ScalarComputationsTest, SqrtF320) {
   builder.SqrtF32(zero);
 
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
+XLA_TEST_F(ScalarComputationsTest, RoundScalar) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Round(builder.ConstantR0<float>(1.4f));
+
+  ComputeAndCompareR0<float>(&builder, 1.0f, {}, error_spec_);
 }
 
 }  // namespace

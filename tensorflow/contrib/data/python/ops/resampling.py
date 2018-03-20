@@ -54,7 +54,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     dist_estimation_batch_size = 32
-    target_dist_t = ops.convert_to_tensor(target_dist, name="initial_dist")
+    target_dist_t = ops.convert_to_tensor(target_dist, name="target_dist")
     class_values_ds = dataset.map(class_func)
     if initial_dist is not None:
       initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
@@ -151,7 +151,7 @@ def _calculate_acceptance_probs(initial_probs, target_probs):
   ```
 
 
-  A solution for a_i in terms of the other variabes is the following:
+  A solution for a_i in terms of the other variables is the following:
     ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
   """
   # Add tiny to initial_probs to avoid divide by zero.

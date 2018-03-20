@@ -102,6 +102,8 @@ namespace xla {
     case HloOpcode::kExp:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
@@ -300,7 +302,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       // Consider each operand of this instruction for fusion into this
       // instruction. We want to consider the operands in a particular order to
-      // avoid created duplicate instruction clones in the fusion instruction.
+      // avoid creating duplicate instruction clones in the fusion instruction.
       // For example, consider the following expression:
       //
       //   A = ...
@@ -375,7 +377,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         changed = true;
 
         if (operand->user_count() == 0) {
-          // Operand is now dead. Remove from post order by setting it's
+          // Operand is now dead. Remove from post order by setting its
           // location to nullptr.
           post_order[FindOrDie(post_order_index, operand)] = nullptr;
           post_order_index.erase(operand);

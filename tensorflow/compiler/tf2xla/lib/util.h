@@ -32,6 +32,11 @@ xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
 xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
                                         xla::PrimitiveType type, double value);
 
+// Returns a integer scalar constant of 'type' with 'value'.
+// If 'type' is complex, returns a real value with zero imaginary component.
+xla::ComputationDataHandle IntegerLiteral(xla::ComputationBuilder* builder,
+                                          xla::PrimitiveType type, int64 value);
+
 // Performs a slice in the minor dimensions of a Tensor.
 xla::StatusOr<xla::ComputationDataHandle> SliceInMinorDims(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,

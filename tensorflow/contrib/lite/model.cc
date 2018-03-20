@@ -32,11 +32,46 @@ namespace tflite {
 
 const char* kEmptyTensorName = "";
 
+// Loads a model from `filename`. If `mmap_file` is true then use mmap,
+// otherwise make a copy of the model in a buffer.
+std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
+                                                  bool mmap_file,
+                                                  ErrorReporter* error_reporter,
+                                                  bool use_nnapi) {
+  std::unique_ptr<Allocation> allocation;
+  if (mmap_file) {
+    if (use_nnapi && NNAPIExists())
+      allocation.reset(new NNAPIAllocation(filename, error_reporter));
+    else
+      allocation.reset(new MMAPAllocation(filename, error_reporter));
+  } else {
+    allocation.reset(new FileCopyAllocation(filename, error_reporter));
+  }
+  return allocation;
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter,
-                                  /*use_nnapi=*/true));
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  if (!model->initialized()) model.reset();
+  return model;
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
+    const char* filename, TfLiteVerifier* verifier,
+    ErrorReporter* error_reporter) {
+  std::unique_ptr<FlatBufferModel> model;
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  if (verifier &&
+      !verifier->Verify(static_cast<const char*>(allocation->base()),
+                        allocation->bytes(), error_reporter)) {
+    return model;
+  }
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -44,7 +79,9 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(buffer, buffer_size, error_reporter));
+  Allocation* allocation =
+      new MemoryAllocation(buffer, buffer_size, error_reporter);
+  model.reset(new FlatBufferModel(allocation, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -55,23 +92,6 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
   model.reset(new FlatBufferModel(model_spec, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
-}
-
-FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
-                                 ErrorReporter* error_reporter, bool use_nnapi)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
-      allocation_ = new NNAPIAllocation(filename, error_reporter);
-    else
-      allocation_ = new MMAPAllocation(filename, error_reporter);
-  } else {
-    allocation_ = new FileCopyAllocation(filename, error_reporter);
-  }
-  if (!allocation_->valid() || !CheckModelIdentifier()) return;
-
-  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -85,21 +105,21 @@ bool FlatBufferModel::CheckModelIdentifier() const {
   return true;
 }
 
-FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
-                                 ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
-  if (!allocation_->valid()) return;
-
-  model_ = ::tflite::GetModel(allocation_->base());
-}
-
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   model_ = model;
+}
+
+FlatBufferModel::FlatBufferModel(Allocation* allocation,
+                                 ErrorReporter* error_reporter)
+    : error_reporter_(error_reporter ? error_reporter
+                                     : DefaultErrorReporter()) {
+  allocation_ = allocation;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
+
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::~FlatBufferModel() { delete allocation_; }
@@ -124,19 +144,25 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
     TfLiteRegistration* registration = nullptr;
-
-    if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
-      auto x = opcode->builtin_code();
-      flatbuffer_op_index_to_registration_types_.push_back(x);
-      registration = op_resolver_.FindOp(x);
+    auto builtin_code = opcode->builtin_code();
+    if (builtin_code > BuiltinOperator_MAX ||
+        builtin_code < BuiltinOperator_MIN) {
+      error_reporter_->Report(
+          "Op builtin_code out or range: %d. Are you using old TFLite binary "
+          "with newer model?",
+          builtin_code);
+      status = kTfLiteError;
+    } else if (builtin_code != BuiltinOperator_CUSTOM) {
+      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
+      registration = op_resolver_.FindOp(builtin_code);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(x));
+                                EnumNameBuiltinOperator(builtin_code));
         status = kTfLiteError;
       }
     } else if (!opcode->custom_code()) {
       error_reporter_->Report(
-          "Operator with builtin_code==0 has no custom_code.\n");
+          "Operator with CUSTOM builtin_code has no custom_code.\n");
       status = kTfLiteError;
     } else {
       const char* name = opcode->custom_code()->c_str();
@@ -278,6 +304,11 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_TOPK_V2:
+    case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_CAST:
+    case BuiltinOperator_DEQUANTIZE:
       break;
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =
@@ -453,6 +484,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
       TfLiteLSTMParams* params = MallocPOD<TfLiteLSTMParams>();
@@ -469,6 +501,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteResizeBilinearParams>();
       if (auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
+        params->align_corners = schema_params->align_corners();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -532,6 +565,14 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPLIT: {
+      auto* params = MallocPOD<TfLiteSplitParams>();
+      if (auto* schema_params = op->builtin_options_as_SplitOptions()) {
+        params->num_splits = schema_params->num_splits();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_SQUEEZE: {
       auto* params = MallocPOD<TfLiteSqueezeParams>();
       if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
@@ -553,6 +594,11 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
       builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_DELEGATE: {
+      // TODO(ycling): Revisit when supporting saving delegated models.
+      error_reporter->Report("DELEGATE op shouldn't exist in model.");
       break;
     }
   }

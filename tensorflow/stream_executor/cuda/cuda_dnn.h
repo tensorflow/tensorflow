@@ -259,7 +259,10 @@ class CudnnSupport : public dnn::DnnSupport {
                   const DeviceMemory<double>& filter_data,
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<double>* output_data) override;
+                  DeviceMemory<double>* output_data,
+                  ScratchAllocator* scratch_allocator,
+                  const dnn::AlgorithmConfig& algorithm_config,
+                  dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<Eigen::half>& input_data,
@@ -373,6 +376,18 @@ class CudnnSupport : public dnn::DnnSupport {
 
   bool DoConvolveBackwardData(
       Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
+      DeviceMemory<double>* backward_input_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoConvolveBackwardData(
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<float>& filter_data,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float> backward_output_data,
@@ -391,6 +406,18 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& input_descriptor,
       DeviceMemory<Eigen::half>* backward_input_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoConvolveBackwardFilter(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemory<double>* backward_filter_data,
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
@@ -611,7 +638,6 @@ class CudnnSupport : public dnn::DnnSupport {
   template<class T>
   DeviceMemory<T> MaybeTransformLayout(
       Stream* stream,
-      int cudnn_type,  // Actually cudnnDataType_t.
       dnn::BatchDescriptor* output_descriptor,
       DeviceMemory<T> backward_output_data,
       std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
@@ -644,7 +670,6 @@ class CudnnSupport : public dnn::DnnSupport {
 
   template <class T>
   bool DoConvolveImpl(Stream* stream,
-                      int cudnn_type,  // Actually cudnnDataType_t.
                       const dnn::BatchDescriptor& batch_descriptor,
                       const DeviceMemory<T>& input_data,
                       const dnn::FilterDescriptor& filter_descriptor,
@@ -675,7 +700,6 @@ class CudnnSupport : public dnn::DnnSupport {
   template <class T>
   bool DoConvolveBackwardDataImpl(
       Stream* stream,
-      int cudnn_type,  // Actually cudnnDataType_t.
       const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<T>& filter_data,
       const dnn::BatchDescriptor& output_descriptor,
@@ -688,8 +712,7 @@ class CudnnSupport : public dnn::DnnSupport {
 
   template <class T>
   bool DoConvolveBackwardFilterImpl(
-      Stream* stream, int cudnn_type,  // Actually cudnnDataType_t.
-      const dnn::BatchDescriptor& input_descriptor,
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
       const DeviceMemory<T>& input_data,
       const dnn::BatchDescriptor& output_descriptor_in,
       DeviceMemory<T> backward_output_data,
@@ -702,7 +725,6 @@ class CudnnSupport : public dnn::DnnSupport {
 
   template <class T>
   bool DoConvolveBackwardBiasImpl(Stream* stream,
-                                  int cudnn_type,  // Actually cudnnDataType_t.
                                   const dnn::BatchDescriptor& input_descriptor,
                                   const DeviceMemory<T>& input_data,
                                   const dnn::BatchDescriptor& bias_descriptor,

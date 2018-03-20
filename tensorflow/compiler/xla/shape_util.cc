@@ -609,6 +609,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,
                                             const Shape& rhs) {
+  CHECK(ShapeUtil::IsArray(lhs));
+  CHECK(ShapeUtil::IsArray(rhs));
   return ContainersEqual(lhs.dimensions(), rhs.dimensions());
 }
 
@@ -617,7 +619,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return rhs.element_type() == TUPLE &&
            ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(), Compatible);
   }
-  return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+  if (lhs.element_type() == OPAQUE) {
+    return rhs.element_type() == OPAQUE;
+  }
+  return SameElementType(lhs, rhs) && SameDimensions(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
@@ -627,7 +632,26 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
            ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
                            CompatibleIgnoringElementType);
   }
-  return SameDimensions(lhs, rhs);
+  if (lhs.element_type() == OPAQUE) {
+    return rhs.element_type() == OPAQUE;
+  }
+  return ShapeUtil::IsArray(rhs) && SameDimensions(lhs, rhs);
+}
+
+/* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringFpPrecision);
+  }
+  if (lhs.element_type() == OPAQUE) {
+    return rhs.element_type() == OPAQUE;
+  }
+  if (SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
+    return CompatibleIgnoringElementType(lhs, rhs);
+  }
+  return false;
 }
 
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
@@ -1060,9 +1084,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     tensorflow::gtl::ArraySlice<int64> dimension_mapping) {
-  // Can't insert bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) &&
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 
@@ -1093,9 +1118,10 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
                                               const Shape& output_shape) {
-  // Can't convert reshapes into bitcasts without layout information.
-  if (!LayoutUtil::HasLayout(input_shape) ||
-      !LayoutUtil::HasLayout(output_shape)) {
+  CHECK(LayoutUtil::HasLayout(input_shape) &&
+        LayoutUtil::HasLayout(output_shape));
+
+  if (!SameElementType(input_shape, output_shape)) {
     return false;
   }
 

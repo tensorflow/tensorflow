@@ -269,5 +269,18 @@ TEST_F(HloShardingTest, Hash) {
   }
 }
 
+TEST_F(HloShardingTest, TransformShardedTileShapeTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  HloSharding result = sharding.TransformShardedTileShape(
+      ShapeUtil::MakeShape(F32, {13, 15, 17, 19}),
+      [](int dim, int value) { return dim * 111; });
+  HloSharding expected =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {13, 15, 222, 333}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  EXPECT_EQ(result, expected);
+}
+
 }  // namespace
 }  // namespace xla

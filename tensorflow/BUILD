@@ -415,6 +415,17 @@ py_library(
     deps = ["//tensorflow/python"],
 )
 
+py_library(
+    name = "experimental_tensorflow_py",
+    srcs = ["experimental_api.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/tools/api/tests:__subpackages__"],
+    deps = [
+        "//tensorflow/python",
+        "//tensorflow/tools/api/generator:python_api",
+    ],
+)
+
 filegroup(
     name = "all_opensource_files",
     data = [
@@ -441,6 +452,7 @@ filegroup(
         "//tensorflow/compiler/xla:all_files",
         "//tensorflow/compiler/xla/client:all_files",
         "//tensorflow/compiler/xla/client/lib:all_files",
+        "//tensorflow/compiler/xla/client/xla_client:all_files",
         "//tensorflow/compiler/xla/legacy_flags:all_files",
         "//tensorflow/compiler/xla/python:all_files",
         "//tensorflow/compiler/xla/service:all_files",
@@ -483,6 +495,7 @@ filegroup(
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/examples:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
+        "//tensorflow/contrib/feature_column:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
@@ -542,7 +555,6 @@ filegroup(
         "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/model_pruning/examples/cifar10:all_files",
         "//tensorflow/contrib/nccl:all_files",
-        "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
@@ -550,8 +562,10 @@ filegroup(
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/py2tf:all_files",
         "//tensorflow/contrib/py2tf/converters:all_files",
+        "//tensorflow/contrib/py2tf/impl:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
+        "//tensorflow/contrib/py2tf/utils:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
@@ -785,6 +799,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",

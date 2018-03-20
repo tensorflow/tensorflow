@@ -257,7 +257,7 @@ bug fix. `OpLogProto` is a good plus if it is used.
 
 #### Teams
 
-* Xin Pan (xpan@google.com, github: panyx0718)
+* Xin Pan
 * Chris Antaki
 * Yao Zhang
 * Jon Shlens

@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.client import session
@@ -55,7 +57,10 @@ class ScopeTest(test.TestCase):
 
 class TypeInfoResolverTest(test.TestCase):
 
-  def _parse_and_analyze(self, test_fn, namespace, arg_types=None):
+  def _parse_and_analyze(self,
+                         test_fn,
+                         namespace,
+                         arg_types=None):
     node, source = parser.parse_entity(test_fn)
     ctx = context.EntityContext(
         namer=None,
@@ -64,8 +69,11 @@ class TypeInfoResolverTest(test.TestCase):
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
-        recursive=True)
-    node = access.resolve(node, ctx)
+        owner_type=None,
+        recursive=True,
+        type_annotation_func=utils.set_element_type)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})
     node = type_info.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})
@@ -171,6 +179,22 @@ class TypeInfoResolverTest(test.TestCase):
     node = self._parse_and_analyze(test_fn, {'training': training})
     method_call = node.body[0].body[1].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
+
+  def test_type_annotation(self):
+
+    class Foo(object):
+      pass
+
+    def test_fn():
+      f = []
+      f = utils.set_element_type(f, Foo)
+      return f
+
+    node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'utils': utils})
+    f_def = node.body[0].body[0].value
+    self.assertEqual(anno.getanno(f_def, 'element_type'), Foo)
+    f_ref = node.body[0].body[1].value
+    self.assertEqual(anno.getanno(f_ref, 'element_type'), Foo)
 
 
 if __name__ == '__main__':

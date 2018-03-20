@@ -239,9 +239,6 @@ class ReductionOp : public OpKernel {
     if (!out.CopyFrom(tmp_out, helper.out_shape())) {
       ctx->SetStatus(errors::Internal("Error during reduction copy."));
     }
-    if (ctx->track_allocations()) {
-      ctx->record_temp_memory_size(-static_cast<int64>(out.AllocatedBytes()));
-    }
     ctx->set_output(0, out);
   }
 

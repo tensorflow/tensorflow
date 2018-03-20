@@ -383,6 +383,31 @@ class DropoutTest(test_lib.TestCase):
         x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
+  def testPartialShapedDropout(self):
+    x_dim = 40 * 30
+    y_dim = 3
+    num_iter = 10
+    for keep_prob in [0.1, 0.5, 0.8]:
+      with self.test_session():
+        t = constant_op.constant(
+            1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+        # Set noise_shape=[None, 1] which means [x_dim, 1].
+        dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
+        self.assertEqual([x_dim, y_dim], dropout.get_shape())
+        final_count = 0
+        for _ in xrange(0, num_iter):
+          value = dropout.eval()
+          final_count += np.count_nonzero(value)
+          # Verifies that there are only two values: 0 and 1/keep_prob.
+          sorted_value = np.unique(np.sort(value))
+          self.assertEqual(0, sorted_value[0])
+          self.assertAllClose(1 / keep_prob, sorted_value[1])
+      # Check that we are in the 15% error range
+      expected_count = x_dim * y_dim * keep_prob * num_iter
+      rel_error = math.fabs(final_count - expected_count) / expected_count
+      print(rel_error)
+      self.assertTrue(rel_error < 0.15)
+
   def testInvalidKeepProb(self):
     x_dim = 40
     y_dim = 30
@@ -1024,6 +1049,22 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
 
+  def testNHWCToHWNC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [4, 9, 7, 3])
+
+  def testHWNCToNHWC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [9, 7, 4, 3])
+
   def testNHWCToNCHW2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
@@ -1031,6 +1072,22 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
+
+  def testNHWCToHWNC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[9, 3], [4, 5], [7, 4], [5, 1]])
+
+  def testHWNCToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[4, 5], [7, 4], [9, 3], [5, 1]])
 
   def testNCHWToNHWC2D(self):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]

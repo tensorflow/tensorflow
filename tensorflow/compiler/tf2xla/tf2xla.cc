@@ -241,9 +241,7 @@ Status CreateXlaArgs(const Graph& graph,
     XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
     TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &arg.type));
-    TensorShape shape;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &shape));
-    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, &arg.shape));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &arg.shape));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }

@@ -988,7 +988,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testWatchingVariableUpdateOpsSeesUpdatedValues(self):
     """Watch output slots on Variable-updating ops, with no emitted edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init = constant_op.constant(10.0)
       u = variables.Variable(u_init, name="gdo/u")
       v_init = constant_op.constant(20.0)

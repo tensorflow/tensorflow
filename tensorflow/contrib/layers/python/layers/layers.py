@@ -51,7 +51,6 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
-from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -60,12 +59,12 @@ __all__ = [
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
     'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
     'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-           'dropout', 'elu', 'flatten',
-    'fully_connected', 'GDN', 'gdn', 'layer_norm', 'linear', 'pool',
-    'max_pool2d', 'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
-    'scale_gradient', 'separable_conv2d', 'separable_convolution2d', 'softmax',
-    'spatial_softmax', 'stack', 'unit_norm', 'legacy_fully_connected',
-    'legacy_linear', 'legacy_relu', 'maxout'
+    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
+    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
+    'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
 ]
 
 DATA_FORMAT_NCHW = 'NCHW'
@@ -518,8 +517,8 @@ def batch_norm(inputs,
       then the batch normalization uses weighted mean and
       variance. (This can be used to correct for bias in training
       example selection.)
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
@@ -779,7 +778,7 @@ def batch_norm(inputs,
       else:
         if data_format == DATA_FORMAT_NCHW:
           mean, variance = nn.weighted_moments(
-              inputs, moments_axes, batch_weights, keep_dims=True)
+              inputs, moments_axes, batch_weights, keepdims=True)
           mean = array_ops.reshape(mean, [-1])
           variance = array_ops.reshape(variance, [-1])
         else:
@@ -1415,10 +1414,11 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
-  with variable_scope.variable_scope(
-      scope, 'dense_to_sparse', [tensor]) as sc:
+  with variable_scope.variable_scope(scope, 'dense_to_sparse', [tensor]) as sc:
     tensor = ops.convert_to_tensor(tensor)
-    indices = array_ops.where(math_ops.not_equal(tensor, constant_op.constant(eos_token, tensor.dtype)))
+    indices = array_ops.where(
+        math_ops.not_equal(tensor, constant_op.constant(eos_token,
+                                                        tensor.dtype)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
     outputs = sparse_tensor.SparseTensor(indices, values, shape)
@@ -2186,6 +2186,36 @@ def layer_norm(inputs,
 
 
 @add_arg_scope
+def images_to_sequence(inputs,
+                       data_format=DATA_FORMAT_NHWC,
+                       outputs_collections=None,
+                       scope=None):
+  """Convert a batch of images into a batch of sequences.
+  Args:
+    inputs: a (num_images, height, width, depth) tensor
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    (width, num_images*height, depth) sequence tensor
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with ops.name_scope(scope, 'ImagesToSequence', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    if df == 'channels_first':
+      inputs = array_ops.transpose(inputs, [0, 2, 3, 1])
+    _, _, width, depth = inputs.get_shape().as_list()
+    s = array_ops.shape(inputs)
+    batch_size, height = s[0], s[1]
+    transposed = array_ops.transpose(inputs, [2, 0, 1, 3])
+    outputs = array_ops.reshape(transposed, [width, batch_size * height, depth])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def max_pool2d(inputs,
                kernel_size,
                stride=2,
@@ -2665,6 +2695,39 @@ def separable_convolution2d(
 
 
 @add_arg_scope
+def sequence_to_images(inputs,
+                       height,
+                       output_data_format='channels_last',
+                       outputs_collections=None,
+                       scope=None):
+  """Convert a batch of sequences into a batch of images.
+  Args:
+    inputs: (num_steps, num_batches, depth) sequence tensor
+    height: the height of the images
+    output_data_format: Format of output tensor.
+      Currently supports `'channels_first'` and `'channels_last'`.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    A tensor representing the output of the operation.
+  """
+  with ops.name_scope(scope, 'SequenceToImages', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    width, num_batches, depth = inputs.get_shape().as_list()
+    if num_batches is None:
+      num_batches = -1
+    else:
+      num_batches = num_batches // height
+    reshaped = array_ops.reshape(inputs,
+                                 [width, num_batches, height, depth])
+    if output_data_format == 'channels_first':
+      outputs = array_ops.transpose(reshaped, [1, 3, 2, 0])
+    else:
+      outputs = array_ops.transpose(reshaped, [1, 2, 0, 3])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def softmax(logits, scope=None):
   """Performs softmax on Nth dimension of N-dimensional logit tensor.
 
@@ -2684,7 +2747,7 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       predictions.set_shape(logits.get_shape())
     return predictions
 
@@ -2774,9 +2837,9 @@ def spatial_softmax(features,
 
       softmax_attention = nn.softmax(features / temperature)
       expected_x = math_ops.reduce_sum(
-          pos_x * softmax_attention, [1], keep_dims=True)
+          pos_x * softmax_attention, [1], keepdims=True)
       expected_y = math_ops.reduce_sum(
-          pos_y * softmax_attention, [1], keep_dims=True)
+          pos_y * softmax_attention, [1], keepdims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
       feature_keypoints = array_ops.reshape(expected_xy,
                                             [-1, num_channels.value * 2])
@@ -2877,6 +2940,53 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 
+@add_arg_scope
+def maxout(inputs, num_units, axis=-1, scope=None):
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville,
+   Yoshua Bengio
+
+  Usually the operation is performed in the filter/channel dimension. This can
+  also be
+  used after fully-connected layers to reduce number of features.
+
+  Arguments:
+    inputs: Tensor input
+    num_units: Specifies how many features will remain after maxout
+      in the `axis` dimension (usually channel).
+      This must be multiple of number of `axis`.
+    axis: The dimension where max pooling will be performed. Default is the
+    last dimension.
+    scope: Optional scope for variable_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if num_units is not multiple of number of features.
+  """
+  with variable_scope.variable_scope(scope, 'MaxOut', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    shape = inputs.get_shape().as_list()
+    num_channels = shape[axis]
+    if num_channels % num_units:
+      raise ValueError('number of features({}) is not '
+                       'a multiple of num_units({})'.format(
+                           num_channels, num_units))
+    shape[axis] = -1
+    shape += [num_channels // num_units]
+
+    # Dealing with batches with arbitrary sizes
+    for i in range(len(shape)):
+      if shape[i] is None:
+        shape[i] = array_ops.shape(inputs)[i]
+    outputs = math_ops.reduce_max(
+        array_ops.reshape(inputs, shape), -1, keepdims=False)
+    return outputs
+
+
 def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
   """Project into the Poincare ball with norm <= 1.0 - epsilon.
 
@@ -2909,7 +3019,7 @@ def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
   """
   with ops.name_scope(name, 'poincare_normalize', [x]) as name:
     x = ops.convert_to_tensor(x, name='x')
-    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(square_sum)
     x_inv_norm = math_ops.minimum((1. - epsilon) * x_inv_norm, 1.)
     return math_ops.multiply(x, x_inv_norm, name=name)

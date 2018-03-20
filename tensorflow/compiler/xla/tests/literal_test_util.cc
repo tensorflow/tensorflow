@@ -209,6 +209,11 @@ template <>
   return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs);
 }
 template <>
+::testing::AssertionResult CompareEqual<Eigen::half>(Eigen::half lhs,
+                                                     Eigen::half rhs) {
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs);
+}
+template <>
 ::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
 }
@@ -376,6 +381,10 @@ class NearComparator {
     abs_expected_miscompare_sum_ = 0.0;
     max_rel_err_ = 0.0;
     max_abs_err_ = 0.0;
+    first_linear_index_ = -1;
+    last_linear_index_ = -1;
+    max_rel_linear_index_ = -1;
+    max_abs_linear_index_ = -1;
     miscompares_ = Literal(ShapeUtil::ChangeElementType(actual.shape(), PRED));
     miscompares_.PopulateWithValue(false);
     multi_index_.resize(expected.shape().dimensions_size(), 0);
@@ -445,8 +454,12 @@ class NearComparator {
 
  private:
   template <typename NativeT>
-  bool NanMismatch(NativeT lhs, NativeT rhs) {
-    return std::isnan(lhs) != std::isnan(rhs);
+  bool NanMismatch(NativeT expected, NativeT actual, bool relaxed_nans) {
+    if (relaxed_nans) {
+      return !std::isnan(expected) && std::isnan(actual);
+    } else {
+      return std::isnan(expected) != std::isnan(actual);
+    }
   }
 
   template <typename NativeT>
@@ -468,7 +481,8 @@ class NearComparator {
 
     const float abs_diff = std::abs(actual - expected);
     const float rel_err = abs_diff / std::abs(expected);
-    const bool nan_mismatch = NanMismatch<NativeT>(expected, actual);
+    const bool nan_mismatch =
+        NanMismatch<NativeT>(expected, actual, error_.relaxed_nans);
     const bool mismatch =
         (nan_mismatch || (abs_diff >= error_.abs && rel_err >= error_.rel));
     return !mismatch;
@@ -482,11 +496,11 @@ class NearComparator {
     const float rel_err = abs_diff / std::abs(expected);
     abs_diff_sum_ += abs_diff;
     abs_expected_sum_ += std::abs(expected);
-    if (rel_err > max_rel_err_) {
+    if (rel_err > max_rel_err_ || std::isnan(rel_err)) {
       max_rel_err_ = rel_err;
       max_rel_linear_index_ = linear_index;
     }
-    if (abs_diff > max_abs_err_) {
+    if (abs_diff > max_abs_err_ || std::isnan(abs_diff)) {
       max_abs_err_ = abs_diff;
       max_abs_linear_index_ = linear_index;
     }
@@ -626,9 +640,11 @@ class NearComparator {
 };
 
 template <>
-bool NearComparator::NanMismatch<complex64>(complex64 lhs, complex64 rhs) {
-  return std::isnan(lhs.real()) != std::isnan(rhs.real()) ||
-         std::isnan(lhs.imag()) != std::isnan(rhs.imag());
+bool NearComparator::NanMismatch<complex64>(complex64 expected,
+                                            complex64 actual,
+                                            bool relaxed_nans) {
+  return NanMismatch(expected.real(), actual.real(), relaxed_nans) ||
+         NanMismatch(expected.imag(), actual.imag(), relaxed_nans);
 }
 
 template <>
