@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import os
 import random
 import re
 
@@ -44,6 +45,8 @@ flags.DEFINE_string('test_device', None,
 flags.DEFINE_string('types', None, 'Types to test. Comma-separated list.')
 flags.DEFINE_string('disabled_manifest', None,
                     'Path to a file with a list of tests that should not run.')
+flags.DEFINE_string('tf_xla_flags', None,
+                    'Value to set the TF_XLA_FLAGS environment variable to')
 
 
 class XLATestCase(test.TestCase):
@@ -97,6 +100,8 @@ class XLATestCase(test.TestCase):
       disabled_tests = []
       disabled_method_types = []
       for l in manifest_file.read().splitlines():
+        if not l:
+          continue
         entry = comments_re.sub('', l).strip().split(' ')
         if len(entry) == 1:
           disabled_tests.append(entry[0])
@@ -112,6 +117,9 @@ class XLATestCase(test.TestCase):
             dtypes.as_dtype(types_pb2.DataType.Value(name)).as_numpy_dtype
             for name in types])
       manifest_file.close()
+
+    if FLAGS.tf_xla_flags is not None:
+      os.environ['TF_XLA_FLAGS'] = FLAGS.tf_xla_flags
 
   @property
   def all_tf_types(self):

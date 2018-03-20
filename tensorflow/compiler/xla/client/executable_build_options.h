@@ -57,11 +57,17 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_generate_hlo_graph(string regex);
   const tensorflow::gtl::optional<string>& generate_hlo_graph() const;
 
+  // If set, specifies that we should record an HLO profile during execution and
+  // log it after execution (as in DebugOptions).
+  ExecutableBuildOptions& set_hlo_profile(bool enabled);
+  bool hlo_profile() const;
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
 
  private:
+  bool hlo_profile_ = false;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;

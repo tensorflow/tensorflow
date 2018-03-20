@@ -37,7 +37,8 @@ class TestBFloat16Support : public BFloat16Support {
     if (hlo.opcode() == HloOpcode::kAdd ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
-        hlo.opcode() == HloOpcode::kGetTupleElement) {
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
       return true;
     }
     return false;
@@ -47,7 +48,8 @@ class TestBFloat16Support : public BFloat16Support {
     if (hlo.opcode() == HloOpcode::kAdd ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
-        hlo.opcode() == HloOpcode::kGetTupleElement) {
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
       return true;
     }
     return false;
@@ -55,7 +57,8 @@ class TestBFloat16Support : public BFloat16Support {
 
   bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
     if (hlo.opcode() == HloOpcode::kAdd || hlo.opcode() == HloOpcode::kTuple ||
-        hlo.opcode() == HloOpcode::kGetTupleElement) {
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
       return true;
     }
     return false;
@@ -204,6 +207,48 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   EXPECT_EQ(computation->root_instruction(), convert1);
   EXPECT_EQ(gte->shape().element_type(), F32);
   EXPECT_EQ(tuple->operand(1), convert0);
+}
+
+TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape, "a"));
+  HloInstruction* convert_a =
+      builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, a));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32_shape, "b"));
+
+  HloInstruction* crs =
+      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
+          ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}));
+  HloInstruction* gte_a = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, crs, 0));
+  HloInstruction* gte_b = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, crs, 1));
+  HloInstruction* convert_gte_b =
+      builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte_b));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({gte_a, convert_gte_b}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(FoldConversions(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), tuple);
+  EXPECT_EQ(tuple->operand(0), gte_a);
+  EXPECT_EQ(tuple->operand(1), gte_b);
+  EXPECT_EQ(gte_a->shape().element_type(), F32);
+  EXPECT_EQ(gte_b->shape().element_type(), BF16);
+  EXPECT_EQ(crs->operand(0), a);
+  EXPECT_EQ(crs->operand(1), b);
+  EXPECT_EQ(a->shape().element_type(), BF16);
+  EXPECT_EQ(b->shape().element_type(), F32);
+  EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {0}).element_type(), F32);
+  EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {1}).element_type(), BF16);
 }
 
 }  // namespace xla

@@ -103,10 +103,11 @@ class ListScheduler {
     for (auto* instruction : computation.instructions()) {
       tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
-        for (const LogicalBuffer* buffer :
-             points_to_analysis.GetBuffersDefinedByInstruction(operand)) {
-          instr_uses.insert(buffer);
-        }
+        points_to_analysis.GetPointsToSet(operand).ForEachElement(
+            [&](const ShapeIndex& /*index*/,
+                const PointsToSet::BufferList& buffers) {
+              instr_uses.insert(buffers.begin(), buffers.end());
+            });
       }
       buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
           instr_uses.begin(), instr_uses.end());

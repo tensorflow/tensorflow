@@ -289,6 +289,14 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
+  // Compiles a single Op, given by an OpKernelContext, into an
+  // xla::Computation. Similar to CompileFunction but takes a single Op as
+  // input.
+  Status CompileSingleOp(const CompileOptions& options, string const& name,
+                         OpKernelContext* ctx,
+                         const std::vector<Argument>& args,
+                         CompilationResult* result);
+
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.

@@ -1035,6 +1035,8 @@ class BaseDNNClassifierEvaluateTest(object):
         metric_keys.MetricKeys.LOSS: expected_loss,
         metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2.,
         metric_keys.MetricKeys.ACCURACY: 0.5,
+        metric_keys.MetricKeys.PRECISION: 0.0,
+        metric_keys.MetricKeys.RECALL: 0.0,
         metric_keys.MetricKeys.PREDICTION_MEAN: 0.11105597,
         metric_keys.MetricKeys.LABEL_MEAN: 0.5,
         metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1042,6 +1044,7 @@ class BaseDNNClassifierEvaluateTest(object):
         # that is what the algorithm returns.
         metric_keys.MetricKeys.AUC: 0.5,
         metric_keys.MetricKeys.AUC_PR: 0.75,
+
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 

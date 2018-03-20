@@ -203,6 +203,37 @@ cc_library(
 )
 
 cc_library(
+    name = "graph_optimizer_stage",
+    srcs = ["graph_optimizer_stage.cc"],
+    hdrs = ["graph_optimizer_stage.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_optimizer_stage_test",
+    size = "small",
+    srcs = ["graph_optimizer_stage_test.cc"],
+    deps = [
+        ":graph_optimizer_stage",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
     name = "custom_graph_optimizer",
     hdrs = [
         "custom_graph_optimizer.h",
@@ -224,6 +255,7 @@ cc_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        ":graph_optimizer_stage",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

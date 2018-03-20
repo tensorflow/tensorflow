@@ -31,10 +31,6 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
-
 namespace tensorflow {
 
 // Define tensorflow::string to refer to appropriate platform specific type.

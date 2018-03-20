@@ -392,6 +392,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -407,6 +408,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(

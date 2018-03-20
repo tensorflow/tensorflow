@@ -44,11 +44,14 @@ class TensorDataSet {
     int column_count = 0;
     for (int i = 0; i < input_spec_.dense_size(); ++i) {
       for (int j = 0; j < input_spec_.dense(i).size(); ++j) {
-        decision_trees::FeatureId id;
-        id.mutable_id()->set_value(strings::StrCat(column_count));
-        available_features_.push_back(id);
         ++column_count;
       }
+    }
+    available_features_.reserve(column_count);
+    decision_trees::FeatureId id;
+    for (int i = 0; i < column_count; i++) {
+      id.mutable_id()->set_value(strings::StrCat(i));
+      available_features_.emplace_back(id);
     }
 
     // Set up the random number generator.

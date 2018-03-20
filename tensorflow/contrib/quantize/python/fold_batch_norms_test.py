@@ -128,6 +128,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
 
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def testFoldConv2d(self):
     self._RunTestOverParameters(self._TestFoldConv2d)
 
@@ -196,6 +199,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
 
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def testFoldConv2dUnknownShape(self):
     self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
@@ -259,6 +265,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
     self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
@@ -336,6 +345,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldDepthwiseConv2d(self):
     self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)

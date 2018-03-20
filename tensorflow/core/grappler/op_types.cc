@@ -212,6 +212,8 @@ bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
 
+bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
+
 bool IsNoOp(const NodeDef& node) { return node.op() == "NoOp"; }
 
 bool IsNotEqual(const NodeDef& node) { return node.op() == "NotEqual"; }

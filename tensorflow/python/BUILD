@@ -1032,6 +1032,7 @@ cuda_py_tests(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    shard_count = 10,
 )
 
 py_test(
@@ -2582,6 +2583,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":user_ops_gen",
+        ":util",
         "@six_archive//:six",
     ],
 )
