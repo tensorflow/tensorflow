@@ -32,6 +32,8 @@ Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
     auto* dimension = window.add_dimensions();
     dimension->set_size(size);
     dimension->set_stride(1);
+    dimension->set_base_dilation(1);
+    dimension->set_window_dilation(1);
   }
   return window;
 }

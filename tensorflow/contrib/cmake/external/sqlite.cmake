@@ -36,6 +36,7 @@ if (WIN32)
         PREFIX sqlite
         URL ${sqlite_URL}
         URL_HASH ${sqlite_HASH}
+        BUILD_BYPRODUCTS ${sqlite_STATIC_LIBRARIES}
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/sqlite/CMakeLists.txt ${sqlite_BUILD}
         INSTALL_DIR ${sqlite_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"

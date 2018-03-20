@@ -49,7 +49,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.applications.inception_v3 import preprocess_input
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import add
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
@@ -67,6 +67,7 @@ from tensorflow.python.keras._impl.keras.layers import ZeroPadding2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 NASNET_MOBILE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.8/NASNet-mobile.h5'
@@ -323,6 +324,8 @@ def NASNet(input_shape=None,
   return model
 
 
+@tf_export('keras.applications.NASNetLarge',
+           'keras.applications.nasnet.NASNetLarge')
 def NASNetLarge(input_shape=None,
                 include_top=True,
                 weights='imagenet',
@@ -390,6 +393,8 @@ def NASNetLarge(input_shape=None,
       default_size=331)
 
 
+@tf_export('keras.applications.NASNetMobile',
+           'keras.applications.nasnet.NASNetMobile')
 def NASNetMobile(input_shape=None,
                  include_top=True,
                  weights='imagenet',

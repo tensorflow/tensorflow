@@ -48,7 +48,7 @@ def _flatten_tensors(tensors):
   if shape.ndims is None:
     raise ValueError("At least one of the tensors in 'tensors' must have "
                      "statically known rank.")
-  if len(shape) > 1:
+  if len(shape) != 1:
     reshaped = []
     for t in tensors:
       with ops.colocate_with(t):
@@ -289,7 +289,7 @@ def build_ring_all_reduce(input_tensors, num_workers, num_subchunks,
                                        chunks_by_dev)
   if pad_len > 0:
     output_tensors = _strip_padding(output_tensors, pad_len)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -466,7 +466,7 @@ def build_recursive_hd_all_reduce(input_tensors, red_op, un_op=None):
   if un_op:
     reduced_shards = [un_op(t) for t in reduced_shards]
   output_tensors = _build_recursive_hd_scatter(reduced_shards, devices)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -578,7 +578,7 @@ def build_shuffle_all_reduce(input_tensors, gather_devices, red_op, un_op=None):
   reduced_shards = _build_shuffle_gather(input_tensors, gather_devices,
                                          red_op, un_op)
   output_tensors = _build_shuffle_scatter(reduced_shards, dst_devices)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -752,13 +752,13 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
         dst_tensors.append(array_ops.identity(broadcast_src))
     down_values[w] = dst_tensors
   output_tensors = [v for sublist in down_values for v in sublist]
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
 
 def _reduce_non_singleton(input_tensors, red_f, un_op):
-  """If input_tenors has more than one element apply red_f, else apply un_op."""
+  """If input_tensors has more than one element apply red_f, else apply un_op."""
   if len(input_tensors) > 1:
     return red_f(input_tensors)
   else:
@@ -831,7 +831,7 @@ def _build_shuffle_hybrid(input_tensors, gather_devices, red_op, upper_level_f):
   for w in range(0, num_workers):
     output_tensors += _build_shuffle_scatter(
         [level_2_output[w]], per_worker_devices[w])
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 

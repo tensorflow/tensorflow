@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Constants used across this package."""
+"""Common utilities used across this package."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,6 +20,13 @@ from __future__ import print_function
 
 import collections
 import re
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 
 # Skip all operations that are backprop related or export summaries.
 SKIPPED_PREFIXES = (
@@ -86,3 +93,33 @@ def _GetOperationByNameDontThrow(graph, name):
     return graph.get_operation_by_name(name)
   except KeyError:
     return None
+
+
+def CreateOrGetQuantizationStep():
+  """Returns a Tensor of the number of steps the quantized graph has run.
+
+  Returns:
+    Quantization step Tensor.
+  """
+  quantization_step_name = 'fake_quantization_step'
+  quantization_step_tensor_name = quantization_step_name + '/Identity:0'
+  g = ops.get_default_graph()
+  try:
+    return g.get_tensor_by_name(quantization_step_tensor_name)
+  except KeyError:
+    # Create in proper graph and base name_scope.
+    with g.name_scope(None):
+      quantization_step_tensor = variable_scope.get_variable(
+          quantization_step_name,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+      with g.name_scope(quantization_step_tensor.op.name + '/'):
+        # We return the incremented variable tensor. Since this is used in conds
+        # for quant_delay and freeze_bn_delay, it will run once per graph
+        # execution. We return an identity to force resource variables and
+        # normal variables to return a tensor of the same name.
+        return array_ops.identity(
+            state_ops.assign_add(quantization_step_tensor, 1))

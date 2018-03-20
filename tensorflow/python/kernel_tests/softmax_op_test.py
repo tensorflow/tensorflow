@@ -18,11 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 import numpy as np
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -101,10 +98,10 @@ class SoftmaxTest(test.TestCase):
 
   def _testOverflow(self, use_gpu=False):
     if use_gpu:
-      type = np.float32
+      type = np.float32  # pylint: disable=redefined-builtin
     else:
-      type = np.float64
-    max = np.finfo(type).max
+      type = np.float64  # pylint: disable=redefined-builtin
+    max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
     with self.test_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
@@ -168,7 +165,7 @@ class SoftmaxTest(test.TestCase):
 
   def testEmptyInput(self):
     with self.test_session():
-      x = constant_op.constant([[]], shape=[0, 3])
+      x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
       self.assertEqual(0, array_ops.size(x).eval())
       # reshape would raise if logits is empty
       with self.assertRaises(errors_impl.InvalidArgumentError):

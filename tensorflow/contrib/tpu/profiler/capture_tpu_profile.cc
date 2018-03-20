@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/contrib/tpu/profiler/version.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -47,6 +48,19 @@ string GetCurrentTimeStampAsString() {
   return s;
 }
 
+Status ValidateHostPortPair(const string& host_port) {
+  uint32 port;
+  std::vector<string> parts = str_util::Split(host_port, ':');
+  // Must be host:port, port must be a number, host must not contain a '/',
+  // host also must not be empty.
+  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
+      parts[0].find("/") != string::npos || parts[0].empty()) {
+    return errors::InvalidArgument("Could not interpret \"", host_port,
+                                   "\" as a host-port pair.");
+  }
+  return Status::OK();
+}
+
 ProfileResponse Profile(const string& service_addr, int duration_ms,
                         const ProfileOptions& opts) {
   ProfileRequest request;
@@ -60,11 +74,14 @@ ProfileResponse Profile(const string& service_addr, int duration_ms,
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
   // TODO(ioeric): use `SetMaxReceiveMessageSize` instead once it's available.
+  // TODO(qiuminxu): use `NewHostPortGrpcChannel` instead once their
+  // `ValidateHostPortPair` checks for empty host string case.
   channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
                       std::numeric_limits<int32>::max());
   std::unique_ptr<TPUProfiler::Stub> stub =
       TPUProfiler::NewStub(::grpc::CreateCustomChannel(
-          service_addr, ::grpc::InsecureChannelCredentials(), channel_args));
+          "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
+          channel_args));
   ProfileResponse response;
   TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
   return response;
@@ -101,7 +118,14 @@ int main(int argc, char** argv) {
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok || FLAGS_service_addr.empty() || FLAGS_logdir.empty()) {
-    std::printf("%s", usage.c_str());
+    std::cout << usage.c_str() << std::endl;
+    return 2;
+  }
+  tensorflow::Status status =
+      tensorflow::tpu::ValidateHostPortPair(FLAGS_service_addr);
+  if (!status.ok()) {
+    std::cout << status.error_message() << std::endl;
+    std::cout << usage.c_str() << std::endl;
     return 2;
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
@@ -130,6 +154,8 @@ int main(int argc, char** argv) {
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
+    // Don't dump profile data if no trace is collected.
+    return 0;
   }
 
   // Use the current timestamp as the run name.

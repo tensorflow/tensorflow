@@ -36,6 +36,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 @test_util.with_c_api
@@ -62,6 +63,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                constant_op.constant(
                                                    0,
                                                    dtype=dtypes.int32)).run()
+
+  def testGPUInt64(self):
+    if not context.context().num_gpus():
+      return
+    with context.eager_mode(), context.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
+      self.assertAllEqual(1, v.numpy())
 
   def testEagerNameNotIdentity(self):
     with context.eager_mode():
@@ -161,14 +169,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testScatterAdd(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant([[1]], dtype=dtypes.int32)))
+      self.evaluate(resource_variable_ops.resource_scatter_add(
+          handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  def testScatterUpdateString(self):
     handle = resource_variable_ops.var_handle_op(
-        dtype=dtypes.int32, shape=[1, 1])
+        dtype=dtypes.string, shape=[1, 1])
     self.evaluate(resource_variable_ops.assign_variable_op(
-        handle, constant_op.constant([[1]], dtype=dtypes.int32)))
-    self.evaluate(resource_variable_ops.resource_scatter_add(
-        handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
-    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-    self.assertEqual(self.evaluate(read), [[3]])
+        handle, constant_op.constant([["a"]], dtype=dtypes.string)))
+    self.evaluate(resource_variable_ops.resource_scatter_update(
+        handle, [0], constant_op.constant([["b"]], dtype=dtypes.string)))
+    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.string)
+    self.assertEqual(compat.as_bytes(self.evaluate(read)[0][0]),
+                     compat.as_bytes("b"))
 
   # TODO(alive): get this to work in Eager mode.
   def testGPU(self):
@@ -257,12 +277,49 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(v.assign(2.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign(3.0, read_value=True)
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign(4.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(4.0, self.evaluate(v.value()))
+
   @test_util.run_in_graph_and_eager_modes()
   def testLoad(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     v.load(2.0)
     self.assertEqual(2.0, self.evaluate(v.value()))
+
+  def testVariableDefInitializedInstances(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      v_def = resource_variable_ops.ResourceVariable(
+          initial_value=constant_op.constant(3.0)).to_proto()
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # v describes a VariableDef-based variable without an initial value.
+      v = resource_variable_ops.ResourceVariable(variable_def=v_def)
+      self.assertEqual(3.0, sess.run(v.initialized_value()))
+
+      # initialized_value should not rerun the initializer_op if the variable
+      # has already been initialized elsewhere.
+      sess.run(v.assign(1.0))
+      self.assertEqual(1.0, v.initialized_value().eval())
+
+    v_def.ClearField("initial_value_name")
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # Restoring a legacy VariableDef proto that does not have
+      # initial_value_name set should still work.
+      v = resource_variable_ops.ResourceVariable(variable_def=v_def)
+      # We should also be able to re-export the variable to a new meta graph.
+      self.assertProtoEquals(v_def, v.to_proto())
+      # But attempts to use initialized_value will result in errors.
+      with self.assertRaises(ValueError):
+        sess.run(v.initialized_value())
 
   @test_util.run_in_graph_and_eager_modes()
   def testSparseRead(self):
@@ -283,6 +340,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
       self.assertEquals(2, math_ops.add(w, 1).eval())
 
+      self.assertEquals(v._handle, w._handle)
+      self.assertEquals(v._graph_element, w._graph_element)
+
   @test_util.run_in_graph_and_eager_modes()
   def testAssignAddMethod(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
@@ -290,12 +350,34 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(v.assign_add(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign_add(1.0, read_value=True)
+    self.assertEqual(3.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign_add(1.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(4.0, self.evaluate(v.value()))
+
   @test_util.run_in_graph_and_eager_modes()
   def testAssignSubMethod(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign_sub(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
+
+    # Tests for the 'read_value' argument:
+    assign_with_read = v.assign_sub(1.0, read_value=True)
+    self.assertEqual(1.0, self.evaluate(assign_with_read))
+    assign_without_read = v.assign_sub(1.0, read_value=False)
+    if context.executing_eagerly():
+      self.assertIsNone(assign_without_read)
+    else:
+      self.assertIsInstance(assign_without_read, ops.Operation)
+    self.evaluate(assign_without_read)
+    self.assertEqual(0.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testDestroyResource(self):
@@ -394,7 +476,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual("(10, 20, 35)", str(v.get_shape()))
     self.assertEqual("(10, 20, 35)", str(v.value().shape))
     self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.assertEqual(
           "<unknown>",
           str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
@@ -435,7 +517,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(dtypes.int32, v.dtype)
       self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
-      self.assertEqual(context.get_default_context().device_name, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
       self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())
@@ -504,6 +585,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="update")
       state_ops.scatter_update(v, [1], [3])
       self.assertAllEqual([1.0, 3.0], v.numpy())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testScatterUpdateInvalidArgs(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3], name="update")
+    # The exact error and message differ between graph construction (where the
+    # error is realized during shape inference at graph construction time) and
+    # eager execution (where the error is realized during kernel execution).
+    with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
+      state_ops.scatter_update(v, [0, 1], [0, 1, 2])
 
 
 if __name__ == "__main__":

@@ -86,7 +86,8 @@ class ComputationsWithConstantsTest(LocalComputationTest):
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):
@@ -444,6 +445,30 @@ class SingleOpTest(LocalComputationTest):
     c.Dot(c.Constant(lhs), c.Constant(rhs))
     self._ExecuteAndCompareClose(c, expected=np.dot(lhs, rhs))
 
+  def testDotGeneral(self):
+    c = self._NewComputation()
+    rng = np.random.RandomState(0)
+    lhs = NumpyArrayF32(rng.randn(10, 3, 4))
+    rhs = NumpyArrayF32(rng.randn(10, 4, 5))
+    dimension_numbers = (([2], [1]), ([0], [0]))
+    c.DotGeneral(c.Constant(lhs), c.Constant(rhs), dimension_numbers)
+    self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
+
+  def testDotGeneralWithDotDimensionNumbersProto(self):
+    c = self._NewComputation()
+    rng = np.random.RandomState(0)
+    lhs = NumpyArrayF32(rng.randn(10, 3, 4))
+    rhs = NumpyArrayF32(rng.randn(10, 4, 5))
+
+    dimension_numbers = xla_client.xla_data_pb2.DotDimensionNumbers()
+    dimension_numbers.lhs_contracting_dimensions.append(2)
+    dimension_numbers.rhs_contracting_dimensions.append(1)
+    dimension_numbers.lhs_batch_dimensions.append(0)
+    dimension_numbers.rhs_batch_dimensions.append(0)
+
+    c.DotGeneral(c.Constant(lhs), c.Constant(rhs), dimension_numbers)
+    self._ExecuteAndCompareClose(c, expected=np.matmul(lhs, rhs))
+
   def testConvF32Same(self):
     c = self._NewComputation()
     a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
@@ -495,6 +520,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayF32([3.3, 12.1])
     c.Exp(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.exp(arr))
+
+  def testRound(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Round(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.round(arr))
 
   def testLog(self):
     c = self._NewComputation()
@@ -699,6 +730,23 @@ class SingleOpTest(LocalComputationTest):
     self._ExecuteAndCompareExact(
         c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
 
+  def testClampF32(self):
+    c = self._NewComputation()
+    c.Clamp(
+        c.Constant(NumpyArrayF32(-1)),
+        c.Constant(NumpyArrayF32([-2, -1, 0, 1, 2, 3])),
+        c.Constant(NumpyArrayF32(2)))
+    self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
+
+  # TODO(b/72689392): re-enable when bug S32 resolved
+  def DISABLED_testClampS32(self):
+    c = self._NewComputation()
+    c.Clamp(
+        c.Constant(NumpyArrayS32(-1)),
+        c.Constant(NumpyArrayS32([-2, -1, 0, 1, 2, 3])),
+        c.Constant(NumpyArrayS32(2)))
+    self._ExecuteAndCompareExact(c, expected=[-1, 0, 1, 2, 2])
+
   def testSelect(self):
     c = self._NewComputation()
     c.Select(
@@ -713,6 +761,23 @@ class SingleOpTest(LocalComputationTest):
         c.Constant(NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])), [1, 0],
         [3, 2])
     self._ExecuteAndCompareExact(c, expected=[[4, 5], [7, 8]])
+
+  def testSliceInDim(self):
+    c = self._NewComputation()
+    c.SliceInDim(
+        c.Constant(NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
+        start_index=1,
+        limit_index=2,
+        stride=1,
+        dimno=1)
+    self._ExecuteAndCompareExact(c, expected=[[2], [5], [8]])
+    c.SliceInDim(
+        c.Constant(NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
+        start_index=0,
+        limit_index=3,
+        stride=2,
+        dimno=0)
+    self._ExecuteAndCompareExact(c, expected=[[1, 2, 3], [7, 8, 9]])
 
   def testDynamicSlice(self):
     c = self._NewComputation()
@@ -832,6 +897,13 @@ class EmbeddedComputationsTest(LocalComputationTest):
     """Computation (f32) -> f32 that multiplies its parameter by 2."""
     c = self._NewComputation("mul_f32_by2")
     c.Mul(c.ParameterFromNumpy(NumpyArrayF32(0)), c.ConstantF32Scalar(2.0))
+    return c.Build()
+
+  def _CreateMulF32ByParamComputation(self):
+    """Computation (f32) -> f32 that multiplies one parameter by the other."""
+    c = self._NewComputation("mul_f32_by_param")
+    c.Mul(c.ParameterFromNumpy(NumpyArrayF32(0)),
+          c.ParameterFromNumpy(NumpyArrayF32(0)))
     return c.Build()
 
   def _CreateMulF64By2Computation(self):
@@ -973,6 +1045,14 @@ class EmbeddedComputationsTest(LocalComputationTest):
            c.Constant(NumpyArrayF64([5.0, 5.0, 4.0, 4.0]))),
           self._CreateBinaryDivF64Computation(), [0])
     self._ExecuteAndCompareClose(c, expected=[0.2, 0.4, 0.75, 1.0])
+
+  def DISABLED_testMapWithStaticOperands(self):
+    c = self._NewComputation()
+    factor = c.ConstantF32Scalar(3.0)
+    c.Map([c.Constant(NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
+          self._CreateMulF32ByParamComputation(), [0],
+          static_operands=[factor])
+    self._ExecuteAndCompareClose(c, expected=[3.0, 6.0, 9.0, 12.0])
 
   def testSelectAndScatterF32(self):
     c = self._NewComputation()
@@ -1171,6 +1251,28 @@ class EmbeddedComputationsTest(LocalComputationTest):
     init = c.ConstantF64Scalar(1.)
     c.While(cond, body, init)
     self._ExecuteAndCompareClose(c, expected=16.)
+
+  def testConditionalTrue(self):
+    c = self._NewComputation()
+    pred = c.ConstantPredScalar(True)
+    true_operand = c.ConstantF32Scalar(3.)
+    true_computation = self._CreateMulF32By2Computation()
+    false_operand = c.ConstantF32Scalar(2.)
+    false_computation = self._CreateConstantF32Computation()
+    c.Conditional(pred, true_operand, true_computation, false_operand,
+                  false_computation)
+    self._ExecuteAndCompareClose(c, expected=6.)
+
+  def testConditionalFalse(self):
+    c = self._NewComputation()
+    pred = c.ConstantPredScalar(False)
+    true_operand = c.ConstantF32Scalar(3.)
+    true_computation = self._CreateMulF32By2Computation()
+    false_operand = c.ConstantF32Scalar(2.)
+    false_computation = self._CreateConstantF32Computation()
+    c.Conditional(pred, true_operand, true_computation, false_operand,
+                  false_computation)
+    self._ExecuteAndCompareClose(c, expected=1.)
 
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])

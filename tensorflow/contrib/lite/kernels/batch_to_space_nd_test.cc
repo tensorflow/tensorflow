@@ -119,6 +119,19 @@ TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
                "Cannot allocate tensors");
 }
 
+TEST(BatchToSpaceNDOpTest, InvalidCropsConstTest) {
+  EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, 1}),
+               "1 != 0");
+}
+
+TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
+  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({2, 2});
+  m.SetCrops({0, 0, 1, 0});
+  EXPECT_DEATH(m.Invoke(), "1 != 0");
+}
+
 }  // namespace
 }  // namespace tflite
 

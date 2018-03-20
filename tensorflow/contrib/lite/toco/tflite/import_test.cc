@@ -27,33 +27,32 @@ namespace {
 
 using ::testing::ElementsAre;
 
+using flatbuffers::Offset;
+using flatbuffers::Vector;
 class ImportTest : public ::testing::Test {
  protected:
   template <typename T>
-  flatbuffers::Offset<flatbuffers::Vector<unsigned char>> CreateDataVector(
-      const std::vector<T>& data) {
+  Offset<Vector<unsigned char>> CreateDataVector(const std::vector<T>& data) {
     return builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.data()),
                                  sizeof(T) * data.size());
   }
-  // This is a very simplistic model. We are not interested in testing all the
-  // details here, since tf.mini's testing framework will be exercising all the
-  // conversions multiple times, and the conversion of operators is tested by
-  // separate unittests.
-  void BuildTestModel() {
-    // The tensors
+  Offset<Vector<Offset<::tflite::Buffer>>> BuildBuffers() {
+    auto buf0 = ::tflite::CreateBuffer(builder_, CreateDataVector<float>({}));
+    auto buf1 =
+        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({1.0f, 2.0f}));
+    auto buf2 =
+        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({3.0f}));
+    return builder_.CreateVector(
+        std::vector<Offset<::tflite::Buffer>>({buf0, buf1, buf2}));
+  }
+
+  Offset<Vector<Offset<::tflite::Tensor>>> BuildTensors() {
     auto q = ::tflite::CreateQuantizationParameters(
         builder_,
         /*min=*/builder_.CreateVector<float>({0.1f}),
         /*max=*/builder_.CreateVector<float>({0.2f}),
         /*scale=*/builder_.CreateVector<float>({0.3f}),
         /*zero_point=*/builder_.CreateVector<int64_t>({100ll}));
-    auto buf0 = ::tflite::CreateBuffer(builder_, CreateDataVector<float>({}));
-    auto buf1 =
-        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({1.0f, 2.0f}));
-    auto buf2 =
-        ::tflite::CreateBuffer(builder_, CreateDataVector<float>({3.0f}));
-    auto buffers = builder_.CreateVector(
-        std::vector<flatbuffers::Offset<::tflite::Buffer>>({buf0, buf1, buf2}));
     auto t1 = ::tflite::CreateTensor(builder_,
                                      builder_.CreateVector<int>({1, 2, 3, 4}),
                                      ::tflite::TensorType_FLOAT32, 1,
@@ -62,17 +61,28 @@ class ImportTest : public ::testing::Test {
         ::tflite::CreateTensor(builder_, builder_.CreateVector<int>({2, 1}),
                                ::tflite::TensorType_FLOAT32, 2,
                                builder_.CreateString("tensor_two"), q);
-    auto tensors = builder_.CreateVector(
-        std::vector<flatbuffers::Offset<::tflite::Tensor>>({t1, t2}));
+    return builder_.CreateVector(
+        std::vector<Offset<::tflite::Tensor>>({t1, t2}));
+  }
 
-    // The operator codes.
+  Offset<Vector<Offset<::tflite::OperatorCode>>> BuildOpCodes() {
     auto c1 =
         ::tflite::CreateOperatorCode(builder_, ::tflite::BuiltinOperator_CUSTOM,
                                      builder_.CreateString("custom_op_one"));
     auto c2 = ::tflite::CreateOperatorCode(
         builder_, ::tflite::BuiltinOperator_CONV_2D, 0);
-    auto opcodes = builder_.CreateVector(
-        std::vector<flatbuffers::Offset<::tflite::OperatorCode>>({c1, c2}));
+    return builder_.CreateVector(
+        std::vector<Offset<::tflite::OperatorCode>>({c1, c2}));
+  }
+
+  // This is a very simplistic model. We are not interested in testing all the
+  // details here, since tf.mini's testing framework will be exercising all the
+  // conversions multiple times, and the conversion of operators is tested by
+  // separate unittests.
+  void BuildTestModel() {
+    auto buffers = BuildBuffers();
+    auto tensors = BuildTensors();
+    auto opcodes = BuildOpCodes();
 
     auto subgraph = ::tflite::CreateSubGraph(builder_, tensors, 0, 0, 0);
     std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraph_vector(
@@ -131,6 +141,19 @@ TEST_F(ImportTest, Tensors) {
   ASSERT_TRUE(q.get());
   EXPECT_FLOAT_EQ(0.3, q->scale);
   EXPECT_EQ(100, q->zero_point);
+}
+
+TEST_F(ImportTest, NoSubGraphs) {
+  auto buffers = BuildBuffers();
+  auto opcodes = BuildOpCodes();
+  auto subgraphs = 0;  // no subgraphs in this model
+  auto comment = builder_.CreateString("");
+  builder_.Finish(::tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
+                                        opcodes, subgraphs, comment, buffers));
+  input_model_ = ::tflite::GetModel(builder_.GetBufferPointer());
+
+  EXPECT_DEATH(Import(ModelFlags(), InputModelAsString()),
+               "Number of subgraphs in tflite should be exactly 1.");
 }
 
 // TODO(ahentz): still need tests for Operators and IOTensors.

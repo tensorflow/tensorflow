@@ -39,8 +39,6 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
-from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 
 # pylint: enable=protected-access
 Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
@@ -157,7 +155,7 @@ class RNNCellTest(test.TestCase):
             m.name: np.array([[0.1, 0.1]])
         })
         # Smoke test
-        self.assertAllClose(res[0], [[0.509682,  0.509682]])
+        self.assertAllClose(res[0], [[0.509682, 0.509682]])
 
   def testSRUCellWithDiffSize(self):
     with self.test_session() as sess:
@@ -167,9 +165,10 @@ class RNNCellTest(test.TestCase):
         m = array_ops.zeros([1, 2])
         g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run(
-            [g], {x.name: np.array([[1., 1., 1.]]),
-                  m.name: np.array([[0.1, 0.1]])})
+        res = sess.run([g], {
+            x.name: np.array([[1., 1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
         # Smoke test
         self.assertAllClose(res[0], [[0.55255556, 0.55255556]])
 
@@ -188,6 +187,8 @@ class RNNCellTest(test.TestCase):
               ],
               state_is_tuple=False)
           self.assertEqual(cell.dtype, None)
+          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
+          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
           g, out_m = cell(x, m)
           # Layer infers the input type.
           self.assertEqual(cell.dtype, dtype.name)

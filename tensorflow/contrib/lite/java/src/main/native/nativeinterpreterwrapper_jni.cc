@@ -79,6 +79,21 @@ TfLiteType resolveDataType(jint data_type) {
   }
 }
 
+int getDataType(TfLiteType data_type) {
+  switch (data_type) {
+    case kTfLiteFloat32:
+      return 1;
+    case kTfLiteInt32:
+      return 2;
+    case kTfLiteUInt8:
+      return 3;
+    case kTfLiteInt64:
+      return 4;
+    default:
+      return -1;
+  }
+}
+
 void printDims(char* buffer, int max_size, int* dims, int num_dims) {
   if (max_size <= 0) return;
   buffer[0] = '?';
@@ -149,6 +164,45 @@ TfLiteStatus checkInputs(JNIEnv* env, tflite::Interpreter* interpreter,
   return kTfLiteOk;
 }
 
+// Checks whether there is any difference between dimensions of a tensor and a
+// given dimensions. Returns true if there is difference, else false.
+bool areDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
+  int num_dims = static_cast<int>(env->GetArrayLength(dims));
+  jint* ptr = env->GetIntArrayElements(dims, nullptr);
+  if (ptr == nullptr) {
+    throwException(env, kIllegalArgumentException,
+                   "Empty dimensions of input array.");
+    return true;
+  }
+  if (tensor->dims->size != num_dims) {
+    return true;
+  }
+  for (int i = 0; i < num_dims; ++i) {
+    if (ptr[i] != tensor->dims->data[i]) {
+      return true;
+    }
+  }
+  env->ReleaseIntArrayElements(dims, ptr, JNI_ABORT);
+  return false;
+}
+
+bool areInputDimensionsTheSame(JNIEnv* env, tflite::Interpreter* interpreter,
+                               int input_size, jobjectArray sizes) {
+  if (interpreter->inputs().size() != input_size) {
+    return false;
+  }
+  for (int i = 0; i < input_size; ++i) {
+    int input_idx = interpreter->inputs()[i];
+    jintArray dims =
+        static_cast<jintArray>(env->GetObjectArrayElement(sizes, i));
+    TfLiteTensor* target = interpreter->tensor(input_idx);
+    if (areDimsDifferent(env, target, dims)) return false;
+    env->DeleteLocalRef(dims);
+    if (env->ExceptionCheck()) return false;
+  }
+  return true;
+}
+
 TfLiteStatus resizeInputs(JNIEnv* env, tflite::Interpreter* interpreter,
                           int input_size, jobjectArray sizes) {
   for (int i = 0; i < input_size; ++i) {
@@ -198,6 +252,12 @@ TfLiteStatus setInputs(JNIEnv* env, tflite::Interpreter* interpreter,
   env->ReleaseIntArrayElements(data_types, data_type, JNI_ABORT);
   env->ReleaseIntArrayElements(nums_of_bytes, num_bytes, JNI_ABORT);
   return kTfLiteOk;
+}
+
+// TODO(yichengfan): evaluate the benefit to use tflite verifier.
+bool VerifyModel(const void* buf, size_t len) {
+  flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
+  return tflite::VerifyModelBuffer(verifier);
 }
 
 }  // namespace
@@ -256,6 +316,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
   interpreter->UseNNAPI(static_cast<bool>(state));
 }
 
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
+                                                             jclass clazz,
+                                                             jlong handle,
+                                                             jint num_threads) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetNumThreads(static_cast<int>(num_threads));
+}
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
     JNIEnv* env, jclass clazz, jint size) {
@@ -264,6 +334,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
   return reinterpret_cast<jlong>(error_reporter);
 }
 
+// Verifies whether the model is a flatbuffer file.
+class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
+ public:
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    if (!VerifyModel(data, length)) {
+      reporter->Report("The model is not a valid Flatbuffer file");
+      return false;
+    }
+    return true;
+  }
+};
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
     JNIEnv* env, jclass clazz, jstring model_file, jlong error_handle) {
@@ -271,7 +354,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
   const char* path = env->GetStringUTFChars(model_file, nullptr);
-  auto model = tflite::FlatBufferModel::BuildFromFile(path, error_reporter);
+
+  std::unique_ptr<tflite::TfLiteVerifier> verifier;
+  verifier.reset(new JNIFlatBufferVerifier());
+
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      path, verifier.get(), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid TensorFlowLite "
@@ -293,6 +381,12 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   const char* buf =
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
+  if (!VerifyModel(buf, capacity)) {
+    throwException(env, kIllegalArgumentException,
+                   "MappedByteBuffer is not a valid flatbuffer model");
+    return 0;
+  }
+
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
@@ -321,6 +415,15 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     throwException(env, kIllegalArgumentException,
                    "Cannot create interpreter: %s",
                    error_reporter->CachedErrorMessage());
+    return 0;
+  }
+  // allocates memory
+  status = interpreter->AllocateTensors();
+  if (status != kTfLiteOk) {
+    throwException(env, kNullPointerException,
+                   "Can not allocate memory for the interpreter",
+                   error_reporter->CachedErrorMessage());
+    return 0;
   }
   return reinterpret_cast<jlong>(interpreter.release());
 }
@@ -330,7 +433,7 @@ JNIEXPORT jlongArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jobjectArray sizes, jintArray data_types, jintArray nums_of_bytes,
-    jobjectArray values) {
+    jobjectArray values, jobject wrapper, jboolean memory_allocated) {
   tflite::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return nullptr;
@@ -342,31 +445,46 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   TfLiteStatus status = checkInputs(env, interpreter, input_size, data_types,
                                     nums_of_bytes, values, sizes);
   if (status != kTfLiteOk) return nullptr;
-  // resizes inputs
-  status = resizeInputs(env, interpreter, input_size, sizes);
-  if (status != kTfLiteOk) {
-    throwException(env, kNullPointerException, "Can not resize the input: %s",
-                   error_reporter->CachedErrorMessage());
-    return nullptr;
-  }
-  // allocates memory
-  status = interpreter->AllocateTensors();
-  if (status != kTfLiteOk) {
-    throwException(env, kNullPointerException,
-                   "Can not allocate memory for the given inputs: %s",
-                   error_reporter->CachedErrorMessage());
-    return nullptr;
+  if (!memory_allocated ||
+      !areInputDimensionsTheSame(env, interpreter, input_size, sizes)) {
+    // resizes inputs
+    status = resizeInputs(env, interpreter, input_size, sizes);
+    if (status != kTfLiteOk) {
+      throwException(env, kNullPointerException, "Can not resize the input: %s",
+                     error_reporter->CachedErrorMessage());
+      return nullptr;
+    }
+    // allocates memory
+    status = interpreter->AllocateTensors();
+    if (status != kTfLiteOk) {
+      throwException(env, kNullPointerException,
+                     "Can not allocate memory for the given inputs: %s",
+                     error_reporter->CachedErrorMessage());
+      return nullptr;
+    }
   }
   // sets inputs
   status = setInputs(env, interpreter, input_size, data_types, nums_of_bytes,
                      values);
   if (status != kTfLiteOk) return nullptr;
+  timespec beforeInference = ::tflite::getCurrentTime();
   // runs inference
   if (interpreter->Invoke() != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return nullptr;
+  }
+  timespec afterInference = ::tflite::getCurrentTime();
+  jclass wrapper_clazz = env->GetObjectClass(wrapper);
+  jfieldID fid =
+      env->GetFieldID(wrapper_clazz, "inferenceDurationNanoseconds", "J");
+  if (env->ExceptionCheck()) {
+    env->ExceptionClear();
+  } else if (fid != nullptr) {
+    env->SetLongField(
+        wrapper, fid,
+        ::tflite::timespec_diff_nanoseconds(&beforeInference, &afterInference));
   }
   // returns outputs
   const std::vector<int>& results = interpreter->outputs();
@@ -391,7 +509,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   const int idx = static_cast<int>(input_idx);
-  if (input_idx >= interpreter->inputs().size()) {
+  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
                    "Out of range: Failed to get %d-th input out of %d inputs",
                    input_idx, interpreter->inputs().size());
@@ -399,45 +517,72 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputDims(
   }
   TfLiteTensor* target = interpreter->tensor(interpreter->inputs()[idx]);
   int size = target->dims->size;
-  int expected_num_bytes = elementByteSize(target->type);
-  for (int i = 0; i < size; ++i) {
-    expected_num_bytes *= target->dims->data[i];
-  }
-  if (num_bytes != expected_num_bytes) {
-    throwException(env, kIllegalArgumentException,
-                   "Failed to get input dimensions. %d-th input should have"
-                   " %d bytes, but found %d bytes.",
-                   idx, expected_num_bytes, num_bytes);
-    return nullptr;
+  if (num_bytes >= 0) {  // verifies num of bytes matches if num_bytes if valid.
+    int expected_num_bytes = elementByteSize(target->type);
+    for (int i = 0; i < size; ++i) {
+      expected_num_bytes *= target->dims->data[i];
+    }
+    if (num_bytes != expected_num_bytes) {
+      throwException(env, kIllegalArgumentException,
+                     "Failed to get input dimensions. %d-th input should have"
+                     " %d bytes, but found %d bytes.",
+                     idx, expected_num_bytes, num_bytes);
+      return nullptr;
+    }
   }
   jintArray outputs = env->NewIntArray(size);
   env->SetIntArrayRegion(outputs, 0, size, &(target->dims->data[0]));
   return outputs;
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    throwException(env, kIllegalArgumentException,
+                   "Out of range: Failed to get %d-th output out of %d outputs",
+                   output_idx, interpreter->outputs().size());
+    return -1;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  int type = getDataType(target->type);
+  return static_cast<jint>(type);
+}
+
+JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jint input_idx, jintArray dims) {
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) return;
+  if (error_reporter == nullptr) return JNI_FALSE;
   tflite::Interpreter* interpreter =
       convertLongToInterpreter(env, interpreter_handle);
-  if (interpreter == nullptr) return;
+  if (interpreter == nullptr) return JNI_FALSE;
   const int idx = static_cast<int>(input_idx);
   if (idx < 0 || idx >= interpreter->inputs().size()) {
     throwException(env, kIllegalArgumentException,
                    "Can not resize %d-th input for a model having %d inputs.",
                    idx, interpreter->inputs().size());
+    return JNI_FALSE;
   }
-  TfLiteStatus status = interpreter->ResizeInputTensor(
-      interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
-  if (status != kTfLiteOk) {
-    throwException(env, kIllegalArgumentException,
-                   "Failed to resize %d-th input: %s", idx,
-                   error_reporter->CachedErrorMessage());
+  // check whether it is resizing with the same dimensions.
+  TfLiteTensor* target = interpreter->tensor(input_idx);
+  bool is_changed = areDimsDifferent(env, target, dims);
+  if (is_changed) {
+    TfLiteStatus status = interpreter->ResizeInputTensor(
+        interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
+    if (status != kTfLiteOk) {
+      throwException(env, kIllegalArgumentException,
+                     "Failed to resize %d-th input: %s", idx,
+                     error_reporter->CachedErrorMessage());
+      return JNI_FALSE;
+    }
   }
+  return is_changed ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_delete(

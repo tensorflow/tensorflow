@@ -238,9 +238,9 @@ class DType(object):
       min, max : tuple
         Lower and upper intensity limits.
     """
-    min, max = dtype_range[self.as_numpy_dtype]
+    min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
     if clip_negative:
-      min = 0
+      min = 0  # pylint: disable=redefined-builtin
     return min, max
 
   def is_compatible_with(self, other):
@@ -343,7 +343,9 @@ tf_export("uint8").export_constant(__name__, "uint8")
 uint16 = DType(types_pb2.DT_UINT16)
 tf_export("uint16").export_constant(__name__, "uint16")
 uint32 = DType(types_pb2.DT_UINT32)
+tf_export("uint32").export_constant(__name__, "uint32")
 uint64 = DType(types_pb2.DT_UINT64)
+tf_export("uint64").export_constant(__name__, "uint32")
 int16 = DType(types_pb2.DT_INT16)
 tf_export("int16").export_constant(__name__, "int16")
 int8 = DType(types_pb2.DT_INT8)
@@ -356,7 +358,7 @@ complex128 = DType(types_pb2.DT_COMPLEX128)
 tf_export("complex128").export_constant(__name__, "complex128")
 int64 = DType(types_pb2.DT_INT64)
 tf_export("int64").export_constant(__name__, "int64")
-bool = DType(types_pb2.DT_BOOL)
+bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
 tf_export("bool").export_constant(__name__, "bool")
 qint8 = DType(types_pb2.DT_QINT8)
 tf_export("qint8").export_constant(__name__, "qint8")

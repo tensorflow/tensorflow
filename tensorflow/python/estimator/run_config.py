@@ -27,8 +27,8 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
@@ -287,6 +287,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
+@tf_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
@@ -344,7 +345,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'worker', 'index': 1}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
       assert config.num_ps_replicas == 2
@@ -362,7 +363,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'chief', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host0:2222'
       assert config.task_id == 0
       assert config.num_ps_replicas == 2
@@ -380,7 +381,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'evaluator', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == ''
       assert config.evaluator_master == ''
       assert config.task_id == 0

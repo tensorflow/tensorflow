@@ -38,12 +38,12 @@ namespace xla {
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-HloDataflowAnalysis::HloDataflowAnalysis(HloModule* module, bool ssa_form,
+HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                                          bool bitcast_defines_value)
     : module_(module),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
-      call_graph_(CallGraph::Build(module)) {}
+      call_graph_(CallGraph::Build(&module)) {}
 
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
@@ -115,9 +115,9 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
 }
 
 string HloDataflowAnalysis::ToString() const {
-  string out = StrCat("HloDataflowAnalysis, module ", module_->name(), "\n");
+  string out = StrCat("HloDataflowAnalysis, module ", module_.name(), "\n");
   StrAppend(&out, "  Instruction value sets:\n");
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
@@ -368,11 +368,11 @@ bool HloDataflowAnalysis::UpdateConditionalValueSet(
           conditional->true_computation()->root_instruction()),
       &GetInstructionValueSet(
           conditional->false_computation()->root_instruction())};
-  // A phi-node is not defined for a kConditional instruction even though it
-  // represents a join point. This is because the current approach is to define
-  // a phi-node only for kWhile to account for the dataflow through back-edges
-  // and deal with the ambiguity in other cases.
-  return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
+  if (ssa_form_) {
+    return Phi(conditional, inputs);
+  } else {
+    return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
+  }
 }
 
 bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
@@ -585,16 +585,23 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 
 void HloDataflowAnalysis::Propagate() {
   std::queue<HloInstruction*> worklist;
-
-  for (HloComputation* computation : module_->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
+  tensorflow::gtl::FlatSet<HloInstruction*> workset;
+  auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
+    if (workset.insert(instruction).second) {
       worklist.push(instruction);
+    }
+  };
+
+  for (HloComputation* computation : module_.computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      add_to_worklist(instruction);
     }
   }
 
   while (!worklist.empty()) {
     HloInstruction* instruction = worklist.front();
     worklist.pop();
+    workset.erase(workset.find(instruction));
 
     VLOG(3) << "Worklist top: " << instruction->name();
     VLOG(3) << ToString();
@@ -608,9 +615,10 @@ void HloDataflowAnalysis::Propagate() {
     VLOG(4) << "New value set for " << instruction->name() << ": "
             << GetInstructionValueSet(instruction);
 
-    // Instruction value was updated. Add users to work list.
+    // Instruction value was updated. Add users to work list if we haven't
+    // already.
     for (HloInstruction* user : instruction->users()) {
-      worklist.push(user);
+      add_to_worklist(user);
 
       // If user sequentially calls a computation, then the respective
       // parameter(s) of the computation need to be updated.
@@ -625,10 +633,10 @@ void HloDataflowAnalysis::Propagate() {
         // Note that the same instruction can be used in both operand 1 and
         // operand 2.
         if (user->operand(1) == instruction) {
-          worklist.push(user->true_computation()->parameter_instruction(0));
+          add_to_worklist(user->true_computation()->parameter_instruction(0));
         }
         if (user->operand(2) == instruction) {
-          worklist.push(user->false_computation()->parameter_instruction(0));
+          add_to_worklist(user->false_computation()->parameter_instruction(0));
         }
       } else {
         for (HloComputation* called_computation : user->called_computations()) {
@@ -636,7 +644,7 @@ void HloDataflowAnalysis::Propagate() {
               call_graph_->GetNode(called_computation);
           if (call_graph_node.context() == CallContext::kSequential) {
             for (int64 operand_number : user->OperandIndices(instruction)) {
-              worklist.push(
+              add_to_worklist(
                   called_computation->parameter_instruction(operand_number));
             }
           }
@@ -652,13 +660,13 @@ void HloDataflowAnalysis::Propagate() {
       for (const CallSite& callsite : call_graph_node.caller_callsites()) {
         if ((callsite.instruction()->opcode() == HloOpcode::kCall) ||
             (callsite.instruction()->opcode() == HloOpcode::kConditional)) {
-          worklist.push(callsite.instruction());
+          add_to_worklist(callsite.instruction());
         } else if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
           // Add the while itself, and the body and condition parameters.
-          worklist.push(callsite.instruction());
-          worklist.push(
+          add_to_worklist(callsite.instruction());
+          add_to_worklist(
               callsite.instruction()->while_body()->parameter_instruction(0));
-          worklist.push(
+          add_to_worklist(
               callsite.instruction()->while_condition()->parameter_instruction(
                   0));
         }
@@ -678,7 +686,7 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation : module_.computations()) {
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
     for (HloInstruction* instruction : computation->instructions()) {
       // Create an empty shape tree.
@@ -779,9 +787,9 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
 
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
-    HloModule* module, bool ssa_form, bool bitcast_defines_value) {
-  VLOG(1) << "HloDataflowAnalysis::Run on module " << module->name();
-  XLA_VLOG_LINES(2, module->ToString());
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value) {
+  VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
+  XLA_VLOG_LINES(2, module.ToString());
 
   auto dataflow_analysis = WrapUnique(
       new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value));
@@ -798,7 +806,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   // lookup is faster.
   std::vector<std::vector<HloPosition>> value_positions(
       dataflow_analysis->next_value_id_);
-  for (const HloComputation* computation : module->computations()) {
+  for (const HloComputation* computation : module.computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       for (const auto& pair :
            dataflow_analysis->GetInstructionValueSet(instruction)) {
@@ -850,7 +858,7 @@ Status HloDataflowAnalysis::Verify() const {
 
   // For each value in each value set, verify that the value set's position
   // appears in the value's positions().
-  for (const auto& computation : module_->computations()) {
+  for (const auto& computation : module_.computations()) {
     for (const auto& instruction : computation->instructions()) {
       for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;

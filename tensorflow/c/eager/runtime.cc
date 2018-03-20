@@ -41,17 +41,26 @@ const uint32 kIsList = 1U << 31;
 
 }  // namespace
 
+Status OpDefForOp(const char* op_name, const OpDef** op_def) {
+  const OpRegistrationData* op_reg_data = nullptr;
+  Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  if (s.ok()) {
+    *op_def = &op_reg_data->op_def;
+  }
+  return s;
+}
+
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
   mutex_lock l(g_op_name_to_attr_type_map_lock);
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
   if (*out != nullptr) return Status::OK();
-  const OpRegistrationData* op_reg_data = nullptr;
-  Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name, &op_def);
   if (!s.ok()) return s;
   std::unique_ptr<AttrTypeMap> m(new AttrTypeMap);
   // TODO(agarwal): Avoid having to create this "registry" at runtime,
   // perhaps can be done at op registration time?
-  for (const auto& attr : op_reg_data->op_def.attr()) {
+  for (const auto& attr : op_def->attr()) {
     string type = attr.type();
     const bool is_list = (type.length() > 6 && type.compare(0, 4, "list") == 0);
     if (is_list) {
@@ -86,10 +95,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
   return Status::OK();
 }
 
-Status AttrTypeByName(const AttrTypeMap* m, const string& attr_name,
+Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list) {
-  CHECK(m);
-  auto* t = gtl::FindOrNull(*m, attr_name);
+  auto* t = gtl::FindOrNull(m, attr_name);
   if (t == nullptr) {
     return errors::InvalidArgument("Attribute '", attr_name,
                                    "' does not exist for this operation");
@@ -173,14 +181,14 @@ void CombineUnordered(const tensorflow::Fprint128& a,
   b->high64 += a.high64;
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(const StringPiece& s,
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s,
                                             const tensorflow::Fprint128& b) {
   // TODO(agarwal): avoid ToString().
   tensorflow::Fprint128 a = tensorflow::Fingerprint128(s.ToString());
   return FingerprintCat128(a, b);
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(const StringPiece& s, uint64 b) {
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
   return CacheKeyHelper(s, {b, b});
 }
 
@@ -294,7 +302,18 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.runner = &runner;
 
   OpKernelContext context(&params);
-  device_->Compute(kernel_.get(), &context);
+
+  if (kernel_->def().op() == "_Recv") {
+    // TODO(apassos) do not special-case _Recv. Currently the GPU device fails
+    // if trying to run _Recv->Compute(), specifically checking for _Recv. To go
+    // around this we call _Recv->ComputeAsync, to mimic graph mode behavior.
+    AsyncOpKernel* async = kernel_->AsAsync();
+    Notification done;
+    device_->ComputeAsync(async, &context, [&done]() { done.Notify(); });
+    done.WaitForNotification();
+  } else {
+    device_->Compute(kernel_.get(), &context);
+  }
   if (!context.status().ok()) return context.status();
 
   output_tensors->clear();
@@ -316,7 +335,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
       allocator_pair.second->GetRecordsAndUnRef();
     }
     auto* ms = stats->mutable_memory_stats();
-    ms->set_temp_memory_size(context.temp_memory_size());
+    ms->set_temp_memory_size(context.temp_memory_allocated());
     for (const auto& alloc_id : context.persistent_alloc_ids()) {
       ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
     }

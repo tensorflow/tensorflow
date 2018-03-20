@@ -52,6 +52,7 @@ xla_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:session_proto",
     ],
 )
@@ -88,7 +89,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -373,7 +373,6 @@ tf_cc_test(
 
 cc_library(
     name = "array2d",
-    srcs = ["array2d.cc"],
     hdrs = ["array2d.h"],
     visibility = ["//visibility:public"],
     deps = [

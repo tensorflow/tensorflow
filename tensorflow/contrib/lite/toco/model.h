@@ -29,12 +29,15 @@ limitations under the License.
 
 namespace toco {
 
+using tflite::QuantizationParams;
+
 enum class OperatorType {
   kNone,
   // General-purpose neural network operators.
   kAdd,
   kAddN,
   kAveragePool,
+  kBatchMatMul,
   kBatchNormalization,
   kConv,
   kConcatenation,
@@ -43,6 +46,7 @@ enum class OperatorType {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kExp,
   kExpandDims,
   kFill,
   kFloorDiv,
@@ -62,6 +66,7 @@ enum class OperatorType {
   kRelu1,
   kRelu6,
   kSoftmax,
+  kLogSoftmax,
   kSub,
   kTanh,
   kTransposeConv,
@@ -111,6 +116,9 @@ enum class OperatorType {
   kTensorFlowSwitch,
   kTensorFlowTile,
   kTranspose,
+  kTopK_V2,
+  kDynamicPartition,
+  kDynamicStitch,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -156,12 +164,17 @@ enum class AxesOrder {
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
 enum class ArrayDataType {
-  kNone,
+  kNone,  // 0
   kBool,
   kFloat,
+  kInt8,
   kUint8,
+  kInt16,  // 5
+  kUint16,
   kInt32,
+  kUint32,
   kInt64,
+  kUint64,  // 10
   kString
 };
 
@@ -181,16 +194,36 @@ struct DataTypeImpl<ArrayDataType::kFloat> {
   typedef float Type;
 };
 template <>
+struct DataTypeImpl<ArrayDataType::kInt8> {
+  typedef int8 Type;
+};
+template <>
 struct DataTypeImpl<ArrayDataType::kUint8> {
   typedef uint8 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kInt16> {
+  typedef int16 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kUint16> {
+  typedef uint16 Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kInt32> {
   typedef int32 Type;
 };
 template <>
+struct DataTypeImpl<ArrayDataType::kUint32> {
+  typedef uint32 Type;
+};
+template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
   typedef int64 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kUint64> {
+  typedef uint64 Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kString> {
@@ -215,6 +248,8 @@ struct GenericBuffer {
   // in containers and have the containers call the right subclass destructor.
   virtual ~GenericBuffer() {}
 
+  virtual int Length() const = 0;
+
   const ArrayDataType type;
 
  protected:
@@ -226,6 +261,8 @@ struct GenericBuffer {
 template <ArrayDataType A>
 struct Buffer : GenericBuffer {
   Buffer() : GenericBuffer(A) {}
+
+  int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
 };
@@ -330,7 +367,8 @@ struct ConvOperator : Operator {
   // A dilation_rate of 0 is invalid and this field is an optional attribute.
   // Thus initializing it to 1 to allow default conv behavior when the
   // attribute is not present.
-  int dilation_rate = 1;
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depthwise-separable convolution operator.
@@ -712,6 +750,19 @@ struct TensorFlowIdentityOperator : Operator {
   TensorFlowIdentityOperator() : Operator(OperatorType::kTensorFlowIdentity) {}
 };
 
+// Batch matrix multiplication operator. This comes from the (deprecated)
+// tf.batch_matmul or a tf.matmul that has rank 3. dims(0) is the batch count
+// and it can be trivially unrolled into a series of matmuls on each element.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side matrix
+//   inputs[1]: required: the right-hand side matrix
+//
+// TensorFlow equivalent: MatMul
+struct BatchMatMulOperator : Operator {
+  BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
+};
+
 // General matrix multiplication operator. We don't want to support general
 // matrix multiplication at inference time, so we resolve it during tooling
 // to more specific operator types, namely, FullyConnected.
@@ -797,19 +848,40 @@ struct SqueezeOperator : Operator {
 };
 
 // Inputs:
-//   inputs[0]: required: the input activations array
-//   inputs[1]: required: the Conv weights
-//   channel.
+//   inputs[0]: required: the output shape
+//   inputs[1]: required: the weights
+//   inputs[2]: required: the input activations array
+//   NOTE: The input activations is NOT the first input.
+//
 //
 // Outputs:
 //   outputs[0]: required: the output activations array
 //
 // TensorFlow equivalent: Conv2DBackpropInput
 struct TransposeConvOperator : Operator {
+  enum Inputs {
+    OUTPUT_SHAPE = 0,
+    WEIGHTS = 1,
+    DATA_INPUT = 2,
+  };
+
   TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+  // Dilation is possible with transpose convolution, but Tensorflow does not
+  // currently support it, so we omit it.
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = e^x).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Exp
+struct ExpOperator : Operator {
+  ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the
@@ -1216,6 +1288,16 @@ struct SoftmaxOperator : Operator {
   float beta = 0.f;
 };
 
+// LogSoftmax activation function.
+//
+// Inputs:
+//   inputs[0]: required: the logits input array
+//
+// TensorFlow equivalent: LogSoftmax
+struct LogSoftmaxOperator : Operator {
+  LogSoftmaxOperator() : Operator(OperatorType::kLogSoftmax) {}
+};
+
 // Cast operator.
 //
 // Inputs:
@@ -1273,6 +1355,8 @@ struct ArgMaxOperator : Operator {
 // TensorFlow equivalent: ResizeBilinear
 struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
+
+  bool align_corners = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of
@@ -1336,6 +1420,38 @@ struct SvdfOperator : Operator {
   int rank;
 };
 
+// TopKV2 operator.
+//
+// Inputs:
+//    input tensor and top_k scalar.
+struct TopKV2Operator : Operator {
+  TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
+};
+
+// DynamicPartition operator:
+//
+// Inputs:
+//  inputs[0]: required: data.
+//  inputs[1]: required: partitions.
+//
+// TensorFlow equivalent: DynamicPartition
+struct DynamicPartitionOperator : Operator {
+  DynamicPartitionOperator() : Operator(OperatorType::kDynamicPartition) {}
+  int num_partitions;
+};
+
+// DynamicStitch operator:
+//
+// Inputs:
+//  inputs[0,N): required: indices.
+//  inputs[N,2N): required: data.
+//
+// TensorFlow equivalent: DynamicStitch/ParallelDynamicStitch
+struct DynamicStitchOperator : Operator {
+  DynamicStitchOperator() : Operator(OperatorType::kDynamicStitch) {}
+  int num_partitions;
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -1348,22 +1464,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-// Quantization parameters, determining the mapping of quantized values
-// to real values (i.e. determining how quantized values are mathematically
-// interpreted).
-//
-// The correspondence is as follows:
-//
-//   real_value = scale * (quantized_value - zero_point);
-//
-// In other words, zero_point designates which quantized value corresponds to
-// the real 0 value, and scale designates the difference between the real values
-// corresponding to consecutive quantized values differing by 1.
-struct QuantizationParams {
-  int32 zero_point = 0;
-  double scale = 0.;
-};
 
 class Shape {
  public:
@@ -1542,7 +1642,7 @@ class Model {
 
   bool HasArray(const string& name) const { return arrays.count(name) > 0; }
   Array& GetArray(const string& name) const {
-    DCHECK(HasArray(name));
+    DCHECK(HasArray(name)) << "Array not found: " << name;
     return *arrays.at(name);
   }
   Array& GetOrCreateArray(const string& name) {

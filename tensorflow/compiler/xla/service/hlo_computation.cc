@@ -399,6 +399,7 @@ HloComputationProto HloComputation::ToProto() const {
     proto.add_instructions()->Swap(&instruction_proto);
   }
   proto.set_root_name(root_instruction()->name());
+  *proto.mutable_program_shape() = ComputeProgramShape();
   return proto;
 }
 
@@ -461,20 +462,6 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   return fusion_instruction;
 }
 
-HloInstruction* HloComputation::CreateFusionInstructionForBackwardConvolution(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-    HloInstruction::FusionKind fusion_kind, const Window& window,
-    const ConvolutionDimensionNumbers& conv_dnums) {
-  CHECK(HloInstruction::FusionKind::kConvBackwardFilter == fusion_kind ||
-        HloInstruction::FusionKind::kConvBackwardInput == fusion_kind);
-  HloInstruction* root = instructions_to_fuse.front();
-  HloInstruction* fusion_instruction =
-      AddInstruction(HloInstruction::CreateFusionForBackwardConvolution(
-          root->shape(), fusion_kind, window, conv_dnums, root));
-  FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
-  return fusion_instruction;
-}
-
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
@@ -523,13 +510,14 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
         "Can't deep copy instruction %s: instruction is not in computation %s",
         instruction->name().c_str(), name().c_str());
   }
-
   if (indices_to_copy != nullptr &&
       !ShapeUtil::Compatible(instruction->shape(), indices_to_copy->shape())) {
     return FailedPrecondition(
         "Can't deep copy instruction %s: given shape tree of indices to copy "
-        "has incompatible shape",
-        instruction->name().c_str());
+        "has incompatible shapes: %s vs. %s",
+        instruction->name().c_str(),
+        ShapeUtil::HumanString(instruction->shape()).c_str(),
+        ShapeUtil::HumanString(indices_to_copy->shape()).c_str());
   }
 
   ShapeIndex index;
@@ -545,7 +533,6 @@ ProgramShape HloComputation::ComputeProgramShape() const {
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
-  LayoutUtil::ClearLayout(&program_shape);
   return program_shape;
 }
 
@@ -577,8 +564,11 @@ Status HloComputation::ReplaceWithNewInstruction(
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
-  TF_RET_CHECK(ShapeUtil::Compatible(old_instruction->shape(),
-                                     new_instruction->shape()));
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
+      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
+      << ShapeUtil::HumanString(new_instruction->shape());
+
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace

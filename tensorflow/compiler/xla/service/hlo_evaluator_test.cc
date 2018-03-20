@@ -1729,6 +1729,207 @@ TEST_P(HloEvaluatorTest, EvaluateWithSubstitutionsWithConstantOperand) {
                                *result.ValueOrDie());
 }
 
+TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV1) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherV1
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[2,3] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1, 3}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV2) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherV2
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[3,2] gather(operand, indices),
+      output_window_dims={0},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3, 1}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{1, 3}, {4, 6}, {7, 9}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherMultipleBatchDims) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherMultipleBatchDims
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  ROOT gather = s32[2,3,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=2,
+      window_bounds={3, 1}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR3<int32>(
+          {{{1, 3}, {4, 6}, {7, 9}}, {{3, 2}, {6, 5}, {9, 8}}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherNd) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherNd
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  ROOT gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1,2}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{-1, 1}, {-4, 4}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest,
+       EvaluateGather_TensorFlowGatherNdNonDefaultIndexVectorDim) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherNd
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  ROOT gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1,2}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{-2, 2}, {-1, 1}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_DynamicSlice) {
+  const char* hlo_text = R"(
+HloModule DynamicSlice
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[1,1] gather(operand, indices),
+      output_window_dims={0,1},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{5}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_BatchDynamicSlice) {
+  const char* hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  ROOT gather = s32[2,1,1] gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR3<int32>({{{8}}, {{5}}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateGather_ZeroDimBounds) {
+  const char* hlo_text = R"(
+HloModule TensorFlowGatherV1
+
+ENTRY main {
+  operand = s32[3,0] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[2,0] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1, 0}
+}
+)";
+  ParseAndVerifyModule(hlo_text);
+  std::unique_ptr<Literal> operand = Literal::CreateR2<int32>({{}, {}, {}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  LiteralTestUtil::ExpectEqual(
+      *Literal::CreateR2<int32>({{}, {}}),
+      *Evaluate({operand.get(), gather_indices.get()}));
+}
+
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,
                         ::testing::ValuesIn(use_bf16_params));
 

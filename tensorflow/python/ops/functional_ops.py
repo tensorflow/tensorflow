@@ -41,7 +41,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.gen_functional_ops import *
 # pylint: enable=wildcard-import
 # pylint: disable=unused-import
-from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
+from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 # pylint: enable=unused-import
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -90,7 +90,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldl", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -178,7 +178,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "foldr", [elems]):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -343,7 +343,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -364,8 +364,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     dtype = dtype or input_pack([elem.dtype for elem in elems_flat])
     dtype_flat = output_flatten(dtype)
 
-    # Convert elems to tensor array.
-    n = array_ops.shape(elems_flat[0])[0]
+    # Convert elems to tensor array. n may be known statically.
+    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
@@ -536,7 +536,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "scan", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -555,7 +555,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
-    n = array_ops.shape(elems_flat[0])[0]
+    # Convert elems to tensor array. n may be known statically.
+    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
@@ -615,7 +616,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     _, _, r_a = control_flow_ops.while_loop(
         lambda i, _1, _2: i < n, compute, (i, a_flat, accs_ta),
         parallel_iterations=parallel_iterations,
-        back_prop=back_prop, swap_memory=swap_memory)
+        back_prop=back_prop, swap_memory=swap_memory,
+        maximum_iterations=n)
 
     results_flat = [r.stack() for r in r_a]
 

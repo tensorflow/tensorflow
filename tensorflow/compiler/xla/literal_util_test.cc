@@ -30,6 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using tensorflow::gtl::ArraySlice;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
@@ -214,11 +215,11 @@ TEST_F(LiteralUtilTest, CreateSparse) {
   std::vector<int64> expected_values = {8, 9, 7, 10};
 
   EXPECT_EQ(literal->sparse_indices()->data(),
-            tensorflow::gtl::ArraySlice<int64>(
-                expected_indices.data(), expected_indices.num_elements()));
-  EXPECT_EQ(tensorflow::gtl::ArraySlice<int64>(literal->data<int64>().data(),
-                                               expected_values.size()),
-            tensorflow::gtl::ArraySlice<int64>(expected_values));
+            ArraySlice<int64>(expected_indices.data(),
+                              expected_indices.num_elements()));
+  EXPECT_EQ(
+      ArraySlice<int64>(literal->data<int64>().data(), expected_values.size()),
+      ArraySlice<int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -290,7 +291,7 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
   // clang-format on
   std::vector<std::tuple<int64, int64, string>> seen;
   literal->EachCellAsString(
-      [&seen](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+      [&seen](ArraySlice<int64> indices, const string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
@@ -501,6 +502,24 @@ TEST_F(LiteralUtilTest, IsAllComplex) {
                    ->IsAllComplex({8.0f, 9.0f}));
 }
 
+TEST_F(LiteralUtilTest, IsAllFirst) {
+  // IsAllComplex always returns false when the literal is not complex.
+  EXPECT_FALSE(Literal::CreateR1<bool>({false, true})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<bool>({false, false})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int8>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int32>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<uint32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint32>({1, 1, 2})->IsAllFirst());
+
+  complex64 c8_9 = {8, 9};
+  complex64 c7_9 = {7, 9};
+  EXPECT_TRUE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c7_9}, {c8_9}})->IsAllFirst());
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = Literal::CreateR0<float>(0.0f);
   auto scalar_one = Literal::CreateR0<float>(1.0f);
@@ -604,11 +623,10 @@ TEST_F(LiteralUtilTest, TransposeR4) {
   // clang-format on
   auto reshape = original->Transpose(/*permutation=*/{2, 3, 0, 1});
 
-  reshape->EachCell<float>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-        EXPECT_EQ(value, original->Get<float>(
-                             {indices[2], indices[3], indices[0], indices[1]}));
-      });
+  reshape->EachCell<float>([&](ArraySlice<int64> indices, float value) {
+    EXPECT_EQ(value, original->Get<float>(
+                         {indices[2], indices[3], indices[0], indices[1]}));
+  });
 }
 
 TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
@@ -845,7 +863,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
-    auto init_proc = [&](const std::vector<int64>& indexes) {
+    auto init_proc = [&](ArraySlice<int64> indexes) {
       source->Set(indexes, ++seqnr);
       return true;
     };
@@ -861,7 +879,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
-    auto check_proc = [&](const std::vector<int64>& indexes) {
+    auto check_proc = [&](ArraySlice<int64> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
       std::transform(source_indexes.begin(), source_indexes.end(), src_base,
                      source_indexes.begin(), std::plus<int64>());
@@ -1049,7 +1067,7 @@ TEST_F(LiteralUtilTest, Populate) {
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
     auto literal = Literal::CreateFromShape(shape);
-    auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> uint32 {
+    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
@@ -1061,7 +1079,7 @@ TEST_F(LiteralUtilTest, Populate) {
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](const std::vector<int64>& indexes) {
+    auto check_function = [&](ArraySlice<int64> indexes) {
       auto value = literal->Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1214,15 +1232,15 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   EXPECT_EQ(*conv, *c64);
 
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(S16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(U16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(F32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(S32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 
+#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -52,7 +53,12 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
 
 void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
 
-XlaTransferManager::XlaTransferManager(se::Stream* stream) : stream_(stream) {}
+XlaTransferManager::XlaTransferManager(
+    se::Stream* stream, XlaTensorInfoManager* tensor_info_manager,
+    bool transfer_as_literal)
+    : stream_(stream),
+      tensor_info_manager_(tensor_info_manager),
+      transfer_as_literal_(transfer_as_literal) {}
 
 void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                                Device* device,
@@ -72,13 +78,19 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     se::DeviceMemoryBase dev_dst_ptr(dst_ptr, total_bytes);
 
     Status status;
-    stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
-    // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      status = xla::InternalError(
-          "Failed to complete data transfer on stream %p: %s", stream_,
-          block_status.error_message().c_str());
+    if (transfer_as_literal_) {
+      status = xla::Unimplemented(
+          "XlaTransferManager::CopyCPUTensorToDevice not implemented for "
+          "literals");
+    } else {
+      stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
+      // TODO(hpucha): Make this asynchronous.
+      Status block_status = stream_->BlockHostUntilDone();
+      if (!block_status.ok()) {
+        status = xla::InternalError(
+            "Failed to complete data transfer on stream %p: %s", stream_,
+            block_status.error_message().c_str());
+      }
     }
 
     done(status);
@@ -108,13 +120,19 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     void* dst_ptr = DMAHelper::base(cpu_tensor);
 
     Status status;
-    stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
-    // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      status = xla::InternalError(
-          "Failed to complete data transfer on stream %p: %s", stream_,
-          block_status.error_message().c_str());
+    if (transfer_as_literal_) {
+      status = xla::Unimplemented(
+          "XlaTransferManager::CopyDeviceTensorToCPU not implemented for "
+          "literals");
+    } else {
+      stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
+      // TODO(hpucha): Make this asynchronous.
+      Status block_status = stream_->BlockHostUntilDone();
+      if (!block_status.ok()) {
+        status = xla::InternalError(
+            "Failed to complete data transfer on stream %p: %s", stream_,
+            block_status.error_message().c_str());
+      }
     }
 
     done(status);
@@ -125,7 +143,10 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   done(Status::OK());
 }
 
-XlaDeviceContext::XlaDeviceContext(se::Stream* stream) : manager_(stream) {}
+XlaDeviceContext::XlaDeviceContext(se::Stream* stream,
+                                   XlaTensorInfoManager* tensor_info_manager,
+                                   bool transfer_as_literal)
+    : manager_(stream, tensor_info_manager, transfer_as_literal) {}
 
 void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                              Device* device,

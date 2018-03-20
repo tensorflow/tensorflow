@@ -25,8 +25,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.exponential_decay")
 def exponential_decay(learning_rate,
                       global_step,
                       decay_steps,
@@ -103,6 +105,7 @@ def exponential_decay(learning_rate,
         learning_rate, math_ops.pow(decay_rate, p), name=name)
 
 
+@tf_export("train.piecewise_constant")
 def piecewise_constant(x, boundaries, values, name=None):
   """Piecewise constant from boundaries and interval values.
 
@@ -182,6 +185,7 @@ def piecewise_constant(x, boundaries, values, name=None):
     return control_flow_ops.case(pred_fn_pairs, default, exclusive=True)
 
 
+@tf_export("train.polynomial_decay")
 def polynomial_decay(learning_rate,
                      global_step,
                      decay_steps,
@@ -291,6 +295,7 @@ def polynomial_decay(learning_rate,
         name=name)
 
 
+@tf_export("train.natural_exp_decay")
 def natural_exp_decay(learning_rate,
                       global_step,
                       decay_steps,
@@ -362,6 +367,7 @@ def natural_exp_decay(learning_rate,
     return math_ops.multiply(learning_rate, exponent, name=name)
 
 
+@tf_export("train.inverse_time_decay")
 def inverse_time_decay(learning_rate,
                        global_step,
                        decay_steps,
@@ -444,6 +450,7 @@ def inverse_time_decay(learning_rate,
     return math_ops.div(learning_rate, denom, name=name)
 
 
+@tf_export("train.cosine_decay")
 def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   """Applies cosine decay to the learning rate.
 
@@ -503,6 +510,7 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
     return math_ops.multiply(learning_rate, decayed)
 
 
+@tf_export("train.cosine_decay_restarts")
 def cosine_decay_restarts(learning_rate,
                           global_step,
                           first_decay_steps,
@@ -596,6 +604,7 @@ def cosine_decay_restarts(learning_rate,
   return math_ops.multiply(learning_rate, decayed, name=name)
 
 
+@tf_export("train.linear_cosine_decay")
 def linear_cosine_decay(learning_rate,
                         global_step,
                         decay_steps,
@@ -679,6 +688,7 @@ def linear_cosine_decay(learning_rate,
     return math_ops.multiply(learning_rate, linear_cosine_decayed, name=name)
 
 
+@tf_export("train.noisy_linear_cosine_decay")
 def noisy_linear_cosine_decay(learning_rate,
                               global_step,
                               decay_steps,
