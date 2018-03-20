@@ -23,19 +23,33 @@ from tensorflow.contrib.lite.python.interpreter_wrapper import tensorflow_wrap_i
 class Interpreter(object):
   """Interpreter inferace for TF-Lite Models."""
 
-  def __init__(self, model_path):
+  def __init__(self, model_path=None, model_content=None):
     """Constructor.
 
     Args:
       model_path: Path to TF-Lite Flatbuffer file.
+      model_content: Content of model.
 
     Raises:
-      ValueError: If the interpreter was unable to open the model.
+      ValueError: If the interpreter was unable to create.
     """
-    self._interpreter = (
-        interpreter_wrapper.InterpreterWrapper_CreateWrapperCPP(model_path))
-    if not self._interpreter:
-      raise ValueError('Failed to open {}'.format(model_path))
+    if model_path and not model_content:
+      self._interpreter = (
+          interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+              model_path))
+      if not self._interpreter:
+        raise ValueError('Failed to open {}'.format(model_path))
+    elif model_content and not model_path:
+      self._interpreter = (
+          interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+              model_content, len(model_content)))
+      if not self._interpreter:
+        raise ValueError(
+            'Failed to create model from {} bytes'.format(len(model_content)))
+    elif not model_path and not model_path:
+      raise ValueError('`model_path` or `model_content` must be specified.')
+    else:
+      raise ValueError('Can\'t both provide `model_path` and `model_content`')
 
   def allocate_tensors(self):
     if not self._interpreter.AllocateTensors():
