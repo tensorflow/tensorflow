@@ -23,6 +23,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 namespace tensorflow {
@@ -56,9 +57,8 @@ class TensorDataSet {
 
     // Set up the random number generator.
     if (split_sampling_random_seed_ == 0) {
-      uint64 time_seed = static_cast<uint64>(std::clock());
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
-          new random::PhiloxRandom(time_seed));
+          new random::PhiloxRandom(random::New64()));
     } else {
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
           new random::PhiloxRandom(split_sampling_random_seed_));

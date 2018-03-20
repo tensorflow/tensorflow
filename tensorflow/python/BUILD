@@ -1033,6 +1033,7 @@ cuda_py_tests(
         "//tensorflow/core:protos_all_py",
     ],
     shard_count = 10,
+    tags = ["noasan"],
 )
 
 py_test(
@@ -1354,6 +1355,12 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/contrib/quantization:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "summary_ops_gen",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:summary_ops_op_lib"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1801,6 +1808,7 @@ py_library(
         ":platform",
         ":spectral_grad",
         ":util",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
@@ -4163,6 +4171,7 @@ py_library(
         ":pywrap_tensorflow",
         ":summary_op_util",
         ":summary_ops",
+        ":summary_ops_gen",
         ":util",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",

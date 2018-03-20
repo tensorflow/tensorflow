@@ -3303,6 +3303,20 @@ class Graph(object):
           input_types=input_types,
           original_op=self._default_original_op,
           op_def=op_def)
+
+      # TODO(vrv): Instead of eagerly filling in shape property for every op,
+      # only populate the shape when requested.
+      #
+      # TODO(skyewm): unlike in the original Python implementation, the C API
+      # always computes shape information (even for function calls, which the
+      # original Python shape inference code doesn't handle). Deprecate the
+      # compute_shapes argument.
+      #
+      # TODO(b/74620627): move this back to _create_op_helper once _USE_C_SHAPES
+      # is removed
+      if (ret._c_op and _USE_C_SHAPES) or compute_shapes:  # pylint: disable=protected-access
+        set_shapes_for_outputs(ret)
+
       self._create_op_helper(ret, compute_shapes=compute_shapes,
                              compute_device=compute_device)
     return ret
@@ -3336,15 +3350,6 @@ class Graph(object):
 
   def _create_op_helper(self, op, compute_shapes=True, compute_device=True):
     """Common logic for creating an op in this graph."""
-    # TODO(vrv): Instead of eagerly filling in shape property for every op, only
-    # populate the shape when requested.
-    #
-    # TODO(skyewm): unlike in the original Python implementation, the C API
-    # always computes shape information (even for function calls, which the
-    # original Python shape inference code doesn't handle). Deprecate the
-    # compute_shapes argument.
-    if (op._c_op and _USE_C_SHAPES) or compute_shapes:  # pylint: disable=protected-access
-      set_shapes_for_outputs(op)
     # TODO(b/XXXX): move to Operation.__init__ once _USE_C_API flag is removed.
     self._add_op(op)
 
@@ -3449,6 +3454,12 @@ class Graph(object):
     ]
 
     for op in new_ops:
+      # The Python shape inference code does not support imported functions. It
+      # also needs access to op.inputs, which is why we call it here.
+      # TODO(b/74620627): move this back to _create_op_helper once _USE_C_SHAPES
+      # is removed.
+      if not self._is_function(op.type) or _USE_C_SHAPES:
+        set_shapes_for_outputs(op)
       new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
       # pylint: disable=protected-access
       op._add_control_inputs(new_control_inputs)
