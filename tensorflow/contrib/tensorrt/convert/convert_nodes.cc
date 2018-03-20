@@ -547,6 +547,19 @@ class Converter {
   }
 };
 
+TRT_ShapedWeights ConvertFP32ToFP16(Converter& ctx,
+                                    const TRT_ShapedWeights& weights_src) {
+  auto dtype_new = tensorflow::DataType::DT_HALF;
+  TRT_ShapedWeights weights =
+      ctx.get_temp_weights(dtype_new, weights_src.shape_);
+  const float* src = static_cast<const float*>(weights_src.GetValues());
+  Eigen::half* dst = const_cast<Eigen::half*>(
+      static_cast<Eigen::half const*>(weights.GetValues()));
+  for (int64_t i = 0; i < weights_src.count(); i++) {
+    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
+  }
+  return weights;
+}
 // ****************************************************************************
 // Constant folding functions
 // TODO(jie): once optimizer kicks in, we should have done constant folding
@@ -956,6 +969,10 @@ tensorflow::Status BinaryTensorOpWeight(
     }
   }
 
+  if (ctx.isFP16()) {
+    weights = ConvertFP32ToFP16(ctx, weights);
+  }
+
   // prepare weights
   TRT_ShapedWeights shift_weights(weights.type_);
   TRT_ShapedWeights scale_weights(weights.type_);
@@ -1022,6 +1039,10 @@ tensorflow::Status ConvertConv2DHelper(
   VLOG(2) << "groups count: " << num_groups;
 
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
+  if (ctx.isFP16()) {
+    weights_rsck = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
+  }
+
   TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
@@ -1292,8 +1313,11 @@ tensorflow::Status ConvertScale(Converter& ctx,
   // Implement tensor binaryOp weight [channel wise] for now;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
-  // TODO(jie): handle NHWC/NCHW transpose;
   TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (ctx.isFP16()) {
+    weights = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
+  }
+
   TRT_ShapedWeights empty_weights(weights.type_);
 
   TFAttrs attrs(node_def);
@@ -1388,33 +1412,16 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    if (ctx.isFP16()) {
-      auto dtype_new = tensorflow::DataType::DT_HALF;
-      size_t len_data = tensorflow::DataTypeSize(dtype_new);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
-      auto half_tensor = temp_tensor.flat<Eigen::half>();
-      Eigen::DefaultDevice defd;
-      half_tensor.device(defd) =
-          tensor.flat<float>().template cast<Eigen::half>();
-      memcpy(dst, half_tensor.data(), len_data);  // store into weight store
-      weights = TRT_ShapedWeights(dtype_new, dst, scalar_shape);
-    } else {
-      size_t len_data = tensorflow::DataTypeSize(dtype);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      std::vector<float> tensor_data(
-          weights_tensor.float_val().begin(),
-          weights_tensor.float_val()
-              .end());  //  make a local copy first to flatten
-      memcpy(dst, tensor_data.data(), len_data);  // store into weight store
-      weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
-    }
+    size_t len_data = tensorflow::DataTypeSize(dtype);
+    for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
+    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
+    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+    std::vector<float> tensor_data(
+        weights_tensor.float_val().begin(),
+        weights_tensor.float_val()
+            .end());  //  make a local copy first to flatten
+    memcpy(dst, tensor_data.data(), len_data);  // store into weight store
+    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
   } else if (!weights_tensor.int_val().empty()) {
     VLOG(2) << "int!!!" << node_def.name();
     nvinfer1::Dims scalar_shape;
