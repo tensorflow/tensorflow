@@ -88,10 +88,10 @@ class ResampleTest(test.TestCase):
 
     # Reshape distribution.
     dataset = dataset.apply(
-      resampling.rejection_resample(
-        class_func=lambda x: x,
-        target_dist=target_dist,
-        initial_dist=init_dist))
+        resampling.rejection_resample(
+            class_func=lambda x: x,
+            target_dist=target_dist,
+            initial_dist=init_dist))
 
     get_next = dataset.make_one_shot_iterator().get_next()
 
@@ -102,7 +102,8 @@ class ResampleTest(test.TestCase):
           returned.append(sess.run(get_next))
 
     classes, _ = zip(*returned)
-    bincount = np.bincount(np.array(classes), minlength=num_classes).astype(np.float32) / len(classes)
+    bincount = np.bincount(
+      np.array(classes), minlength=num_classes).astype(np.float32) / len(classes)
 
     self.assertAllClose(target_dist, bincount, atol=1e-2)
 
