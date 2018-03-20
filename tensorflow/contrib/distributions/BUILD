@@ -487,11 +487,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = [
-        "manual",
-        "noasan",
-        "noguitar",
-    ],
+    tags = ["noasan"],  # Was found to time out in asan
 )
 
 cuda_py_test(
