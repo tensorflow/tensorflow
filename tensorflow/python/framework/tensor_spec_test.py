@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pickle
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -143,6 +145,10 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     unbounded_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
     self.assertFalse(unbounded_spec.is_bounded())
 
+  def testSerialization(self):
+    desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
+    self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 
@@ -242,6 +248,10 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(spec.dtype.min, bounded_spec.minimum)
     self.assertEqual(spec.dtype.max, bounded_spec.maximum)
     self.assertEqual(spec.name, bounded_spec.name)
+
+  def testSerialization(self):
+    desc = tensor_spec.BoundedTensorSpec([1, 5], dtypes.float32, -1, 1, "test")
+    self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
 
 
 if __name__ == "__main__":
