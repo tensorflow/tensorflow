@@ -243,7 +243,6 @@ cuda_py_test(
     name = "sparse_image_warp_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_image_warp_test.py"],
-    tags = ["no_pip"],
     additional_deps = [
         ":sparse_image_warp_py",
         "//third_party/py/numpy",
@@ -260,6 +259,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     data = [":sparse_image_warp_test_data"],
+    tags = ["no_pip"],
 )
 
 filegroup(
