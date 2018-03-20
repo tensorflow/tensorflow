@@ -99,16 +99,7 @@ def create_training_graph(input_graph=None, quant_delay=0):
   # TODO(raghuramank) Need to have freeze_bn_delay be a function of batch size
   # Currently the values below are hardcoded for mobilenetV1 on imagenet
   # Please use the experimental API if you need to tune these values.
-  if quant_delay == 0:
-    # Corresponds to case of restoring from a floating point checkpoint
-    # In this case, we can freeze the moving mean and variance early on and
-    # switch to using them during training. Therefore, freeze_bn_delay is set to
-    # 2e5.
-    freeze_bn_delay = int(2e5)
-  else:
-    # If training from scratch, set freeze_bn_delay to 100 epochs after quant
-    # delay. With a batch size of 64, this corresponds to 20000*100=2M steps.
-    freeze_bn_delay = quant_delay + int(2e6)
+  freeze_bn_delay = None
 
   _create_graph(
       input_graph=input_graph,
@@ -142,7 +133,7 @@ def experimental_create_training_graph(input_graph=None,
                                        weight_bits=8,
                                        activation_bits=8,
                                        quant_delay=0,
-                                       freeze_bn_delay=int(2e5)):
+                                       freeze_bn_delay=None):
   """Rewrites a training input_graph in place for simulated quantization.
 
   Variables added by the rewrite get added to the global variables collection.
