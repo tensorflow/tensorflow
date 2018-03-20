@@ -37,7 +37,11 @@ namespace interpreter_wrapper {
 class InterpreterWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPP(const char* model_path);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path);
+
+  // SWIG caller takes ownership of pointer.
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(const char* data,
+                                                        size_t len);
 
   ~InterpreterWrapper();
   bool AllocateTensors();
