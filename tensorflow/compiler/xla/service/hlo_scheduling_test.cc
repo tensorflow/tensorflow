@@ -165,8 +165,7 @@ ENTRY root {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(*module, size_fn,
-                                     SchedulerAlgorithm::kListSchedule));
+      CreateMemoryMinimizingSequence(*module, size_fn, ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
             sequence.at(module->entry_computation()).size());
