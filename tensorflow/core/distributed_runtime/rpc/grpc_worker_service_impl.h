@@ -88,7 +88,7 @@ class SerializationTraits<tensorflow::TensorResponse>
     if (buffer == nullptr) {
       return Status(StatusCode::INTERNAL, "No payload");
     }
-    Status result = g_core_codegen_interface->ok();
+    Status result = Status::OK;
     if (result.ok()) {
       ::tensorflow::GrpcByteSource source(buffer);
       auto s = msg->ParseFrom(&source);
@@ -98,7 +98,7 @@ class SerializationTraits<tensorflow::TensorResponse>
                             "TensorResponse parse error", s.ToString()));
       }
     }
-    g_core_codegen_interface->grpc_byte_buffer_destroy(buffer);
+    grpc_byte_buffer_destroy(buffer);
     return result;
   }
 };

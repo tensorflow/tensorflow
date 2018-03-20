@@ -1697,7 +1697,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   // Call kernel optimized for depthwise convolutions using 3x3 filters,
   // stride = 1, no padding, depth_multiplier = 1 and depth a multiple of 16.
   if (filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
-      stride_width == 1 && stride_height == 1 && pad_width == 0 &&
+      (stride_width == 1 || stride_width == 2) &&
+      (stride_height == 1 || stride_height == 2) && pad_width == 0 &&
       pad_height == 0 && (input_depth % 16) == 0) {
     DepthwiseConv3by3FilterDepth16(
         input_data, input_dims, input_offset, filter_data, filter_dims,

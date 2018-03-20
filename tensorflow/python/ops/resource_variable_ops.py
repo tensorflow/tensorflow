@@ -149,7 +149,7 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
-  See the @{$python/state_ops$`Variables`} documentation for more details.
+  See the @{$variables$Variables How To} for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -179,24 +179,20 @@ class ResourceVariable(variables.Variable):
   by edges in the graph. Consider the following example, in which two writes
   can cause tf.Variable and tf.ResourceVariable to behave differently:
 
-   ```python
-    a = tf.ResourceVariable(1.0)
-    a.initializer.run()
+  ```python
+  a = tf.ResourceVariable(1.0)
+  a.initializer.run()
 
-    assign = a.assign(2.0)
-    with tf.control_dependencies([assign]):
-      b = a.read_value()
-    with tf.control_dependencies([b]):
-      other_assign = a.assign(3.0)
-    with tf.control_dependencies([other_assign]):
-      # Will print 2.0 because the value was read before other_assign ran. If
-      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
-      tf.Print(b, [b]).eval()
+  assign = a.assign(2.0)
+  with tf.control_dependencies([assign]):
+    b = a.read_value()
+  with tf.control_dependencies([b]):
+    other_assign = a.assign(3.0)
+  with tf.control_dependencies([other_assign]):
+    # Will print 2.0 because the value was read before other_assign ran. If
+    # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+    tf.Print(b, [b]).eval()
   ```
-
-  To enforce these consistency properties tf.ResourceVariable might make more
-  copies than an equivalent tf.Variable under the hood, so tf.Variable is still
-  not deprecated.
   """
 
   def __init__(self,

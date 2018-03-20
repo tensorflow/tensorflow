@@ -105,7 +105,7 @@ def index_table_from_tensor(mapping,
   ...
   tf.tables_initializer().run()
 
-  ids.eval()  ==> [0, 1, 4, 2]
+  ids.eval()  ==> [0, 1, 3, 2]
   ```
 
   Args:

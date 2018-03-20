@@ -458,11 +458,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/730b778632e79cc3c96ad237f282d687ee325ce7.tar.gz",
-          "https://github.com/grpc/grpc/archive/730b778632e79cc3c96ad237f282d687ee325ce7.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
+          "https://github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
       ],
-      sha256 = "8c91a8d12e1e868cf51f7340b75507a8aa017a7e1b56f46ed6816aeb803dc9bd",
-      strip_prefix = "grpc-730b778632e79cc3c96ad237f282d687ee325ce7",
+      sha256 = "f08a5c8e265191b39cc74915b1bc1fd380d86cd0176c92b7cce30b6ac50514ad",
+      strip_prefix = "grpc-575bda39755b98d1f7099406bb57a6e3b2074874",
   )
 
   tf_http_archive(
@@ -481,11 +481,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/738ee045416377e8c2094f7f61508ac1c178ff37.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cfb3cd346a75b17856c4e2ba6365e15d9ab0c763.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/cfb3cd346a75b17856c4e2ba6365e15d9ab0c763.tar.gz",
       ],
-      sha256 = "4442ed6a05c13752338036b1b9f16b09264de24b6c0bf62325fb9ff75a09340f",
-      strip_prefix = "llvm-738ee045416377e8c2094f7f61508ac1c178ff37",
+      sha256 = "2cf79b1891926b7af6173c1031d040fc07b2682ff66039c5822e074566c48956",
+      strip_prefix = "llvm-cfb3cd346a75b17856c4e2ba6365e15d9ab0c763",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

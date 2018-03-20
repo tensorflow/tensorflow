@@ -191,6 +191,10 @@ def _get_processor(v):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
+  if isinstance(
+      v, resource_variable_ops.ResourceVariable) and not v._in_graph_mode:  # pylint: disable=protected-access
+    # True if and only if `v` was initialized eagerly.
+    return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
@@ -546,7 +550,12 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        scope_name = "" if context.executing_eagerly() else var.op.name
+        if context.executing_eagerly() or isinstance(
+            var,
+            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+          scope_name = ""
+        else:
+          scope_name = var.op.name
         with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:

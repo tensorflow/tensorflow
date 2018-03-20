@@ -86,7 +86,10 @@ tf_xla_py_test(
     # ArgMax needs CustomCall on CPU, which is not available in normal
     # (not precompiled) TensorFlow. The flag below excludes the CPU
     # backend.
-    disabled_backends = "cpu",
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -315,6 +318,8 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
+    # Functions are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -551,6 +556,8 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    # Stack ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -577,6 +584,8 @@ tf_xla_py_test(
     name = "tensor_array_ops_test",
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
+    # TensorArray ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

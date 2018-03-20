@@ -67,12 +67,6 @@ class GraphProperties {
   void ClearInputProperties(const string& node_name);
   void ClearOutputProperties(const string& node_name);
 
-  static void FillTensorPropertiesFromContext(
-      const shape_inference::ShapeHandle&, const DataType&,
-      shape_inference::InferenceContext*,
-      std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
-      OpInfo::TensorProperties*);
-
  private:
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.

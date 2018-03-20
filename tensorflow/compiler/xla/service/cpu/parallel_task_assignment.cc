@@ -71,7 +71,7 @@ class DefaultCostModel : public ParallelCostModel {
     if (flops_to_bytes_ratio <= 1.0) {
       // Limit max parallelism for I/O bound instructions by assuming a
       // sub-linear scaling function (fit based on empirical benchmark results).
-      // TODO(29630486) Develop system bandwidth model.
+      // TODO(b/29630486) Develop system bandwidth model.
       max_parallelism =
           std::ceil(std::sqrt(tensorflow::port::NumSchedulableCPUs()));
       // Use shape size instruction cost and L2 cache size min per-thread cost.
@@ -81,7 +81,7 @@ class DefaultCostModel : public ParallelCostModel {
       // Use max parallelism for compute bound instructions.
       max_parallelism = max_parallelism_;
       // Calculate the instruction cost in cycles.
-      // TODO(29630486) Improve on this linear cost model.
+      // TODO(b/29630486) Improve on this linear cost model.
       // Consider making 'min_cost_per_thread' be a function of the target
       // bandwidth limit for instructions with low arithmetic complexity.
       instruction_cost =

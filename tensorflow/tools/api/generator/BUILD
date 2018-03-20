@@ -127,6 +127,7 @@ genrule(
         "api/test/__init__.py",
         "api/train/__init__.py",
         "api/train/queue_runner/__init__.py",
+        "api/user_ops/__init__.py",
     ],
     cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],
