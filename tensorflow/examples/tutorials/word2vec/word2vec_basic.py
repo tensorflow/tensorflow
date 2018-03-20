@@ -120,7 +120,7 @@ def generate_batch(batch_size, num_skips, skip_window):
       batch[i * num_skips + j] = buffer[skip_window]
       labels[i * num_skips + j, 0] = buffer[context_word]
     if data_index == len(data):
-      buffer[:] = data[:span]
+      buffer = collections.deque(data[:span], maxlen=span)
       data_index = span
     else:
       buffer.append(data[data_index])
