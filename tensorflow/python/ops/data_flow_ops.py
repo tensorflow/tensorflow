@@ -1769,7 +1769,9 @@ class StagingArea(BaseStagingArea):
     its capacity.
 
     Args:
-      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      values: A tuple or list of Tensors. The number of elements must match 
+        the length of the list provided to the dtypes argument when creating 
+        the StagingArea.
       name: A name for the operation (optional).
 
     Returns:
