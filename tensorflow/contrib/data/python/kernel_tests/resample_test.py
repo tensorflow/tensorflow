@@ -21,8 +21,11 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import resampling
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -68,6 +71,39 @@ class ResampleTest(test.TestCase):
     returned_dist = class_counts / total_returned
     self.assertAllClose(target_dist, returned_dist, atol=1e-2)
 
+  def testRandomClasses(self):
+      init_dist = [0.25, 0.25, 0.25, 0.25]
+      target_dist = [0.0, 0.0, 0.0, 1.0]
+      num_classes = len(init_dist)
+      num_samples = 100   # We don't need many samples to test a dirac-delta target distribution
+      data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
+
+      # Apply a random mapping that preserves the data distribution.
+      def _remap_fn(_):
+          return math_ops.cast(random_ops.random_uniform([1]) * num_classes, dtypes.int32)[0]
+      dataset = dataset.map(_remap_fn)
+
+      # Reshape distribution.
+      dataset = dataset.apply(
+          resampling.rejection_resample(
+              class_func=lambda x: x,
+              target_dist=target_dist,
+              initial_dist=init_dist))
+
+      get_next = dataset.make_one_shot_iterator().get_next()
+
+      with self.test_session() as sess:
+          returned = []
+          with self.assertRaises(errors.OutOfRangeError):
+              while True:
+                  returned.append(sess.run(get_next))
+
+      classes, _ = zip(*returned)
+      bincount = np.bincount(np.array(classes), minlength=num_classes).astype(np.float32) / len(classes)
+
+      self.assertAllClose(target_dist, bincount, atol=1e-2)
 
 if __name__ == "__main__":
   test.main()
