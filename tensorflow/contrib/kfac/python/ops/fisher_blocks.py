@@ -106,55 +106,6 @@ def _make_partitionedtensors_grads(grads_list):
   return tuple(utils.PartitionedTensor(grads) for grads in grads_list)
 
 
-def _make_partitionedtensors_multi_inputs(inputs):
-  """Constructs PartitionedTensors for inputs.
-
-  The purpose of this method is to package up the towers/minibatch dimension
-  of these arrays into PartitionedTensor objects.
-
-  This version of this function is for use with FisherBlocks that deal with
-  multiple uses or time-steps. One PartitionedTensor is created for each
-  use/time-step.  The FisherBlock will be responsible for concatenating
-  (or doing whatever else it wants) with the resulting lists.
-
-  Args:
-    inputs: a 2-D list of Tensors. First index is tower/mini-batch, second is
-      use/time-step.
-
-  Returns:
-    A tuple of PartitionedTensor's, one per use/time-step.
-  """
-  num_uses = len(inputs[0])
-  assert all(len(input_) == num_uses for input_ in inputs)
-
-  return tuple(utils.PartitionedTensor(input_) for input_ in zip(*inputs))
-
-
-def _make_partitionedtensors_multi_grads(grads_list):
-  """Constructs PartitionedTensors for grads_list.
-
-  The purpose of this method is to package up the towers/minibatch dimension
-  of these arrays into PartitionedTensor objects.
-
-  This version of this function is for use with FisherBlocks that deal with
-  multiple uses or time-steps. One PartitionedTensor is created for each
-  use/time-step.  The FisherBlock will be responsible for concatenating
-  (or doing whatever else it wants) with the resulting lists.
-
-  Args:
-    grads_list: 3-D list of Tensors. First index is for source, second is for
-      tower, third is for use/time-step.
-
-  Returns:
-    2-D tuple of PartitionedTensors. First index is for source, second is for
-    use/time-step.
-  """
-  num_uses = len(grads_list[0][0])
-  assert all(len(grad) == num_uses for grads in grads_list for grad in grads)
-  return tuple(tuple(utils.PartitionedTensor(grad)
-                     for grad in zip(*grads)) for grads in grads_list)
-
-
 def normalize_damping(damping, num_replications):
   """Normalize damping after adjusting scale by NORMALIZE_DAMPING_POWER."""
   if NORMALIZE_DAMPING_POWER:
@@ -662,7 +613,7 @@ class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
 
 
 class KroneckerProductFB(FisherBlock):
-  """A base class for FisherBlocks with separate input and output factors.
+  """A base class for blocks with separate input and output Kronecker factors.
 
   The Fisher block is approximated as a Kronecker product of the input and
   output factors.
@@ -781,67 +732,6 @@ class EmbeddingKFACFB(InputOutputMultiMinibatch, KroneckerProductFB):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedKroneckerFactor, (grads_list,))
     self._setup_damping(damping)
-
-
-class EmbeddingKFACMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
-  """K-FAC FisherBlock for embedding layers used multiple times in the graph.
-
-  Similar to EmbeddingKFACFB except that this version supports multiple uses
-  of the parameter within a single model. These uses could correspond to
-  "time-steps", but they don't have to.
-
-  Does not support bias parameters.
-  """
-
-  def __init__(self, layer_collection, vocab_size):
-    """Creates a EmbeddingKFACMultiIndepFB block.
-
-    Args:
-      layer_collection: The collection of all layers in the K-FAC approximate
-          Fisher information matrix to which this FisherBlock belongs.
-      vocab_size: int. Size of vocabulary for this embedding layer.
-    """
-    self._vocab_size = vocab_size
-
-    super(EmbeddingKFACMultiIndepFB, self).__init__(layer_collection)
-
-  def instantiate_factors(self, grads_list, damping):
-    """Instantiate Kronecker Factors for this FisherBlock.
-
-    Args:
-      grads_list: List of list of list of Tensors. grads_list[i][j][k] is the
-        gradient of the loss with respect to 'outputs' from source 'i',
-        tower/mini-batch 'j', and use/time-step 'k'. Each Tensor has shape
-        [tower_minibatch_size, output_size].
-      damping: 0-D Tensor or float. 'damping' * identity is approximately added
-        to this FisherBlock's Fisher approximation.
-    """
-    inputs = self._inputs
-    self._num_uses = num_uses = len(inputs[0])
-
-    # Check that all mini-batches/towers have the same number of uses
-    assert all(len(input_) == num_uses for input_ in inputs)
-    # Do the same for grads_list
-    assert all(len(grad) == num_uses for grad in grads for grads in grads_list)
-    # Merge uses and towers/minibatches dimensions together so we can handle
-    # it using a non-multi factor.
-    inputs = nest.flatten(inputs)
-
-    # Note that we call the multi version of make_partitionedtensors only for
-    # grads_list here.
-    inputs = _make_partitionedtensors_inputs(inputs)
-    grads_list = _make_partitionedtensors_multi_grads(grads_list)
-
-    self._input_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.EmbeddingInputKroneckerFactor,
-        (inputs, self._vocab_size))
-    self._output_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedMultiKF, (grads_list,))
-    self._setup_damping(damping, normalization=num_uses)
-
-  @property
-  def _renorm_coeff(self):
-    return self._num_uses
 
 
 class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
@@ -1232,7 +1122,70 @@ def num_conv_locations(input_shape, strides):
   return spatial_input_locations // spatial_strides_divisor
 
 
-class FullyConnectedMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
+class InputOutputMultiMinibatchMultiUse(InputOutputMultiMinibatch):
+  """Adds methods for multi-use/time-step case to InputOutputMultiMinibatch."""
+
+  def __init__(self, num_uses=None, *args, **kwargs):
+    self._num_uses = num_uses
+    super(InputOutputMultiMinibatchMultiUse, self).__init__(*args, **kwargs)
+
+  def _process_data(self, grads_list):
+    """Process temporal/multi-use data into a standard format."""
+
+    inputs = self._inputs
+
+    # The first possible data format is where inputs is a list of tensors,
+    # one for each use/time-step.
+    if isinstance(inputs[0], (list, tuple)):
+      # The first index is tower/minibatch, the second is use/time-step
+      num_uses = len(inputs[0])
+      if self._num_uses is not None and self._num_uses != num_uses:
+        raise ValueError("num_uses argument doesn't match length of inputs.")
+      else:
+        self._num_uses = num_uses
+
+      # Check that all mini-batches/towers have the same number of uses
+      if not all(len(input_) == num_uses for input_ in inputs):
+        raise ValueError("Length of inputs argument is inconsistent across "
+                         "mini-batches/towers.")
+      # Fold uses/time-step and towers/minibatches dimensions together
+      inputs = nest.flatten(inputs)
+
+      inputs = _make_partitionedtensors_inputs(inputs)
+    # If inputs is not a tuple then we assume that inputs is a tensor
+    # with 'uses' folded into the batch dimension. (And grads_list is a list
+    # across sources of such Tensors.)  This is the native format that the
+    # factor will take as arguments.
+
+    # Now we perform the analogous processing for grads_list
+    if isinstance(grads_list[0][0], (list, tuple)):
+      num_uses = len(grads_list[0][0])
+      if self._num_uses is not None and self._num_uses != num_uses:
+        raise ValueError("num_uses argument doesn't match length of outputs, "
+                         "or length of outputs is inconsistent with length of "
+                         "inputs.")
+      else:
+        self._num_uses = num_uses
+
+      if not all(len(grad) == num_uses for grads in grads_list
+                 for grad in grads):
+        raise ValueError("Length of outputs argument is inconsistent across "
+                         "mini-batches/towers.")
+
+      grads_list = tuple(nest.flatten(grads) for grads in grads_list)
+      grads_list = _make_partitionedtensors_grads(grads_list)
+
+    if self._num_uses is None:
+      raise ValueError("You must supply a value for the num_uses argument if "
+                       "the number of uses cannot be inferred from inputs or "
+                       "outputs arguments (e.g. if they are both given in the "
+                       "single Tensor format, instead of as lists of Tensors.")
+
+    return inputs, grads_list
+
+
+class FullyConnectedMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+                                 KroneckerProductFB):
   """FisherBlock for fully-connected layers that share parameters.
 
   This class implements the "independence across time" approximation from the
@@ -1240,42 +1193,43 @@ class FullyConnectedMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
     https://openreview.net/pdf?id=HyMTkQZAb
   """
 
-  def __init__(self, layer_collection, has_bias=False):
+  def __init__(self, layer_collection, has_bias=False, num_uses=None):
     """Creates a FullyConnectedMultiIndepFB block.
 
     Args:
       layer_collection: LayerCollection instance.
       has_bias: bool. If True, estimates Fisher with respect to a bias
         parameter as well as the layer's parameters.
+      num_uses: int or None. Number of uses of the layer in the model's graph.
+        Only required if the data is formatted with uses/time folded into the
+        batch dimension (instead of uses/time being a list dimension).
+        (Default: None)
     """
     self._has_bias = has_bias
 
-    super(FullyConnectedMultiIndepFB, self).__init__(layer_collection)
+    super(FullyConnectedMultiIndepFB, self).__init__(
+        layer_collection=layer_collection,
+        num_uses=num_uses)
 
   def instantiate_factors(self, grads_list, damping):
-
-    self._num_uses = float(len(self._inputs[0]))
-    inputs = _make_partitionedtensors_multi_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_multi_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF,
-        ((inputs,), self._has_bias))
+        ((inputs,), self._num_uses, self._has_bias))
 
     self._output_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedMultiKF, (grads_list,))
+        fisher_factors.FullyConnectedMultiKF, (grads_list, self._num_uses))
 
     self._setup_damping(damping, normalization=self._num_uses)
 
   @property
   def _renorm_coeff(self):
-    return self._num_uses
-
-  def tensors_to_compute_grads(self):
-    return self._outputs
+    return float(self._num_uses)
 
 
-class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
+class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+                               KroneckerProductFB):
   """FisherBlock for 2D convolutional layers using the basic KFC approx.
 
   Similar to ConvKFCBasicFB except that this version supports multiple
@@ -1291,7 +1245,8 @@ class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
                strides=None,
                dilation_rate=None,
                data_format=None,
-               extract_patches_fn=None):
+               extract_patches_fn=None,
+               num_uses=None):
     """Creates a ConvKFCBasicMultiIndepFB block.
 
     Args:
@@ -1312,6 +1267,10 @@ class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
       extract_patches_fn: str or None. Name of function that extracts image
         patches. One of "extract_convolution_patches", "extract_image_patches",
         "extract_pointwise_conv2d_patches".
+      num_uses: int or None. Number of uses of the layer in the model's graph.
+        Only required if the data is formatted with uses/time folded into the
+        batch dimension (instead of uses/time being a list dimension).
+        (Default: None)
     """
     self._padding = padding
     self._strides = maybe_tuple(strides)
@@ -1323,28 +1282,16 @@ class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
     fltr = params[0] if self._has_bias else params
     self._filter_shape = tuple(fltr.shape.as_list())
 
-    super(ConvKFCBasicMultiIndepFB, self).__init__(layer_collection)
+    super(ConvKFCBasicMultiIndepFB, self).__init__(
+        layer_collection=layer_collection,
+        num_uses=num_uses)
 
   def instantiate_factors(self, grads_list, damping):
+    inputs, grads_list = self._process_data(grads_list)
+
     # Infer number of locations upon which convolution is applied.
-    self._num_locations = num_locations = num_conv_locations(
-        self._inputs[0][0].shape.as_list(), self._strides)
-
-    # The first index is tower/minibatch, the second is use/time-step
-    inputs = self._inputs
-    self._num_uses = num_uses = len(inputs[0])
-
-    # Check that all mini-batches/towers have the same number of uses
-    assert all(len(input_) == num_uses for input_ in inputs)
-    assert all(len(grad) == num_uses for grads in grads_list for grad in grads)
-
-    # Fold uses/time-step and towers/minibatches dimensions together
-    inputs = nest.flatten(inputs)
-    # And do the same for grads_list
-    grads_list = tuple(nest.flatten(grads) for grads in grads_list)
-
-    inputs = _make_partitionedtensors_inputs(inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+                                             self._strides)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvInputKroneckerFactor,
@@ -1354,11 +1301,65 @@ class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvOutputKroneckerFactor, (grads_list,))
 
-    self._setup_damping(damping, normalization=(num_locations * num_uses))
+    self._setup_damping(damping, normalization=
+                        (self._num_locations * self._num_uses))
 
   @property
   def _renorm_coeff(self):
     return self._num_locations * self._num_uses
+
+
+class EmbeddingKFACMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+                                KroneckerProductFB):
+  """K-FAC FisherBlock for embedding layers used multiple times in the graph.
+
+  Similar to EmbeddingKFACFB except that this version supports multiple uses
+  of the parameter within a single model. These uses could correspond to time
+  steps in an RNN architecture, but they don't have to.
+
+  Does not support bias parameters.
+  """
+
+  def __init__(self, layer_collection, vocab_size, num_uses):
+    """Creates a EmbeddingKFACMultiIndepFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      vocab_size: int. Size of vocabulary for this embedding layer.
+      num_uses: int or None. Number of uses of the layer in the model's graph.
+        Only required if the data is formatted with time folded into the batch
+        dimension (instead of time being a list dimension). (Default: None)
+    """
+    self._vocab_size = vocab_size
+
+    super(EmbeddingKFACMultiIndepFB, self).__init__(
+        layer_collection=layer_collection,
+        num_uses=num_uses)
+
+  def instantiate_factors(self, grads_list, damping):
+    """Instantiate Kronecker Factors for this FisherBlock.
+
+    Args:
+      grads_list: List of list of list of Tensors. grads_list[i][j][k] is the
+        gradient of the loss with respect to 'outputs' from source 'i',
+        tower/mini-batch 'j', and use/time-step 'k'. Each Tensor has shape
+        [tower_minibatch_size, output_size].
+      damping: 0-D Tensor or float. 'damping' * identity is approximately added
+        to this FisherBlock's Fisher approximation.
+    """
+    inputs, grads_list = self._process_data(grads_list)
+
+    self._input_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.EmbeddingInputKroneckerFactor,
+        (inputs, self._vocab_size))
+    self._output_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.FullyConnectedMultiKF, (grads_list, self._num_uses))
+    self._setup_damping(damping, normalization=self._num_uses)
+
+  @property
+  def _renorm_coeff(self):
+    return float(self._num_uses)
 
 
 class SeriesFBApproximation(enum.IntEnum):
@@ -1367,7 +1368,8 @@ class SeriesFBApproximation(enum.IntEnum):
   option2 = 2
 
 
-class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
+class FullyConnectedSeriesFB(InputOutputMultiMinibatchMultiUse,
+                             KroneckerProductFB):
   """FisherBlock for fully-connected layers that share parameters across time.
 
   This class implements the "Option 1" and "Option 2" approximation from the
@@ -1383,6 +1385,7 @@ class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
   def __init__(self,
                layer_collection,
                has_bias=False,
+               num_uses=None,
                option=SeriesFBApproximation.option2):
     """Constructs a new `FullyConnectedSeriesFB`.
 
@@ -1390,6 +1393,10 @@ class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
       layer_collection: The collection of all layers in the K-FAC approximate
         Fisher information matrix to which this FisherBlock belongs.
       has_bias: Whether the layer includes a bias parameter.
+      num_uses: int or None. Number of time-steps over which the layer
+        is used. Only required if the data is formatted with time folded into
+        the batch dimension (instead of time being a list dimension).
+        (Default: None)
       option: A `SeriesFBApproximation` specifying the simplifying assumption
         to be used in this block. `option1` approximates the cross-covariance
         over time as a symmetric matrix, while `option2` makes
@@ -1400,39 +1407,33 @@ class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
     self._has_bias = has_bias
     self._option = option
 
-    super(FullyConnectedSeriesFB, self).__init__(layer_collection)
+    super(FullyConnectedSeriesFB, self).__init__(
+        layer_collection=layer_collection,
+        num_uses=num_uses)
+
+  @property
+  def _num_timesteps(self):
+    return self._num_uses
+
+  @property
+  def _renorm_coeff(self):
+    # This should no longer be used since the multiply_X functions from the base
+    # class have been overridden
+    assert False
 
   def instantiate_factors(self, grads_list, damping):
-
-    self._num_timesteps = len(self._inputs[0])
-    assert len(grads_list[0][0]) == self._num_timesteps
-
-    inputs = _make_partitionedtensors_multi_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_multi_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedMultiKF, ((inputs,), self._has_bias))
+        fisher_factors.FullyConnectedMultiKF,
+        ((inputs,), self._num_uses, self._has_bias))
     self._input_factor.register_cov_dt1()
 
     self._output_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedMultiKF, (grads_list,))
+        fisher_factors.FullyConnectedMultiKF, (grads_list, self._num_uses))
     self._output_factor.register_cov_dt1()
 
-    def compute_damping():
-      normalized_damping = normalize_damping(damping, self._num_timesteps)
-      return compute_pi_adjusted_damping(self._input_factor.get_cov(),
-                                         self._output_factor.get_cov(),
-                                         normalized_damping**0.5)
-
-    damping_id = ("compute_pi_adjusted_damping",
-                  "cov", self._input_factor.name,
-                  "cov", self._output_factor.name,
-                  "normalize_damping",
-                  damping, self._num_timesteps, "power", 0.5)
-    self._input_damping_func = _package_func(lambda: compute_damping()[0],
-                                             damping_id + ("ref", 0))
-    self._output_damping_func = _package_func(lambda: compute_damping()[1],
-                                              damping_id + ("ref", 1))
+    self._setup_damping(damping, normalization=self._num_uses)
 
   def register_matpower(self, exp):
     if exp != -1:
@@ -1562,6 +1563,3 @@ class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
     return utils.mat2d_to_layer_params(vector, Z)
 
     # pylint: enable=invalid-name
-
-  def tensors_to_compute_grads(self):
-    return self._outputs

@@ -49,16 +49,18 @@ class FunctionBufferingResource : public ResourceBase {
         source_device_(source_device),
         target_device_(target_device),
         func_args_(func_args),
-        thread_pool_(new thread::ThreadPool(Env::Default(), ThreadOptions(),
-                                            "buffer_resource", thread_pool_size,
-                                            false /* low_latency_hint */)),
         handle_(kInvalidHandle),
         is_buffering_(false),
         end_of_sequence_(false),
         cancelled_(false) {
-    runner_ = [this](std::function<void()> c) {
-      thread_pool_->Schedule(std::move(c));
-    };
+    if (thread_pool_size > 0) {
+      thread_pool_ = new thread::ThreadPool(Env::Default(), ThreadOptions(),
+                                            "buffer_resource", thread_pool_size,
+                                            false /* low_latency_hint */);
+      runner_ = [this](std::function<void()> c) {
+        thread_pool_->Schedule(std::move(c));
+      };
+    }
   }
 
   ~FunctionBufferingResource() override {
@@ -69,7 +71,9 @@ class FunctionBufferingResource : public ResourceBase {
         cond_var_.wait(l);
       }
     }
-    delete thread_pool_;
+    if (thread_pool_ != nullptr) {
+      delete thread_pool_;
+    }
   }
 
   string DebugString() override {
@@ -175,7 +179,9 @@ class FunctionBufferingResource : public ResourceBase {
     FunctionLibraryRuntime::Options opts;
     // Copied from CapturedFunction::generate_step_id();
     opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-    opts.runner = &runner_;
+    if (runner_ != nullptr) {
+      opts.runner = &runner_;
+    }
     opts.source_device = source_device_;
     AllocatorAttributes arg_alloc_attr;
     arg_alloc_attr.set_on_host(true);
@@ -231,7 +237,7 @@ class FunctionBufferingResource : public ResourceBase {
   const string source_device_;
   const string target_device_;
   const std::vector<Tensor> func_args_;
-  thread::ThreadPool* thread_pool_;
+  thread::ThreadPool* thread_pool_ = nullptr;
   FunctionLibraryRuntime::Handle handle_ GUARDED_BY(mu_);
   std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
   std::deque<FunctionBufferCallback> requests_ GUARDED_BY(mu_);

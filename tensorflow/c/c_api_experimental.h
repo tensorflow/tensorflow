@@ -63,7 +63,15 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // Sets up TPU execution, by rewriting the graph accordingly, and initializing
 // TPU system.
 //
-// On success, returns a shutdown node to be used in a subsequent
+// When `infeed_enqueue_node` is non-NULL and there are input tensors, rewrites
+// the graph by adding the relevant infeed enqueue/dequeue ops, and returns the
+// enqueue op in `infeed_enqueue_node` on success, so that user can run that
+// node and feed input tensors. When there are no input tensors,
+// `infeed_enqueue_node` is ignored, and user should not run that node later.
+// TODO(hongm): In this case, we currently only support input tensors of dim 0
+// shape. Lift that constraint.
+//
+// On success, also returns a shutdown node to be used in a subsequent
 // TF_ShutdownTPUExecution(), and sets the new output nodes in
 // `new_output_nodes` for caller to fetch from. Must be called exactly once
 // before TF_SessionRun().
@@ -76,7 +84,8 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 TF_CAPI_EXPORT extern TF_Output TF_SetupTPUExecution(
     TF_Session* session, int num_input_nodes, const TF_Output* input_nodes,
     int num_output_nodes, const TF_Output* output_nodes,
-    TF_Output* new_output_nodes, TF_Status* status);
+    TF_Output* new_output_nodes, TF_Operation** infeed_enqueue_node,
+    TF_Status* status);
 
 // Shuts down TPU system. For any `session` where TF_SetupTPUExecution() has
 // been successfully called, this call must be made exactly once before the

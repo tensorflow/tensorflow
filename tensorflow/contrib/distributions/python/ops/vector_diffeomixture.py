@@ -248,11 +248,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   The default quadrature scheme chooses `z_{N, n}` as `N` midpoints of
   the quantiles of `p(z)` (generalized quantiles if `K > 2`).
 
-  See [1] for more details.
-
-  [1]. "Quadrature Compound: An approximating family of distributions"
-       Joshua Dillon, Ian Langmore, arXiv preprints
-       https://arxiv.org/abs/1801.03080
+  See [Dillon and Langmore (2018)][1] for more details.
 
   #### About `Vector` distributions in TensorFlow.
 
@@ -313,6 +309,13 @@ class VectorDiffeomixture(distribution_lib.Distribution):
             is_positive_definite=True),
       ],
       validate_args=True)
+  ```
+
+  #### References
+
+  [1]: Joshua Dillon and Ian Langmore. Quadrature Compound: An approximating
+       family of distributions. _arXiv preprint arXiv:1801.03080_, 2018.
+       https://arxiv.org/abs/1801.03080
   """
 
   def __init__(self,

@@ -57,12 +57,25 @@ class LiveValuesResolverTest(test.TestCase):
 
   def test_literals(self):
 
-    def test_fn():
-      return Foo  # pylint: disable=undefined-variable
+    a = None
 
-    node = self._parse_and_analyze(test_fn, {}, {'Foo': 'bar'})
+    def test_fn():
+      return a
+
+    node = self._parse_and_analyze(test_fn, {}, literals={'a': 'bar'})
     retval_node = node.body[0].body[0].value
     self.assertEquals('bar', anno.getanno(retval_node, 'live_val'))
+
+  def test_primitive_values(self):
+
+    a = None
+
+    def test_fn():
+      return a
+
+    node = self._parse_and_analyze(test_fn, {'a': True})
+    retval_node = node.body[0].body[0].value
+    self.assertFalse(anno.hasanno(retval_node, 'fqn'))
 
   def test_namespace(self):
 

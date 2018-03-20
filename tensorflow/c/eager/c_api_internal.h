@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -70,6 +71,10 @@ struct TFE_Context {
             opts.session_options.options.config.log_device_placement()),
         async_default(opts.async) {
     if (async_default) executor.EnableAsync();
+
+    for (auto* device : devices) {
+      devices_map[tensorflow::StringPiece(device->name())] = device;
+    }
   }
 
   const bool soft_placement;
@@ -83,7 +88,11 @@ struct TFE_Context {
 
   std::unique_ptr<tensorflow::DeviceMgr> device_manager;
   // Devices owned by device_manager
-  const std::vector<tensorflow::Device*> devices;
+  std::vector<tensorflow::Device*> devices;
+  // All devices are not owned.
+  tensorflow::gtl::FlatMap<tensorflow::StringPiece, tensorflow::Device*,
+                           tensorflow::StringPieceHasher>
+      devices_map;
   tensorflow::Rendezvous* const rendezvous;
 
   tensorflow::mutex functions_mu;

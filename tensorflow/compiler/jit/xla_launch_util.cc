@@ -169,7 +169,7 @@ void XlaComputationLaunchContext::PopulateOutputs(
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     AllocatorAttributes alloc_attrs = ctx->output_alloc_attr(i);
-    Allocator* allocator = ctx->device()->GetAllocator(alloc_attrs);
+    Allocator* allocator = ctx->device()->GetAllocator({});
     if (tensor_info_manager_ && !alloc_attrs.on_host()) {
       allocator = tensor_info_manager_;
     }

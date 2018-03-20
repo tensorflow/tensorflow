@@ -85,6 +85,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "GradientTape"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Graph"
     mtype: "<type \'type\'>"
   }

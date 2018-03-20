@@ -363,27 +363,30 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                          (x_sum, x_np[:x_sum],
                           y_sum, y_np[:y_sum]))
 
-        # Get the values that actually differed and their indices.
-        mask = math_ops.logical_not(eq)
-        indices = array_ops.where(mask)
-        indices_np = indices.numpy()
-        x_vals = array_ops.boolean_mask(x, mask)
-        y_vals = array_ops.boolean_mask(y, mask)
-        summarize = min(summarize, indices_np.shape[0])
+        index_and_values_str = ''
+        if x.shape == y.shape:
+          # If the shapes of x and y are the same,
+          # Get the values that actually differed and their indices.
+          # If shapes are different this information is more confusing
+          # than useful.
+          mask = math_ops.logical_not(eq)
+          indices = array_ops.where(mask)
+          indices_np = indices.numpy()
+          x_vals = array_ops.boolean_mask(x, mask)
+          y_vals = array_ops.boolean_mask(y, mask)
+          summarize = min(summarize, indices_np.shape[0])
+          index_and_values_str = (
+              'Indices of first %s different values:\n%s\n'
+              'Corresponding x values:\n%s\n'
+              'Corresponding y values:\n%s\n' %
+              (summarize, indices_np[:summarize],
+               x_vals.numpy().reshape((-1,))[:summarize],
+               y_vals.numpy().reshape((-1,))[:summarize]))
 
         raise errors.InvalidArgumentError(
             node_def=None, op=None,
-            message=('%s\nCondition x == y did not hold.\n'
-                     'Indices of first %s different values:\n%s\n'
-                     'Corresponding x values:\n%s\n'
-                     'Corresponding y values:\n%s\n'
-                     '%s'
-                     %
-                     (message or '',
-                      summarize, indices_np[:summarize],
-                      x_vals.numpy().reshape((-1,))[:summarize],
-                      y_vals.numpy().reshape((-1,))[:summarize],
-                      summary_msg)))
+            message=('%s\nCondition x == y did not hold.\n%s%s' %
+                     (message or '', index_and_values_str, summary_msg)))
       return
 
     if data is None:
