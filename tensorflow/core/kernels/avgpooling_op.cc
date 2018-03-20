@@ -103,6 +103,9 @@ class AvgPoolingOp : public UnaryOp<T> {
 };
 
 REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<double>("T"),
+    AvgPoolingOp<CPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     AvgPoolingOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(
@@ -153,11 +156,13 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     TensorShape output_shape = params.forward_output_shape();
 
     if (data_format_ == FORMAT_NCHW) {
+      LOG(INFO) << "DnnPoolingOp";
       DnnPoolingOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
           stride_, padding_, data_format_, tensor_in, output_shape,
           /*propagate_nans=*/false);
     } else {
+      LOG(INFO) << "SpatialAvgPooling";
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output));
@@ -189,6 +194,7 @@ namespace functor {
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -198,6 +204,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     AvgPoolingOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    AvgPoolingOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 // The operation to compute AvgPool gradients.
@@ -425,6 +434,12 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("orig_input_shape")
+                            .Label("cudnn"),
+                        AvgPoolingGradOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")
                             .HostMemory("orig_input_shape")
                             .Label("cudnn"),
@@ -553,6 +568,11 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .TypeConstraint<float>("T")
                             .HostMemory("orig_input_shape"),
                         AvgPoolingGradOpCustomGPUKernel<float>);
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("orig_input_shape"),
+                        AvgPoolingGradOpCustomGPUKernel<double>);
 REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T")
