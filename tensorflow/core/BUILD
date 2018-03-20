@@ -722,6 +722,7 @@ cc_library(
         ":sendrecv_ops_op_lib",
         ":set_ops_op_lib",
         ":sparse_ops_op_lib",
+        ":summary_ops_op_lib",
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",

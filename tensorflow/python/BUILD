@@ -1359,6 +1359,12 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "summary_ops_gen",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = ["//tensorflow/core:summary_ops_op_lib"],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "audio_ops_gen",
     require_shape_functions = True,
     visibility = [
@@ -4110,6 +4116,7 @@ py_library(
         ":pywrap_tensorflow",
         ":summary_op_util",
         ":summary_ops",
+        ":summary_ops_gen",
         ":util",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
