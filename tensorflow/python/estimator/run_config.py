@@ -423,7 +423,7 @@ class RunConfig(object):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
-        global step/sec will be logged during training.
+        global step/sec and the loss will be logged during training.
 
 
     Raises:

@@ -849,7 +849,7 @@ class Estimator(object):
                   'loss': estimator_spec.loss,
                   'step': global_step_tensor
               },
-              every_n_iter=100)
+              every_n_iter=self._config.log_step_count_steps)
       ])
       worker_hooks.extend(estimator_spec.training_hooks)
 
