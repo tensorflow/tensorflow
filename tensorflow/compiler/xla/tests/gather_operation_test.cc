@@ -335,5 +335,67 @@ ENTRY main {
           {operand.get(), gather_indices.get(), in_bounds_mask.get()});
 }
 
+XLA_TEST_F(GatherOperationTest, OneScalarIndex) {
+  const char* hlo_text = R"(
+HloModule OneScalarIndex
+
+ENTRY main {
+  operand = s32[2,3,2]{2,1,0} parameter(0)
+  index = s32[] parameter(1)
+  ROOT gather = s32[1,3,2]{2,1,0} gather(operand, index),
+      output_window_dims={0,1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=0,
+      window_bounds={1,3,2}
+}
+)";
+  std::unique_ptr<Literal> operand = Literal::CreateR3<int32>(
+      {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, ScalarResult) {
+  const char* hlo_text = R"(
+HloModule ScalarResult
+
+ENTRY main {
+  operand = s32[4]{0} parameter(0)
+  index = s32[] parameter(1)
+  ROOT gather = s32[] gather(operand, index),
+      output_window_dims={},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=0,
+      window_bounds={1}
+}
+)";
+  std::unique_ptr<Literal> operand = Literal::CreateR1<int32>({1, 2, 3, 4});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
+XLA_TEST_F(GatherOperationTest, ZeroSizedResult) {
+  const string hlo_text = R"(
+HloModule ZeroSizedResult
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[0] parameter(1)
+  ROOT gather = s32[0,3] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0},
+      gather_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      window_bounds={1, 3}
+}
+)";
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({});
+  RunTest(hlo_text, operand.get(), gather_indices.get());
+}
+
 }  // namespace
 }  // namespace xla
