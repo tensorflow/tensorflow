@@ -1024,6 +1024,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc_disassembler",
         ":support",

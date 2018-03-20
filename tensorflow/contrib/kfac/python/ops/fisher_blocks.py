@@ -40,10 +40,12 @@ from __future__ import print_function
 import abc
 import enum  # pylint: disable=g-bad-import-order
 
+import numpy as np
 import six
 
 from tensorflow.contrib.kfac.python.ops import fisher_factors
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -92,10 +94,22 @@ def compute_pi_tracenorm(left_cov, right_cov):
   Returns:
     The computed scalar constant pi for these Kronecker Factors (as a Tensor).
   """
+
+  def _trace(cov):
+    if len(cov.shape) == 1:
+      # Diagonal matrix.
+      return math_ops.reduce_sum(cov)
+    elif len(cov.shape) == 2:
+      # Full matrix.
+      return math_ops.trace(cov)
+    else:
+      raise ValueError(
+          "What's the trace of a Tensor of rank %d?" % len(cov.shape))
+
   # Instead of dividing by the dim of the norm, we multiply by the dim of the
   # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_cov) * right_cov.shape.as_list()[0]
-  right_norm = math_ops.trace(right_cov) * left_cov.shape.as_list()[0]
+  left_norm = _trace(left_cov) * right_cov.shape.as_list()[0]
+  right_norm = _trace(right_cov) * left_cov.shape.as_list()[0]
   return math_ops.sqrt(left_norm / right_norm)
 
 
@@ -109,12 +123,44 @@ def compute_pi_adjusted_damping(left_cov, right_cov, damping):
     return (damping, damping)
 
 
+class PackagedFunc(object):
+  """A Python thunk with a stable ID.
+
+  Enables stable names for lambdas.
+  """
+
+  def __init__(self, func, func_id):
+    """Initializes PackagedFunc.
+
+    Args:
+      func: a zero-arg Python function.
+      func_id: a hashable, function that produces a hashable, or a list/tuple
+        thereof.
+    """
+    self._func = func
+    func_id = func_id if isinstance(func_id, (tuple, list)) else (func_id,)
+    self._func_id = func_id
+
+  def __call__(self):
+    return self._func()
+
+  @property
+  def func_id(self):
+    """A hashable identifier for this function."""
+    return tuple(elt() if callable(elt) else elt for elt in self._func_id)
+
+
+def _package_func(func, func_id):
+  return PackagedFunc(func, func_id)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class FisherBlock(object):
   """Abstract base class for objects modeling approximate Fisher matrix blocks.
 
-  Subclasses must implement multiply_inverse(), instantiate_factors(), and
-  tensors_to_compute_grads() methods.
+  Subclasses must implement register_matpower, multiply_matpower,
+  instantiate_factors, tensors_to_compute_grads, and num_registered_minibatches
+  methods.
   """
 
   def __init__(self, layer_collection):
@@ -133,6 +179,32 @@ class FisherBlock(object):
     pass
 
   @abc.abstractmethod
+  def register_matpower(self, exp):
+    """Registers a matrix power to be computed by the block.
+
+    Args:
+      exp: A float representing the power to raise the block by.
+    """
+    pass
+
+  def register_inverse(self):
+    """Registers a matrix inverse to be computed by the block."""
+    self.register_matpower(-1)
+
+  @abc.abstractmethod
+  def multiply_matpower(self, vector, exp):
+    """Multiplies the vector by the (damped) matrix-power of the block.
+
+    Args:
+      vector: The vector (a Tensor or tuple of Tensors) to be multiplied.
+      exp: A float representing the power to raise the block by before
+        multiplying it by the vector.
+
+    Returns:
+      The vector left-multiplied by the (damped) matrix-power of the block.
+    """
+    pass
+
   def multiply_inverse(self, vector):
     """Multiplies the vector by the (damped) inverse of the block.
 
@@ -142,9 +214,8 @@ class FisherBlock(object):
     Returns:
       The vector left-multiplied by the (damped) inverse of the block.
     """
-    pass
+    return self.multiply_matpower(vector, -1)
 
-  @abc.abstractmethod
   def multiply(self, vector):
     """Multiplies the vector by the (damped) block.
 
@@ -154,7 +225,7 @@ class FisherBlock(object):
     Returns:
       The vector left-multiplied by the (damped) block.
     """
-    pass
+    return self.multiply_matpower(vector, 1)
 
   @abc.abstractmethod
   def tensors_to_compute_grads(self):
@@ -195,21 +266,18 @@ class FullFB(FisherBlock):
     super(FullFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    self._damping = damping
+    self._damping_func = _package_func(lambda: damping, (damping,))
+
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullFactor, (grads_list, self._batch_size))
-    self._factor.register_damped_inverse(damping)
 
-  def multiply_inverse(self, vector):
-    inverse = self._factor.get_damped_inverse(self._damping)
-    out_flat = math_ops.matmul(inverse, utils.tensors_to_column(vector))
-    return utils.column_to_tensors(vector, out_flat)
+  def register_matpower(self, exp):
+    self._factor.register_matpower(exp, self._damping_func)
 
-  def multiply(self, vector):
+  def multiply_matpower(self, vector, exp):
     vector_flat = utils.tensors_to_column(vector)
-    out_flat = (
-        math_ops.matmul(self._factor.get_cov(), vector_flat) +
-        self._damping * vector_flat)
+    out_flat = self._factor.left_multiply_matpower(
+        vector_flat, exp, self._damping_func)
     return utils.column_to_tensors(vector, out_flat)
 
   def full_fisher_block(self):
@@ -259,22 +327,24 @@ class NaiveDiagonalFB(FisherBlock):
     super(NaiveDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    self._damping = damping
+    self._damping_func = _package_func(lambda: damping, (damping,))
+
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.NaiveDiagonalFactor, (grads_list, self._batch_size))
 
-  def multiply_inverse(self, vector):
-    vector_flat = utils.tensors_to_column(vector)
-    out_flat = vector_flat / (self._factor.get_cov() + self._damping)
-    return utils.column_to_tensors(vector, out_flat)
+  def register_matpower(self, exp):
+    # Not needed for this.  Matrix powers are computed on demand in the
+    # diagonal case
+    pass
 
-  def multiply(self, vector):
+  def multiply_matpower(self, vector, exp):
     vector_flat = utils.tensors_to_column(vector)
-    out_flat = vector_flat * (self._factor.get_cov() + self._damping)
+    out_flat = self._factor.left_multiply_matpower(
+        vector_flat, exp, self._damping_func)
     return utils.column_to_tensors(vector, out_flat)
 
   def full_fisher_block(self):
-    return array_ops.diag(array_ops.reshape(self._factor.get_cov(), (-1,)))
+    return self._factor.get_cov()
 
   def tensors_to_compute_grads(self):
     return self._params
@@ -296,7 +366,89 @@ class NaiveDiagonalFB(FisherBlock):
     return math_ops.reduce_sum(self._batch_sizes)
 
 
-class FullyConnectedDiagonalFB(FisherBlock):
+class InputOutputMultiMinibatch(object):
+  """Mix-in class for blocks with inputs & outputs and multiple mini-batches."""
+
+  def __init__(self, *args, **kwargs):
+    self.__inputs = []
+    self.__outputs = []
+    super(InputOutputMultiMinibatch, self).__init__(*args, **kwargs)
+
+  def tensors_to_compute_grads(self):
+    """Tensors to compute derivative of loss with respect to."""
+    return self._outputs
+
+  def register_additional_minibatch(self, inputs, outputs):
+    self._inputs.append(inputs)
+    self._outputs.append(outputs)
+
+  @property
+  def num_registered_minibatches(self):
+    result = len(self._inputs)
+    assert result == len(self._outputs)
+    return result
+
+  @property
+  def _inputs(self):
+    return self.__inputs
+
+  @property
+  def _outputs(self):
+    return self.__outputs
+
+  def _package_minibatches(self, grads_list):
+    """Constructs PartitionedTensor for inputs, grads_list.
+
+    The purpose of this method is to package up the towers/minibatch dimension
+    of these arrays into PartitionedTensor objects.
+
+    Args:
+      grads_list: 2-D list of Tensors. First index is for source, second
+        index for tower.
+
+    Returns:
+      inputs: PartitionedTensor.
+      grads_list: Tuple of PartitionedTensors, one per source.
+    """
+    inputs = utils.PartitionedTensor(self._inputs)
+    grads_list = tuple(utils.PartitionedTensor(grads) for grads in grads_list)
+
+    return inputs, grads_list
+
+  def _package_minibatches_multi(self, grads_list):
+    """Constructs PartitionedTensors for inputs, grads_list.
+
+    The purpose of this method is to package up the towers/minibatch dimension
+    of these arrays into PartitionedTensor objects.
+
+    This version of this function is for use with FisherBlocks that deal with
+    multiple uses or time-steps. One PartitionedTensor is created for each
+    use/time-step.
+
+    Args:
+      grads_list: 3-D tuple of Tensors. First index is for source, second
+        index is for tower, third is for use/time-step.
+
+    Returns:
+      inputs: A tuple of PartitionedTensor's, one per use/time-step.
+      grads_list: 2-D tuple of PartitionedTensors. First index is for source,
+        second is for use/time-step.
+    """
+    # self._inputs is a 2-D tuple.  First index is tower/mini-batch, second is
+    # use/time-step.
+    inputs = self._inputs
+    num_uses = len(inputs[0])
+    assert all(len(input_) == num_uses for input_ in inputs)
+    assert all(len(grad) == num_uses for grads in grads_list for grad in grads)
+
+    inputs = tuple(utils.PartitionedTensor(input_) for input_ in zip(*inputs))
+    grads_list = tuple(tuple(utils.PartitionedTensor(grad)
+                             for grad in zip(*grads)) for grads in grads_list)
+
+    return inputs, grads_list
+
+
+class FullyConnectedDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
   """FisherBlock for fully-connected (dense) layers using a diagonal approx.
 
   Estimates the Fisher Information matrix's diagonal entries for a fully
@@ -328,78 +480,46 @@ class FullyConnectedDiagonalFB(FisherBlock):
       has_bias: Whether the component Kronecker factors have an additive bias.
           (Default: False)
     """
-    self._inputs = []
-    self._outputs = []
     self._has_bias = has_bias
 
     super(FullyConnectedDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    inputs = _concat_along_batch_dim(self._inputs)
-    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+    inputs, grads_list = self._package_minibatches(grads_list)
 
-    self._damping = damping
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedDiagonalFactor,
         (inputs, grads_list, self._has_bias))
 
-  def multiply_inverse(self, vector):
-    """Approximate damped inverse Fisher-vector product.
+    self._damping_func = _package_func(lambda: damping, (damping,))
+
+  def register_matpower(self, exp):
+    # Not needed for this.  Matrix powers are computed on demand in the
+    # diagonal case
+    pass
+
+  def multiply_matpower(self, vector, exp):
+    """Multiplies the vector by the (damped) matrix-power of the block.
 
     Args:
       vector: Tensor or 2-tuple of Tensors. if self._has_bias, Tensor of shape
         [input_size, output_size] corresponding to layer's weights. If not, a
         2-tuple of the former and a Tensor of shape [output_size] corresponding
         to the layer's bias.
+      exp: A scalar representing the power to raise the block before multiplying
+           it by the vector.
 
     Returns:
-      Tensor of the same shape, corresponding to the inverse Fisher-vector
-      product.
+      The vector left-multiplied by the (damped) matrix-power of the block.
     """
-    reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect / (self._factor.get_cov() + self._damping)
+    reshaped_vec = utils.layer_params_to_mat2d(vector)
+    reshaped_out = self._factor.left_multiply_matpower(
+        reshaped_vec, exp, self._damping_func)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
-  def multiply(self, vector):
-    """Approximate damped Fisher-vector product.
 
-    Args:
-      vector: Tensor or 2-tuple of Tensors. if self._has_bias, Tensor of shape
-        [input_size, output_size] corresponding to layer's weights. If not, a
-        2-tuple of the former and a Tensor of shape [output_size] corresponding
-        to the layer's bias.
-
-    Returns:
-      Tensor of the same shape, corresponding to the Fisher-vector product.
-    """
-    reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect * (self._factor.get_cov() + self._damping)
-    return utils.mat2d_to_layer_params(vector, reshaped_out)
-
-  def tensors_to_compute_grads(self):
-    """Tensors to compute derivative of loss with respect to."""
-    return self._outputs
-
-  def register_additional_minibatch(self, inputs, outputs):
-    """Registers an additional minibatch to the FisherBlock.
-
-    Args:
-      inputs: Tensor of shape [batch_size, input_size]. Inputs to the
-        matrix-multiply.
-      outputs: Tensor of shape [batch_size, output_size]. Layer preactivations.
-    """
-    self._inputs.append(inputs)
-    self._outputs.append(outputs)
-
-  @property
-  def num_registered_minibatches(self):
-    result = len(self._inputs)
-    assert result == len(self._outputs)
-    return result
-
-
-class ConvDiagonalFB(FisherBlock):
-  """FisherBlock for convolutional layers using a diagonal approx.
+class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
+  """FisherBlock for 2-D convolutional layers using a diagonal approx.
 
   Estimates the Fisher Information matrix's diagonal entries for a convolutional
   layer. Unlike NaiveDiagonalFB this uses the low-variance "sum of squares"
@@ -423,7 +543,13 @@ class ConvDiagonalFB(FisherBlock):
   to the layer's parameters 'w'.
   """
 
-  def __init__(self, layer_collection, params, strides, padding):
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               data_format=None,
+               dilations=None):
     """Creates a ConvDiagonalFB block.
 
     Args:
@@ -435,65 +561,72 @@ class ConvDiagonalFB(FisherBlock):
         containing the previous and a Tensor of shape [out_channels].
       strides: The stride size in this layer (1-D Tensor of length 4).
       padding: The padding in this layer (e.g. "SAME").
+      data_format: str or None. Format of input data.
+      dilations: List of 4 ints or None. Rate for dilation along all dimensions.
+
+    Raises:
+      ValueError: if strides is not length-4.
+      ValueError: if dilations is not length-4.
+      ValueError: if channel is not last dimension.
     """
-    self._inputs = []
-    self._outputs = []
-    self._strides = tuple(strides) if isinstance(strides, list) else strides
+    if len(strides) != 4:
+      raise ValueError("strides must contain 4 numbers.")
+
+    if dilations is None:
+      dilations = [1, 1, 1, 1]
+
+    if len(dilations) != 4:
+      raise ValueError("dilations must contain 4 numbers.")
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    self._strides = maybe_tuple(strides)
     self._padding = padding
+    self._data_format = data_format
+    self._dilations = maybe_tuple(dilations)
     self._has_bias = isinstance(params, (tuple, list))
 
     fltr = params[0] if self._has_bias else params
     self._filter_shape = tuple(fltr.shape.as_list())
 
+    if len(self._filter_shape) != 4:
+      raise ValueError(
+          "Convolution filter must be of shape"
+          " [filter_height, filter_width, in_channels, out_channels].")
+
     super(ConvDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    # Concatenate inputs, grads_list into single Tensors.
-    inputs = _concat_along_batch_dim(self._inputs)
-    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+    inputs, grads_list = self._package_minibatches(grads_list)
 
     # Infer number of locations upon which convolution is applied.
-    inputs_shape = tuple(inputs.shape.as_list())
-    self._num_locations = (
-        inputs_shape[1] * inputs_shape[2] //
-        (self._strides[1] * self._strides[2]))
-
-    self._damping = (self._num_locations
-                     * normalize_damping(damping, self._num_locations))
+    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+                                             self._strides)
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,
         (inputs, grads_list, self._filter_shape, self._strides, self._padding,
-         self._has_bias))
+         self._data_format, self._dilations, self._has_bias))
 
-  def multiply_inverse(self, vector):
+    def damping_func():
+      return self._num_locations * normalize_damping(damping,
+                                                     self._num_locations)
+
+    damping_id = (self._num_locations, "mult", "normalize_damping", damping,
+                  self._num_locations)
+    self._damping_func = _package_func(damping_func, damping_id)
+
+  def register_matpower(self, exp):
+    # Not needed for this.  Matrix powers are computed on demand in the
+    # diagonal case
+    pass
+
+  def multiply_matpower(self, vector, exp):
     reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect / (self._factor.get_cov() + self._damping)
+    reshaped_out = self._factor.left_multiply_matpower(
+        reshaped_vect, exp, self._damping_func)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
-
-  def multiply(self, vector):
-    reshaped_vect = utils.layer_params_to_mat2d(vector)
-    reshaped_out = reshaped_vect * (self._factor.get_cov() + self._damping)
-    return utils.mat2d_to_layer_params(vector, reshaped_out)
-
-  def tensors_to_compute_grads(self):
-    return self._outputs
-
-  def register_additional_minibatch(self, inputs, outputs):
-    """Registers an additional minibatch to the FisherBlock.
-
-    Args:
-      inputs: Tensor of shape [batch_size, height, width, input_size]. Inputs to
-        the convolution.
-      outputs: Tensor of shape [batch_size, height, width, output_size]. Layer
-        preactivations.
-    """
-    self._inputs.append(inputs)
-    self._outputs.append(outputs)
-
-  @property
-  def num_registered_minibatches(self):
-    return len(self._inputs)
 
 
 class KroneckerProductFB(FisherBlock):
@@ -503,22 +636,40 @@ class KroneckerProductFB(FisherBlock):
   output factors.
   """
 
-  def _register_damped_input_and_output_inverses(self, damping):
-    """Registers damped inverses for both the input and output factors.
+  def __init__(self, layer_collection):
+    super(KroneckerProductFB, self).__init__(layer_collection)
 
-    Sets the instance members _input_damping and _output_damping. Requires the
-    instance members _input_factor and _output_factor.
+  def _setup_damping(self, damping, normalization=None):
+    """Makes functions that compute the damping values for both factors."""
+    def compute_damping():
+      if normalization is not None:
+        maybe_normalized_damping = normalize_damping(damping, normalization)
+      else:
+        maybe_normalized_damping = damping
 
-    Args:
-      damping: The base damping factor (float or Tensor) for the damped inverse.
-    """
-    self._input_damping, self._output_damping = compute_pi_adjusted_damping(
-        self._input_factor.get_cov(),
-        self._output_factor.get_cov(),
-        damping**0.5)
+      return compute_pi_adjusted_damping(self._input_factor.get_cov(),
+                                         self._output_factor.get_cov(),
+                                         maybe_normalized_damping**0.5)
 
-    self._input_factor.register_damped_inverse(self._input_damping)
-    self._output_factor.register_damped_inverse(self._output_damping)
+    if normalization is not None:
+      damping_id = ("compute_pi_adjusted_damping",
+                    "cov", self._input_factor.name,
+                    "cov", self._output_factor.name,
+                    "normalize_damping", damping, normalization, "power", 0.5)
+    else:
+      damping_id = ("compute_pi_adjusted_damping",
+                    "cov", self._input_factor.name,
+                    "cov", self._output_factor.name,
+                    damping, "power", 0.5)
+
+    self._input_damping_func = _package_func(lambda: compute_damping()[0],
+                                             damping_id + ("ref", 0))
+    self._output_damping_func = _package_func(lambda: compute_damping()[1],
+                                              damping_id + ("ref", 1))
+
+  def register_matpower(self, exp):
+    self._input_factor.register_matpower(exp, self._input_damping_func)
+    self._output_factor.register_matpower(exp, self._output_damping_func)
 
   @property
   def _renorm_coeff(self):
@@ -532,32 +683,15 @@ class KroneckerProductFB(FisherBlock):
     """
     return 1.0
 
-  def multiply_inverse(self, vector):
-    left_factor_inv = self._input_factor.get_damped_inverse(self._input_damping)
-    right_factor_inv = self._output_factor.get_damped_inverse(
-        self._output_damping)
+  def multiply_matpower(self, vector, exp):
     reshaped_vector = utils.layer_params_to_mat2d(vector)
-    reshaped_out = math_ops.matmul(left_factor_inv,
-                                   math_ops.matmul(reshaped_vector,
-                                                   right_factor_inv))
+    reshaped_out = self._output_factor.right_multiply_matpower(
+        reshaped_vector, exp, self._output_damping_func)
+    reshaped_out = self._input_factor.left_multiply_matpower(
+        reshaped_out, exp, self._input_damping_func)
     if self._renorm_coeff != 1.0:
-      reshaped_out /= math_ops.cast(
-          self._renorm_coeff, dtype=reshaped_out.dtype)
-    return utils.mat2d_to_layer_params(vector, reshaped_out)
-
-  def multiply(self, vector):
-    left_factor = self._input_factor.get_cov()
-    right_factor = self._output_factor.get_cov()
-    reshaped_vector = utils.layer_params_to_mat2d(vector)
-    reshaped_out = (
-        math_ops.matmul(reshaped_vector, right_factor) +
-        self._output_damping * reshaped_vector)
-    reshaped_out = (
-        math_ops.matmul(left_factor, reshaped_out) +
-        self._input_damping * reshaped_out)
-    if self._renorm_coeff != 1.0:
-      reshaped_out *= math_ops.cast(
-          self._renorm_coeff, dtype=reshaped_out.dtype)
+      renorm_coeff = math_ops.cast(self._renorm_coeff, dtype=reshaped_out.dtype)
+      reshaped_out *= math_ops.cast(renorm_coeff**exp, dtype=reshaped_out.dtype)
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
   def full_fisher_block(self):
@@ -574,7 +708,50 @@ class KroneckerProductFB(FisherBlock):
                                                         right_factor)
 
 
-class FullyConnectedKFACBasicFB(KroneckerProductFB):
+class EmbeddingKFACFB(InputOutputMultiMinibatch, KroneckerProductFB):
+  """K-FAC FisherBlock for embedding layers.
+
+  This FisherBlock is similar to EmbeddingKFACFB, except that its
+  input factor is approximated by a diagonal matrix. In the case that each
+  example references exactly one embedding, this approximation is exact.
+
+  Does not support bias parameters.
+  """
+
+  def __init__(self, layer_collection, vocab_size):
+    """Creates a EmbeddingKFACFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      vocab_size: int. Size of vocabulary for this embedding layer.
+    """
+    self._vocab_size = vocab_size
+
+    super(EmbeddingKFACFB, self).__init__(layer_collection)
+
+  def instantiate_factors(self, grads_list, damping):
+    """Instantiate Kronecker Factors for this FisherBlock.
+
+    Args:
+      grads_list: List of list of Tensors. grads_list[i][j] is the
+        gradient of the loss with respect to 'outputs' from source 'i' and
+        tower 'j'. Each Tensor has shape [tower_minibatch_size, output_size].
+      damping: 0-D Tensor or float. 'damping' * identity is approximately added
+        to this FisherBlock's Fisher approximation.
+    """
+    inputs, grads_list = self._package_minibatches(grads_list)
+
+    self._input_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.EmbeddingInputKroneckerFactor,  #
+        (inputs, self._vocab_size))
+    self._output_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.FullyConnectedKroneckerFactor,  #
+        (grads_list,))
+    self._setup_damping(damping)
+
+
+class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
   """K-FAC FisherBlock for fully-connected (dense) layers.
 
   This uses the Kronecker-factorized approximation from the original
@@ -590,8 +767,6 @@ class FullyConnectedKFACBasicFB(KroneckerProductFB):
       has_bias: Whether the component Kronecker factors have an additive bias.
           (Default: False)
     """
-    self._inputs = []
-    self._outputs = []
     self._has_bias = has_bias
 
     super(FullyConnectedKFACBasicFB, self).__init__(layer_collection)
@@ -606,12 +781,7 @@ class FullyConnectedKFACBasicFB(KroneckerProductFB):
       damping: 0-D Tensor or float. 'damping' * identity is approximately added
         to this FisherBlock's Fisher approximation.
     """
-    # TODO(b/68033310): Validate which of,
-    #   (1) summing on a single device (as below), or
-    #   (2) on each device in isolation and aggregating
-    # is faster.
-    inputs = _concat_along_batch_dim(self._inputs)
-    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+    inputs, grads_list = self._package_minibatches(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(  #
         fisher_factors.FullyConnectedKroneckerFactor,  #
@@ -619,29 +789,11 @@ class FullyConnectedKFACBasicFB(KroneckerProductFB):
     self._output_factor = self._layer_collection.make_or_get_factor(  #
         fisher_factors.FullyConnectedKroneckerFactor,  #
         (grads_list,))
-    self._register_damped_input_and_output_inverses(damping)
-
-  def tensors_to_compute_grads(self):
-    return self._outputs
-
-  def register_additional_minibatch(self, inputs, outputs):
-    """Registers an additional minibatch to the FisherBlock.
-
-    Args:
-      inputs: Tensor of shape [batch_size, input_size]. Inputs to the
-        matrix-multiply.
-      outputs: Tensor of shape [batch_size, output_size]. Layer preactivations.
-    """
-    self._inputs.append(inputs)
-    self._outputs.append(outputs)
-
-  @property
-  def num_registered_minibatches(self):
-    return len(self._inputs)
+    self._setup_damping(damping)
 
 
-class ConvKFCBasicFB(KroneckerProductFB):
-  """FisherBlock for 2D convolutional layers using the basic KFC approx.
+class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
+  """FisherBlock for convolutional layers using the basic KFC approx.
 
   Estimates the Fisher Information matrix's blog for a convolutional
   layer.
@@ -664,23 +816,40 @@ class ConvKFCBasicFB(KroneckerProductFB):
   See equation 23 in https://arxiv.org/abs/1602.01407 for details.
   """
 
-  def __init__(self, layer_collection, params, strides, padding):
+  def __init__(self,
+               layer_collection,
+               params,
+               padding,
+               strides=None,
+               dilation_rate=None,
+               data_format=None,
+               extract_patches_fn=None):
     """Creates a ConvKFCBasicFB block.
 
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
       params: The parameters (Tensor or tuple of Tensors) of this layer. If
-        kernel alone, a Tensor of shape [kernel_height, kernel_width,
+        kernel alone, a Tensor of shape [..spatial_filter_shape..,
         in_channels, out_channels]. If kernel and bias, a tuple of 2 elements
         containing the previous and a Tensor of shape [out_channels].
-      strides: The stride size in this layer (1-D Tensor of length 4).
-      padding: The padding in this layer (1-D of Tensor length 4).
+      padding: str. Padding method.
+      strides: List of ints or None. Contains [..spatial_filter_strides..] if
+        'extract_patches_fn' is compatible with tf.nn.convolution(), else
+        [1, ..spatial_filter_strides, 1].
+      dilation_rate: List of ints or None. Rate for dilation along each spatial
+        dimension if 'extract_patches_fn' is compatible with
+        tf.nn.convolution(), else [1, ..spatial_dilation_rates.., 1].
+      data_format: str or None. Format of input data.
+      extract_patches_fn: str or None. Name of function that extracts image
+        patches. One of "extract_convolution_patches", "extract_image_patches",
+        "extract_pointwise_conv2d_patches".
     """
-    self._inputs = []
-    self._outputs = []
-    self._strides = tuple(strides) if isinstance(strides, list) else strides
     self._padding = padding
+    self._strides = maybe_tuple(strides)
+    self._dilation_rate = maybe_tuple(dilation_rate)
+    self._data_format = data_format
+    self._extract_patches_fn = extract_patches_fn
     self._has_bias = isinstance(params, (tuple, list))
 
     fltr = params[0] if self._has_bias else params
@@ -689,135 +858,314 @@ class ConvKFCBasicFB(KroneckerProductFB):
     super(ConvKFCBasicFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    # TODO(b/68033310): Validate which of,
-    #   (1) summing on a single device (as below), or
-    #   (2) on each device in isolation and aggregating
-    # is faster.
-    inputs = _concat_along_batch_dim(self._inputs)
-    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+    inputs, grads_list = self._package_minibatches(grads_list)
 
     # Infer number of locations upon which convolution is applied.
-    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+    self._num_locations = num_conv_locations(self._inputs[0].shape.as_list(),
                                              self._strides)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvInputKroneckerFactor,
-        (inputs, self._filter_shape, self._strides, self._padding,
+        (inputs, self._filter_shape, self._padding, self._strides,
+         self._dilation_rate, self._data_format, self._extract_patches_fn,
          self._has_bias))
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvOutputKroneckerFactor, (grads_list,))
 
-    damping = normalize_damping(damping, self._num_locations)
-    self._register_damped_input_and_output_inverses(damping)
-    self._damping = damping
+    self._setup_damping(damping, normalization=self._num_locations)
 
   @property
   def _renorm_coeff(self):
     return self._num_locations
 
-  def tensors_to_compute_grads(self):
-    return self._outputs
 
-  def register_additional_minibatch(self, inputs, outputs):
-    """Registers an additional minibatch to the FisherBlock.
+class DepthwiseConvDiagonalFB(ConvDiagonalFB):
+  """FisherBlock for depthwise_conv2d().
+
+  Equivalent to ConvDiagonalFB applied to each input channel in isolation.
+  """
+
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               rate=None,
+               data_format=None):
+    """Creates a DepthwiseConvKFCBasicFB block.
 
     Args:
-      inputs: Tensor of shape [batch_size, height, width, input_size]. Inputs to
-        the convolution.
-      outputs: Tensor of shape [batch_size, height, width, output_size]. Layer
-        preactivations.
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      params: Tensor of shape [filter_height, filter_width, in_channels,
+        channel_multiplier].
+      strides: List of 4 ints. Strides along all dimensions.
+      padding: str. Padding method.
+      rate: List of 4 ints or None. Rate for dilation along all dimensions.
+      data_format: str or None. Format of input data.
+
+    Raises:
+      NotImplementedError: If parameters contains bias.
+      ValueError: If filter is not 4-D.
+      ValueError: If strides is not length-4.
+      ValueError: If rates is not length-2.
+      ValueError: If channels are not last dimension.
     """
-    self._inputs.append(inputs)
-    self._outputs.append(outputs)
+    if isinstance(params, (tuple, list)):
+      raise NotImplementedError("Bias not yet supported.")
 
-  @property
-  def num_registered_minibatches(self):
-    return len(self._inputs)
+    if params.shape.ndims != 4:
+      raise ValueError("Filter must be 4-D.")
+
+    if len(strides) != 4:
+      raise ValueError("strides must account for 4 dimensions.")
+
+    if rate is not None:
+      if len(rate) != 2:
+        raise ValueError("rate must only account for spatial dimensions.")
+      rate = [1, rate[0], rate[1], 1]  # conv2d expects 4-element rate.
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    super(DepthwiseConvDiagonalFB, self).__init__(
+        layer_collection=layer_collection,
+        params=params,
+        strides=strides,
+        padding=padding,
+        dilations=rate,
+        data_format=data_format)
+
+    # This is a hack to overwrite the same setting in ConvKFCBasicFB.__init__().
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        params.shape.as_list())
+    self._filter_shape = (filter_height, filter_width, in_channels,
+                          in_channels * channel_multiplier)
+
+  def multiply_matpower(self, vector, exp):
+    conv2d_vector = depthwise_conv2d_filter_to_conv2d_filter(vector)
+    conv2d_result = super(DepthwiseConvDiagonalFB, self).multiply_matpower(
+        conv2d_vector, exp)
+    return conv2d_filter_to_depthwise_conv2d_filter(conv2d_result)
 
 
-def _concat_along_batch_dim(tensor_list):
-  """Concatenate tensors along batch (first) dimension.
+class DepthwiseConvKFCBasicFB(ConvKFCBasicFB):
+  """FisherBlock for depthwise_conv2d().
+
+  Equivalent to ConvKFCBasicFB applied to each input channel in isolation.
+  """
+
+  def __init__(self,
+               layer_collection,
+               params,
+               strides,
+               padding,
+               rate=None,
+               data_format=None):
+    """Creates a DepthwiseConvKFCBasicFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      params: Tensor of shape [filter_height, filter_width, in_channels,
+        channel_multiplier].
+      strides: List of 4 ints. Strides along all dimensions.
+      padding: str. Padding method.
+      rate: List of 4 ints or None. Rate for dilation along all dimensions.
+      data_format: str or None. Format of input data.
+
+    Raises:
+      NotImplementedError: If parameters contains bias.
+      ValueError: If filter is not 4-D.
+      ValueError: If strides is not length-4.
+      ValueError: If rates is not length-2.
+      ValueError: If channels are not last dimension.
+    """
+    if isinstance(params, (tuple, list)):
+      raise NotImplementedError("Bias not yet supported.")
+
+    if params.shape.ndims != 4:
+      raise ValueError("Filter must be 4-D.")
+
+    if len(strides) != 4:
+      raise ValueError("strides must account for 4 dimensions.")
+
+    if rate is not None:
+      if len(rate) != 2:
+        raise ValueError("rate must only account for spatial dimensions.")
+      rate = [1, rate[0], rate[1], 1]  # conv2d expects 4-element rate.
+
+    if not utils.is_data_format_channel_last(data_format):
+      raise ValueError("data_format must be channels-last.")
+
+    super(DepthwiseConvKFCBasicFB, self).__init__(
+        layer_collection=layer_collection,
+        params=params,
+        padding=padding,
+        strides=strides,
+        dilation_rate=rate,
+        data_format=data_format,
+        extract_patches_fn="extract_image_patches")
+
+    # This is a hack to overwrite the same setting in ConvKFCBasicFB.__init__().
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        params.shape.as_list())
+    self._filter_shape = (filter_height, filter_width, in_channels,
+                          in_channels * channel_multiplier)
+
+  def multiply_matpower(self, vector, exp):
+    conv2d_vector = depthwise_conv2d_filter_to_conv2d_filter(vector)
+    conv2d_result = super(DepthwiseConvKFCBasicFB, self).multiply_matpower(
+        conv2d_vector, exp)
+    return conv2d_filter_to_depthwise_conv2d_filter(conv2d_result)
+
+
+def depthwise_conv2d_filter_to_conv2d_filter(filter, name=None):  # pylint: disable=redefined-builtin
+  """Converts a convolution filter for use with conv2d.
+
+  Transforms a filter for use with tf.nn.depthwise_conv2d() to one that's
+  compatible with tf.nn.conv2d().
 
   Args:
-    tensor_list: list of Tensors or list of tuples of Tensors.
+    filter: Tensor of shape [height, width, in_channels, channel_multiplier].
+    name: None or str. Name of Op.
 
   Returns:
-    Tensor or tuple of Tensors.
-
-  Raises:
-    ValueError: If 'tensor_list' is empty.
+    Tensor of shape [height, width, in_channels, out_channels].
 
   """
-  if not tensor_list:
-    raise ValueError(
-        "Cannot concatenate Tensors if there are no Tensors to concatenate.")
+  with ops.name_scope(name, "depthwise_conv2d_filter_to_conv2d_filter",
+                      [filter]):
+    filter = ops.convert_to_tensor(filter)
+    filter_height, filter_width, in_channels, channel_multiplier = (
+        filter.shape.as_list())
 
-  if isinstance(tensor_list[0], (tuple, list)):
-    # [(tensor1a, tensor1b),
-    #  (tensor2a, tensor2b), ...] --> (tensor_a, tensor_b)
-    return tuple(
-        array_ops.concat(tensors, axis=0) for tensors in zip(*tensor_list))
-  else:
-    # [tensor1, tensor2] --> tensor
-    return array_ops.concat(tensor_list, axis=0)
+    results = []
+    for i in range(in_channels):
+      # Slice out one in_channel's filter. Insert zeros around it to force it
+      # to affect that channel and that channel alone.
+      elements = []
+      if i > 0:
+        elements.append(
+            array_ops.zeros(
+                [filter_height, filter_width, i, channel_multiplier]))
+      elements.append(filter[:, :, i:(i + 1), :])
+      if i + 1 < in_channels:
+        elements.append(
+            array_ops.zeros([
+                filter_height, filter_width, in_channels - (i + 1),
+                channel_multiplier
+            ]))
+
+      # Concat along in_channel.
+      results.append(
+          array_ops.concat(elements, axis=-2, name="in_channel_%d" % i))
+
+    # Concat along out_channel.
+    return array_ops.concat(results, axis=-1, name="out_channel")
+
+
+def conv2d_filter_to_depthwise_conv2d_filter(filter, name=None):  # pylint: disable=redefined-builtin
+  """Converts a convolution filter for use with depthwise_conv2d.
+
+  Transforms a filter for use with tf.nn.conv2d() to one that's
+  compatible with tf.nn.depthwise_conv2d(). Ignores all filters but those along
+  the diagonal.
+
+  Args:
+    filter: Tensor of shape [height, width, in_channels, out_channels].
+    name: None or str. Name of Op.
+
+  Returns:
+    Tensor of shape,
+      [height, width, in_channels, channel_multiplier]
+
+  Raises:
+    ValueError: if out_channels is not evenly divisible by in_channels.
+  """
+  with ops.name_scope(name, "conv2d_filter_to_depthwise_conv2d_filter",
+                      [filter]):
+    filter = ops.convert_to_tensor(filter)
+    filter_height, filter_width, in_channels, out_channels = (
+        filter.shape.as_list())
+
+    if out_channels % in_channels != 0:
+      raise ValueError("out_channels must be evenly divisible by in_channels.")
+    channel_multiplier = out_channels // in_channels
+
+    results = []
+    filter = array_ops.reshape(filter, [
+        filter_height, filter_width, in_channels, in_channels,
+        channel_multiplier
+    ])
+    for i in range(in_channels):
+      # Slice out output corresponding to the correct filter.
+      filter_slice = array_ops.reshape(
+          filter[:, :, i, i, :],
+          [filter_height, filter_width, 1, channel_multiplier])
+      results.append(filter_slice)
+
+    # Concat along out_channel.
+    return array_ops.concat(results, axis=-2, name="in_channels")
+
+
+def maybe_tuple(obj):
+  if not isinstance(obj, list):
+    return obj
+  return tuple(obj)
 
 
 def num_conv_locations(input_shape, strides):
   """Returns the number of spatial locations a 2D Conv kernel is applied to.
 
   Args:
-    input_shape: list representing shape of inputs to the Conv layer.
-    strides: list representing strides for the Conv kernel.
+    input_shape: List of ints representing shape of inputs to
+      tf.nn.convolution().
+    strides: List of ints representing strides along spatial dimensions as
+      passed in to tf.nn.convolution().
 
   Returns:
     A scalar |T| denoting the number of spatial locations for the Conv layer.
   """
-  return input_shape[1] * input_shape[2] // (strides[1] * strides[2])
+  spatial_input_locations = np.prod(input_shape[1:-1])
+
+  if strides is None:
+    spatial_strides_divisor = 1
+  else:
+    spatial_strides_divisor = np.prod(strides)
+
+  return spatial_input_locations // spatial_strides_divisor
 
 
-class FullyConnectedMultiIndepFB(KroneckerProductFB):
+class FullyConnectedMultiIndepFB(InputOutputMultiMinibatch, KroneckerProductFB):
   """FisherBlock for fully-connected layers that share parameters.
   """
 
-  def __init__(self, layer_collection, inputs, outputs, has_bias=False):
+  def __init__(self, layer_collection, has_bias=False):
     """Creates a FullyConnectedMultiIndepFB block.
 
     Args:
       layer_collection: LayerCollection instance.
-      inputs: list or tuple of Tensors. Each Tensor has shape [batch_size,
-        inputs_size].
-      outputs: list or tuple of Tensors. Each Tensor has shape [batch_size,
-        outputs_size].
       has_bias: bool. If True, estimates Fisher with respect to a bias
         parameter as well as the layer's parameters.
     """
-
-    assert len(inputs) == len(outputs)
-    # We need to make sure inputs and outputs are tuples and not lists so that
-    # they get hashed by layer_collection.make_or_get_factor properly.
-    self._inputs = tuple(inputs)
-    self._outputs = tuple(outputs)
     self._has_bias = has_bias
-    self._num_uses = len(inputs)
 
     super(FullyConnectedMultiIndepFB, self).__init__(layer_collection)
 
-  @property
-  def num_registered_minibatches(self):
-    # TODO(b/69411207): Add support for registering additional minibatches.
-    return 1
-
   def instantiate_factors(self, grads_list, damping):
+
+    self._num_uses = float(len(self._inputs[0]))
+    inputs, grads_list = self._package_minibatches_multi(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF,
-        ((self._inputs,), self._has_bias))
+        ((inputs,), self._has_bias))
 
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF, (grads_list,))
 
-    damping = normalize_damping(damping, self._num_uses)
-    self._register_damped_input_and_output_inverses(damping)
+    self._setup_damping(damping, normalization=self._num_uses)
 
   @property
   def _renorm_coeff(self):
@@ -826,9 +1174,6 @@ class FullyConnectedMultiIndepFB(KroneckerProductFB):
   def tensors_to_compute_grads(self):
     return self._outputs
 
-  def num_inputs(self):
-    return len(self._inputs)
-
 
 class SeriesFBApproximation(enum.IntEnum):
   """See FullyConnectedSeriesFB.__init__ for description and usage."""
@@ -836,22 +1181,20 @@ class SeriesFBApproximation(enum.IntEnum):
   option2 = 2
 
 
-class FullyConnectedSeriesFB(FisherBlock):
+class FullyConnectedSeriesFB(InputOutputMultiMinibatch, FisherBlock):
   """FisherBlock for fully-connected layers that share parameters across time.
 
   See the following preprint for details:
     https://openreview.net/pdf?id=HyMTkQZAb
 
   See the end of the appendix of the paper for a pseudo-code of the
-  algorithm being implemented by multiply_inverse here.  Note that we are
+  algorithm being implemented by multiply_matpower here.  Note that we are
   using pre-computed versions of certain matrix-matrix products to speed
   things up.  This is explicitly explained wherever it is done.
   """
 
   def __init__(self,
                layer_collection,
-               inputs,
-               outputs,
                has_bias=False,
                option=SeriesFBApproximation.option2):
     """Constructs a new `FullyConnectedSeriesFB`.
@@ -859,10 +1202,6 @@ class FullyConnectedSeriesFB(FisherBlock):
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
         Fisher information matrix to which this FisherBlock belongs.
-      inputs: List of tensors of shape [batch_size, input_size].
-        Inputs to the layer.
-      outputs: List of tensors of shape [batch_size, input_size].
-        Outputs of the layer (before activations).
       has_bias: Whether the layer includes a bias parameter.
       option: A `SeriesFBApproximation` specifying the simplifying assumption
         to be used in this block. `option1` approximates the cross-covariance
@@ -871,48 +1210,61 @@ class FullyConnectedSeriesFB(FisherBlock):
         3.5 of the paper for more details.
     """
 
-    assert len(inputs) == len(outputs)
-    # We need to make sure inputs and outputs are tuples and not lists so that
-    # they get hashed by layer_collection.make_or_get_factor properly.
-    self._inputs = tuple(inputs)
-    self._outputs = tuple(outputs)
     self._has_bias = has_bias
-    self._num_timesteps = len(inputs)
     self._option = option
 
     super(FullyConnectedSeriesFB, self).__init__(layer_collection)
 
-  @property
-  def num_registered_minibatches(self):
-    # TODO(b/69411207): Add support for registering additional minibatches.
-    return 1
-
   def instantiate_factors(self, grads_list, damping):
 
+    self._num_timesteps = len(self._inputs[0])
+    inputs, grads_list = self._package_minibatches_multi(grads_list)
+
     self._input_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedMultiKF, ((self._inputs,), self._has_bias))
+        fisher_factors.FullyConnectedMultiKF, ((inputs,), self._has_bias))
+    self._input_factor.register_cov_dt1()
 
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF, (grads_list,))
+    self._output_factor.register_cov_dt1()
 
-    damping = normalize_damping(damping, self._num_timesteps)
-    self._damping_input, self._damping_output = compute_pi_adjusted_damping(
-        self._input_factor.get_cov(),
-        self._output_factor.get_cov(),
-        damping**0.5)
+    def compute_damping():
+      normalized_damping = normalize_damping(damping, self._num_timesteps)
+      return compute_pi_adjusted_damping(self._input_factor.get_cov(),
+                                         self._output_factor.get_cov(),
+                                         normalized_damping**0.5)
+
+    damping_id = ("compute_pi_adjusted_damping",
+                  "cov", self._input_factor.name,
+                  "cov", self._output_factor.name,
+                  "normalize_damping",
+                  damping, self._num_timesteps, "power", 0.5)
+    self._input_damping_func = _package_func(lambda: compute_damping()[0],
+                                             damping_id + ("ref", 0))
+    self._output_damping_func = _package_func(lambda: compute_damping()[1],
+                                              damping_id + ("ref", 1))
+
+  def register_matpower(self, exp):
+    if exp != -1:
+      raise NotImplementedError("FullyConnectedSeriesFB only supports inverse"
+                                "multiplications.")
 
     if self._option == SeriesFBApproximation.option1:
-      self._input_factor.register_option1quants(self._damping_input)
-      self._output_factor.register_option1quants(self._damping_output)
+      self._input_factor.register_option1quants(self._input_damping_func)
+      self._output_factor.register_option1quants(self._output_damping_func)
     elif self._option == SeriesFBApproximation.option2:
-      self._input_factor.register_option2quants(self._damping_input)
-      self._output_factor.register_option2quants(self._damping_output)
+      self._input_factor.register_option2quants(self._input_damping_func)
+      self._output_factor.register_option2quants(self._output_damping_func)
     else:
       raise ValueError(
           "Unrecognized FullyConnectedSeriesFB approximation: {}".format(
               self._option))
 
-  def multiply_inverse(self, vector):
+  def multiply_matpower(self, vector, exp):
+    if exp != -1:
+      raise NotImplementedError("FullyConnectedSeriesFB only supports inverse"
+                                "multiplications.")
+
     # pylint: disable=invalid-name
 
     Z = utils.layer_params_to_mat2d(vector)
@@ -924,8 +1276,10 @@ class FullyConnectedSeriesFB(FisherBlock):
     if self._option == SeriesFBApproximation.option1:
 
       # Note that L_A = A0^(-1/2) * U_A and L_G = G0^(-1/2) * U_G.
-      L_A, psi_A = self._input_factor.get_option1quants(self._damping_input)
-      L_G, psi_G = self._output_factor.get_option1quants(self._damping_output)
+      L_A, psi_A = self._input_factor.get_option1quants(
+          self._input_damping_func)
+      L_G, psi_G = self._output_factor.get_option1quants(
+          self._output_damping_func)
 
       def gamma(x):
         # We are assuming that each case has the same number of time-steps.
@@ -962,9 +1316,10 @@ class FullyConnectedSeriesFB(FisherBlock):
 
       # Note that P_A = A_1^T * A_0^(-1) and P_G = G_1^T * G_0^(-1),
       # and K_A = A_0^(-1/2) * E_A and K_G = G_0^(-1/2) * E_G.
-      P_A, K_A, mu_A = self._input_factor.get_option2quants(self._damping_input)
+      P_A, K_A, mu_A = self._input_factor.get_option2quants(
+          self._input_damping_func)
       P_G, K_G, mu_G = self._output_factor.get_option2quants(
-          self._damping_output)
+          self._output_damping_func)
 
       # Our approach differs superficially from the pseudo-code in the paper
       # in order to reduce the total number of matrix-matrix multiplies.
@@ -1018,11 +1373,5 @@ class FullyConnectedSeriesFB(FisherBlock):
 
     # pylint: enable=invalid-name
 
-  def multiply(self, vector):
-    raise NotImplementedError
-
   def tensors_to_compute_grads(self):
     return self._outputs
-
-  def num_inputs(self):
-    return len(self._inputs)

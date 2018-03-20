@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV2D_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_CONV2D_H_
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
 
 extern "C" {
@@ -33,6 +34,20 @@ extern void __xla_cpu_runtime_EigenConvF32(
     tensorflow::int64 padding_right, tensorflow::int64 lhs_row_dilation,
     tensorflow::int64 lhs_col_dilation, tensorflow::int64 rhs_row_dilation,
     tensorflow::int64 rhs_col_dilation);
+
+extern void __xla_cpu_runtime_EigenConvF16(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs,
+    tensorflow::int64 input_batch, tensorflow::int64 input_rows,
+    tensorflow::int64 input_cols, tensorflow::int64 input_channels,
+    tensorflow::int64 kernel_rows, tensorflow::int64 kernel_cols,
+    tensorflow::int64 kernel_channels, tensorflow::int64 kernel_filters,
+    tensorflow::int64 output_rows, tensorflow::int64 output_cols,
+    tensorflow::int64 row_stride, tensorflow::int64 col_stride,
+    tensorflow::int64 padding_top, tensorflow::int64 padding_bottom,
+    tensorflow::int64 padding_left, tensorflow::int64 padding_right,
+    tensorflow::int64 lhs_row_dilation, tensorflow::int64 lhs_col_dilation,
+    tensorflow::int64 rhs_row_dilation, tensorflow::int64 rhs_col_dilation);
 
 }  // extern "C"
 

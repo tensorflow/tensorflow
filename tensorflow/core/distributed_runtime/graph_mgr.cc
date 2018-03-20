@@ -134,7 +134,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options(), cluster_flr));
+      item->lib_def.get(), graph_options.optimizer_options(),
+      worker_env_->compute_pool, cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -271,7 +272,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       skip_cost_models_ = false;
     }
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, subgraph.release(), &unit->root));
+        NewLocalExecutor(params, std::move(subgraph), &unit->root));
   }
   return Status::OK();
 }
@@ -437,7 +438,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   StartParallelExecutors(handle, step_id, item, rendezvous, collector,
                          cost_graph, cancellation_manager,
-                         [this, item, rendezvous, done](const Status& s) {
+                         [item, rendezvous, done](const Status& s) {
                            done(s);
                            rendezvous->Unref();
                            item->Unref();

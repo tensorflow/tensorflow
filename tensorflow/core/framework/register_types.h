@@ -179,7 +179,7 @@ limitations under the License.
 
 // Call "m" on all types.
 #define TF_CALL_ALL_TYPES(m) \
-  TF_CALL_POD_TYPES(m) TF_CALL_string(m) TF_CALL_resource(m)
+  TF_CALL_POD_TYPES(m) TF_CALL_string(m) TF_CALL_resource(m) TF_CALL_variant(m)
 
 // Call "m" on POD and string types.
 #define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_string(m)

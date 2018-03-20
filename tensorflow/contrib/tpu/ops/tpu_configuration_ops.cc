@@ -191,6 +191,7 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Output("topology: string")
     .Attr("embedding_config: string = ''")
     .Attr("tpu_embedding_config: string = ''")
+    .Attr("is_global_init: bool = false")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -202,6 +203,7 @@ topology.
 tpu_embedding_config: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
 describes the embedding lookups of the program.
 embedding_config: Reserved. Do not use.
+is_global_init: Reserved. Do not use.
 )doc");
 
 REGISTER_OP("ShutdownDistributedTPU")
@@ -212,4 +214,20 @@ An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running.
 )doc");
 
-}  // namespace tensorflow
+REGISTER_OP("SessionStatus")
+    .Input("fetch_start_timestamp: double")
+    .Output("status: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Not for public usage.
+
+Returns messages from the current session as a serialized SessionStatusProto.
+
+This includes the current state of the compiler, along with any critical
+logging or warning messages.
+
+fetch_start_timestamp: any messages earlier than this will be excluded from the
+returned proto.
+)doc");
+
+}  // end namespace tensorflow

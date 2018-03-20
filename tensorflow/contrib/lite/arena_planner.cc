@@ -128,6 +128,11 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 }
 
 TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
+  // Grow the size of `allocs_` if necessary. This allows allocating temporary
+  // tensors in op's `prepare` function.
+  TF_LITE_ENSURE(context_, graph_info_->num_tensors() >= allocs_.size());
+  allocs_.resize(graph_info_->num_tensors());
+
   TF_LITE_ENSURE_STATUS(CalculateAllocations(first_node, last_node));
   TF_LITE_ENSURE_STATUS(Commit());
 
@@ -185,8 +190,12 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
 TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
   if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(
-        arena_.ResolveAlloc(context_, allocs_[tensor_index], &tensor.data.raw));
+    // Skip resolution if the size of the tensor is zero, leaving it as a
+    // nullptr.
+    if (allocs_[tensor_index].size != 0) {
+      TF_LITE_ENSURE_STATUS(arena_.ResolveAlloc(context_, allocs_[tensor_index],
+                                                &tensor.data.raw));
+    }
   }
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
     TF_LITE_ENSURE_STATUS(persistent_arena_.ResolveAlloc(

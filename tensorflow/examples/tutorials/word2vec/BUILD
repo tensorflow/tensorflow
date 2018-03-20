@@ -13,6 +13,9 @@ py_binary(
         "word2vec_basic.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

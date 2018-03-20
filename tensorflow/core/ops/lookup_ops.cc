@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -102,6 +103,8 @@ REGISTER_OP("LookupTableFindV2")
       c->set_output(0, c->UnknownShape());
       return Status::OK();
     });
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
+// TODO(b/72710477): Update this.
 
 REGISTER_OP("LookupTableInsert")
     .Input("table_handle: Ref(string)")

@@ -40,6 +40,7 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
@@ -138,6 +139,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
+@tf_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -318,6 +320,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
+@tf_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -390,11 +393,26 @@ class Sequence(object):
     """
     pass
 
+  def __iter__(self):
+    """Creates an infinite generator that iterate over the Sequence.
+
+    Yields:
+      Sequence items.
+    """
+    while True:
+      for item in (self[i] for i in range(len(self))):
+        yield item
+
 
 # Global variables to be shared across processes
 _SHARED_SEQUENCES = {}
 # We use a Value to provide unique id to different processes.
 _SEQUENCE_COUNTER = None
+
+
+def init_pool(seqs):
+  global _SHARED_SEQUENCES
+  _SHARED_SEQUENCES = seqs
 
 
 def get_index(uid, i):
@@ -414,6 +432,7 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
+@tf_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -528,9 +547,11 @@ class OrderedEnqueuer(SequenceEnqueuer):
             (when full, workers could block on `put()`)
     """
     if self.use_multiprocessing:
-      self.executor_fn = lambda: multiprocessing.Pool(workers)
+      self.executor_fn = lambda seqs: multiprocessing.Pool(  # pylint: disable=g-long-lambda
+          workers, initializer=init_pool, initargs=(seqs,))
     else:
-      self.executor_fn = lambda: ThreadPool(workers)
+       # We do not need the init since it's threads.
+      self.executor_fn = lambda _: ThreadPool(workers)
     self.workers = workers
     self.queue = queue.Queue(max_queue_size)
     self.stop_signal = threading.Event()
@@ -553,7 +574,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
       if self.shuffle:
         random.shuffle(sequence)
 
-      with closing(self.executor_fn()) as executor:
+      with closing(self.executor_fn(_SHARED_SEQUENCES)) as executor:
         for i in sequence:
           if self.stop_signal.is_set():
             return
@@ -613,6 +634,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     _SHARED_SEQUENCES[self.uid] = None
 
 
+@tf_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 

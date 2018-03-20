@@ -213,6 +213,11 @@ std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
 std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
     TF_ImportGraphDefResults* results);
 
+// If evaluation was possible, returns the numpy ndarray of the evaluated
+// result. Otherwise returns None.
+PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
+                                         TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

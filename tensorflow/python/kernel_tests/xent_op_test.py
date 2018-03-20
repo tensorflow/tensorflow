@@ -48,7 +48,7 @@ class XentTest(test.TestCase):
   def _testXent(self, np_features, np_labels, use_gpu=False):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.test_session(use_gpu=use_gpu) as sess:
-      loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+      loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
           np_features, np_labels)
       tf_loss, tf_backprop = sess.run([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -71,7 +71,7 @@ class XentTest(test.TestCase):
   def _testSingleClass(self, use_gpu=False):
     for dtype in np.float16, np.float32:
       with self.test_session(use_gpu=use_gpu) as sess:
-        loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(dtype),
             np.array([[-1.], [0.], [1.]]).astype(dtype))
         tf_loss, tf_backprop = sess.run([loss, backprop])
@@ -89,7 +89,7 @@ class XentTest(test.TestCase):
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
       self.assertRaisesRegexp(ValueError, "must be rank 2",
-                              gen_nn_ops._softmax_cross_entropy_with_logits,
+                              gen_nn_ops.softmax_cross_entropy_with_logits,
                               np_features, np_labels)
 
   def testNpXent(self):
@@ -131,14 +131,14 @@ class XentTest(test.TestCase):
   def testShapeMismatch(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        gen_nn_ops._softmax_cross_entropy_with_logits(
+        gen_nn_ops.softmax_cross_entropy_with_logits(
             [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
   def testNotMatrix(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        gen_nn_ops._softmax_cross_entropy_with_logits([0., 1., 2., 3.],
-                                                      [0., 1., 0., 1.])
+        gen_nn_ops.softmax_cross_entropy_with_logits([0., 1., 2., 3.],
+                                                     [0., 1., 0., 1.])
 
   def testHalf(self):
     self._testAll(

@@ -1,9 +1,10 @@
 path: "tensorflow.nn.rnn_cell.BasicLSTMCell"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.BasicLSTMCell\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._LayerRNNCell\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.LayerRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"

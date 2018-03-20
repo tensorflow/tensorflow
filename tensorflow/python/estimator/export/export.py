@@ -21,27 +21,28 @@ from __future__ import print_function
 
 import collections
 import os
-import time
 
 import six
 
+from tensorflow.python.estimator import util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 
 
+@tf_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(collections.namedtuple(
     'ServingInputReceiver',
     ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
@@ -118,6 +119,63 @@ class ServingInputReceiver(collections.namedtuple(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
+@tf_export('estimator.export.TensorServingInputReceiver')
+class TensorServingInputReceiver(collections.namedtuple(
+    'TensorServingInputReceiver',
+    ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
+  """A return type for a serving_input_receiver_fn.
+
+  This is for use with models that expect a single `Tensor` or `SparseTensor`
+  as an input feature, as opposed to a dict of features.
+
+  The normal `ServingInputReceiver` always returns a feature dict, even if it
+  contains only one entry, and so can be used only with models that accept such
+  a dict.  For models that accept only a single raw feature, the
+  `serving_input_receiver_fn` provided to `Estimator.export_savedmodel()` should
+  return this `TensorServingInputReceiver` instead.  See:
+  https://github.com/tensorflow/tensorflow/issues/11674
+
+  Note that the receiver_tensors and receiver_tensor_alternatives arguments
+  will be automatically converted to the dict representation in either case,
+  because the SavedModel format requires each input `Tensor` to have a name
+  (provided by the dict key).
+
+  The expected return values are:
+    features: A single `Tensor` or `SparseTensor`, representing the feature
+      to be passed to the model.
+    receiver_tensors: a `Tensor`, or a dict of string to `Tensor`, specifying
+      input nodes where this receiver expects to be fed by default.  Typically,
+      this is a single placeholder expecting serialized `tf.Example` protos.
+    receiver_tensors_alternatives: a dict of string to additional
+      groups of receiver tensors, each of which may be a `Tensor` or a dict of
+      string to `Tensor`.  These named receiver tensor alternatives generate
+      additional serving signatures, which may be used to feed inputs at
+      different points within the input receiver subgraph.  A typical usage is
+      to allow feeding raw feature `Tensor`s *downstream* of the
+      tf.parse_example() op.  Defaults to None.
+  """
+
+  def __new__(cls, features, receiver_tensors,
+              receiver_tensors_alternatives=None):
+    if features is None:
+      raise ValueError('features must be defined.')
+    if not (isinstance(features, ops.Tensor)
+            or isinstance(features, sparse_tensor.SparseTensor)):
+      raise ValueError('feature must be a Tensor or SparseTensor.')
+
+    receiver = ServingInputReceiver(
+        features=features,
+        receiver_tensors=receiver_tensors,
+        receiver_tensors_alternatives=receiver_tensors_alternatives)
+
+    return super(TensorServingInputReceiver, cls).__new__(
+        cls,
+        features=receiver.features[_SINGLE_FEATURE_DEFAULT_NAME],
+        receiver_tensors=receiver.receiver_tensors,
+        receiver_tensors_alternatives=receiver.receiver_tensors_alternatives)
+
+
+@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -146,6 +204,7 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
   return serving_input_receiver_fn
 
 
+@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 
@@ -269,13 +328,6 @@ def _log_signature_report(signature_def_map, excluded_signatures):
     logging.warn('Export includes no default signature!')
 
 
-# When we create a timestamped directory, there is a small chance that the
-# directory already exists because another worker is also writing exports.
-# In this case we just wait one second to get a new timestamp and try again.
-# If this fails several times in a row, then something is seriously wrong.
-MAX_DIRECTORY_CREATION_ATTEMPTS = 10
-
-
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -294,25 +346,7 @@ def get_timestamped_export_dir(export_dir_base):
     RuntimeError: if repeated attempts fail to obtain a unique timestamped
       directory name.
   """
-  attempts = 0
-  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
-    export_timestamp = int(time.time())
-
-    export_dir = os.path.join(
-        compat.as_bytes(export_dir_base),
-        compat.as_bytes(str(export_timestamp)))
-    if not gfile.Exists(export_dir):
-      # Collisions are still possible (though extremely unlikely): this
-      # directory is not actually created yet, but it will be almost
-      # instantly on return from this function.
-      return export_dir
-    time.sleep(1)
-    attempts += 1
-    logging.warn(
-        'Export directory {} already exists; retrying (attempt {}/{})'.format(
-            export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
-  raise RuntimeError('Failed to obtain a unique export directory name after '
-                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+  return util.get_timestamped_dir(export_dir_base)
 
 
 def get_temp_export_dir(timestamped_export_dir):

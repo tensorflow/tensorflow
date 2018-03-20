@@ -44,28 +44,12 @@ namespace interpreter {
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::interpreter;
 
-/*
- * Run optimization passes on the module. The graph is transformed by
- * each pass in the optimization pipeline. The service subdirectory
- * contains useful optimization passes.
- */
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
-  pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<HloCSE>(false);
 
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      false, [](const Shape&, const Shape&) { return false; });
-  pipeline.AddPass<WhileLoopSimplifier>();
-  pipeline.AddPass<ReshapeMover>();
-  pipeline.AddPass<HloConstantFolding>();
-  pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
 
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

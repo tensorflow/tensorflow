@@ -42,14 +42,22 @@ bool ReorderActivationFunctions::Run(Model* model, std::size_t op_index) {
   std::unique_ptr<Operator>& exchange_op = *exchange_it;
   DCHECK(exchange_op);
 
-  if (exchange_op->type != OperatorType::kTensorFlowReshape) {
-    return false;
+  // Allow activation functions to move up over any operator that does not
+  // change the values.
+  switch (exchange_op->type) {
+    case OperatorType::kExpandDims:
+    case OperatorType::kSqueeze:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kTranspose:
+      break;
+    default:
+      return false;
   }
 
   DCHECK_EQ(exchange_op->outputs[0], ac_op->inputs[0]);
-  const auto& exchange_op_input = exchange_op->inputs[0];
-  const auto& intermediate_array = exchange_op->outputs[0];
-  const auto& ac_op_output = ac_op->outputs[0];
+  const auto exchange_op_input = exchange_op->inputs[0];
+  const auto intermediate_array = exchange_op->outputs[0];
+  const auto ac_op_output = ac_op->outputs[0];
 
   int count_ops_consuming_output =
       CountOpsWithInput(*model, intermediate_array);
@@ -62,18 +70,62 @@ bool ReorderActivationFunctions::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  // Rewire by changing inputs, including all consumers.
-  Operator* consumer = GetFirstOpWithInput(*model, ac_op_output);
-  while (consumer) {
-    for (int i = 0; i < consumer->inputs.size(); ++i) {
-      if (consumer->inputs[i] == ac_op_output) {
-        consumer->inputs[i] = intermediate_array;
+  // If the ac_op was originally producing an output_array we can't trivially
+  // reorder as otherwise the output array name would change and break
+  // downstream assumptions. To work around that we perform some renaming below
+  // in that case at the cost of a bit more confusing array names in this rare
+  // case.
+  bool is_ac_op_output =
+      std::find(model->flags.output_arrays().begin(),
+                model->flags.output_arrays().end(),
+                ac_op_output) != model->flags.output_arrays().end();
+  if (is_ac_op_output) {
+    // To preserve the output array name of the activation function we need to
+    // create a temporary to use to pass between ac->ex.
+    //
+    // Original:
+    //  (a) -> EX -> (b) -> AC -> (c)
+    // Now:
+    //  (a) -> AC -> (c') -> EX -> (c)
+    AddMessageF(
+        "Exchanging activation function %s with %s but renaming to preserve "
+        "output array %s",
+        LogName(*ac_op), LogName(*exchange_op), ac_op->outputs[0]);
+
+    auto renamed_ac_op_output =
+        AvailableArrayName(*model, ac_op_output + "_exchange");
+    ac_op->inputs[0] = exchange_op_input;
+    ac_op->outputs[0] = renamed_ac_op_output;
+    model->EraseArray(exchange_op->outputs[0]);
+    exchange_op->inputs[0] = renamed_ac_op_output;
+    exchange_op->outputs[0] = ac_op_output;
+  } else {
+    // Simply swap the order and update consumers to use the exchange_op output
+    // array (b).
+    //
+    // Original:
+    //  (a) -> EX -> (b) -> AC -> (c)
+    // Now:
+    //  (a) -> AC -> (c) -> EX -> (b)
+    AddMessageF("Exchanging activation function %s with %s", LogName(*ac_op),
+                LogName(*exchange_op));
+
+    Operator* consumer = GetFirstOpWithInput(*model, ac_op_output);
+    while (consumer) {
+      for (int i = 0; i < consumer->inputs.size(); ++i) {
+        if (consumer->inputs[i] == ac_op_output) {
+          consumer->inputs[i] = intermediate_array;
+        }
       }
+      consumer = GetFirstOpWithInput(*model, ac_op_output);
     }
-    consumer = GetFirstOpWithInput(*model, ac_op_output);
+    ac_op->inputs[0] = exchange_op_input;
+    exchange_op->inputs[0] = ac_op_output;
   }
-  ac_op->inputs[0] = exchange_op_input;
-  exchange_op->inputs[0] = ac_op_output;
+
+  // Clear shapes; this will allow shape propagation to fix the sizes for us.
+  model->GetOrCreateArray(ac_op->outputs[0]).clear_shape();
+  model->GetOrCreateArray(exchange_op->outputs[0]).clear_shape();
 
   // Finally, reorder operators.  Note that this only works when there are no
   // other direct descendents of the exchange_op.

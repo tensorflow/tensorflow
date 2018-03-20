@@ -280,123 +280,129 @@ TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
   ASSERT_TRUE(item != nullptr);
 }
 
-TEST_F(GrapplerItemBuilderTest, FromSimpleFunctionDef) {
-  const Tensor kTwo = test::AsScalar<int64>(2);
-  FunctionDef func = FunctionDefHelper::Define(
-      // Name
-      "XTimesTwo",
-      // Args
-      {"x: T"},
-      // Return values
-      {"y: T"},
-      // Attr def
-      {"T: {float, double, int32, int64}"},
-      // Nodes
-      {
-          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
-          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
-          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
-      });
+TEST_F(GrapplerItemBuilderTest, GraphWithCustomOps) {
+  MetaGraphDef meta_graph;
+  // y = XTimesTwo(x)
+  constexpr char device[] = "/cpu:0";
+  *meta_graph.mutable_graph_def() = test::function::GDef(
+      {test::function::NDef("x", "Const", {}, {{"dtype", DT_FLOAT}}, device),
+       test::function::NDef("y", "CustomOp", {"x"}, {{"T", DT_FLOAT}}, device)},
+      {});
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  ItemConfig cfg;
+  cfg.inline_functions = false;
+
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef("test", func, func_attr);
-  CHECK(item);
-  EXPECT_EQ(4, item->graph.node_size());
-  EXPECT_EQ(std::vector<string>({"y"}), item->fetch);
-  EXPECT_EQ(1, item->feed.size());
-  EXPECT_EQ("x", item->feed[0].first);
-
-  for (const NodeDef &node : item->graph.node()) {
-    if (node.name() == "x") {
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
-      EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "two") {
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "scale") {
-      EXPECT_EQ("Cast", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("DstT").type());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("two:0", node.input(0));
-    } else if (node.name() == "y") {
-      EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-      EXPECT_EQ("scale:0", node.input(1));
-    }
-  }
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item != nullptr);
 }
 
-TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
-  // Gradient graph for the Subtract operation
-  std::vector<FunctionDefHelper::Node> nodes = {
-      {{"sx"}, "Shape", {"x"}},
-      {{"sy"}, "Shape", {"y"}},
-      {{"gx"}, "Identity", {"dz"}},
-      {{"gy"}, "Neg", {"dz"}},
-      {{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "sy"}},
-      {{"sum_gx"}, "Sum", {"gx", "rx"}},
-      {{"dx"}, "Reshape", {"sum_gx", "sx"}},
-      {{"sum_gy"}, "Sum", {"gy", "ry"}},
-      {{"dy"}, "Reshape", {"sum_gy", "sy"}},
-  };
+TEST_F(GrapplerItemBuilderTest, FromGraphWithSignatureDef) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+  auto z = ops::Add(s.WithOpName("z"), x, y);
 
-  for (auto &n : nodes) {
-    // "BroadcastGradientArgs" doesn't need any attrs.
-    if (n.attr.empty() && n.op != "BroadcastGradientArgs") {
-      n.attr = {{"T", "$T"}};
-    }
-  }
-  FunctionDef func = FunctionDefHelper::Define(
-      // Name
-      "SubGrad",
-      // Arg defs
-      {"x: T", "y: T", "dz: T"},
-      // Ret val defs
-      {"dx: T", "dy: T"},
-      // Attr defs
-      {{"T: {half, float, double}"}},
-      // Nodes
-      nodes);
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  output.set_name("z");
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  // It should be able to dedup the input and output with same names.
+  TensorInfo input2, output2;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  output.set_name("z");
+  SignatureDef serving_signature2;
+  (*serving_signature.mutable_inputs())["input2"] = input2;
+  (*serving_signature.mutable_outputs())["output2"] = output2;
+  (*meta_graph.mutable_signature_def())["serving2"] = serving_signature2;
+
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef("test", func, func_attr);
-  CHECK(item);
-  EXPECT_EQ(12, item->graph.node_size());
-  EXPECT_EQ(std::vector<string>({"dx", "dy"}), item->fetch);
-  EXPECT_EQ(3, item->feed.size());
-  EXPECT_EQ("x", item->feed[0].first);
-  EXPECT_EQ("y", item->feed[1].first);
-  EXPECT_EQ("dz", item->feed[2].first);
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item != nullptr);
 
-  for (const NodeDef &node : item->graph.node()) {
-    if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
-      EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
-      EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "rx") {
-      EXPECT_EQ("BroadcastGradientArgs", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("sx:0", node.input(0));
-      EXPECT_EQ("sy:0", node.input(1));
-    } else if (node.name() == "sum_gx") {
-      EXPECT_EQ("Sum", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("gx:0", node.input(0));
-      EXPECT_EQ("rx:0", node.input(1));
-    } else if (node.name() == "sum_gy") {
-      EXPECT_EQ("Sum", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("gy:0", node.input(0));
-      EXPECT_EQ("rx:1", node.input(1));
-    }
-  }
+  EXPECT_EQ(item->feed.size(), 1);
+  EXPECT_EQ(item->fetch.size(), 1);
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->fetch[0], "z");
+}
+
+TEST_F(GrapplerItemBuilderTest, FromGraphWithIncompleteSignatureDef) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  // Its coo_sparse proto is incomplete.
+  output.mutable_coo_sparse()->set_values_tensor_name("z");
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item == nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, FromGraphWithUnknownDimInSignatureInput) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto shape_1d = PartialTensorShape({-1});
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                            ops::Placeholder::Shape(shape_1d));
+  auto y = ops::Const(s.WithOpName("y"), static_cast<float>(1.0));
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  TensorInfo input, output;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  shape_1d.AsProto(input.mutable_tensor_shape());
+  output.set_name("z");
+
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+
+  ItemConfig cfg;
+  cfg.placeholder_unknown_output_shape_dim = 64;
+  std::unique_ptr<GrapplerItem> item1 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item1 != nullptr);
+
+  ASSERT_EQ(item1->feed.size(), 1);
+  EXPECT_EQ(item1->feed[0].second.NumElements(), 64);
+
+  std::unique_ptr<GrapplerItem> item2 =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item2 != nullptr);
+
+  ASSERT_EQ(item2->feed.size(), 1);
+  EXPECT_EQ(item2->feed[0].second.NumElements(), 1);
 }
 
 }  // namespace

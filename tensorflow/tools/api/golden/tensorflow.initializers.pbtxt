@@ -1,16 +1,8 @@
 path: "tensorflow.initializers"
 tf_module {
   member {
-    name: "absolute_import"
-    mtype: "<type \'instance\'>"
-  }
-  member {
     name: "constant"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "division"
-    mtype: "<type \'instance\'>"
   }
   member {
     name: "identity"
@@ -23,10 +15,6 @@ tf_module {
   member {
     name: "orthogonal"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "print_function"
-    mtype: "<type \'instance\'>"
   }
   member {
     name: "random_normal"

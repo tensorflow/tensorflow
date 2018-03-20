@@ -41,7 +41,7 @@ class TestEnv {
     device_mgr_.reset(new DeviceMgr({device}));
     flib_runtime_ = NewFunctionLibraryRuntime(device_mgr_.get(), Env::Default(),
                                               device, TF_GRAPH_DEF_VERSION,
-                                              &flib_def_, {}, nullptr);
+                                              &flib_def_, nullptr, {}, nullptr);
   }
 
   FunctionLibraryRuntime* function_library_runtime() const {
@@ -63,17 +63,17 @@ TEST(AttrTypeMap, Lookup) {
 
   TF_AttrType t;
   unsigned char is_list = 1;
-  s = AttrTypeByName(m, "ThisAttribyteCannotPossiblyExist", &t, &is_list);
+  s = AttrTypeByName(*m, "ThisAttribyteCannotPossiblyExist", &t, &is_list);
   EXPECT_FALSE(s.ok());
   EXPECT_NE(is_list, 0);
-  s = AttrTypeByName(m, "transpose_a", &t, &is_list);
+  s = AttrTypeByName(*m, "transpose_a", &t, &is_list);
   ASSERT_TRUE(s.ok()) << s;
   EXPECT_EQ(TF_ATTR_BOOL, t);
   EXPECT_EQ(is_list, 0);
 
   s = AttrTypeMapForOp("Squeeze", &m);
   ASSERT_TRUE(s.ok()) << s;
-  s = AttrTypeByName(m, "squeeze_dims", &t, &is_list);
+  s = AttrTypeByName(*m, "squeeze_dims", &t, &is_list);
   ASSERT_TRUE(s.ok()) << s;
   EXPECT_EQ(TF_ATTR_INT, t);
   EXPECT_NE(is_list, 0);
