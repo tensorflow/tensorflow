@@ -35,7 +35,6 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
-from tensorflow.python.util import nest
 
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
@@ -1227,27 +1226,24 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     return compute_cov(reshaped_tensor)
 
 
-class FullyConnectedMultiKF(InverseProvidingFactor):
+class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
   """Kronecker factor for a fully connected layer used multiple times."""
 
   def __init__(self,
-               tensor_lists,
+               tensors,
+               num_uses=None,
                has_bias=False):
     """Constructs a new `FullyConnectedMultiKF`.
 
     Args:
-      tensor_lists: 2D array (list of lists) of Tensors of shape
-        [batch_size, n]. Each of these tensors is usually a layer's inputs or
-        its output's gradients. The first dimension of the array is the source,
-        and the second is the use in the graph (which is sometimes a
-        "time-step").
+      tensors: List of Tensors of shape, each of shape [batch_size, n]. Each of
+        these tensors is usually a layer's inputs or its output's gradients.
+        The list is over sources.
+      num_uses: int. The number of time-steps / uses.
       has_bias: bool. If True, '1' is appended to each row.
     """
 
-    self._tensor_lists = tensor_lists
-    self._has_bias = has_bias
-    self._num_timesteps = len(tensor_lists[0])
-    self._tensors = [None] * len(tensor_lists)
+    self._num_uses = num_uses
 
     self._cov_dt1 = None
     self._make_cov_dt1 = False
@@ -1256,20 +1252,17 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
     self._option1quants_registrations = set()
     self._option2quants_registrations = set()
 
-    super(FullyConnectedMultiKF, self).__init__()
+    super(FullyConnectedMultiKF, self).__init__(tensors=tensors,
+                                                has_bias=has_bias)
+
+  @property
+  def _num_timesteps(self):
+    return self._num_uses
 
   @property
   def _var_scope(self):
     return "ff_fc_multi_" + scope_string_from_params(
-        tuple(nest.flatten(self._tensor_lists)) + (self._has_bias,))
-
-  @property
-  def _num_sources(self):
-    return len(self._tensor_lists)
-
-  @property
-  def _dtype(self):
-    return self._tensor_lists[0][0].dtype
+        tuple(self._tensors) + (self._num_timesteps, self._has_bias,))
 
   def make_covariance_update_op(self, ema_decay):
 
@@ -1291,36 +1284,28 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
 
     return op
 
-  def _compute_new_cov(self, idx=0):
-    # Concatenate across time/replications
-    tensor = array_ops.concat(self._tensor_lists[idx], 0)
-    if self._has_bias:
-      tensor = append_homog(tensor)
-    # We save these so they can be used by _compute_new_cov_dt1
-    self._tensors[idx] = tensor
-    return compute_cov(tensor)
-
   def _compute_new_cov_dt1(self, idx=0):  # pylint: disable=missing-docstring
     tensor = self._tensors[idx]
-    batch_size = array_ops.shape(self._tensor_lists[idx][0])[0]
-    # Is there a more elegant way to do this computation?
+    if self._has_bias:
+      # This appending is technically done twice (the other time is for
+      # _compute_new_cov())
+      tensor = append_homog(tensor)
+
+    total_len = array_ops.shape(tensor)[0]
+    batch_size = total_len // self._num_timesteps
+
     tensor_present = tensor[:-batch_size, :]
     tensor_future = tensor[batch_size:, :]
+
     # We specify a normalizer for this computation to ensure a PSD Fisher
     # block estimate.  This is equivalent to padding with zeros, as was done
     # in Section B.2 of the appendix.
-    normalizer = self._num_timesteps * batch_size
     return compute_cov(
-        tensor_future, tensor_right=tensor_present, normalizer=normalizer)
-
-  @property
-  def _cov_shape(self):
-    size = self._tensor_lists[0][0].shape[1] + self._has_bias
-    return [size, size]
+        tensor_future, tensor_right=tensor_present, normalizer=total_len)
 
   @property
   def _vec_shape(self):
-    size = self._tensor_lists[0][0].shape[1] + self._has_bias
+    size = self._tensors[0].shape[1] + self._has_bias
     return [size]
 
   def get_option1quants(self, damping_func):

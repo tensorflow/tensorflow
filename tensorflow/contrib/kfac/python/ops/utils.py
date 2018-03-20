@@ -667,6 +667,9 @@ class PartitionedTensor(object):
   def __ne__(self, other):
     return not self == other  # pylint: disable=g-comparison-negation
 
+  def __getitem__(self, key):
+    return self.as_tensor()[key]
+
   def as_tensor(self, dtype=None, name=None, as_ref=False):
     with ops.name_scope(name, "PartitionedTensor.as_tensor", self.tensors):
       assert not as_ref

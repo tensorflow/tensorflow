@@ -862,8 +862,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), name='a/b/c')
-      tensor_list = [tensor]
-      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=False)
+      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=False)
       factor.instantiate_cov_variables()
       self.assertEqual([3, 3], factor.get_cov().get_shape().as_list())
 
@@ -872,8 +871,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
       dtype = dtypes.float64_ref
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
-      tensor_list = [tensor]
-      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=False)
+      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=False)
       factor.instantiate_cov_variables()
       cov = factor.get_cov()
       self.assertEqual(cov.dtype, dtype)
@@ -883,8 +881,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      tensor_list = [tensor]
-      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=True)
+      factor = ff.FullyConnectedMultiKF((tensor,), has_bias=True)
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())
@@ -895,8 +892,7 @@ class FullyConnectedMultiKFTest(test.TestCase):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
-      tensor_list = [tensor]
-      factor = ff.FullyConnectedMultiKF((tensor_list,))
+      factor = ff.FullyConnectedMultiKF((tensor,))
       factor.instantiate_cov_variables()
 
       sess.run(tf_variables.global_variables_initializer())

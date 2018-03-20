@@ -119,16 +119,6 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
 StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
     HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> expanded_dims);
 
-// Expands (via reshape) the last (logical) dimension of `operand` into a
-// sequence of `expanded_dims` dimensions.  `operand` must at least be of rank 1
-// and the number of elements in its last dimension must be equal to the
-// product of `expanded_dims`.
-//
-// For instance if `operand` has shape f32[9,7,200] and expanded_dims is
-// {2,5,20} the result is `operand` reshaped to [9,7,2,5,20].
-StatusOr<HloInstruction*> ExpandLastDimIntoNDims(
-    HloInstruction* operand, tensorflow::gtl::ArraySlice<int64> expanded_dims);
-
 // Elides (via reshape) a set of degenerate dimensions (dimensions containing
 // exactly one element), `dims_to_elide` from `operand`.  Every dimension in
 // `dims_to_elide` must be a degenerate dimension.  `dims_to_elide` must be

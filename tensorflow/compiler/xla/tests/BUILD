@@ -676,7 +676,9 @@ xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
     deps = [
+        ":client_library_test_base",
         ":hlo_test_base",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

@@ -42,6 +42,7 @@ py_test(
         ":impl",
         "//tensorflow/contrib/py2tf/utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 

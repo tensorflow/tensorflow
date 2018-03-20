@@ -18,9 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import script_ops
+
+
+class MatchDType(namedtuple('MatchDType', ('arg_number',))):
+  """Allows matching the dtype of an argument.
+
+  Used in conjunction with function calls. For example, MatchDType(0) will
+  match the DType of the first argument.
+  """
+
+  pass
 
 
 def wrap_py_func(f, return_dtypes, arguments, use_dummy_return=False):
@@ -34,10 +46,12 @@ def wrap_py_func(f, return_dtypes, arguments, use_dummy_return=False):
 
   Args:
     f: Callable
-    return_dtypes: DType, tuple, list or None, the data type for each of f's
-        return value. None if f has no return values or use_dummy_return is
-        True.
-    arguments: Arguments for f
+    return_dtypes: None, individual of tuple/list of DType or MatchDType, the
+        data type for each of f's return value(s). Set to None if f has no
+        return values or use_dummy_return is True. Use MatchDType to define a
+        dtype identical to that of `i`th argument (argument 0 is the first);
+        an argument must of Tensor type if it is to be used with MatchDType.
+    arguments: Arguments for f, as list or tuple.
     use_dummy_return: If True, the function will return a dummy value of 1
         and discard its actual return value.
   Returns:
@@ -57,6 +71,24 @@ def wrap_py_func(f, return_dtypes, arguments, use_dummy_return=False):
     index_in_tensor_list[j] = i
     if arg_is_tensor[j]:
       i += 1
+
+  def match_argument(arg_number):
+    arg = arguments[arg_number]
+    if not arg_is_tensor[arg_number]:
+      raise ValueError(
+          'argument %d was used with MatchDType and must be a tf.Tensor, but '
+          'was %s instead' % (arg_number, type(arg)))
+    return arg.dtype
+
+  if return_dtypes:
+    if isinstance(return_dtypes, MatchDType):
+      return_dtypes = match_argument(return_dtypes.arg_number)
+    elif isinstance(return_dtypes, (list, tuple)):
+      return_dtypes = tuple(
+          match_argument(a.arg_number) if isinstance(a, MatchDType) else a
+          for a in return_dtypes)
+    else:
+      assert isinstance(return_dtypes, dtypes.DType)
 
   def f_wrapper(*tensor_args):
     f_args = tuple(tensor_args[index_in_tensor_list[i]]

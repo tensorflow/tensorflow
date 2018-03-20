@@ -213,6 +213,12 @@ First 2 elements of y:
       self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes()
+  def test_raises_when_not_equal_and_broadcastable_shapes(self):
+    cond = constant_op.constant([True, False], name="small")
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+      check_ops.assert_equal(cond, False, message="fail")
+
+  @test_util.run_in_graph_and_eager_modes()
   def test_doesnt_raise_when_both_empty(self):
     larry = constant_op.constant([])
     curly = constant_op.constant([])
