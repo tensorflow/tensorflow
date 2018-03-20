@@ -1583,6 +1583,8 @@ inline void Add(int left_shift, const uint8* input1_data,
   TFLITE_DCHECK_LT(input1_offset, 256);
   TFLITE_DCHECK_LT(input2_offset, 256);
 #ifdef USE_NEON
+  const auto output_activation_min_vector = vdup_n_u8(output_activation_min);
+  const auto output_activation_max_vector = vdup_n_u8(output_activation_max);
   for (; i <= size - 8; i += 8) {
     const auto input1_val_original = vld1_u8(input1_data + i);
     const auto input2_val_original = vld1_u8(input2_data + i);
@@ -1628,7 +1630,10 @@ inline void Add(int left_shift, const uint8* input1_data,
     const auto s2_narrowed = vmovn_s32(s2);
     const auto s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
                              vdupq_n_s16(output_offset));
-    vst1_u8(output_data + i, vqmovun_s16(s));
+    const auto clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(s)));
+    vst1_u8(output_data + i, clamped);
   }
 #endif  // NEON
 
