@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/import.h"
 
 #include "flatbuffers/flexbuffers.h"
+#include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/contrib/lite/tools/verifier.h"
 
 namespace toco {
 
@@ -171,10 +173,11 @@ bool Verify(const void* buf, size_t len) {
 
 std::unique_ptr<Model> Import(const ModelFlags& model_flags,
                               const string& input_file_contents) {
-  if (!Verify(input_file_contents.data(), input_file_contents.size())) {
+  ::tflite::AlwaysTrueResolver r;
+  if (!::tflite::Verify(input_file_contents.data(), input_file_contents.size(),
+                        r, ::tflite::DefaultErrorReporter())) {
     LOG(FATAL) << "Invalid flatbuffer.";
   }
-
   const ::tflite::Model* input_model =
       ::tflite::GetModel(input_file_contents.data());
 
