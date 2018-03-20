@@ -37,7 +37,7 @@ class Square(bijector.Bijector):
   g is a bijection between the non-negative real numbers (R_+) and the
   non-negative real numbers.
 
-  Examples:
+  #### Examples
 
   ```python
   bijector.Square().forward(x=[[1., 0], [2, 1]])

@@ -346,8 +346,13 @@ void TFE_DeleteOp(TFE_Op* op) { delete op; }
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = op->ctx->device_manager->LookupDevice(device_name, &d);
-    if (!status->status.ok()) return;
+    auto it = op->ctx->devices_map.find(device_name);
+    if (it == op->ctx->devices_map.end()) {
+      status->status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+      return;
+    }
+    d = it->second;
   }
   op->device = d;
 }

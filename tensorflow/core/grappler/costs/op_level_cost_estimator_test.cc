@@ -75,10 +75,22 @@ OpContext DescribeMatMulUnknownShape() {
 // Wrangles the minimum number of proto fields to set up an input of
 // arbitrary rank and type.
 void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
-                                OpInfo* op_features) {
-  auto input = op_features->add_inputs();
+                                OpInfo* op_info) {
+  auto input = op_info->add_inputs();
   input->set_dtype(dtype);
   auto shape = input->mutable_shape();
+  for (auto d : dims) {
+    shape->add_dim()->set_size(d);
+  }
+}
+
+// Wrangles the minimum number of proto fields to set up an output of
+// arbitrary rank and type.
+void DescribeArbitraryRankOutput(const std::vector<int>& dims, DataType dtype,
+                                 OpInfo* op_info) {
+  auto output = op_info->add_outputs();
+  output->set_dtype(dtype);
+  auto shape = output->mutable_shape();
   for (auto d : dims) {
     shape->add_dim()->set_size(d);
   }
@@ -199,6 +211,23 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
 
   OpLevelCostEstimator estimator_;
 };
+
+TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Gather");
+
+  // Huge first input shouldn't affect Gather execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(128), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(144), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
 
 TEST_F(OpLevelCostEstimatorTest, BiasAddExecutionTime) {
   auto cost = PredictCosts(DescribeBiasAdd(1000, 10));
@@ -354,7 +383,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   TensorProto tensor_proto;
   TensorShapeProto tensor_shape_proto;
 
-  // Dimention larger than max value; should fail while converting to Tensor
+  // Dimension larger than max value; should fail while converting to Tensor
   // class.
   tensor_proto.mutable_tensor_shape()->add_dim()->set_size(255);
   EXPECT_FALSE(

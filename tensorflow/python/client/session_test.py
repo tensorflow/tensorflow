@@ -62,8 +62,7 @@ from tensorflow.python.util import compat
 ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
-# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
-# @test_util.with_c_api
+@test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

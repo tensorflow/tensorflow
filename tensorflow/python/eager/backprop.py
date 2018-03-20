@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 _op_attr_type_cache = {}
@@ -637,13 +638,14 @@ _default_vspace = imperative_grad.VSpace(
     ones=_ones)
 
 
+@tf_export("GradientTape")
 class GradientTape(object):
   """Record operations for automatic differentiation.
 
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Variables (created by @{tf.contrib.eager.Variable} or @{tf.get_variable})
+  Variables (created by `tf.contrib.eager.Variable` or @{tf.get_variable})
   are automatically watched. Tensors can be manually watched by invoking the
   `watch`
   method on this context manager.

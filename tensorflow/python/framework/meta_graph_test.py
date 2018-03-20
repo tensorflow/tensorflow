@@ -285,8 +285,7 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertIs(global_vars[0], trainable_vars[0])
 
 
-# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
-# @test_util.with_c_api
+@test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):

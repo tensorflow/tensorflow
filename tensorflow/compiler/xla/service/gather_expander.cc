@@ -53,9 +53,14 @@ static StatusOr<HloInstruction*> DeScalarizeGatherIndices(
     return gather_indices;
   }
 
-  int64 last_index = gather_indices_shape.dimensions(
-      gather_indices_shape.dimensions_size() - 1);
-  return ExpandLastDimIntoNDims(gather_indices, {last_index, 1});
+  DCHECK_EQ(index_vector_dim, gather_indices_shape.dimensions_size());
+
+  std::vector<int64> result_shape_dims;
+  c_copy(gather_indices_shape.dimensions(),
+         std::back_inserter(result_shape_dims));
+  result_shape_dims.push_back(1);
+
+  return MakeReshapeHlo(result_shape_dims, gather_indices);
 }
 
 // Canonicalizes the gather_indices tensors so that we only have deal with some
@@ -81,16 +86,17 @@ static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
   // all of the non-index-vector dimensions.
   const Shape& shape = transposed_gather_indices->shape();
   if (shape.dimensions_size() == 1) {
-    return ExpandFirstDimIntoNDims(gather_indices, {1, shape.dimensions(0)});
+    return ExpandFirstDimIntoNDims(transposed_gather_indices,
+                                   {1, shape.dimensions(0)});
   } else {
     return CollapseFirstNDims(transposed_gather_indices,
                               shape.dimensions_size() - 1);
   }
 }
 
-// Expands out the gather dimensions in the accumulator produced by the while
-// loop.
-static StatusOr<HloInstruction*> ExpandGatherDimsInAccumulator(
+// Expands out or contracts away the gather dimensions in the accumulator
+// produced by the while loop.
+static StatusOr<HloInstruction*> AdjustGatherDimsInAccumulator(
     const Shape& gather_indices_shape, HloInstruction* accumulator,
     int64 index_vector_dim) {
   std::vector<int64> output_gather_dim_bounds;
@@ -103,9 +109,14 @@ static StatusOr<HloInstruction*> ExpandGatherDimsInAccumulator(
 
   if (output_gather_dim_bounds.empty()) {
     // If output_gather_dim_bounds is empty we must be lowering a (effectively)
-    // dynamic-slice.
+    // dynamic-slice.  In that case, there is a leading degenerate gather
+    // dimension that we added to make this special case play well with the
+    // general while loop which we need to remove now.
     CHECK_EQ(accumulator->shape().dimensions(0), 1);
-    return CollapseFirstNDims(accumulator, 2);
+    ArraySlice<int64> reshaped_dim_sizes =
+        AsInt64Slice(accumulator->shape().dimensions());
+    reshaped_dim_sizes.remove_prefix(1);
+    return MakeReshapeHlo(reshaped_dim_sizes, accumulator);
   }
 
   return ExpandFirstDimIntoNDims(accumulator, output_gather_dim_bounds);
@@ -290,21 +301,38 @@ static StatusOr<HloInstruction*> PermuteGatherAndWindowDims(
 
 StatusOr<HloInstruction*> GatherExpander::ExpandGather(
     HloInstruction* gather_instr) {
+  CHECK(!ShapeUtil::HasZeroElements(gather_instr->shape()));
+
   HloComputation* computation = gather_instr->parent();
   HloInstruction* operand = gather_instr->mutable_operand(0);
   HloInstruction* gather_indices = gather_instr->mutable_operand(1);
+  const Shape& gather_indices_shape = gather_indices->shape();
   const Shape& output_shape = gather_instr->shape();
   int64 output_rank = output_shape.dimensions_size();
 
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();
 
+  int64 gather_loop_trip_count = 1;
+  for (int64 i = 0, e = gather_indices_shape.dimensions_size(); i < e; i++) {
+    if (i != dim_numbers.index_vector_dim()) {
+      gather_loop_trip_count *= gather_indices_shape.dimensions(i);
+    }
+  }
+
+  if (!IsInt32(gather_loop_trip_count)) {
+    return Unimplemented(
+        "Gather operations with more than 2147483647 gather indices are not "
+        "supported. This error occurred for %s.",
+        gather_instr->ToString().c_str());
+  }
+
   TF_ASSIGN_OR_RETURN(HloInstruction * canonical_gather_indices,
                       CanonicalizeGatherIndices(
                           gather_indices, dim_numbers.index_vector_dim()));
 
-  const int64 gather_loop_trip_count =
-      canonical_gather_indices->shape().dimensions(0);
+  CHECK_EQ(gather_loop_trip_count,
+           canonical_gather_indices->shape().dimensions(0));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * accumulator_init,
@@ -331,7 +359,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * accumulator_with_output_gather_dims_decanonicalized,
-      ExpandGatherDimsInAccumulator(gather_indices->shape(),
+      AdjustGatherDimsInAccumulator(gather_indices->shape(),
                                     accumulator_with_window_dims_elided,
                                     dim_numbers.index_vector_dim()));
 
@@ -341,12 +369,17 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
 }
 
 StatusOr<bool> GatherExpander::Run(HloModule* module) {
+  auto is_nontrivial_gather = [](HloInstruction* inst) {
+    return inst->opcode() == HloOpcode::kGather &&
+           // Avoid expanding gather ops that produce zero sized tensors,
+           // instead punt these to ZeroSizedHloElimination.
+           !ShapeUtil::HasZeroElements(inst->shape());
+  };
+
   std::vector<HloInstruction*> gather_instrs;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     c_copy_if(computation->instructions(), std::back_inserter(gather_instrs),
-              [](HloInstruction* inst) {
-                return inst->opcode() == HloOpcode::kGather;
-              });
+              is_nontrivial_gather);
   }
 
   for (HloInstruction* inst : gather_instrs) {
