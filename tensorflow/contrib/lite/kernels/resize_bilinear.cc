@@ -36,6 +36,17 @@ constexpr int kInputTensor = 0;
 constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
 
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context, TfLiteTensor* input,
+                                TfLiteTensor* size, TfLiteTensor* output) {
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
+  output_size->data[0] = input->dims->data[0];
+  const int32* size_data = GetTensorData<int32>(size);
+  output_size->data[1] = size_data[0];
+  output_size->data[2] = size_data[1];
+  output_size->data[3] = input->dims->data[3];
+  return context->ResizeTensor(context, output, output_size);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -55,32 +66,33 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // integers.
   output->type = kTfLiteFloat32;
 
-  // TODO(ahentz): if the input is constant, we can allocate here.
-  output->allocation_type = kTfLiteDynamic;
-  return kTfLiteOk;
+  if (!IsConstantTensor(size)) {
+    SetTensorToDynamic(output);
+    return kTfLiteOk;
+  }
+  return ResizeOutputTensor(context, input, size, output);
 }
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params =
+      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
+
   TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteTensor* size = GetInput(context, node, kSizeTensor);
 
-  // TODO(ahentz): we only need to do this here if it wasn't done in Eval().
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = input->dims->data[0];
-  const int32* size_data = GetTensorData<int32>(size);
-  output_size->data[1] = size_data[0];
-  output_size->data[2] = size_data[1];
-  output_size->data[3] = input->dims->data[3];
-  context->ResizeTensor(context, output, output_size);
-  TfLiteTensorRealloc(output->bytes, output);
+  if (IsDynamicTensor(output)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeOutputTensor(context, input, size, output));
+  }
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(type)                                     \
-  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input), \
-                       GetTensorData<int32>(size), GetTensorDims(size),   \
-                       GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_RESIZE_BILINEAR(type)                                       \
+  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input),   \
+                       GetTensorData<int32>(size), GetTensorDims(size),     \
+                       GetTensorData<float>(output), GetTensorDims(output), \
+                       params->align_corners)
 
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops);

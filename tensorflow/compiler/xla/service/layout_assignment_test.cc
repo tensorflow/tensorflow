@@ -590,6 +590,85 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
                                             transpose->shape(), {2, 3, 0, 1}));
 }
 
+// TransposeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, TransposeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo = builder.AddInstruction(
+      HloInstruction::CreateTranspose(input_shape, param, {0, 2, 1}));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(ShapeUtil::TransposeIsBitcast(hlo->operand(0)->shape(),
+                                             hlo->shape(), hlo->dimensions()),
+               "LayoutUtil::HasLayout");
+}
+
+// ReshapeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, ReshapeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo =
+      builder.AddInstruction(HloInstruction::CreateReshape(input_shape, param));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(
+      ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()),
+      "LayoutUtil::HasLayout");
+}
+
+// Check that the computation below doesn't crash the compiler.
+//
+// Within a fusion computation, only the parameters and result get assigned a
+// layout.  When we run the algebraic simplifier on this computation post layout
+// assignment, it should not call TransposeIsBitcast on the `transpose` node
+// inside the fusion computation as TransposeIsBitcast checks both input_shape
+// and output_shape have layouts.
+TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    fused_computation {
+      param_1 = f32[2,2,2]{2,1,0} parameter(1)
+      transpose = f32[2,2,2]{2,1,0} transpose(param_1), dimensions={0,2,1}
+      reduce_1 = f32[] parameter(0)
+      broadcast_1 = f32[2,2,2]{2,1,0} broadcast(reduce_1), dimensions={}
+      ROOT divide_1 = f32[2,2,2]{2,1,0} divide(transpose, broadcast_1)
+    }
+
+    ENTRY entry_computation {
+      fusion.1 = f32[2,2,2]{2,1,0} parameter(1)
+      reduce.1 = f32[] parameter(0)
+      fusion.2 = f32[2,2,2]{2,1,0} fusion(reduce.1, fusion.1), kind=kLoop, calls=fused_computation
+     ROOT tuple.1 = (f32[2,2,2]{2,1,0}) tuple(fusion.2)
+    }
+  )";
+
+  auto module = tools::Parse(module_str).ValueOrDie();
+
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  EXPECT_EQ(
+      ::tensorflow::Status::OK(),
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       /*device_allocator=*/nullptr)
+          .status());
+}
+
 // A GTE inside of a fusion node inherits the layout of its operand (which
 // should, if we keep following operands, eventually be a parameter).
 TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
@@ -629,33 +708,113 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  HloComputation* fused_computation = *std::find_if(
-      module->computations().begin(), module->computations().end(),
-      [](const HloComputation* c) { return c->name() == "fused_computation"; });
-
-  auto fused_instr = [&](const string& name) {
-    auto it = std::find_if(
-        fused_computation->instructions().begin(),
-        fused_computation->instructions().end(),
-        [&](const HloInstruction* i) { return i->name() == name; });
-    CHECK(it != fused_computation->instructions().end());
-    return *it;
+  auto layout_of = [&](tensorflow::StringPiece name) {
+    return FindInstruction(module.get(), name)
+        ->shape()
+        .layout()
+        .minor_to_major();
   };
 
-  EXPECT_THAT(fused_instr("gte0")->shape().layout().minor_to_major(),
-              ElementsAre(0, 1, 2));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(0).layout().minor_to_major(),
-      ElementsAre(1, 2, 0));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(1).layout().minor_to_major(),
-      ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("gte1a")->shape().layout().minor_to_major(),
+  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(1, 2, 0));
-  EXPECT_THAT(fused_instr("gte1b")->shape().layout().minor_to_major(),
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("fresult")->shape().layout().minor_to_major(),
-              ElementsAre(2, 1, 0));
+}
+
+TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
+  auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {128, 8});
+  Shape tshape = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape result_tshape = ShapeUtil::MakeTupleShape({shape});
+
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(PRED, {}), "param2"));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({param0, param1}));
+
+  auto true_builder = HloComputation::Builder(TestName() + "_TrueBranch");
+  {
+    auto param = true_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    auto gte0 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 0));
+    auto gte1 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 1));
+    auto add = true_builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, gte0, gte1));
+    true_builder.AddInstruction(HloInstruction::CreateTuple({add}));
+  }
+  HloComputation* true_computation =
+      module->AddEmbeddedComputation(true_builder.Build());
+
+  auto false_builder = HloComputation::Builder(TestName() + "_FalseBranch");
+  {
+    Shape xshape = ShapeUtil::MakeShapeWithLayout(F32, {128, 8}, {0, 1});
+    false_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    // Using infeed as layout assignment does not mess up with it.
+    auto infeed =
+        false_builder.AddInstruction(HloInstruction::CreateInfeed(xshape, ""));
+    false_builder.AddInstruction(HloInstruction::CreateTuple({infeed}));
+  }
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(false_builder.Build());
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      result_tshape, pred, tuple, true_computation, tuple, false_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+
+  AssignLayouts(module.get(), &computation_layout);
+
+  const HloInstruction* true_root = true_computation->root_instruction();
+  const HloInstruction* false_root = false_computation->root_instruction();
+  EXPECT_THAT(true_root->opcode(), HloOpcode::kTuple);
+  EXPECT_THAT(false_root->opcode(), HloOpcode::kTuple);
+
+  const HloInstruction* true_result = true_root->operand(0);
+  const HloInstruction* false_result = false_root->operand(0);
+  EXPECT_TRUE(LayoutUtil::Equal(true_result->shape().layout(),
+                                false_result->shape().layout()));
+  EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      constant0->shape(), HloOpcode::kBitcast, constant0));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  LayoutAssignment layout_assignment(&computation_layout);
+  Status error_status = layout_assignment.Run(module.get()).status();
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(
+      error_status.error_message(),
+      ::testing::HasSubstr(
+          "Unexpected bitcast operation seen during layout assignment"));
 }
 
 }  // namespace

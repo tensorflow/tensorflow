@@ -323,6 +323,25 @@ Status RewriteGraphForExecution(
   return Status::OK();
 }
 
+namespace {
+template <typename StringContainer>
+std::vector<string> ConvertToVector(StringContainer field) {
+  return std::vector<string>(field.begin(), field.end());
+}
+}  // namespace
+
+Status RewriteGraphForExecution(Graph* g,
+                                const CallableOptions& callable_options,
+                                const DeviceAttributes& device_info,
+                                bool use_function_convention,
+                                RewriteGraphMetadata* out_metadata) {
+  return RewriteGraphForExecution(g, ConvertToVector(callable_options.feed()),
+                                  ConvertToVector(callable_options.fetch()),
+                                  ConvertToVector(callable_options.target()),
+                                  device_info, use_function_convention,
+                                  out_metadata);
+}
+
 }  // namespace subgraph
 
 }  // namespace tensorflow

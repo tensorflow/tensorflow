@@ -1503,6 +1503,19 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
+/* static */ port::StatusOr<int> CUDADriver::GetDeviceAttribute(
+    CUdevice_attribute attribute, CUdevice device) {
+  int val;
+  CUresult res = cuDeviceGetAttribute(&val, attribute, device);
+  if (res != CUDA_SUCCESS) {
+    return port::Status{
+        port::error::INTERNAL,
+        port::Printf("failed to get device attribute %d for device %d: %s",
+                     attribute, device, ToString(res).c_str())};
+  }
+  return val;
+}
+
 /* static */ bool CUDADriver::IsEccEnabled(CUdevice device, bool *result) {
   int value = -1;
   CUresult res =

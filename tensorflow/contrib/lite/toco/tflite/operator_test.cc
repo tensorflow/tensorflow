@@ -104,10 +104,11 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
-  CheckSimpleOperator<ResizeBilinearOperator>("RESIZE_BILINEAR",
-                                              OperatorType::kResizeBilinear);
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
+  CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
+                                          OperatorType::kLogSoftmax);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -331,6 +332,14 @@ TEST_F(OperatorTest, BuiltinMul) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, ResizeBilinear) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+}
+
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
@@ -371,6 +380,13 @@ TEST_F(OperatorTest, StridedSlice) {
   EXPECT_EQ(op.ellipsis_mask, output_toco_op->ellipsis_mask);
   EXPECT_EQ(op.new_axis_mask, output_toco_op->new_axis_mask);
   EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
+}
+
+TEST_F(OperatorTest, BuiltinTopKV2) {
+  TopKV2Operator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

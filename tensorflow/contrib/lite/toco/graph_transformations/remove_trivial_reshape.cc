@@ -61,8 +61,8 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
     if (next_op->type == OperatorType::kTensorFlowReshape) {
       transformation->AddMessageF(
           "%s is trivial because its output is only consumed by another "
-          "Reshape op",
-          LogName(op));
+          "Reshape op %s",
+          LogName(op), LogName(*next_op));
       return true;
     }
   }

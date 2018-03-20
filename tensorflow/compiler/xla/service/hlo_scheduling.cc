@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -100,7 +101,7 @@ class ListScheduler {
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
     for (auto* instruction : computation.instructions()) {
-      std::unordered_set<const LogicalBuffer*> instr_uses;
+      tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
         for (const LogicalBuffer* buffer :
              points_to_analysis.GetBuffersDefinedByInstruction(operand)) {
@@ -150,7 +151,7 @@ class ListScheduler {
     int64 bytes_defined;
 
     // For each buffer B used by this instruction, we keep a pair (B, U), where
-    // U is the number of uses of B that have not yet been scheduled.  This pair
+    // U is the number of uses of B that have not yet been scheduled. This pair
     // is a pointer into the unscheduled_use_count_ map, so it gets updated for
     // free when we update counts in the map.
     std::vector<const std::pair<const LogicalBuffer* const, int64>*>
@@ -205,7 +206,8 @@ class ListScheduler {
 
     // Populate the ready list with instructions which have no operands or
     // control predecessors.
-    std::unordered_map<const HloInstruction*, int64> unscheduled_pred_count;
+    tensorflow::gtl::FlatMap<const HloInstruction*, int64>
+        unscheduled_pred_count;
     for (auto* instruction : computation_.instructions()) {
       // TODO(b/34466113): Replace this and above with successors() or
       // predecessors() when these methods are added to HloInstruction.
@@ -217,39 +219,48 @@ class ListScheduler {
       }
     }
 
-    std::list<ReadyListEntry> ready_list;
+    // Use a multimap to sort ReadyListEntry according to their priority.
+    std::multimap<Priority, ReadyListEntry> ready_queue;
+
+    // Map of ready instructions to their iterators in ready_queue.
+    tensorflow::gtl::FlatMap<const HloInstruction*,
+                             std::multimap<Priority, ReadyListEntry>::iterator>
+        ready_instructions;
+
+    auto add_to_ready_queue = [&](HloInstruction* inst) {
+      auto entry = MakeReadyListEntry(inst);
+      auto it = ready_queue.emplace(GetPriority(entry), std::move(entry));
+      ready_instructions[inst] = it;
+    };
+
     for (auto* instruction : computation_.instructions()) {
       // Instruction with no operands or control predecessors will
       // not be in the map.
       if (unscheduled_pred_count.count(instruction) == 0) {
-        ready_list.push_back(MakeReadyListEntry(instruction));
+        add_to_ready_queue(instruction);
       }
     }
 
-    while (!ready_list.empty()) {
-      // Select the highest priority HLO instruction from the ready list.
-      auto best_it = ready_list.begin();
-      Priority best_priority = GetPriority(*best_it);
-      for (auto ready_it = std::next(ready_list.begin());
-           ready_it != ready_list.end(); ++ready_it) {
-        Priority priority = GetPriority(*ready_it);
-        if (priority > best_priority) {
-          best_it = ready_it;
-          best_priority = priority;
-        }
-      }
-
+    while (!ready_queue.empty()) {
       // Remove the selected instruction from the ready list and add it to the
       // schedule.
-      const HloInstruction* best = best_it->instruction;
-      ready_list.erase(best_it);
+      auto best_it = ready_queue.end();
+      --best_it;
+      const HloInstruction* best = best_it->second.instruction;
+      ready_queue.erase(best_it);
+      ready_instructions.erase(best);
       schedule.push_back(best);
       scheduled_instructions_.insert(best);
 
+      bool adjust_ready_queue = false;
       // Update the unscheduled uses of the logical buffers.
       for (const LogicalBuffer* buffer : buffer_uses_.at(best)) {
-        CHECK_GT(unscheduled_use_count_.at(buffer), 0);
-        --unscheduled_use_count_[buffer];
+        int64& count = unscheduled_use_count_[buffer];
+        CHECK_GT(count, 0);
+        --count;
+        if (count == 1) {
+          adjust_ready_queue = true;
+        }
       }
 
       // Add new instructions to ready list.
@@ -257,7 +268,7 @@ class ListScheduler {
         int64 pred_count = --unscheduled_pred_count.at(inst);
         CHECK_GE(pred_count, 0);
         if (pred_count == 0) {
-          ready_list.push_back(MakeReadyListEntry(inst));
+          add_to_ready_queue(inst);
         }
       };
       // TODO(b/34466113): Replace this and above with successors() or
@@ -267,6 +278,31 @@ class ListScheduler {
       }
       for (HloInstruction* succ : best->control_successors()) {
         update_pred_count(succ);
+      }
+      // The unscheduled use count for a buffer has changed to 1, so the
+      // priorities of some ready instructions may go up. We update them in the
+      // ready queue, so that they can appear earlier.
+      if (adjust_ready_queue) {
+        for (HloInstruction* operand : best->operands()) {
+          for (HloInstruction* operand_user : operand->users()) {
+            auto ready_instructions_it = ready_instructions.find(operand_user);
+            if (ready_instructions_it == ready_instructions.end()) {
+              continue;
+            }
+            auto ready_queue_it = ready_instructions_it->second;
+            auto& entry = ready_queue_it->second;
+            Priority new_priority = GetPriority(entry);
+            if (new_priority == ready_queue_it->first) {
+              continue;
+            }
+            // Create a new entry in ready_queue, then update
+            // ready_instructions[operand_user] to refer to the new entry.
+            ready_instructions_it->second =
+                ready_queue.emplace(new_priority, std::move(entry));
+            // Remove the old entry in ready_queue.
+            ready_queue.erase(ready_queue_it);
+          }
+        }
       }
     }
     CHECK_EQ(schedule.size(), computation_.instruction_count());
@@ -280,15 +316,17 @@ class ListScheduler {
   const LogicalBuffer::SizeFunction& size_function_;
 
   // A map containing the LogicalBuffers that each instruction uses.
-  std::unordered_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
+  tensorflow::gtl::FlatMap<const HloInstruction*,
+                           std::vector<const LogicalBuffer*>>
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.  We rely on iterator stability in this map.
+  // LogicalBuffer.  We rely on iterator stability in this map, and that the map
+  // entries are std::pair's.
   std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
-  std::unordered_set<const HloInstruction*> scheduled_instructions_;
+  tensorflow::gtl::FlatSet<const HloInstruction*> scheduled_instructions_;
 };
 
 int64 SumLogicalBufferSizes(
@@ -310,6 +348,7 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
   // instructions with no users or a single user don't count; instructions with
   // lots of fan-out will be visited earlier.
+  int64 cumulative_total_size = 0;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -319,14 +358,17 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
       continue;
     }
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
-    total_sizes[hlo] = SumLogicalBufferSizes(
+    int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
+    total_sizes[hlo] = logical_buffer_size;
+    cumulative_total_size += logical_buffer_size;
     tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());

@@ -72,8 +72,10 @@ def get_cyclegan_model():
 class SummariesTest(test.TestCase):
 
   def _test_add_gan_model_image_summaries_impl(self, get_model_fn,
-                                               expected_num_summary_ops):
-    summaries.add_gan_model_image_summaries(get_model_fn(), grid_size=2)
+                                               expected_num_summary_ops,
+                                               model_summaries):
+    summaries.add_gan_model_image_summaries(get_model_fn(), grid_size=2,
+                                            model_summaries=model_summaries)
 
     self.assertEquals(expected_num_summary_ops,
                       len(ops.get_collection(ops.GraphKeys.SUMMARIES)))
@@ -82,10 +84,13 @@ class SummariesTest(test.TestCase):
       summary.merge_all().eval()
 
   def test_add_gan_model_image_summaries(self):
-    self._test_add_gan_model_image_summaries_impl(get_gan_model, 5)
+    self._test_add_gan_model_image_summaries_impl(get_gan_model, 5, True)
+
+  def test_add_gan_model_image_summaries_no_model(self):
+    self._test_add_gan_model_image_summaries_impl(get_gan_model, 2, False)
 
   def test_add_gan_model_image_summaries_for_cyclegan(self):
-    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10)
+    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10, True)
 
   def _test_add_gan_model_summaries_impl(self, get_model_fn,
                                          expected_num_summary_ops):

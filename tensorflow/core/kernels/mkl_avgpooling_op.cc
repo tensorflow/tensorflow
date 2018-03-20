@@ -428,10 +428,7 @@ class MklAvgPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };  // MklAvgPoolingGradOp
 
-
-
 #else
-
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
@@ -467,6 +464,28 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       Tensor* output_tensor = nullptr;
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
+
+      // If input is an empty tensor, allocate an empty output tensor and return
+      if (input_tensor.NumElements() == 0) {
+        MklDnnShape output_mkl_shape;
+        output_mkl_shape.SetMklTensor(false);
+        TensorShape output_tf_shape;
+        if (pool_params.data_format == TensorFormat::FORMAT_NCHW) {
+          output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+        } else {
+          memory::dims output_dims_NHWC_order;
+          output_dims_NHWC_order = {pool_params.tensor_in_batch,
+                                    static_cast<int>(pool_params.out_height),
+                                    static_cast<int>(pool_params.out_width),
+                                    pool_params.out_depth};
+          output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+        }
+        const int kOutputIndex = 0;
+        AllocateOutputSetMklShape(context, kOutputIndex, &output_tensor,
+                                  output_tf_shape, output_mkl_shape);
+        CHECK_NOTNULL(output_tensor);
+        return;
+      }
 
       // If input is in Mkl layout, then just get the memory format from it
       // directly, instead of using input data_format to AvgPool.
@@ -680,11 +699,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklAvgPoolingGradOp
 
-
-
-
 #endif  // INTEL_MKL_ML
-
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)

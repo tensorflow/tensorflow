@@ -25,14 +25,24 @@ using ::testing::ElementsAreArray;
 
 class ResizeBilinearOpModel : public SingleOpModel {
  public:
-  ResizeBilinearOpModel(std::initializer_list<int> input_shape) {
-    input_ = AddInput(TensorType_FLOAT32);
-    size_ = AddInput(TensorType_INT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+  ResizeBilinearOpModel(const TensorData& input,
+                        std::initializer_list<int> size_data = {}) {
+    bool const_size = size_data.size() != 0;
+    input_ = AddInput(input);
+    if (const_size) {
+      size_ = AddConstInput(TensorType_INT32, size_data, {2});
+    } else {
+      size_ = AddInput({TensorType_INT32, {2}});
+    }
+    output_ = AddOutput(TensorType_FLOAT32);  // Always float.
     SetBuiltinOp(BuiltinOperator_RESIZE_BILINEAR,
                  BuiltinOptions_ResizeBilinearOptions,
                  CreateResizeBilinearOptions(builder_).Union());
-    BuildInterpreter({input_shape, {2}});
+    if (const_size) {
+      BuildInterpreter({GetShape(input_)});
+    } else {
+      BuildInterpreter({GetShape(input_), GetShape(size_)});
+    }
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -49,23 +59,33 @@ class ResizeBilinearOpModel : public SingleOpModel {
 };
 
 TEST(ResizeBilinearOpTest, HorizontalResize) {
-  ResizeBilinearOpModel m({1, 1, 2, 1});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}});
   m.SetInput({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 5, 6})));
+
+  ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 1, 2, 1}}, {1, 3});
+  const_m.SetInput({3, 6});
+  const_m.Invoke();
+  EXPECT_THAT(const_m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 5, 6})));
 }
 
 TEST(ResizeBilinearOpTest, VerticalResize) {
-  ResizeBilinearOpModel m({1, 2, 1, 1});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}});
   m.SetInput({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 7, 9})));
+
+  ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 2, 1, 1}}, {3, 1});
+  const_m.SetInput({3, 9});
+  const_m.Invoke();
+  EXPECT_THAT(const_m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 7, 9})));
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
-  ResizeBilinearOpModel m({1, 2, 2, 1});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}});
   m.SetInput({
       3, 6,  //
       9, 12  //
@@ -77,10 +97,22 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
                                  7, 9, 10,   //
                                  9, 11, 12,  //
                              })));
+
+  ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 2, 2, 1}}, {3, 3});
+  const_m.SetInput({
+      3, 6,  //
+      9, 12  //
+  });
+  const_m.Invoke();
+  EXPECT_THAT(const_m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                       3, 5, 6,    //
+                                       7, 9, 10,   //
+                                       9, 11, 12,  //
+                                   })));
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
-  ResizeBilinearOpModel m({2, 2, 2, 1});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}});
   m.SetInput({
       3, 6,   //
       9, 12,  //
@@ -97,10 +129,27 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
                                  8, 12, 14,   //
                                  10, 14, 16,  //
                              })));
+
+  ResizeBilinearOpModel const_m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3});
+  const_m.SetInput({
+      3, 6,   //
+      9, 12,  //
+      4, 10,  //
+      10, 16  //
+  });
+  const_m.Invoke();
+  EXPECT_THAT(const_m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                       3, 5, 6,     //
+                                       7, 9, 10,    //
+                                       9, 11, 12,   //
+                                       4, 8, 10,    //
+                                       8, 12, 14,   //
+                                       10, 14, 16,  //
+                                   })));
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResize) {
-  ResizeBilinearOpModel m({1, 2, 2, 2});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}});
   m.SetInput({
       3, 4, 6, 10,    //
       9, 10, 12, 16,  //
@@ -112,6 +161,18 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResize) {
                                  7, 8, 9, 12, 10, 14,    //
                                  9, 10, 11, 14, 12, 16,  //
                              })));
+
+  ResizeBilinearOpModel const_m({TensorType_FLOAT32, {1, 2, 2, 2}}, {3, 3});
+  const_m.SetInput({
+      3, 4, 6, 10,    //
+      9, 10, 12, 16,  //
+  });
+  const_m.Invoke();
+  EXPECT_THAT(const_m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                       3, 4, 5, 8, 6, 10,      //
+                                       7, 8, 9, 12, 10, 14,    //
+                                       9, 10, 11, 14, 12, 16,  //
+                                   })));
 }
 
 }  // namespace

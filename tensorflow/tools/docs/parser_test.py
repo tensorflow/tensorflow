@@ -76,8 +76,9 @@ class ParserTest(googletest.TestCase):
         pass
 
     string = (
-        'A @{tf.reference}, another @{tf.reference}, a member '
-        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in it}.')
+        'A @{tf.reference}, another @{tf.reference$with\nnewline}, a member '
+        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in '
+        'it}.')
     duplicate_of = {'tf.third': 'tf.fourth'}
     index = {'tf.reference': HasOneMember,
              'tf.reference.foo': HasOneMember.foo,
@@ -93,7 +94,7 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('A <a href="../../tf/reference.md">'
                      '<code>tf.reference</code></a>, '
                      'another <a href="../../tf/reference.md">'
-                     '<code>tf.reference</code></a>, '
+                     'with\nnewline</a>, '
                      'a member <a href="../../tf/reference.md#foo">'
                      '<code>tf.reference.foo</code></a>, '
                      'and a <a href="../../tf/fourth.md">link '

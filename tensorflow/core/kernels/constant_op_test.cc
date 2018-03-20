@@ -77,7 +77,7 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
     EXPECT_EQ(ctx.persistent_memory_allocated(), 480);
   }
 
-  // Remove memry leak errors.
+  // Remove memory leak errors.
   for (auto allocator_pair : ctx.wrapped_allocators()) {
     allocator_pair.second->GetRecordsAndUnRef();
   }

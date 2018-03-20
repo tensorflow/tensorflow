@@ -21,7 +21,8 @@ from __future__ import print_function
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
@@ -45,8 +46,10 @@ class LiveValuesResolverTest(test.TestCase):
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
+        owner_type=None,
         recursive=True)
-    node = access.resolve(node, ctx)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, literals)
     node = type_info.resolve(node, ctx)
     node = live_values.resolve(node, ctx, literals)
@@ -100,6 +103,7 @@ class LiveValuesResolverTest(test.TestCase):
         arg_types={'self': (TestClass.__name__, TestClass)})
     func_node = node.body[0].body[0].value.func
     self.assertEquals(TestClass.member, anno.getanno(func_node, 'live_val'))
+    self.assertEquals(TestClass, anno.getanno(func_node, 'parent_type'))
     self.assertEquals(('TestClass', 'member'), anno.getanno(func_node, 'fqn'))
 
 

@@ -52,19 +52,25 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
+  transformations->Add(new ConvertTrivialStackToReshape);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
+  transformations->Add(new ResolveTransposeAttributes);
+  transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
   transformations->Add(new RemoveTrivialConcatenationInput);
+  transformations->Add(new RemoveTrivialSlice);
   transformations->Add(new RemoveUnusedOp);
   transformations->Add(new EnsureBiasVectors);
   transformations->Add(new ResolveReorderAxes);
+  transformations->Add(new UnrollBatchMatMul);
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
@@ -72,15 +78,19 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantGather);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
+  transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
+  transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -92,9 +102,10 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
-  transformations->Add(new ResolveTransposeAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
+  transformations->Add(new ResolveConstantFakeQuant);
+  transformations->Add(new UnpartitionEmbeddingLookup);
 }
 
 bool SupportsQuantization(FileFormat format) {
@@ -106,7 +117,8 @@ bool SupportsFusedActivationFunction(FileFormat format) {
 }
 
 bool SupportsLstmCell(FileFormat format) {
-  return (format == TENSORFLOW_GRAPHDEF || format == GRAPHVIZ_DOT);
+  return (format == TENSORFLOW_GRAPHDEF || format == GRAPHVIZ_DOT ||
+          format == TFLITE);
 }
 
 bool SupportsPreallocatedWorkspace(FileFormat format) {
@@ -182,19 +194,22 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
 }
 
 void Transform(const TocoFlags& toco_flags, Model* model) {
+  // Clean up after import.
+  SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
+  FinishBuildingRNNStates(model);
+
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
   const bool quantize_output =
-      SupportsQuantization(output_format) && inference_type == QUANTIZED_UINT8;
+      SupportsQuantization(output_format) &&
+      (inference_type == QUANTIZED_UINT8 || inference_type == QUANTIZED_INT16);
 
   if (quantize_output) {
     QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
         << "Quantized inference is not allowed with float inputs.";
   }
-
-  SetFinalDataTypeOnInputs(toco_flags, model);
-  UseArraysExtraInfo(model);
 
   // Remove unused ops before performing any other optimizations. This is to
   // stop optimizations from crossing the input/output boundaries. For example
@@ -212,9 +227,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   } else {
     transformations.Add(new UnfuseActivationFunctions);
   }
-  if (output_format != TENSORFLOW_GRAPHDEF) {
-    transformations.Add(new ResolveConstantFakeQuant);
-  }
   if (toco_flags.drop_fake_quant()) {
     transformations.Add(new DropFakeQuant);
   } else {
@@ -227,9 +239,15 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     }
   }
   transformations.Add(new ConvertPureConvToDepthwise);
-  // TFLite export does not yet support fused LSTM cell.
   if (SupportsLstmCell(output_format)) {
-    transformations.Add(new IdentifyLstmCell);
+    if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
+      transformations.Add(new IdentifyLstmCell);
+    }
+    if (output_format == TFLITE) {
+      transformations.Add(new toco::SplitLstmCellInputs);
+    } else {
+      transformations.Add(new toco::MergeLstmCellInputs);
+    }
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
@@ -265,6 +283,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
 
     RunGraphTransformations(model, "dequantization graph transformations",
                             dequantization_transformations);
+  }
+
+  if (output_format == TENSORFLOW_GRAPHDEF) {
+    EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);

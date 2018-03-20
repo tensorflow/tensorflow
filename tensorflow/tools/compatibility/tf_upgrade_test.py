@@ -114,7 +114,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertEqual(errors, ["test.py:1: tf.reverse requires manual check."])
 
   def testListComprehension(self):
-    def _test(input, output):
+    def _test(input, output):  # pylint: disable=redefined-builtin
       _, unused_report, errors, new_text = self._upgrade(input)
       self.assertEqual(new_text, output)
     _test("tf.concat(0,  \t[x for x in y])\n",

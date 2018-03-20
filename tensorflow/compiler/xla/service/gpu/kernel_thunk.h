@@ -46,7 +46,7 @@ class KernelThunk : public Thunk {
   // Constructs a thunk for the given kernel.
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
+  KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
               const string& kernel_name, const HloInstruction* hlo_instruction);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
@@ -63,8 +63,8 @@ class KernelThunk : public Thunk {
       perftools::gputools::Stream* stream) override;
 
  private:
-  // The indices of the input/output buffers.
-  const std::vector<BufferAllocation::Slice> io_buffers_;
+  // Buffers passed to the kernel as arguments.
+  const std::vector<const BufferAllocation*> args_;
 
   // Entry kernel name for the computation.
   const string kernel_name_;

@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.estimator.python.estimator import extenders
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.feature_column import feature_column as fc

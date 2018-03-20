@@ -151,6 +151,7 @@ typedef struct {
 } TfLiteLSTMParams;
 
 typedef struct {
+  bool align_corners;
 } TfLiteResizeBilinearParams;
 
 typedef struct {
@@ -193,6 +194,10 @@ typedef struct {
 typedef struct {
   bool keep_dims;
 } TfLiteMeanParams;
+
+typedef struct {
+  int num_splits;
+} TfLiteSplitParams;
 
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.

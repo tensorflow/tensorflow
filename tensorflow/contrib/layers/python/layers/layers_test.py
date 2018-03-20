@@ -708,7 +708,7 @@ class Convolution2dTransposeTests(test.TestCase):
         _layers.convolution2d_transpose(images, 32, 3, data_format='CHWN')
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
+    # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
@@ -1308,10 +1308,12 @@ class DenseToSparseTest(test.TestCase):
     expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
     tensor = constant_op.constant(expected_constant)
     sparse = _layers.dense_to_sparse(tensor)
-    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape, sparse.values)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape,
+                                       sparse.values)
     with self.test_session() as sess:
       constant = sess.run(dense)
       self.assertAllEqual(expected_constant, constant)
+
 
 class DropoutTest(test.TestCase):
 
@@ -2194,7 +2196,7 @@ class BatchNormTest(test.TestCase):
       # After initialization moving_mean == 0 and moving_variance == 1.
       self.assertAllClose(mean, [0] * 3)
       self.assertAllClose(variance, [1] * 3)
-      # Simulate assigment from saver restore.
+      # Simulate assignment from saver restore.
       init_assigns = [
           state_ops.assign(moving_mean, expected_mean),
           state_ops.assign(moving_variance, expected_var)
@@ -2948,6 +2950,28 @@ class GDNTest(test.TestCase):
     self.assertAllClose(y, x * np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
 
+class ImagesToSequenceTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(5, height, width, 2))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCHW or NHWC.'):
+      _layers.images_to_sequence(images, data_format='CHWN')
+
+  def testImagesToSequenceDims(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, height, width, 5)).astype(np.float32)
+    output = _layers.images_to_sequence(images)
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+  def testImagesToSequenceNCHW(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, 5, height, width)).astype(np.float32)
+    output = _layers.images_to_sequence(images, data_format='NCHW')
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -3414,6 +3438,33 @@ class ScaleGradientTests(test.TestCase):
       np.testing.assert_array_equal(x.eval(), y.eval())
       g_x, = gradients_impl.gradients(y, [x], [np.array([3], np.float32)])
       np.testing.assert_array_equal([3 * 2], g_x.eval())
+
+
+class SequenceToImagesTest(test.TestCase):
+
+  def testImagesToSequenceDims(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence, desired_height)
+    self.assertListEqual(output.get_shape().as_list(), [2, 7, 11, 5])
+
+  def testImagesToSequenceNCHW(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence,
+                                        desired_height,
+                                        output_data_format='channels_first')
+    self.assertListEqual(output.get_shape().as_list(), [2, 5, 7, 11])
 
 
 class SoftmaxTests(test.TestCase):
@@ -4082,6 +4133,32 @@ class LegacyFullyConnectedTest(test.TestCase):
                                    'rank of x must be at least 2 not: 1'):
         x = constant_op.constant([[]], shape=[0])
         _layers.legacy_fully_connected(x, 2, activation_fn=nn_ops.softmax)
+
+
+class MaxOutTest(test.TestCase):
+
+  def test_simple(self):
+    inputs = random_ops.random_uniform((64, 10, 36), seed=1)
+    graph = _layers.maxout(inputs, num_units=3)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10, 3])
+
+  def test_fully_connected(self):
+    inputs = random_ops.random_uniform((64, 50), seed=1)
+    graph = _layers.fully_connected(inputs, 50)
+    graph = _layers.maxout(graph, num_units=10)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10])
+
+  def test_nchw(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 10, 3, padding='SAME')
+    graph = _layers.maxout(graph, num_units=1)
+    self.assertEqual(graph.get_shape().as_list(), [10, 100, 100, 1])
+
+  def test_invalid_shape(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 3, 10)
+    with self.assertRaisesRegexp(ValueError, 'number of features'):
+      graph = _layers.maxout(graph, num_units=2)
 
 
 if __name__ == '__main__':

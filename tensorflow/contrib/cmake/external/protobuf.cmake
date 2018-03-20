@@ -19,11 +19,34 @@ set(PROTOBUF_URL https://github.com/google/protobuf.git)
 set(PROTOBUF_TAG b04e5cba356212e4e8c66c61bbe0c3a20537c5b9)
 
 if(WIN32)
-  set(protobuf_STATIC_LIBRARIES 
-    debug ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobufd.lib
-    optimized ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobuf.lib)
-  set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/protoc.exe)
-  set(PROTOBUF_ADDITIONAL_CMAKE_OPTIONS	-Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF -A x64)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(protobuf_STATIC_LIBRARIES 
+      debug ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobufd.lib
+      optimized ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/libprotobuf.lib)
+    set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/$(Configuration)/protoc.exe)
+  else()
+    if(CMAKE_BUILD_TYPE EQUAL Debug)
+      set(protobuf_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/libprotobufd.lib)
+    else()
+      set(protobuf_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/libprotobuf.lib)
+    endif()
+    set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/protoc.exe)
+  endif()
+
+  # This section is to make sure CONFIGURE_COMMAND use the same generator settings
+  set(PROTOBUF_GENERATOR_PLATFORM)
+  if (CMAKE_GENERATOR_PLATFORM)
+    set(PROTOBUF_GENERATOR_PLATFORM -A ${CMAKE_GENERATOR_PLATFORM})
+  endif()
+  set(PROTOBUF_GENERATOR_TOOLSET)
+  if (CMAKE_GENERATOR_TOOLSET)
+  set(PROTOBUF_GENERATOR_TOOLSET -T ${CMAKE_GENERATOR_TOOLSET})
+  endif()
+  set(PROTOBUF_ADDITIONAL_CMAKE_OPTIONS	-Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
+    -G${CMAKE_GENERATOR} ${PROTOBUF_GENERATOR_PLATFORM} ${PROTOBUF_GENERATOR_TOOLSET})
+  # End of section
 else()
   set(protobuf_STATIC_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/libprotobuf.a)
   set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/protoc)
@@ -36,10 +59,15 @@ ExternalProject_Add(protobuf
     GIT_TAG ${PROTOBUF_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${PROTOBUF_PROTOC_EXECUTABLE} ${protobuf_STATIC_LIBRARIES}
     SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf
+    # SOURCE_SUBDIR cmake/ # Requires CMake 3.7, this will allow removal of CONFIGURE_COMMAND
+    # CONFIGURE_COMMAND resets some settings made in CMAKE_CACHE_ARGS and the generator used
     CONFIGURE_COMMAND ${CMAKE_COMMAND} cmake/
-        -Dprotobuf_BUILD_TESTS=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
+        -DCMAKE_BUILD_TYPE:STRING=Release
+        -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+        -Dprotobuf_BUILD_TESTS:BOOL=OFF
         -DZLIB_ROOT=${ZLIB_INSTALL}
         ${PROTOBUF_ADDITIONAL_CMAKE_OPTIONS}
     INSTALL_COMMAND ""
@@ -47,5 +75,7 @@ ExternalProject_Add(protobuf
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+        -Dprotobuf_BUILD_TESTS:BOOL=OFF
+        -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
