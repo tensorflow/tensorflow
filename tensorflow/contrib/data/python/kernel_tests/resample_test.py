@@ -103,7 +103,8 @@ class ResampleTest(test.TestCase):
 
     classes, _ = zip(*returned)
     bincount = np.bincount(
-      np.array(classes), minlength=num_classes).astype(np.float32) / len(classes)
+        np.array(classes),
+        minlength=num_classes).astype(np.float32) / len(classes)
 
     self.assertAllClose(target_dist, bincount, atol=1e-2)
 
