@@ -222,7 +222,10 @@ py_test(
     size = "medium",
     srcs = ["python/ops/kmeans_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67512932
+    tags = [
+        "manual",
+        "notsan",
+    ],  # b/67512932
     deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
