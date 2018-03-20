@@ -99,16 +99,17 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
 
   // Not all instructions can be roots. Walk backwards from the last added
   // instruction until a valid root is found.
+  entry.set_root_id(-1);
   for (int64 i = instructions_.size() - 1; i >= 0; i--) {
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
                         StringToHloOpcode(instructions_[i].opcode()));
     if (CanBeRoot(opcode)) {
-      entry.set_root_name(instructions_[i].name());
+      entry.set_root_id(instructions_[i].id());
       *program_shape->mutable_result() = instructions_[i].shape();
       break;
     }
   }
-  if (entry.root_name().empty()) {
+  if (entry.root_id() == -1) {
     return FailedPrecondition("no root instruction was found");
   }
 
@@ -141,7 +142,9 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
   XlaComputation computation(id);
   HloModuleProto* module = computation.mutable_proto();
   module->set_name(entry.name());
+  module->set_id(entry.id());
   module->set_entry_computation_name(entry.name());
+  module->set_entry_computation_id(entry.id());
   *module->mutable_program_shape() = entry.program_shape();
   for (auto& e : embedded_) {
     module->add_computations()->Swap(&e.second);
@@ -162,8 +165,8 @@ XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferBinaryOpShape(
                             HloOpcode::kAdd, lhs_instr->shape(),
                             rhs_instr->shape(), broadcast_dimensions));
-    instr.add_operand_names(lhs_instr->name());
-    instr.add_operand_names(rhs_instr->name());
+    instr.add_operand_ids(lhs_instr->id());
+    instr.add_operand_ids(rhs_instr->id());
     return AddInstruction(std::move(instr));
   };
   return NoteErrorOrReturn(op());
@@ -195,11 +198,12 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
     // Add input operands.
     for (const auto& operand : operands) {
       TF_ASSIGN_OR_RETURN(auto operand_instr, LookUpInstruction(operand));
-      instr.add_operand_names(operand_instr->name());
+      instr.add_operand_ids(operand_instr->id());
     }
 
     // Add called computation.
-    *instr.add_called_computation_names() = computation.proto().name();
+    instr.add_called_computation_ids(
+        computation.proto().entry_computation_id());
     for (const HloComputationProto& e : computation.proto().computations()) {
       embedded_.insert({e.id(), e});
     }
@@ -229,6 +233,7 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
 
 XlaOp XlaBuilder::AddInstruction(HloInstructionProto&& instr) {
   const int64 handle = instructions_.size();
+  instr.set_id(handle);
   if (instr.name().empty()) {
     instr.set_name(StrCat(instr.opcode(), ".", handle));
   } else {

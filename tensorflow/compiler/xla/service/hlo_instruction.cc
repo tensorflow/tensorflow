@@ -52,22 +52,22 @@ using ::tensorflow::strings::StrCat;
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     HloModule* module, const HloInstructionProto& proto,
-    const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map) {
+    const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
+    const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
 
   auto instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
-  for (const string& operand_name : proto.operand_names()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, operand_name))
-        << "No instruction named " << operand_name;
-    instruction->AppendOperand(instruction_map.at(operand_name));
+  for (const int64 operand_id : proto.operand_ids()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, operand_id))
+        << "No instruction with id " << operand_id;
+    instruction->AppendOperand(instruction_map.at(operand_id));
   }
-  for (const string& predecessor_name : proto.control_predecessor_names()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_name))
-        << "No instruction named " << predecessor_name;
-    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_name)
+  for (const int64 predecessor_id : proto.control_predecessor_ids()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
+        << "No instruction with id " << predecessor_id;
+    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
                            ->AddControlDependencyTo(instruction.get()));
   }
 
@@ -80,21 +80,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                         StringToFusionKind(proto.fusion_kind()));
 
     // Find the fused computation and set its fusion instruction.
-    TF_RET_CHECK(proto.called_computation_names_size() == 1)
+    TF_RET_CHECK(proto.called_computation_ids_size() == 1)
         << "Expect 1 called computation for fusion instruction, but sees "
-        << proto.called_computation_names_size();
-    const string& fusion_name = proto.called_computation_names(0);
-    auto* fused_computation = FindPtrOrNull(computation_map, fusion_name);
+        << proto.called_computation_ids_size();
+    const int64 fusion_id = proto.called_computation_ids(0);
+    auto* fused_computation = FindPtrOrNull(computation_map, fusion_id);
     TF_RET_CHECK(fused_computation != nullptr)
-        << "No fusion computation named " << fusion_name;
+        << "No fusion computation with id " << fusion_id;
     fused_computation->SetFusionInstruction(instruction.get());
     instruction->called_computations_.push_back(fused_computation);
   } else {
-    for (const string& computation_name : proto.called_computation_names()) {
-      TF_RET_CHECK(ContainsKey(computation_map, computation_name))
-          << "No computation named " << computation_name;
+    for (const int64 computation_id : proto.called_computation_ids()) {
+      TF_RET_CHECK(ContainsKey(computation_map, computation_id))
+          << "No computation with id " << computation_id;
       instruction->called_computations_.push_back(
-          computation_map.at(computation_name));
+          computation_map.at(computation_id));
     }
   }
 
@@ -2315,14 +2315,18 @@ string HloInstruction::ToShortString() const {
 
 HloInstructionProto HloInstruction::ToProto() const {
   HloInstructionProto proto;
+  CHECK(unique_id_ != -1)
+      << "This instruction does not have a valid id. Please make sure the "
+         "instruction is inside a module before dumping it.";
+  proto.set_id(unique_id_);
   proto.set_name(name_);
   proto.set_opcode(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_;
   for (const HloInstruction* operand : operands_) {
-    *proto.add_operand_names() = operand->name();
+    proto.add_operand_ids(operand->unique_id());
   }
   for (const HloInstruction* control : control_predecessors_) {
-    *proto.add_control_predecessor_names() = control->name();
+    proto.add_control_predecessor_ids(control->unique_id());
   }
 
   *proto.mutable_metadata() = metadata_;
@@ -2332,11 +2336,11 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_parameter_number(parameter_number_);
   if (opcode() == HloOpcode::kFusion) {
     proto.set_fusion_kind(xla::ToString(fusion_kind()));
-    *proto.add_called_computation_names() =
-        fused_instructions_computation()->name();
+    proto.add_called_computation_ids(
+        fused_instructions_computation()->unique_id());
   } else {
     for (const HloComputation* computation : called_computations_) {
-      *proto.add_called_computation_names() = computation->name();
+      proto.add_called_computation_ids(computation->unique_id());
     }
   }
 
