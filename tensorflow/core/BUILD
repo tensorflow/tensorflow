@@ -1406,6 +1406,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "protobuf/device_properties_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/device_properties.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "protobuf/meta_graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/meta_graph.proto",
@@ -1413,9 +1420,9 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
-    name = "protobuf/device_properties_pyclif",
+    name = "protobuf/saved_model_pyclif",
     proto_lib = ":protos_all_cc",
-    proto_srcfile = "protobuf/device_properties.proto",
+    proto_srcfile = "protobuf/saved_model.proto",
     visibility = ["//visibility:public"],
 )
 
