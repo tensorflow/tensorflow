@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
@@ -46,6 +47,7 @@ constexpr char kShape[] = "Shape";
 constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
+constexpr char kGather[] = "Gather";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -167,6 +169,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
+      {kGather, wrap(&OpLevelCostEstimator::PredictGather)},
+
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
@@ -184,6 +188,17 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
 
+  // Quantize = apply min and max bounds, multiply by scale factor and round.
+  const int quantize_v2_cost =
+      Eigen::internal::functor_traits<
+          Eigen::internal::scalar_product_op<float>>::Cost +
+      Eigen::internal::functor_traits<
+          Eigen::internal::scalar_max_op<float>>::Cost +
+      Eigen::internal::functor_traits<
+          Eigen::internal::scalar_min_op<float>>::Cost +
+      Eigen::internal::functor_traits<
+          Eigen::internal::scalar_round_op<float>>::Cost;
+
   elementwise_ops_ = {
       // Unary ops alphabetically sorted
       {"Acos", Eigen::internal::functor_traits<
@@ -200,6 +215,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                    Eigen::internal::scalar_ceil_op<float>>::Cost},
       {"Cos", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_cos_op<float>>::Cost},
+      {"Dequantize", Eigen::internal::functor_traits<
+                         Eigen::internal::scalar_product_op<float>>::Cost},
       {"Erf", 1},
       {"Erfc", 1},
       {"Exp", Eigen::internal::functor_traits<
@@ -218,6 +235,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                     Eigen::internal::scalar_log1p_op<float>>::Cost},
       {"Neg", Eigen::internal::functor_traits<
                   Eigen::internal::scalar_opposite_op<float>>::Cost},
+      {"QuantizeV2", quantize_v2_cost},
       {"Reciprocal", Eigen::internal::functor_traits<
                          Eigen::internal::scalar_inverse_op<float>>::Cost},
       {"Rint", 1},
@@ -411,28 +429,33 @@ Costs OpLevelCostEstimator::PredictCostOfAnUnknownOp(
 }
 
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
-    double operations, const OpInfo& op_features) const {
-  DeviceInfo device_perf = GetDeviceInfo(op_features.device());
-  if (device_perf.gigaops <= 0 || device_perf.gb_per_sec <= 0) {
-    VLOG(1) << "BAD DEVICE. Op:" << op_features.op()
-            << " device type:" << op_features.device().type()
-            << " device model:" << op_features.device().model();
+    double operations, const OpInfo& op_info) const {
+  bool unknown_shapes = false;
+  const double input_size = CalculateInputSize(op_info, &unknown_shapes);
+  const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
+  const double total_io_bytes = input_size + output_size;
+  Costs costs = PredictOpCountBasedCost(operations, total_io_bytes, op_info);
+  costs.inaccurate = unknown_shapes;
+  costs.max_memory = output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictOpCountBasedCost(
+    double operations, double total_io_bytes, const OpInfo& op_info) const {
+  const DeviceInfo device_info = GetDeviceInfo(op_info.device());
+  if (device_info.gigaops <= 0 || device_info.gb_per_sec <= 0) {
+    VLOG(1) << "BAD DEVICE. Op:" << op_info.op()
+            << " device type:" << op_info.device().type()
+            << " device model:" << op_info.device().model();
   }
 
-  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
-  VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
-          << " Execution Time (ns):" << compute_cost.count();
-
-  bool found_unknown_shapes = false;
-  const double total_input_size =
-      CalculateInputSize(op_features, &found_unknown_shapes);
-  const double total_output_size =
-      CalculateOutputSize(op_features, &found_unknown_shapes);
-  const double total_io_size = total_input_size + total_output_size;
+  Costs::NanoSeconds compute_cost(std::ceil(operations / device_info.gigaops));
+  VLOG(1) << "Op:" << op_info.op() << " GOps:" << operations / 1e9
+          << " Compute Time (ns):" << compute_cost.count();
 
   Costs::NanoSeconds memory_cost(
-      std::ceil(total_io_size / device_perf.gb_per_sec));
-  VLOG(1) << "Op:" << op_features.op() << " Size (KB):" << (total_io_size) / 1e3
+      std::ceil(total_io_bytes / device_info.gb_per_sec));
+  VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
 
   Costs costs;
@@ -443,8 +466,6 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   } else {
     costs.execution_time = compute_cost + memory_cost;
   }
-  costs.inaccurate = found_unknown_shapes;
-  costs.max_memory = total_output_size;
   return costs;
 }
 
@@ -867,7 +888,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
 
 int64 OpLevelCostEstimator::CalculateTensorElementCount(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  VLOG(2) << "   with " << tensor.dtype() << " tensor of shape "
+  VLOG(2) << "   with " << DataTypeString(tensor.dtype()) << " tensor of shape "
           << tensor.shape().DebugString();
   int64 tensor_size = 1;
   int num_dims = std::max(1, tensor.shape().dim_size());
@@ -1024,6 +1045,24 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   // time we can represent (1 ns).
   costs.compute_time = kMinComputeTime;
   costs.execution_time = costs.compute_time;
+
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictGather(const OpContext& op_context) const {
+  // Gather op can have a very large input, but only the size of the output
+  // matters, because indices may select only a very small subset of input.
+
+  const auto& op_info = op_context.op_info;
+
+  bool unknown_shapes = false;
+  const int64 op_count =
+      CalculateTensorElementCount(op_info.outputs(0), &unknown_shapes);
+  const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
+  const double total_io = 2 * output_size;
+  Costs costs = PredictOpCountBasedCost(op_count, total_io, op_info);
+  costs.inaccurate = unknown_shapes;
+  costs.max_memory = output_size;
 
   return costs;
 }
