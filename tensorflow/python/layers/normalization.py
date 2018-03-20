@@ -364,8 +364,9 @@ class BatchNormalization(base.Layer):
                         [variable, value, momentum]) as scope:
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
-        update_delta = math_ops.multiply(
-            math_ops.subtract(variable.read_value(), value), decay)
+        if decay.dtype != variable.dtype.base_dtype:
+          decay = math_ops.cast(decay, variable.dtype.base_dtype)
+        update_delta = (variable - value) * decay
         return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
