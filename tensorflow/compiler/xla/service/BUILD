@@ -1276,6 +1276,18 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "gather_expander_test",
+    srcs = ["gather_expander_test.cc"],
+    deps = [
+        ":gather_expander",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
 cc_library(
     name = "conditional_simplifier",
     srcs = ["conditional_simplifier.cc"],

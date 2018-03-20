@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
@@ -397,5 +399,63 @@ ENTRY main {
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
+class GatherClientLibraryTest : public ClientLibraryTestBase {};
+
+// TODO(b/30671675): Asynchronous execution on stream is not yet supported on
+// GPU and CPU_PARALLEL.
+XLA_TEST_F(GatherClientLibraryTest,
+           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(Basic))) {
+  // We create this HLO, but using the ComputationBuilder API.
+  //
+  // ENTRY main {
+  //   operand = s32[3,3] parameter(0)
+  //   indices = s32[2] parameter(1)
+  //   ROOT gather = s32[2,3] gather(operand, indices),
+  //       output_window_dims={1},
+  //       elided_window_dims={0},
+  //       gather_dims_to_operand_dims={0},
+  //       index_vector_dim=1,
+  //       window_bounds={1, 3}
+  // }
+
+  ComputationBuilder builder(client_, "gather_basic");
+
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+
+  auto operand = builder.Parameter(0, operand_shape, "operand");
+  auto indices = builder.Parameter(1, indices_shape, "indices");
+  GatherDimensionNumbers dim_numbers;
+  dim_numbers.add_output_window_dims(1);
+  dim_numbers.add_elided_window_dims(0);
+  dim_numbers.add_gather_dims_to_operand_dims(0);
+  dim_numbers.set_index_vector_dim(1);
+  builder.Gather(operand, indices, dim_numbers, {1, 3});
+
+  std::vector<int32> expected = {};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> operand_arg,
+                          client_->TransferToServer(*Literal::CreateR2<int32>(
+                              {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> indices_arg,
+      client_->TransferToServer(*Literal::CreateR1<int32>({0, 2})));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
+                          client_->GetDeviceHandles(1));
+  xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  *execution_options.add_device_handles() = devices[0];
+  TF_ASSERT_OK_AND_ASSIGN(Computation computation, builder.Build());
+  std::vector<xla::Client::ComputationInstance> computation_instances = {
+      {computation,
+       {operand_arg.get(), indices_arg.get()},
+       execution_options,
+       /*execution_profile=*/nullptr}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<xla::GlobalData>> result_data,
+      client_->ExecuteParallel(computation_instances));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
+                          client_->Transfer(*(result_data[0])));
+  LiteralTestUtil::ExpectEqual(
+      *result_literal, *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}));
+}
 }  // namespace
 }  // namespace xla

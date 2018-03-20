@@ -306,18 +306,33 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
   HloComputation* computation = gather_instr->parent();
   HloInstruction* operand = gather_instr->mutable_operand(0);
   HloInstruction* gather_indices = gather_instr->mutable_operand(1);
+  const Shape& gather_indices_shape = gather_indices->shape();
   const Shape& output_shape = gather_instr->shape();
   int64 output_rank = output_shape.dimensions_size();
 
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();
 
+  int64 gather_loop_trip_count = 1;
+  for (int64 i = 0, e = gather_indices_shape.dimensions_size(); i < e; i++) {
+    if (i != dim_numbers.index_vector_dim()) {
+      gather_loop_trip_count *= gather_indices_shape.dimensions(i);
+    }
+  }
+
+  if (!IsInt32(gather_loop_trip_count)) {
+    return Unimplemented(
+        "Gather operations with more than 2147483647 gather indices are not "
+        "supported. This error occurred for %s.",
+        gather_instr->ToString().c_str());
+  }
+
   TF_ASSIGN_OR_RETURN(HloInstruction * canonical_gather_indices,
                       CanonicalizeGatherIndices(
                           gather_indices, dim_numbers.index_vector_dim()));
 
-  const int64 gather_loop_trip_count =
-      canonical_gather_indices->shape().dimensions(0);
+  CHECK_EQ(gather_loop_trip_count,
+           canonical_gather_indices->shape().dimensions(0));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * accumulator_init,
