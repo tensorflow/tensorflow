@@ -367,6 +367,12 @@ def _InsertQuantOp(context,
       consumer operation.
   """
   name_prefix = _AddContextToName(context, name)
+  # This is needed on TPU where name_scope == 'TPUReplicate/loop', and
+  # name_prefix starts with 'TPUReplicate/loop/'; without dropping it
+  # variables are created as TPUReplicate/loop/TPUReplicate/loop/..., which
+  # breaks things later.
+  name_prefix = common.DropStringPrefix(name_prefix, ops.get_name_scope() + '/')
+
   inputs = producer.outputs[0]
   if moving_avg:
     quant = (
