@@ -502,9 +502,9 @@ class MultiOneHotTest(test.TestCase):
                               truth=truth)
 
     # Case 2: on to given / off to default value
-    truth = constant_op.constant([[0.0, 5.0,  0.0,  0.0, 10.0],
-                                  [5.0, 0.0,  0.0, 10.0,  0.0],
-                                  [0.0, 5.0, 10.0,  0.0,  0.0]],
+    truth = constant_op.constant([[0.0, 5.0, 0.0, 0.0, 10.0],
+                                  [5.0, 0.0, 0.0, 10.0, 0.0],
+                                  [0.0, 5.0, 10.0, 0.0, 0.0]],
                                  dtype=dtypes.float32)
 
     self._testBothMultiOneHot(indices=indices,
@@ -514,9 +514,9 @@ class MultiOneHotTest(test.TestCase):
                               truth=truth)
 
     # Case 3: on to default / off to given value
-    truth = constant_op.constant([[-5.0,  1.0, -10.0, -10.0,   1.0],
-                                  [ 1.0, -5.0, -10.0,   1.0, -10.0],
-                                  [-5.0,  1.0,   1.0, -10.0, -10.0]],
+    truth = constant_op.constant([[-5.0, 1.0, -10.0, -10.0, 1.0],
+                                  [1.0, -5.0, -10.0, 1.0, -10.0],
+                                  [-5.0, 1.0, 1.0, -10.0, -10.0]],
                                  dtype=dtypes.float32)
 
     self._testBothMultiOneHot(indices=indices,
@@ -526,9 +526,9 @@ class MultiOneHotTest(test.TestCase):
                               truth=truth)
 
     # Case 4: on/off to given values
-    truth = constant_op.constant([[-5.0, 5.0, -10.0, -10.0,  10.0],
-                                  [5.0, -5.0, -10.0,  10.0, -10.0],
-                                  [-5.0, 5.0,  10.0, -10.0, -10.0]],
+    truth = constant_op.constant([[-5.0, 5.0, -10.0, -10.0, 10.0],
+                                  [5.0, -5.0, -10.0, 10.0, -10.0],
+                                  [-5.0, 5.0, 10.0, -10.0, -10.0]],
                                  dtype=dtypes.float32)
 
     self._testBothMultiOneHot(indices=indices,
@@ -543,9 +543,7 @@ class MultiOneHotTest(test.TestCase):
     off_values_list = [-5.0]
     depth_list = [2]
 
-    truth = constant_op.constant([[-5.0,  5.0],
-                                  [ 5.0, -5.0],
-                                  [-5.0,  5.0]],
+    truth = constant_op.constant([[-5.0, 5.0], [5.0, -5.0], [-5.0, 5.0]],
                                  dtype=dtypes.float32)
 
     self._testBothMultiOneHot(indices=indices,

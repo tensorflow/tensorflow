@@ -2501,34 +2501,37 @@ def multi_one_hot(indices, depth_list, on_values_list=None,
   Raises:
     ValueError: If length of `depth_list` does match last dim. of indices
   """
-  n_features = indices.get_shape()[-1]
-  if len(depth_list)!=n_features:
-    raise ValueError("No. of features does not match length of the depth " \
-                     "list: {} != {}".format(len(depth_list), n_features))
+  with ops.name_scope(name, "multi_one_hot",
+                      [indices, depth_list,
+                       on_values_list, off_values_list]) as name:
+    n_features = indices.get_shape()[-1]
+    if len(depth_list) != n_features:
+      raise ValueError("No. of features does not match length of the depth " \
+                       "list: {} != {}".format(len(depth_list), n_features))
 
-  on_exists = on_values_list is not None
-  off_exists = off_values_list is not None
+    on_exists = on_values_list is not None
+    off_exists = off_values_list is not None
 
-  # Pad values lists with None if their lengths are smaller than depth_list
-  if on_exists:
-    on_values_list += [None] * (n_features - len(on_values_list))
-  else:
-    on_values_list = [None] * n_features
+    # Pad values lists with None if their lengths are smaller than depth_list
+    if on_exists:
+      on_values_list += [None] * (n_features - len(on_values_list))
+    else:
+      on_values_list = [None] * n_features
 
-  if off_exists:
-    off_values_list += [None] * (n_features - len(off_values_list))
-  else:
-    off_values_list = [None] * n_features
+    if off_exists:
+      off_values_list += [None] * (n_features - len(off_values_list))
+    else:
+      off_values_list = [None] * n_features
 
-  multi_tensor = one_hot(indices[:,0], depth_list[0], on_values_list[0],
-                         off_values_list[0], dtype=dtypes.float32)
+    multi_tensor = one_hot(indices[:,0], depth_list[0], on_values_list[0],
+                           off_values_list[0], dtype=dtypes.float32)
 
-  for col in range(1, n_features):
-    add = one_hot(indices[:,col], depth_list[col], on_values_list[col],
-                  off_values_list[col], dtype=dtypes.float32)
-    multi_tensor = concat([multi_tensor, add], axis=-1, name=name)
+    for col in range(1, n_features):
+      add = one_hot(indices[:,col], depth_list[col], on_values_list[col],
+                    off_values_list[col], dtype=dtypes.float32)
+      multi_tensor = concat([multi_tensor, add], axis=-1, name=name)
 
-  return multi_tensor
+    return multi_tensor
 
 
 @tf_export("sequence_mask")
