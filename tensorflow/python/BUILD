@@ -1034,6 +1034,7 @@ cuda_py_tests(
         "//tensorflow/core:protos_all_py",
     ],
     shard_count = 10,
+    tags = ["noasan"],
 )
 
 py_test(
