@@ -38,6 +38,8 @@ option cc_enable_arenas = true;
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
+  reserved 12;
+  reserved "fused_instructions_computation";
 
   string name = 1;
   string opcode = 2;
@@ -58,7 +60,6 @@ message HloInstructionProto {
 
   // Fusion state, only present for kFusion.
   string fusion_kind = 11;
-  HloComputationProto fused_instructions_computation = 12;
 
   // Index for kGetTupleElement.
   int64 tuple_index = 13;

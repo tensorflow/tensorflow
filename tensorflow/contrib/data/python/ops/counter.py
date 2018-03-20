@@ -25,7 +25,7 @@ from tensorflow.python.framework import ops
 
 
 def Counter(start=0, step=1, dtype=dtypes.int64):
-  """Creates a `Dataset` of a `step`-separated count startin from `start`.
+  """Creates a `Dataset` that counts from `start` in steps of size `step`.
 
   For example:
 
@@ -38,12 +38,13 @@ def Counter(start=0, step=1, dtype=dtypes.int64):
   ```
 
   Args:
-    start: starting value for count.
-    step: step size.
-    dtype: counter data type.
+    start: (Optional.) The starting value for the counter. Defaults to 0.
+    step: (Optional.) The step size for the counter. Defaults to 1.
+    dtype: (Optional.) The data type for counter elements. Defaults to
+      `tf.int64`.
 
   Returns:
-    A `Dataset` of scalar elements.
+    A `Dataset` of scalar `dtype` elements.
   """
   with ops.name_scope("counter"):
     start = ops.convert_to_tensor(start, dtype=dtype, name="start")

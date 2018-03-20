@@ -207,11 +207,6 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    // Fusion computations are added when the fusion instructions are created by
-    // HloInstruction::CreateFromProto.
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
     HloComputationProto computation_proto = computation->ToProto();
     if (computation->name() == entry_computation_->name()) {
       *proto.mutable_program_shape() = computation_proto.program_shape();
@@ -256,16 +251,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
   for (const HloComputationProto& computation_proto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloComputation> computation,
-        HloComputation::CreateFromProto(
-            module.get(), computation_proto, computation_map,
-            /*add_fused_computation=*/
-            [&module](std::unique_ptr<HloComputation> fused_computation) {
-              module->AddComputationInternal(std::move(fused_computation),
-                                             /*is_entry=*/false,
-                                             /*uniquify_names=*/false);
-            }));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
+                        HloComputation::CreateFromProto(
+                            module.get(), computation_proto, computation_map));
     CHECK_NE(computation.get(), nullptr);
     TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
     string computation_name = computation->name();
@@ -283,10 +271,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   tensorflow::gtl::FlatSet<string> computation_names;
   tensorflow::gtl::FlatSet<string> instruction_names;
   for (HloComputation* computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
         << "Computation name is not unique: " << computation->name();
     computation_names.insert(computation->name());
