@@ -82,7 +82,8 @@ class ResampleTest(test.TestCase):
 
     # Apply a random mapping that preserves the data distribution.
     def _remap_fn(_):
-      return math_ops.cast(random_ops.random_uniform([1]) * num_classes, dtypes.int32)[0]
+      return math_ops.cast(random_ops.random_uniform([1]) * num_classes,
+                           dtypes.int32)[0]
     dataset = dataset.map(_remap_fn)
 
     # Reshape distribution.
