@@ -42,7 +42,7 @@ TEST(BasicInterpreter, InvokeInvalidModel) {
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
 }
 
-// Test size accesser functions.
+// Test size accessor functions.
 TEST(BasicInterpreter, TestSizeFunctions) {
   Interpreter interpreter;
   int base_index;

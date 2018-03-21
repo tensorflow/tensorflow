@@ -259,6 +259,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     data = [":sparse_image_warp_test_data"],
+    tags = ["no_pip"],
 )
 
 filegroup(

@@ -237,7 +237,7 @@ def _FindFusedBatchNorms(graph):
       # The batch variance used during forward and backward prop is biased,
       # i.e it is calculated as: V=sum(x(k)-mu)^2/N. For the moving average
       # calculation, the variance is corrected by the term N/N-1 (Bessel's
-      # correction). The variance tensor read from FuseBatchNorm has bessel's
+      # correction). The variance tensor read from FuseBatchNorm has Bessel's
       # correction applied, so we undo it here.
       scope, sep, _ = bn_op.name.rpartition('/')
       g = ops.get_default_graph()
@@ -306,7 +306,7 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
 
   Args:
     context: The scope under which we look for batch norm params
-    match: Object containg required batch norm tensors for correction
+    match: Object containing required batch norm tensors for correction
       computation.
     freeze_batch_norm_delay: Delay in steps at which computation switches
       from regular batch norm to frozen mean and variance.

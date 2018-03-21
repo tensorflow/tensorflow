@@ -193,7 +193,7 @@ to calculate loss, configure the training op, and generate predictions. If
 you're already experienced with CNNs and @{$get_started/custom_estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
 skip ahead to ["Training and Evaluating the CNN MNIST
-Classifier"](#training-and-evaluating-the-cnn-mnist-classifier).
+Classifier"](#training_and_evaluating_the_cnn_mnist_classifier).
 
 ### Input Layer
 
@@ -446,7 +446,7 @@ tf.nn.softmax(logits, name="softmax_tensor")
 
 > Note: We use the `name` argument to explicitly name this operation
 > `softmax_tensor`, so we can reference it later. (We'll set up logging for the
-> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook).
+> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook)).
 
 We compile our predictions in a dict, and return an `EstimatorSpec` object:
 
@@ -534,9 +534,8 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$get_started/custom_estimators#defining-the-training-op-for-the-model$"Defining
-> the training op for the model"} in the @{$get_started/custom_estimators$"Creating Estimations in
-> tf.estimator"} tutorial.
+> functions, see @{$get_started/custom_estimators#defining_the_training_op_for_the_model$"Defining the training op for the model"} 
+> in the @{$get_started/custom_estimators$"Creating Estimators in tf.estimator."} tutorial.
 
 ### Add evaluation metrics
 
@@ -625,7 +624,8 @@ operation earlier when we generated the probabilities in `cnn_model_fn`.
 > Note: If you don't explicitly assign a name to an operation via the `name`
 > argument, TensorFlow will assign a default name. A couple easy ways to
 > discover the names applied to operations are to visualize your graph on
-> @{$graph_viz$TensorBoard}) or to enable the @{$debugger$TensorFlow Debugger (tfdbg)}.
+> @{$graph_viz$TensorBoard}) or to enable the
+> @{$programmers_guide/debugger$TensorFlow Debugger (tfdbg)}.
 
 Next, we create the `LoggingTensorHook`, passing `tensors_to_log` to the
 `tensors` argument. We set `every_n_iter=50`, which specifies that probabilities

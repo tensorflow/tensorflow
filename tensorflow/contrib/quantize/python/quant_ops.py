@@ -282,8 +282,8 @@ def _FakeQuantWithMinMaxVars(inputs, min_var, max_var, per_channel, num_bits,
   Args:
     inputs: a tensor containing values to be quantized.
     min_var: a variable containing quantization range lower end(s).
-    max_var: a variable containing quantization range lupper end(s).
-    per_channel: a boolean specifying whether to use per-channel quantizatioh.
+    max_var: a variable containing quantization range upper end(s).
+    per_channel: a boolean specifying whether to use per-channel quantization.
     num_bits: Number of bits to use for quantization, must be between 2 and 8.
     narrow_range: Whether to use the narrow quantization range
       [1; 2^num_bits - 1] or wide range [0; 2^num_bits - 1].

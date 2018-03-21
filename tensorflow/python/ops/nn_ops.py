@@ -150,14 +150,12 @@ class _NonAtrousConvolution(object):
                                                               conv_dims))
     if conv_dims == 1:
       # conv1d uses the 2-d data format names
-      if data_format is None or data_format == "NWC":
-        data_format_2d = "NHWC"
-      elif data_format == "NCW":
-        data_format_2d = "NCHW"
-      else:
+      if data_format is None:
+        data_format = "NWC"
+      elif data_format not in {"NCW", "NWC", "NCHW", "NHWC"}:
         raise ValueError("data_format must be \"NWC\" or \"NCW\".")
       self.strides = strides[0]
-      self.data_format = data_format_2d
+      self.data_format = data_format
       self.conv_op = self._conv1d
     elif conv_dims == 2:
       if data_format is None or data_format == "NHWC":
@@ -699,7 +697,7 @@ def convolution(
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  @{tf.nn.convolution$comment here}.
+  @{$python/nn#Convolution$comment here}.
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -1043,9 +1041,7 @@ def pool(
 
 @tf_export("nn.atrous_conv2d")
 def atrous_conv2d(value, filters, rate, padding, name=None):
-  """Atrous convolution (a.k.a.
-
-  convolution with holes or dilated convolution).
+  """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
   @{tf.nn.convolution}, and exists only for backwards compatibility. You can

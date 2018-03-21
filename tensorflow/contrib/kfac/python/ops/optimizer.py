@@ -153,7 +153,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       raise ValueError("Unsupported momentum type {}. Must be one of {}."
                        .format(momentum_type, legal_momentum_types))
     if momentum_type != "regular" and norm_constraint is not None:
-      raise ValueError("Update clipping is only supported with momentum"
+      raise ValueError("Update clipping is only supported with momentum "
                        "type 'regular'.")
     if momentum_type not in ["regular", "adam"] and momentum != 0:
       raise ValueError("Momentum must be unspecified if using a momentum_type "

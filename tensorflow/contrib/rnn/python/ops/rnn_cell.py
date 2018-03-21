@@ -534,7 +534,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
       num_unit_shards: (optional) int, default 1, How to split the weight
-        matrix. If > 1,the weight matrix is stored across num_unit_shards.
+        matrix. If > 1, the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
         of the training.
@@ -993,7 +993,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
       num_unit_shards: (optional) int, default 1, How to split the weight
-        matrix. If > 1,the weight matrix is stored across num_unit_shards.
+        matrix. If > 1, the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
         of the training.
@@ -2133,7 +2133,7 @@ class Conv1DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_1d_lstm_cell", **kwargs):
     """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
+    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, name=name, **kwargs)
 
 
 class Conv2DLSTMCell(ConvLSTMCell):
@@ -2144,7 +2144,7 @@ class Conv2DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_2d_lstm_cell", **kwargs):
     """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, name=name, **kwargs)
 
 
 class Conv3DLSTMCell(ConvLSTMCell):
@@ -2155,7 +2155,7 @@ class Conv3DLSTMCell(ConvLSTMCell):
 
   def __init__(self, name="conv_3d_lstm_cell", **kwargs):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
-    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
+    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, name=name, **kwargs)
 
 
 def _conv(args, filter_size, num_features, bias, bias_start=0.0):

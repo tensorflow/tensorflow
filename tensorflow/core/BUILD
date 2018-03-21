@@ -3338,6 +3338,10 @@ tf_cc_test(
     size = "small",
     srcs = ["common_runtime/function_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "manual",
+        "no_oss",
+    ],
     deps = [
         ":core",
         ":core_cpu",

@@ -139,8 +139,8 @@ class Estimator(object):
                  to configure Estimators from hyper parameter tuning.
           * `config`: Optional configuration object. Will receive what is passed
                  to Estimator in `config` parameter, or the default `config`.
-                 Allows updating things in your model_fn based on configuration
-                 such as `num_ps_replicas`, or `model_dir`.
+                 Allows updating things in your `model_fn` based on
+                 configuration such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
           `EstimatorSpec`
@@ -301,11 +301,11 @@ class Estimator(object):
 
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
+          * A tuple (features, labels): Where `features` is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and `labels` is a
             `Tensor` or a dictionary of string label name to `Tensor`. Both
-            features and labels are consumed by `model_fn`. They should satisfy
-            the expectation of `model_fn` from inputs.
+            `features` and `labels` are consumed by `model_fn`. They should
+            satisfy the expectation of `model_fn` from inputs.
 
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
@@ -381,11 +381,11 @@ class Estimator(object):
 
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
             tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where features is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and labels is a
+          * A tuple (features, labels): Where `features` is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and `labels` is a
             `Tensor` or a dictionary of string label name to `Tensor`. Both
-            features and labels are consumed by `model_fn`. They should satisfy
-            the expectation of `model_fn` from inputs.
+            `features` and `labels` are consumed by `model_fn`. They should
+            satisfy the expectation of `model_fn` from inputs.
 
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
@@ -457,17 +457,17 @@ class Estimator(object):
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
       yield_single_examples: If False, yield the whole batch as returned by the
-        model_fn instead of decomposing the batch into individual elements. This
-        is useful if model_fn return some tensor with first dimension not
-        equal to the batch size
+        `model_fn` instead of decomposing the batch into individual elements.
+        This is useful if `model_fn` returns some tensors whose first dimension
+        is not equal to the batch size.
 
     Yields:
       Evaluated values of `predictions` tensors.
 
     Raises:
-      ValueError: Could not find a trained model in model_dir.
-      ValueError: if batch length of predictions are not same and
-        yield_single_examples is True.
+      ValueError: Could not find a trained model in `model_dir`.
+      ValueError: If batch length of predictions is not the same and
+        `yield_single_examples` is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
@@ -849,7 +849,7 @@ class Estimator(object):
                   'loss': estimator_spec.loss,
                   'step': global_step_tensor
               },
-              every_n_iter=100)
+              every_n_iter=self._config.log_step_count_steps)
       ])
       worker_hooks.extend(estimator_spec.training_hooks)
 

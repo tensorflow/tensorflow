@@ -108,6 +108,7 @@ filegroup(
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
+        "@kafka//:LICENSE",
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",

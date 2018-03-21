@@ -569,7 +569,7 @@ enum {
   ANEURALNETWORKS_LOGISTIC = 14,
 
   /**
-   * Projects an input to a bit vector via locality senstive hashing.
+   * Projects an input to a bit vector via locality sensitive hashing.
    *
    * Inputs:
    * * 0: Hash functions. Dim.size == 2, DataType: Float.
