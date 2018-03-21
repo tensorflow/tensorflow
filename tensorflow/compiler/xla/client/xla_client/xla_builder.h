@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -157,14 +158,15 @@ class XlaBuilder {
   XlaOp ConstantR0(NativeT value);
 
   // Returns the shape of the given op.
-  StatusOr<std::unique_ptr<Shape>> GetShape(const XlaOp& op) const;
+  StatusOr<Shape> GetShape(const XlaOp& op) const;
 
   // Builds the computation with the requested operations, or returns a non-ok
   // status.
   StatusOr<XlaComputation> Build();
 
  private:
-  XlaOp AddInstruction(HloInstructionProto&& instr);
+  XlaOp AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
+                       tensorflow::gtl::ArraySlice<XlaOp> operands = {});
 
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error

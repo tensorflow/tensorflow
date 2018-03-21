@@ -61,7 +61,7 @@ class ListTransformer(transformer.Base):
     return templates.replace_as_expression(template, dtype_name=dtype_name)
 
   def _pre_populated_list(self, node):
-    raise NotImplementedError()
+    raise NotImplementedError('pre-populated lists')
 
   def visit_Expr(self, node):
     node = self.generic_visit(node)

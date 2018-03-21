@@ -160,12 +160,12 @@ class HloComputation {
   //   module: the module which will contain the computation. The newly created
   //     computation is *not* added to the module, however.
   //   proto: the proto to convert from.
-  //   computation_map: a map from computation name to HloComputation*. This map
+  //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       HloModule* module, const HloComputationProto& proto,
-      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map);
+      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Gets the instructions in this computation.
   //
@@ -334,6 +334,15 @@ class HloComputation {
     fusion_instruction_ = fusion_instruction;
   }
 
+  // The id of this computation should be unique within the module.
+  void SetUniqueId(int64 id) {
+    CHECK_EQ(unique_id_, -1);
+    CHECK_GE(id, 0);
+    unique_id_ = id;
+  }
+
+  int64 unique_id() const { return unique_id_; }
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -343,10 +352,6 @@ class HloComputation {
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
-
-  // Helper for setting the parent of instructions that are added to this
-  // computation.
-  void Reparent(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
@@ -365,6 +370,7 @@ class HloComputation {
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   string name_;
+  int64 unique_id_;
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the
