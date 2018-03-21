@@ -1603,6 +1603,32 @@ def leaky_relu(features, alpha=0.2, name=None):
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features)
 
+@tf_export("nn.selu")
+def selu(features, alpha=0.2, beta=1, name=None):
+  """Compute the Scaled Exponential Linear Unit activation function.
+
+  "Self Normalizing Neural Networks"
+  G Klambauer, T Unterthiner, A Mayr, NIPS, 2017
+  https://arxiv.org/pdf/1706.02515.pdf
+
+  Args:
+    features: A `Tensor` representing preactivation values. Must be one of
+      the following types: `float16`, `float32`, `float64`, `int32`, `int64`.
+    alpha: Scale factor of the activation function at x < 0.
+    beta: Scale factor the activation function. Originally lambda in the
+      paper.
+    name: A name for the operation (optional).
+
+  Returns:
+    The activation value.
+  """
+  with ops.name_scope(name, "LeakyRelu", [features, alpha, beta]):
+    features = ops.convert_to_tensor(features, name="features")
+    if features.dtype.is_integer:
+      features = math_ops.to_float(features)
+    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
+    beta = ops.convert_to_tensor(beta, dtype=features.dtype, name="beta")
+    return beta * math_ops.maximum(features, alpha * (math_ops.exp(features) - 1))
 
 def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
