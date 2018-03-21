@@ -124,7 +124,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      commands:
 
      <pre>$ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
-    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
+    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh
+    $ <b>. ~/tensorflow/bin/activate.fish</b>  # fish</pre>
 
      The preceding <tt>source</tt> command should change your prompt
      to the following:

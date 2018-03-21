@@ -2727,8 +2727,6 @@ class Graph(object):
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
     self._version = 0  # GUARDED_BY(self._lock)
-    # Current name stack: uniquified names
-    self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
     self._stack_state_is_thread_local = False
@@ -3906,6 +3904,17 @@ class Graph(object):
       yield
     finally:
       self._default_original_op = old_original_op
+
+  @property
+  def _name_stack(self):
+    # This may be called from a thread where name_stack doesn't yet exist.
+    if not hasattr(self._thread_local, "_name_stack"):
+      self._thread_local._name_stack = ""
+    return self._thread_local._name_stack
+
+  @_name_stack.setter
+  def _name_stack(self, name_stack):
+    self._thread_local._name_stack = name_stack
 
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
