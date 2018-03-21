@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_buffer.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
@@ -117,7 +118,9 @@ string ToVlogString(const DeviceMemoryBase *memory) {
   return ToVlogString(*memory);
 }
 
-string ToVlogString(const Eigen::half &h) { return port::StrCat(h); }
+string ToVlogString(const Eigen::half &h) {
+  return port::StrCat(static_cast<float>(h));
+}
 
 string ToVlogString(int i) { return port::StrCat(i); }
 

@@ -11959,6 +11959,10 @@ op {
     name: "num_parallel_batches"
     type: DT_INT64
   }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -24393,6 +24397,37 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "SlideDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "window_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "stride"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
