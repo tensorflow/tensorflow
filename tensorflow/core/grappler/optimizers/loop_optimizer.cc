@@ -368,7 +368,7 @@ Status LoopOptimizer::FindInvariantNodes(NodeDef* node) {
     bool is_invariant = true;
     for (const auto& input : consumer->input()) {
       if (!IsControlInput(input)) {
-        const auto& name = NodeName(input);
+        const string name = NodeName(input);
         auto* producer = node_map_->GetNode(name);
         if (!invariant_nodes_.count(producer)) {
           if (IsConstant(*producer)) {
