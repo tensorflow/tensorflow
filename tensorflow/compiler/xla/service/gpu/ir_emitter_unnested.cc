@@ -1979,11 +1979,22 @@ GetHloBufferSlices(const HloInstruction* hlo,
       }
     }
 
-    // If *that* didn't work, check whether instr is a GTE instruction.  If it
-    // is, see if we can get a buffer for its parent, and continue walking up
-    // parents until we find a defined buffer or we hit something that's not a
-    // GTE.
+    // If *that* didn't work, walk up any bitcasts that we might see.  These
+    // must appear before any GTE instructions, because it's illegal to bitcast
+    // to a tuple type.
     const HloInstruction* parent = instr;
+    while (parent->opcode() == HloOpcode::kBitcast) {
+      parent = parent->operand(0);
+
+      auto slice = GetKnownAtRuntimeSlice(parent, {}, buffer_assn);
+      if (slice.has_value()) {
+        return {{*slice, gte_indices}};
+      }
+    }
+
+    // Finally, check whether instr is a GTE instruction.  If it is, see if we
+    // can get a buffer for its parent, and continue walking up parents until we
+    // find a defined buffer or we hit something that's not a GTE.
     while (parent->opcode() == HloOpcode::kGetTupleElement) {
       gte_indices.push_front(parent->tuple_index());
       parent = parent->operand(0);
