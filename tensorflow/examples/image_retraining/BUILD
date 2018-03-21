@@ -32,10 +32,6 @@ py_test(
         "retrain.py",
         "retrain_test.py",
     ],
-    data = [
-        ":data/labels.txt",
-        "//tensorflow/examples/label_image:data/grace_hopper.jpg",
-    ],
     srcs_version = "PY2AND3",
     deps = [
         ":retrain",
