@@ -58,6 +58,18 @@ py_library(
         "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
+    deps = [":no_contrib"] + if_not_windows([
+        "//tensorflow/contrib:contrib_py",
+    ]),
+)
+
+py_library(
+    name = "no_contrib",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         ":array_ops",
         ":bitwise_ops",
@@ -86,6 +98,7 @@ py_library(
         ":ops",
         ":platform",
         ":pywrap_tensorflow",
+        ":saver_test_utils",
         ":script_ops",
         ":session_ops",
         ":sets",
@@ -95,31 +108,28 @@ py_library(
         ":standard_ops",
         ":state_ops",
         ":string_ops",
+        ":subscribe",
         ":summary",
         ":tensor_array_ops",
-        ":training",
-        ":saver_test_utils",
-        ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
-        ":tf_item",
         ":tf_cluster",
+        ":tf_item",
         ":tf_optimizer",
+        ":training",
         ":util",
         ":weights_broadcast_ops",
-        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
-    ] + if_not_windows([
-        "//tensorflow/contrib:contrib_py",
-    ]),
+        "//third_party/py/numpy",
+    ],
 )
 
 tf_py_build_info_genrule()
