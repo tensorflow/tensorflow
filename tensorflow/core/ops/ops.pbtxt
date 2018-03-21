@@ -11959,6 +11959,10 @@ op {
     name: "num_parallel_batches"
     type: DT_INT64
   }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
