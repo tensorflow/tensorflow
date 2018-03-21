@@ -26,7 +26,7 @@ namespace grappler {
 // operations to make the overall graph more efficient.
 class FunctionOptimizer : public GraphOptimizer {
  public:
-  FunctionOptimizer(RewriterConfig::Toggle opt_level) : opt_level_(opt_level) {}
+  FunctionOptimizer(RewriterConfig::Toggle opt_level) {}
   ~FunctionOptimizer() override {}
 
   string name() const override { return "function_optimizer"; };
@@ -36,9 +36,6 @@ class FunctionOptimizer : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
-
- private:
-  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

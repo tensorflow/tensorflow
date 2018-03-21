@@ -55,23 +55,6 @@ OpContext DescribeMatMul(int m, int n, int l, int k) {
   return op_context;
 }
 
-// Returns an OpInfo for MatMul with unknown input shapes.
-OpContext DescribeMatMulUnknownShape() {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("MatMul");
-
-  auto input = op_context.op_info.add_inputs();
-  auto shape = input->mutable_shape();
-  shape->set_unknown_rank(true);
-
-  input = op_context.op_info.add_inputs();
-  shape = input->mutable_shape();
-  shape->set_unknown_rank(true);
-
-  return op_context;
-}
-
 // Wrangles the minimum number of proto fields to set up an input of
 // arbitrary rank and type.
 void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
