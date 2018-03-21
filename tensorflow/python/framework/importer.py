@@ -301,14 +301,17 @@ def _ProcessNewOps(graph):
   colocation_pairs = {}
 
   for new_op in graph._add_new_tf_operations(compute_devices=False):  # pylint: disable=protected-access
+    original_device = new_op.device
+    new_op._set_device('')  # pylint: disable=protected-access
     colocation_names = _GetColocationNames(new_op)
     if colocation_names:
       colocation_pairs[new_op] = colocation_names
-      # Don't apply this op's device function, since colocation constraints
-      # override device functions. Note that this op's device may still be set
-      # by the loop below.
+      # Don't set a device for this op, since colocation constraints override
+      # device functions and the original device. Note that this op's device may
+      # still be set by the loop below.
+      # TODO(skyewm): why does it override the original device?
     else:
-      with _MaybeDevice(new_op.device):
+      with _MaybeDevice(original_device):
         graph._apply_device_functions(new_op)  # pylint: disable=protected-access
 
   # The following loop populates the device field of ops that are colocated

@@ -241,6 +241,7 @@ cc_library(
         "gpu_executable.cc",
         "infeed_thunk.cc",
         "kernel_thunk.cc",
+        "memset_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
@@ -257,6 +258,7 @@ cc_library(
         "gpu_executable.h",
         "infeed_thunk.h",
         "kernel_thunk.h",
+        "memset_thunk.h",
         "sequential_thunk.h",
         "thunk.h",
         "thunk_schedule.h",
@@ -273,6 +275,7 @@ cc_library(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -293,6 +296,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
+        "//tensorflow/stream_executor",
     ],
 )
 

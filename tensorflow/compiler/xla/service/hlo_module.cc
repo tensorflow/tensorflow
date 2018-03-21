@@ -83,6 +83,11 @@ HloComputation* HloModule::AddComputationInternal(
   for (auto* instruction : computation->instructions()) {
     instruction->SetUniqueId(NewUniqueInstructionId());
   }
+  // Set unique id to this computation.
+  CHECK_NE(computation->root_instruction()->unique_id(), -1)
+      << "Root has no valid id: " << computation->ToString();
+  computation->SetUniqueId(computation->root_instruction()->unique_id());
+
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();
@@ -204,8 +209,10 @@ string HloModule::ToString(const HloPrintOptions& options) const {
 
 HloModuleProto HloModule::ToProto() const {
   HloModuleProto proto;
+  proto.set_id(unique_id_);
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
+  proto.set_entry_computation_id(entry_computation_->unique_id());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     HloComputationProto computation_proto = computation->ToProto();
     if (computation->name() == entry_computation_->name()) {
@@ -249,19 +256,20 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
                                       module_config);
 
-  tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
+  tensorflow::gtl::FlatMap<int64, HloComputation*> computation_map;
   for (const HloComputationProto& computation_proto : proto.computations()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
                         HloComputation::CreateFromProto(
                             module.get(), computation_proto, computation_map));
     CHECK_NE(computation.get(), nullptr);
-    TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
-    string computation_name = computation->name();
+    int64 computation_id = computation_proto.id();
+    TF_RET_CHECK(computation_id != -1);
+    TF_RET_CHECK(!ContainsKey(computation_map, computation_id));
     // Don't uniquify names because we want names to be stable across
     // serialization and deserialization.
-    computation_map[computation_name] = module->AddComputationInternal(
+    computation_map[computation_id] = module->AddComputationInternal(
         std::move(computation),
-        /*is_entry=*/proto.entry_computation_name() == computation_name,
+        /*is_entry=*/proto.entry_computation_id() == computation_id,
         /*uniquify_names=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
