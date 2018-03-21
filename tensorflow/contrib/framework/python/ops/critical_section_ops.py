@@ -24,10 +24,8 @@ import collections
 # from tensorflow.core.protobuf import critical_section_pb2
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -46,6 +44,26 @@ class _ExecutionSignature(
                             "resources", "exclusive_resource_access"))):
   """A class storing an `ExecuteInCriticalResource` op and associated attrs."""
   pass
+
+
+def _identity(x):
+  """Identity op that recognizes `TensorArray`, `Operation`, and `Tensor`."""
+  if isinstance(x, tensor_array_ops.TensorArray):
+    return x.identity()
+  elif isinstance(x, ops.Operation):
+    return control_flow_ops.group(x)
+  elif context.executing_eagerly() and x is None:
+    return None
+  else:
+    return array_ops.identity(x)
+
+
+def _get_colocation(op):
+  """Get colocation symbol from op, if any."""
+  try:
+    return op.get_attr("_class")
+  except ValueError:
+    return None
 
 
 class CriticalSection(object):
@@ -180,8 +198,8 @@ class CriticalSection(object):
       The tensors returned from `fn(*args, **kwargs)`.
 
     Raises:
-      ValueError: If `fn` attempts to use this `CriticalSection` in any nested
-        way.
+      ValueError: If `fn` attempts to lock this `CriticalSection` in any nested
+        or lazy way that may cause a deadlock.
       ValueError: If `exclusive_resource_access` is not provided (is `True`) and
         another `CriticalSection` has an execution requesting the same
         resources as in `*args`, `**kwargs`, and any additionaly captured
@@ -193,69 +211,52 @@ class CriticalSection(object):
     exclusive_resource_access = kwargs.pop("exclusive_resource_access", True)
 
     with ops.name_scope(name, "critical_section_execute", []):
+
+      # Ensure that mutex locking only happens *after* all args and
+      # kwargs have been executed.  This avoids certain types of deadlocks.
       lock = gen_resource_variable_ops.mutex_lock(self._handle)
 
-      with ops.control_dependencies([lock]):
-        c_known_ops = set()
-        c_captured_tensors = set()
-
-        def add_op_internal(op):
-          c_known_ops.add(op)
-          for i in op.inputs:
-            if i.op not in c_known_ops:
-              c_captured_tensors.add(i)
-
-        c = function.HelperContext(add_op_internal)
-        with c:
+      if not context.executing_eagerly():
+        # NOTE(ebrevdo): This is to ensure we don't pick up spurious
+        # Operations created by other threads.
+        with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+          existing_ops = ops.get_default_graph().get_operations()
+          with ops.control_dependencies([lock]):
+            r = fn(*args, **kwargs)
+          # TODO(ebrevdo): If creating critical sections in a python loop, this
+          # makes graph creation time quadratic.  Revisit if this
+          # becomes a problem.
+          created_ops = (set(ops.get_default_graph().get_operations())
+                         .difference(existing_ops))
+      else:
+        with ops.control_dependencies([lock]):
           r = fn(*args, **kwargs)
 
-        resource_inputs = set([
-            x for x in
-            list(nest.flatten(args)) + nest.flatten(kwargs.values()) +
-            list(c_captured_tensors)
-            if tensor_util.is_tensor(x) and x.dtype == dtypes.resource])
-
-      if self._handle in resource_inputs:
-        raise ValueError("The function fn attempts to access the "
-                         "CriticalSection in which it would be running.  "
-                         "This is illegal and would cause deadlocks.  "
-                         "CriticalSection: %s." % self._handle)
-
       if not context.executing_eagerly():
-        # Collections and op introspection does not work in eager
-        # mode.  This is generally ok; since eager mode (as of
-        # writing) executes sequentially anyway.
-        for sg in ops.get_collection(CRITICAL_SECTION_EXECUTIONS):
-          sg_handle_name = ops.convert_to_tensor(sg.handle).name
-          self_handle_name = ops.convert_to_tensor(self._handle).name
-          if sg_handle_name == self_handle_name:
-            # Other executions in the same critical section are allowed.
-            continue
-          if not (exclusive_resource_access or sg.exclusive_resource_access):
-            # Neither execution requested exclusive access.
-            continue
-          resource_intersection = resource_inputs.intersection(sg.resources)
-          if resource_intersection:
-            raise ValueError(
-                "This execution would access resources: %s.  Either this "
-                "lock (CriticalSection: %s) or lock '%s' "
-                "(CriticalSection: %s) requested exclusive resource access "
-                "of this resource.  Did you mean to call execute with keyword "
-                "argument exclusive_resource_access=False?" %
-                (list(resource_intersection), self._handle.name,
-                 sg.op.name, sg.handle.name))
+        self._add_control_dependencies_to_lock(created_ops, lock.op)
 
-      def identity(x):  # pylint: disable=invalid-name
-        if isinstance(x, tensor_array_ops.TensorArray):
-          return x.identity()
-        elif isinstance(x, ops.Operation):
-          return control_flow_ops.group(x)
-        elif context.executing_eagerly() and x is None:
-          return None
-        else:
-          return array_ops.identity(x)
+        # captured_resources is a list of resources that are directly
+        # accessed only by ops created during fn(), not by any
+        # ancestors of those ops in the graph.
+        captured_resources = set([
+            input_ for op in created_ops
+            for input_ in op.inputs
+            if input_.dtype == dtypes.resource
+        ])
 
-      r_flat = [identity(x) for x in nest.flatten(r)]
+        # NOTE(ebrevdo): The only time self._is_self_handle() is True
+        # in this call is if one of the recently created ops, within
+        # the execute(), themselves attempt to access the
+        # CriticalSection.  This will cause a deadlock.
+        if any(self._is_self_handle(x) for x in captured_resources):
+          raise ValueError("The function fn attempts to directly access the "
+                           "CriticalSection in which it would be running.  "
+                           "This is illegal and would cause deadlocks.")
+
+        self._check_multiple_access_to_resources(
+            captured_resources, exclusive_resource_access)
+
+      r_flat = [_identity(x) for x in nest.flatten(r)]
 
       with ops.control_dependencies(r_flat):
         # The identity must run on the same machine as self._handle
@@ -268,22 +269,92 @@ class CriticalSection(object):
 
         # Make sure that if any element of r is accessed, all of
         # them are executed together.
-        r = nest.pack_sequence_as(
-            r, control_flow_ops.tuple(nest.flatten(r)))
+        r = nest.pack_sequence_as(r, control_flow_ops.tuple(nest.flatten(r)))
 
       with ops.control_dependencies([ensure_lock_exists]):
-        outputs = nest.map_structure(identity, r)
+        outputs = nest.map_structure(_identity, r)
 
       if not context.executing_eagerly():
         signature = _ExecutionSignature(
             op=lock.op,
             handle=self._handle,
-            resources=list(resource_inputs),
+            resources=list(captured_resources),
             exclusive_resource_access=exclusive_resource_access)
         ops.add_to_collections(
             CRITICAL_SECTION_EXECUTIONS, signature)
 
       return outputs
+
+  def _add_control_dependencies_to_lock(self, created_ops, lock_op):
+    """To avoid deadlocks, all args must be executed before lock_op."""
+    # Get all arguments (explicit and captured) of all ops created by fn().
+    all_args = set([input_.op for op in created_ops for input_ in op.inputs])
+    all_args.update(
+        input_op for op in created_ops for input_op in op.control_inputs)
+    # Unfortunately, we can't use sets throughout because TF seems to
+    # create new Operation objects for the same op sometimes; and we
+    # can't rely on id(op).
+
+    # pylint: disable=protected-access
+    all_args_dict = dict((op._id, op) for op in all_args)
+
+    # Remove ops created within fn, or that lock_op already has a
+    # control dependency on.  Also remove a possible self-loop.
+    for op in created_ops:
+      all_args_dict.pop(op._id, None)
+    for op in lock_op.control_inputs:
+      all_args_dict.pop(op._id, None)
+    for input_ in lock_op.inputs:
+      all_args_dict.pop(input_.op._id, None)
+    all_args_dict.pop(lock_op._id, None)
+
+    lock_op._add_control_inputs(all_args_dict.values())
+    # pylint: enable=protected-access
+
+  def _is_self_handle(self, x):
+    """Check if the tensor `x` is the same Mutex as `self._handle`."""
+    return (x.op.type == "MutexV2"
+            # blank shared_name means the op will create a unique one.
+            and x.op.get_attr("shared_name")
+            and (x.op.get_attr("shared_name") ==
+                 self._handle.op.get_attr("shared_name"))
+            and (x.op.device == self._handle.op.device
+                 or _get_colocation(x.op) == _get_colocation(self._handle.op)))
+
+  def _check_multiple_access_to_resources(
+      self, captured_resources, exclusive_resource_access):
+    """Raise if captured_resources are accessed by another CriticalSection.
+
+    Args:
+      captured_resources: Set of tensors of type resource.
+      exclusive_resource_access: Whether this execution requires exclusive
+        resource access.
+
+    Raises:
+      ValueError: If any tensors in `captured_resources` are also accessed
+        by another `CriticalSection`, and at least one of them requires
+        exclusive resource access.
+    """
+    # Collections and op introspection does not work in eager
+    # mode.  This is generally ok; since eager mode (as of
+    # writing) executes sequentially anyway.
+    for sg in ops.get_collection(CRITICAL_SECTION_EXECUTIONS):
+      if self._is_self_handle(sg.handle):
+        # Other executions in the same critical section are allowed.
+        continue
+      if not (exclusive_resource_access or sg.exclusive_resource_access):
+        # Neither execution requested exclusive access.
+        continue
+      resource_intersection = captured_resources.intersection(sg.resources)
+      if resource_intersection:
+        raise ValueError(
+            "This execution would access resources: %s.  Either this "
+            "lock (CriticalSection: %s) or lock '%s' "
+            "(CriticalSection: %s) requested exclusive resource access "
+            "of this resource.  Did you mean to call execute with keyword "
+            "argument exclusive_resource_access=False?" %
+            (list(resource_intersection), self._handle.name,
+             sg.op.name, sg.handle.name))
 
   # TODO(ebrevdo): Re-enable once CriticalSection is in core.
 

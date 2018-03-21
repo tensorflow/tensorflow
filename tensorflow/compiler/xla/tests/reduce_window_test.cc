@@ -1351,5 +1351,41 @@ ENTRY R2Window {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
+TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
+  const string& hlo_string = R"(
+HloModule R2Window
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R2Window {
+  operand = f32[1,1]{1,0} parameter(0)
+  negate = f32[1,1]{1,0} negate(operand)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[1,1]{1,0} reduce-window(negate, constant), window={size=1x1 pad=0_0x0_0}, to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
+TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
+  const string& hlo_string = R"(
+HloModule R3Window
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R3Window {
+  operand = f32[1,1,1]{2,1,0} parameter(0)
+  negate = f32[1,1,1]{2,1,0} negate(operand)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[1,1,1]{2,1,0} reduce-window(negate, constant), window={size=1x1x1 pad=0_0x0_0x0_0}, to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
 }  // namespace
 }  // namespace xla
