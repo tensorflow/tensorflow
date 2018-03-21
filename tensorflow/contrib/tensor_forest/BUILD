@@ -553,6 +553,7 @@ py_test(
     srcs = ["client/random_forest_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_windows",
         "nomac",  # b/63258195
         "notsan",
     ],

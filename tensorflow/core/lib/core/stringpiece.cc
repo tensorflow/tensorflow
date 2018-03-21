@@ -55,4 +55,6 @@ StringPiece StringPiece::substr(size_t pos, size_t n) const {
   return StringPiece(data_ + pos, n);
 }
 
+const StringPiece::size_type StringPiece::npos = size_type(-1);
+
 }  // namespace tensorflow
