@@ -301,10 +301,6 @@ bool IsComparisonOp(const NodeDef& node) {
   return is_compare;
 }
 
-bool IsLogicalOp(const NodeDef& node) {
-  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
-}
-
 bool IsReduceOp(const NodeDef& node) {
   return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
          IsMin(node) || IsAll(node) || IsAny(node);

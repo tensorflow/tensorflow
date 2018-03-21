@@ -144,7 +144,7 @@ class OpLevelCostEstimator {
   Costs PredictVariable(const OpContext& op_context) const;
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
-  Costs PredictGather(const OpContext& op_context) const;
+  Costs PredictGatherOrSlice(const OpContext& op_context) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.

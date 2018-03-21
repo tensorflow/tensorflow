@@ -308,7 +308,19 @@ class CriticalSection(object):
       all_args_dict.pop(input_.op._id, None)
     all_args_dict.pop(lock_op._id, None)
 
-    lock_op._add_control_inputs(all_args_dict.values())
+    all_args = all_args_dict.values()
+
+    if not all_args:
+      # No control dependencies to add; return early.
+      return
+
+    # This group is important: it ensures that any ops in all_args
+    # outside the control context of the lock_op (and this fn, which
+    # runs in the same context) are added to this context before
+    # being added to the control dependencies of lock_op.
+    all_args = control_flow_ops.group(*all_args)
+
+    lock_op._add_control_input(all_args)
     # pylint: enable=protected-access
 
   def _is_self_handle(self, x):

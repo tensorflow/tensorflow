@@ -60,7 +60,7 @@ def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
     package = "tf_nightly"
   origin_binary = BINARY_STRING_TEMPLATE % (package, version, origin_tag)
   new_binary = BINARY_STRING_TEMPLATE % (package, version, new_tag)
-  zip_ref = zipfile.ZipFile(directory + origin_binary, "r")
+  zip_ref = zipfile.ZipFile(os.path.join(directory, origin_binary), "r")
 
   try:
     tmpdir = tempfile.mkdtemp()
@@ -115,6 +115,7 @@ def main():
   args = parser.parse_args()
 
   # Argument checking
+  args.filename = os.path.abspath(args.filename)
   check_existence(args.filename)
   regex_groups = re.search(TF_NIGHTLY_REGEX, args.filename)
   directory = regex_groups.group(1)
