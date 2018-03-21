@@ -140,7 +140,7 @@ class XentTest(test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu) as sess:
-        loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+        loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             tf_f, tf_l)
         tf_loss, tf_backprop = sess.run([loss, backprop])
       self.assertAllCloseAccordingToType(np_loss, tf_loss)
