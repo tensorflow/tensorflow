@@ -4116,6 +4116,194 @@ func Mod(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// DepthToSpaceAttr is an optional argument to DepthToSpace.
+type DepthToSpaceAttr func(optionalAttr)
+
+// DepthToSpaceDataFormat sets the optional data_format attribute to value.
+// If not specified, defaults to "NHWC"
+func DepthToSpaceDataFormat(value string) DepthToSpaceAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// DepthToSpace for tensors of type T.
+//
+// Rearranges data from depth into blocks of spatial data.
+// This is the reverse transformation of SpaceToDepth. More specifically,
+// this op outputs a copy of the input tensor where values from the `depth`
+// dimension are moved in spatial blocks to the `height` and `width` dimensions.
+// The attr `block_size` indicates the input block size and how the data is moved.
+//
+//   * Chunks of data of size `block_size * block_size` from depth are rearranged
+//     into non-overlapping blocks of size `block_size x block_size`
+//   * The width the output tensor is `input_depth * block_size`, whereas the
+//     height is `input_height * block_size`.
+//   * The Y, X coordinates within each block of the output image are determined
+//     by the high order component of the input channel index.
+//   * The depth of the input tensor must be divisible by
+//     `block_size * block_size`.
+//
+// The `data_format` attr specifies the layout of the input and output tensors
+// with the following options:
+//   "NHWC": `[ batch, height, width, channels ]`
+//   "NCHW": `[ batch, channels, height, width ]`
+//   "NCHW_VECT_C":
+//       `qint8 [ batch, channels / 4, height, width, 4 ]`
+//
+// It is useful to consider the operation as transforming a 6-D Tensor.
+// e.g. for data_format = NHWC,
+//      Each element in the input tensor can be specified via 6 coordinates,
+//      ordered by decreasing memory layout significance as:
+//      n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates
+//                         within the input image, bX, bY means coordinates
+//                         within the output block, oC means output channels).
+//      The output would be the input transposed to the following layout:
+//      n,iY,bY,iX,bX,oC
+//
+// This operation is useful for resizing the activations between convolutions
+// (but keeping all data), e.g. instead of pooling. It is also useful for training
+// purely convolutional models.
+//
+// For example, given an input of shape `[1, 1, 1, 4]`, data_format = "NHWC" and
+// block_size = 2:
+//
+// ```
+// x = [[[[1, 2, 3, 4]]]]
+//
+// ```
+//
+// This operation will output a tensor of shape `[1, 2, 2, 1]`:
+//
+// ```
+//    [[[[1], [2]],
+//      [[3], [4]]]]
+// ```
+//
+// Here, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,
+// the corresponding output will have 2x2 elements and will have a depth of
+// 1 channel (1 = `4 / (block_size * block_size)`).
+// The output element shape is `[2, 2, 1]`.
+//
+// For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
+//
+// ```
+// x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+// ```
+//
+// This operation, for block size of 2, will return the following tensor of shape
+// `[1, 2, 2, 3]`
+//
+// ```
+//    [[[[1, 2, 3], [4, 5, 6]],
+//      [[7, 8, 9], [10, 11, 12]]]]
+//
+// ```
+//
+// Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
+//
+// ```
+// x =  [[[[1, 2, 3, 4],
+//        [5, 6, 7, 8]],
+//       [[9, 10, 11, 12],
+//        [13, 14, 15, 16]]]]
+// ```
+//
+// the operator will return the following tensor of shape `[1 4 4 1]`:
+//
+// ```
+// x = [[[ [1],   [2],  [5],  [6]],
+//       [ [3],   [4],  [7],  [8]],
+//       [ [9],  [10], [13],  [14]],
+//       [ [11], [12], [15],  [16]]]]
+//
+// ```
+//
+// Arguments:
+//
+//	block_size: The size of the spatial block, same as in Space2Depth.
+func DepthToSpace(scope *Scope, input tf.Output, block_size int64, optional ...DepthToSpaceAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"block_size": block_size}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DepthToSpace",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv3DBackpropInputV2Attr is an optional argument to Conv3DBackpropInputV2.
+type Conv3DBackpropInputV2Attr func(optionalAttr)
+
+// Conv3DBackpropInputV2DataFormat sets the optional data_format attribute to value.
+//
+// value: The data format of the input and output data. With the
+// default format "NDHWC", the data is stored in the order of:
+//     [batch, in_depth, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCDHW", the data storage order is:
+//     [batch, in_channels, in_depth, in_height, in_width].
+// If not specified, defaults to "NDHWC"
+func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv3DBackpropInputV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 5.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each
+// filter element on that dimension. The dimension order is determined by the
+// value of `data_format`, see above for details. Dilations in the batch and
+// depth dimensions must be 1.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 i:1 >
+func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of 3-D convolution with respect to the input.
+//
+// Arguments:
+//	input_sizes: An integer vector representing the tensor shape of `input`,
+// where `input` is a 5-D
+// `[batch, depth, rows, cols, in_channels]` tensor.
+//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
+// `in_channels` must match between `input` and `filter`.
+//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+// out_channels]`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+func Conv3DBackpropInputV2(scope *Scope, input_sizes tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv3DBackpropInputV2",
+		Input: []tf.Input{
+			input_sizes, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes square root of x element-wise.
 //
 // I.e., \\(y = \sqrt{x} = x^{1/2}\\).
@@ -24280,194 +24468,6 @@ func StagePeek(scope *Scope, index tf.Output, dtypes []tf.DataType, optional ...
 		return
 	}
 	return values
-}
-
-// Conv3DBackpropInputV2Attr is an optional argument to Conv3DBackpropInputV2.
-type Conv3DBackpropInputV2Attr func(optionalAttr)
-
-// Conv3DBackpropInputV2DataFormat sets the optional data_format attribute to value.
-//
-// value: The data format of the input and output data. With the
-// default format "NDHWC", the data is stored in the order of:
-//     [batch, in_depth, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCDHW", the data storage order is:
-//     [batch, in_channels, in_depth, in_height, in_width].
-// If not specified, defaults to "NDHWC"
-func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Conv3DBackpropInputV2Dilations sets the optional dilations attribute to value.
-//
-// value: 1-D tensor of length 5.  The dilation factor for each dimension of
-// `input`. If set to k > 1, there will be k-1 skipped cells between each
-// filter element on that dimension. The dimension order is determined by the
-// value of `data_format`, see above for details. Dilations in the batch and
-// depth dimensions must be 1.
-// If not specified, defaults to <i:1 i:1 i:1 i:1 i:1 >
-func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes the gradients of 3-D convolution with respect to the input.
-//
-// Arguments:
-//	input_sizes: An integer vector representing the tensor shape of `input`,
-// where `input` is a 5-D
-// `[batch, depth, rows, cols, in_channels]` tensor.
-//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-// `in_channels` must match between `input` and `filter`.
-//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-// out_channels]`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-func Conv3DBackpropInputV2(scope *Scope, input_sizes tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropInputV2Attr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv3DBackpropInputV2",
-		Input: []tf.Input{
-			input_sizes, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DepthToSpaceAttr is an optional argument to DepthToSpace.
-type DepthToSpaceAttr func(optionalAttr)
-
-// DepthToSpaceDataFormat sets the optional data_format attribute to value.
-// If not specified, defaults to "NHWC"
-func DepthToSpaceDataFormat(value string) DepthToSpaceAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// DepthToSpace for tensors of type T.
-//
-// Rearranges data from depth into blocks of spatial data.
-// This is the reverse transformation of SpaceToDepth. More specifically,
-// this op outputs a copy of the input tensor where values from the `depth`
-// dimension are moved in spatial blocks to the `height` and `width` dimensions.
-// The attr `block_size` indicates the input block size and how the data is moved.
-//
-//   * Chunks of data of size `block_size * block_size` from depth are rearranged
-//     into non-overlapping blocks of size `block_size x block_size`
-//   * The width the output tensor is `input_depth * block_size`, whereas the
-//     height is `input_height * block_size`.
-//   * The Y, X coordinates within each block of the output image are determined
-//     by the high order component of the input channel index.
-//   * The depth of the input tensor must be divisible by
-//     `block_size * block_size`.
-//
-// The `data_format` attr specifies the layout of the input and output tensors
-// with the following options:
-//   "NHWC": `[ batch, height, width, channels ]`
-//   "NCHW": `[ batch, channels, height, width ]`
-//   "NCHW_VECT_C":
-//       `qint8 [ batch, channels / 4, height, width, 4 ]`
-//
-// It is useful to consider the operation as transforming a 6-D Tensor.
-// e.g. for data_format = NHWC,
-//      Each element in the input tensor can be specified via 6 coordinates,
-//      ordered by decreasing memory layout significance as:
-//      n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates
-//                         within the input image, bX, bY means coordinates
-//                         within the output block, oC means output channels).
-//      The output would be the input transposed to the following layout:
-//      n,iY,bY,iX,bX,oC
-//
-// This operation is useful for resizing the activations between convolutions
-// (but keeping all data), e.g. instead of pooling. It is also useful for training
-// purely convolutional models.
-//
-// For example, given an input of shape `[1, 1, 1, 4]`, data_format = "NHWC" and
-// block_size = 2:
-//
-// ```
-// x = [[[[1, 2, 3, 4]]]]
-//
-// ```
-//
-// This operation will output a tensor of shape `[1, 2, 2, 1]`:
-//
-// ```
-//    [[[[1], [2]],
-//      [[3], [4]]]]
-// ```
-//
-// Here, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,
-// the corresponding output will have 2x2 elements and will have a depth of
-// 1 channel (1 = `4 / (block_size * block_size)`).
-// The output element shape is `[2, 2, 1]`.
-//
-// For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
-//
-// ```
-// x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
-// ```
-//
-// This operation, for block size of 2, will return the following tensor of shape
-// `[1, 2, 2, 3]`
-//
-// ```
-//    [[[[1, 2, 3], [4, 5, 6]],
-//      [[7, 8, 9], [10, 11, 12]]]]
-//
-// ```
-//
-// Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
-//
-// ```
-// x =  [[[[1, 2, 3, 4],
-//        [5, 6, 7, 8]],
-//       [[9, 10, 11, 12],
-//        [13, 14, 15, 16]]]]
-// ```
-//
-// the operator will return the following tensor of shape `[1 4 4 1]`:
-//
-// ```
-// x = [[[ [1],   [2],  [5],  [6]],
-//       [ [3],   [4],  [7],  [8]],
-//       [ [9],  [10], [13],  [14]],
-//       [ [11], [12], [15],  [16]]]]
-//
-// ```
-//
-// Arguments:
-//
-//	block_size: The size of the spatial block, same as in Space2Depth.
-func DepthToSpace(scope *Scope, input tf.Output, block_size int64, optional ...DepthToSpaceAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"block_size": block_size}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DepthToSpace",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // MapStageAttr is an optional argument to MapStage.

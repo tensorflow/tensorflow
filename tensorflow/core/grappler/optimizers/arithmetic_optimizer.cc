@@ -1037,6 +1037,9 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   }
 
   // Compare attributes.
+  if (node1.attr().size() != node2.attr().size()) {
+    return false;
+  }
   for (const auto& attr1 : node1.attr()) {
     auto it = node2.attr().find(attr1.first);
     if (it == node2.attr().end()) {

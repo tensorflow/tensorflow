@@ -610,6 +610,7 @@ filegroup(
         "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/api_def:all_files",
+        "//tensorflow/core/common_runtime/eager:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
