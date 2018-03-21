@@ -1463,6 +1463,9 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
 StatusOr<std::unique_ptr<Literal>> Literal::Convert(
     PrimitiveType primitive_dest_type) const {
   TF_RET_CHECK(ShapeUtil::IsArray(shape()));
+  if (shape().element_type() == primitive_dest_type) {
+    return CloneToUnique();
+  }
   switch (shape().element_type()) {
 #define CONVERT_IF_DEST_TYPE_MATCHES(type) \
   case (type):                             \
