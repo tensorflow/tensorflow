@@ -3055,6 +3055,8 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
 class IndRNNCell(rnn_cell_impl._LayerRNNCell):
   """Independently RNN Cell. Adapted from `rnn_cell_impl.BasicRNNCell`.
 
+  Each unit has a single recurrent weight connected to its last hidden state.
+
   The implementation is based on:
 
     https://arxiv.org/abs/1803.04831
@@ -3063,7 +3065,13 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
   "Independently Recurrent Neural Network (IndRNN): Building A Longer and
   Deeper RNN"
 
-  Each unit has a single recurrent weight connected to its last hidden state.
+  The default initialization values for recurrent weights, input weights and
+  biases are taken from:
+
+    https://arxiv.org/abs/1504.00941
+
+  Quoc V. Le, Navdeep Jaitly, Geoffrey E. Hinton
+  "A Simple Way to Initialize Recurrent Networks of Rectified Linear Units"
 
   Args:
     num_units: int, The number of units in the RNN cell.
@@ -3072,11 +3080,12 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
       recurrent weight. For `relu` activation, `pow(2, 1/timesteps)` is
       recommended. If None, recurrent weights will not be clipped.
       Default: None.
-    recurrent_initializer: (optional) The initializer to use for the recurrent
-      weights. The default is a uniform distribution in the range `[-1, 1]` if
-      `recurrent_max_abs` is not set or in
-      `[-recurrent_max_abs, recurrent_max_abs]` if it is and
-      `recurrent_max_abs < 1`.
+    recurrent_kernel_initializer: (optional) The initializer to use for the
+      recurrent weights. If None, every recurrent weight is initially set to 1.
+      Default: None.
+    input_kernel_initializer: (optional) The initializer to use for the input
+      weights. If None, the input weights are initialized from a random normal
+      distribution with `mean=0` and `stddev=0.001`. Default: None.
     activation: Nonlinearity to use.  Default: `relu`.
     reuse: (optional) Python boolean describing whether to reuse variables
       in an existing scope.  If not `True`, and the existing scope already has
@@ -3090,7 +3099,8 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
                num_units,
                recurrent_min_abs=0,
                recurrent_max_abs=None,
-               recurrent_initializer=None,
+               recurrent_kernel_initializer=None,
+               input_kernel_initializer=None,
                activation=None,
                reuse=None,
                name=None):
@@ -3102,7 +3112,8 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
     self._num_units = num_units
     self._recurrent_min_abs = recurrent_min_abs
     self._recurrent_max_abs = recurrent_max_abs
-    self._recurrent_initializer = recurrent_initializer
+    self._recurrent_initializer = recurrent_kernel_initializer
+    self._input_initializer = input_kernel_initializer
     self._activation = activation or nn_ops.relu
 
   @property
@@ -3119,25 +3130,20 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
                        % inputs_shape)
 
     input_depth = inputs_shape[1].value
+    if self._input_initializer is None:
+      self._input_initializer = init_ops.random_normal_initializer(mean=0.0,
+                                                                   stddev=0.001)
     self._input_kernel = self.add_variable(
-        "input_kernel",
-        shape=[input_depth, self._num_units])
+        "input_%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, self._num_units],
+        initializer=self._input_initializer)
 
     if self._recurrent_initializer is None:
-      # Initialize the recurrent weights uniformly in [-max_abs, max_abs] or
-      # [-1, 1] if max_abs exceeds 1
-      init_bound = 1.0
-      if self._recurrent_max_abs and self._recurrent_max_abs < init_bound:
-        init_bound = self._recurrent_max_abs
-
-      self._recurrent_initializer = init_ops.random_uniform_initializer(
-          minval=-init_bound,
-          maxval=init_bound
-      )
-
+      self._recurrent_initializer = init_ops.constant_initializer(1.)
     self._recurrent_kernel = self.add_variable(
-        "recurrent_kernel",
-        shape=[self._num_units], initializer=self._recurrent_initializer)
+        "recurrent_%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+        shape=[self._num_units],
+        initializer=self._recurrent_initializer)
 
     # Clip the absolute values of the recurrent weights to the specified minimum
     if self._recurrent_min_abs:
@@ -3155,7 +3161,7 @@ class IndRNNCell(rnn_cell_impl._LayerRNNCell):
                                                       self._recurrent_max_abs)
 
     self._bias = self.add_variable(
-        "bias",
+        rnn_cell_impl._BIAS_VARIABLE_NAME,
         shape=[self._num_units],
         initializer=init_ops.zeros_initializer(dtype=self.dtype))
 
