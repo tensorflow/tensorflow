@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+    class Node;
 namespace tensorrt {
 namespace segment {
 
@@ -46,7 +47,7 @@ struct SegmentOptions {
 // @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::GraphDef& gdef,
-    const std::function<bool(const tensorflow::NodeDef&)>& candidate_fn,
+    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);
 
 }  // namespace segment
