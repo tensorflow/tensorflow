@@ -88,8 +88,8 @@ class Env {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewRandomAccessFile(const string& fname,
-                             std::unique_ptr<RandomAccessFile>* result);
+  virtual Status NewRandomAccessFile(const string& fname,
+                                     std::unique_ptr<RandomAccessFile>* result);
 
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
