@@ -65,7 +65,7 @@ class StringPiece {
   iterator begin() const { return data_; }
   iterator end() const { return data_ + size_; }
 
-  static const size_t npos = size_type(-1);
+  static const size_t npos;
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
