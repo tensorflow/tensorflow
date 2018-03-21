@@ -107,7 +107,7 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
         (class_values_ds, acceptance_dist_ds, dataset)).map(_gather_and_copy)
     filtered_ds = (
         current_probabilities_and_class_and_data_ds
-            .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
+        .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
     return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
 
