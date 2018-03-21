@@ -590,14 +590,14 @@ checkpoint = tfe.Checkpoint(x=x, y=y)
 
 # Assign new values to the variables and save.
 x.assign(2.)
-checkpoint.save('/tmp/ckpt')
+save_path = checkpoint.save('/tmp/ckpt')
 
 # Change the variable after saving.
 x.assign(11.)
 assert 16. == (x + y).numpy()  # 11 + 5
 
 # Restore the values in the checkpoint.
-checkpoint.restore('/tmp/ckpt-1')
+checkpoint.restore(save_path)  # save_path='/tmp/ckpt-1'
 
 assert 7. == (x + y).numpy()  # 2 + 5
 ```
