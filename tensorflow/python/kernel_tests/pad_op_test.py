@@ -336,5 +336,32 @@ class PadOpTest(test.TestCase):
       self.assertAllEqual(inp, out)
       self.assertShapeEqual(inp, tf_val)
 
+  def testCollapseAdjacentNonPaddedDimensions(self):
+    # pyformat: disable
+    paddings_values = [[[0, 0], [0, 0], [0, 0], [0, 1]],
+                       [[0, 0], [2, 3], [0, 0], [0, 0]],
+                       [[0, 0], [0, 0], [0, 0], [0, 0]]]
+    # pyformat: enable
+    for paddings_value in paddings_values:
+      for dtype in [dtypes.float32, dtypes.int32]:
+        inp = constant_op.constant(1, shape=[8, 28, 28, 3], dtype=dtype)
+        paddings = constant_op.constant(paddings_value, dtype=dtypes.int32)
+        padded = array_ops.pad(inp, paddings)
+        middle = array_ops.slice(padded, [row[0] for row in paddings_value],
+                                 [dim.value for dim in inp.shape.dims])
+        left = array_ops.slice(padded, [0, 0, 0, 0],
+                               [row[0] for row in paddings_value])
+        right = array_ops.slice(
+            padded,
+            [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
+            [-1, -1, -1, -1])
+        with self.test_session(use_gpu=True):
+          self.assertAllEqual(inp.eval(), middle.eval())
+          self.assertAllEqual(
+              np.zeros([row[0] for row in paddings_value]), left.eval())
+          self.assertAllEqual(
+              np.zeros([row[1] for row in paddings_value]), right.eval())
+
+
 if __name__ == "__main__":
   test.main()

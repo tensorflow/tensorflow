@@ -1707,7 +1707,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
     }
 
     // Move constants past Enter.
-    if (IsEnter(*node) && node->input_size() > 0) {
+    // TODO(rmlarsen): Reenable when we fix the root cause of b/76008022
+    if (opt_level_ == RewriterConfig::AGGRESSIVE && IsEnter(*node) &&
+        node->input_size() > 0) {
       const string& node_name = node->name();
       const NodeDef* input = node_map_->GetNode(node->input(0));
       if (input != nullptr && IsReallyConstant(*input) &&
@@ -1729,6 +1731,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
           NodeDef* new_node = optimized_graph->add_node();
           *new_node = *input;
           new_node->set_name(OptimizedNodeName(*input, "_enter"));
+          new_node->set_device(node->device());
           new_node->clear_input();
           new_node->add_input(AsControlDependency(node_name));
           node_map_->AddNode(new_node->name(), new_node);
