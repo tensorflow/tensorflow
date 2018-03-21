@@ -151,11 +151,16 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   DataType dst_datatype = DT_INVALID;
   string data_format;
 
-  TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
-  bool dst_dtype_found =
-      GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK();
-  // We compare source and destination datatypes only when both are found.
-  if (dst_dtype_found && (src_datatype != dst_datatype)) {
+  // Value of attribute T of a node could be different than type of input/output
+  // of a node. "Shape" is a classic example. Shape allows input tensor of type
+  // float, but outputs shape of that tensor which is of type int32/int64. So
+  // value of attribute T is not a correct indicator of type of output from that
+  // node.
+  src_datatype = src->output_type(e->src_output());
+  dst_datatype = dst->input_type(e->dst_input());
+
+  // We compare source and destination datatypes.
+  if (src_datatype != dst_datatype) {
     string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
                      " do not match. Will not insert" +
                      " MklToTf node in such case.";
@@ -176,9 +181,11 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
           .Finalize(&**g, &conversion_node));
 
   CHECK_NOTNULL(conversion_node);
+#ifdef INTEL_MKL_ML
   if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK()) {
     conversion_node->AddAttr("data_format", data_format);
   }
+#endif
 
   // Get assigned device from source node and apply it to conversion node.
   // We want conversion node to be on the same device as the source node.

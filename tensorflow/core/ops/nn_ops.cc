@@ -1552,6 +1552,97 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#ifndef INTEL_MKL_ML
+
+REGISTER_OP("__MklDummyConv2DWithBiasAndRelu")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("bias: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2DWithBias and Relu operators for MKL. This node
+does not perform anything. It is just created as an intermediate output of
+merging Conv2DWithBias and Relu.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("__MklDummyConv2DWithRelu")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2D and ReLU operator for MKL. This node
+does not perform anything. It is just created as an intermediate output of
+merging Conv2D and ReLU.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv2DWithBiasAndRelu")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("bias: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_bias: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Doc(R"doc(
+MKL version of Conv2DWithBias and ReLU operator. Uses MKL DNN APIs to perform
+2D convolution, adds Bias to the output of convolution and performs ReLU.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv2DWithRelu")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Doc(R"doc(
+MKL version of Conv2D and ReLU operator. Uses MKL DNN APIs to perform
+2D convolution and applied ReLU activation to the output of convolution.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+#endif  // INTEL_MKL_ML
+
 REGISTER_OP("_MklConv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
@@ -1581,6 +1672,8 @@ gradients of convolution with respect to the filter.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+#ifndef INTEL_MKL_ML
 
 REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
     .Input("input: T")
@@ -1665,6 +1758,8 @@ gradients of convolution with respect to the filter.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+#endif  // INTEL_MKL_ML
 
 REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Input("out_backprop: T")
@@ -1985,6 +2080,132 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#ifndef INTEL_MKL_ML
+
+REGISTER_OP("_MklFusedBatchNormWithRelu")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Output("y: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("reserve_space_1: T")
+    .Output("reserve_space_2: T")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      bool is_training;
+      c->GetAttr("is_training", &is_training);
+      int number_inputs = (is_training) ? 3 : 5;
+      string data_format;
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim =
+          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+      } else {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+      }
+      c->set_output(0, y);
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
+batch normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("__MklDummyFusedBatchNormWithRelu")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+    .Output("y: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("reserve_space_1: T")
+    .Output("reserve_space_2: T")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      bool is_training;
+      c->GetAttr("is_training", &is_training);
+      int number_inputs = (is_training) ? 3 : 5;
+      string data_format;
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim =
+          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+      } else {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+      }
+      c->set_output(0, y);
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
+batch normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+#endif  // INTEL_MKL_ML
+
 REGISTER_OP("_MklFusedBatchNorm")
     .Input("x: T")
     .Input("scale: T")
@@ -2133,12 +2354,17 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+
 REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+#ifndef INTEL_MKL_ML
+    .Attr("T: {half, float, double, int32, int64}")
+#else
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {half, float, double}")
+#endif
     .Doc(R"doc(
 MKL operator to convert a tensor from MKL layout to TensorFlow layout.
 

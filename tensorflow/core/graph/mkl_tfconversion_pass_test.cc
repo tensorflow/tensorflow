@@ -109,6 +109,7 @@ class MklToTfConversionPass : public ::testing::Test {
 };
 
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
+REGISTER_OP("InputInt32").Output("o: int32").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("_MklInput").Output("o: uint8").SetIsStateful();
 
@@ -144,11 +145,11 @@ TEST_F(MklToTfConversionPass, Positive) {
         " attr { key: 'padding'          value { s: 'SAME' } }"
         " input: ['A', 'M', 'B', 'N']}"
         "node { name: 'D' op: 'Input'}"
-        "node { name: 'E' op: 'Sub'"
+        "node { name: 'E' op: 'Zeta'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
+              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Zeta);M(_MklInput);"
               "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:2;C->Mkl2Tf/_0;"
               "C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E;N->C:3");
   } else {
@@ -167,15 +168,55 @@ TEST_F(MklToTfConversionPass, Positive) {
         " attr { key: 'padding'          value { s: 'SAME' } }"
         " input: ['A', 'B', 'M', 'N']}"
         "node { name: 'D' op: 'Input'}"
-        "node { name: 'E' op: 'Sub'"
+        "node { name: 'E' op: 'Zeta'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
+              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Zeta);M(_MklInput);"
               "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
               "C:2->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
   }
 }
+
+#ifndef INTEL_MKL_ML
+
+TEST_F(MklToTfConversionPass, Positive_IntDataType) {
+  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
+    InitGraph(
+        "node { name: 'A' op: 'Input'}"
+        "node { name: 'M' op: '_MklInput'}"
+        "node { name: 'C' op: '_MklShape'"
+        " attr { key: 'T'                value { type: DT_FLOAT } }"
+        " attr { key: 'out_type'         value { type: DT_INT32 } }"
+        " input: ['A', 'M']}"
+        "node { name: 'D' op: 'InputInt32'}"
+        "node { name: 'E' op: 'Zeta'"
+        " attr {key: 'T'                 value { type: DT_INT32 } }"
+        " input: ['C', 'D']}");
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
+              "A(Input);C(_MklShape);D(InputInt32);E(Zeta);"
+              "M(_MklInput);Mkl2Tf/_0(_MklToTf)|A->C;"
+              "C->Mkl2Tf/_0;C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E");
+  } else {
+    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+    InitGraph(
+        "node { name: 'A' op: 'Input'}"
+        "node { name: 'M' op: '_MklInput'}"
+        "node { name: 'C' op: '_MklShape'"
+        " attr { key: 'T'                value { type: DT_FLOAT } }"
+        " attr { key: 'out_type'         value { type: DT_INT32 } }"
+        " input: ['A', 'M']}"
+        "node { name: 'D' op: 'InputInt32'}"
+        "node { name: 'E' op: 'Zeta'"
+        " attr {key: 'T'                 value { type: DT_INT32 } }"
+        " input: ['C', 'D']}");
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
+              "A(Input);C(_MklShape);D(InputInt32);E(Zeta);"
+              "M(_MklInput);Mkl2Tf/_0(_MklToTf)|A->C;"
+              "C->Mkl2Tf/_0;C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E");
+  }
+}
+#endif  // INTEL_MKL_ML
 
 // MklConv2D followed by MklToTf op followed by Non-Mkl layer.
 // C=MklConv2D(A,M,B,N); D=MklToTf(C:0, C:1) F=Sub(D,E) (for interleaved)
@@ -198,7 +239,6 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
         " input: ['A', 'M', 'B', 'N']}"
         "node { name: 'D' op: '_MklToTf'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
-        " attr { key: 'data_format'      value { s: 'NCHW' } }"
         " input: ['C:0', 'C:1']}"
         "node { name: 'E' op: 'Input'}"
         "node { name: 'F' op: 'Sub'"

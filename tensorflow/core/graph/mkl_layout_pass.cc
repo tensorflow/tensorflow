@@ -2415,12 +2415,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.concatv2 = "ConcatV2";
     csinfo_.conv2d = "Conv2D";
     csinfo_.conv2d_with_bias = "__MklDummyConv2DWithBias";
+    csinfo_.conv2d_with_bias_and_relu =
+      "__MklDummyConv2DWithBiasAndRelu";
+    csinfo_.conv2d_with_relu = "__MklDummyConv2DWithRelu";
     csinfo_.conv2d_grad_input = "Conv2DBackpropInput";
     csinfo_.conv2d_grad_filter = "Conv2DBackpropFilter";
     csinfo_.conv2d_grad_filter_with_bias =
         "__MklDummyConv2DBackpropFilterWithBias";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.fused_batch_norm_with_relu = "__MklDummyFusedBatchNormWithRelu";
     csinfo_.identity = "Identity";
     csinfo_.lrn = "LRN";
     csinfo_.lrn_grad = "LRNGrad";
@@ -2431,13 +2435,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_grad_input = "_MklConv2DBackpropInput";
     csinfo_.mkl_conv2d_grad_filter = "_MklConv2DBackpropFilter";
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
+    csinfo_.mkl_conv2d_with_bias_and_relu =
+        "_MklConv2DWithBiasAndRelu";
+    csinfo_.mkl_conv2d_with_relu = "_MklConv2DWithRelu";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
         "_MklConv2DBackpropFilterWithBias";
+    csinfo_.mkl_fused_batch_norm_with_relu = "_MklFusedBatchNormWithRelu";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
+    csinfo_.shape = "Shape";
+    csinfo_.shape_n = "ShapeN";
     csinfo_.softmax = "Softmax";
     csinfo_.split = "Split";
     // Element-wise ops. Ensure you also add any new ops to IsOpElementWise
@@ -2451,10 +2461,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // End - element-wise ops. See note above.
 
     // NOTE: names are alphabetically sorted.
-    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
+    rinfo_.push_back({csinfo_.addn,
+                      mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAddN, AddNRewrite});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsDataType, AlwaysRewrite});
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsPooling, AlwaysRewrite});
@@ -2472,6 +2483,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
                       CopyAttrsConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv2d_with_bias_and_relu,
+                      csinfo_.mkl_conv2d_with_bias_and_relu,
+                      CopyAttrsConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv2d_with_relu, csinfo_.mkl_conv2d_with_relu,
+                      CopyAttrsConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv2d_with_bias_and_relu,
+                      csinfo_.mkl_conv2d_with_bias_and_relu,
+                      CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
                       CopyAttrsConv2D, AlwaysRewrite});
@@ -2484,13 +2503,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
-    rinfo_.push_back(
-        {csinfo_.fused_batch_norm_grad,
-         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
-         CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.fused_batch_norm_grad,
+                      mkl_op_registry::GetMklOpName(
+                        csinfo_.fused_batch_norm_grad),
+                      CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.fused_batch_norm_with_relu,
+                      csinfo_.mkl_fused_batch_norm_with_relu,
+                      CopyAttrsFusedBatchNorm, AlwaysRewrite});
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
-                      CopyAttrsDataType, AlwaysRewrite});
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
                       CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.lrn_grad,
@@ -2502,14 +2524,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, AlwaysRewrite});
-
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
-                      CopyAttrsDataType, AlwaysRewrite});
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
     rinfo_.push_back({csinfo_.mul,
                       mkl_op_registry::GetMklOpName(csinfo_.mul),
-                      CopyAttrsDataType, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
+    rinfo_.push_back({csinfo_.relu,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
@@ -2525,28 +2547,46 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.reshape,
                       mkl_op_registry::GetMklOpName(csinfo_.reshape),
                       CopyAttrsReshape, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.shape,
+                      mkl_op_registry::GetMklOpName(csinfo_.shape),
+                      CopyAttrsShape, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.shape_n,
+                      mkl_op_registry::GetMklOpName(csinfo_.shape_n),
+                      CopyAttrsShapeN, AlwaysRewrite});
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsDataType, AlwaysRewrite});
-
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
-                      CopyAttrsDataType, AlwaysRewrite});
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
     rinfo_.push_back({csinfo_.sub,
                       mkl_op_registry::GetMklOpName(csinfo_.sub),
-                      CopyAttrsDataType, AlwaysRewrite});
-
+                      CopyAttrsDataType, RewriteIfPredecessorOpMkl});
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});
 
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
-                      csinfo_.conv2d_with_bias, GetConv2DOrBiasAdd});
-
+                      csinfo_.conv2d_with_bias,
+                      GetConv2DOrBiasAdd,
+                      MergeConv2DWithBiasAdd});
+    minfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.relu,
+                      csinfo_.conv2d_with_bias_and_relu,
+                      GetConv2DWithBiasOrRelu,
+                      MergeConv2DWithBiasAndRelu});
+    minfo_.push_back({csinfo_.conv2d, csinfo_.relu,
+                      csinfo_.conv2d_with_relu,
+                      GetConv2DOrRelu,
+                      MergeConv2DWithRelu});
+    minfo_.push_back({csinfo_.fused_batch_norm, csinfo_.relu,
+                      csinfo_.fused_batch_norm_with_relu,
+                      GetFusedBatchNormWithRelu,
+                      MergeFusedBatchNormWithRelu});
     minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
                       csinfo_.conv2d_grad_filter_with_bias,
-                      GetConv2DBackpropFilterOrBiasAddGrad});
+                      GetConv2DBackpropFilterOrBiasAddGrad,
+                      MergeConv2DBackpropFilterWithBiasAddGrad});
   }
 
   // Standard interface to run pass
@@ -2597,6 +2637,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Function that enables user of the node merger to specify how to find
     // second operator given the first operator.
     std::function<Node*(const Node*)> get_node_to_be_merged;
+    // Function that merges nodes 'm' and 'n' in graph 'g'
+    std::function<Status(std::unique_ptr<Graph>* g, Node* m, Node* n)>
+      merge_fn;
   } MergeInfo;
 
   /// Structure to store all constant strings
@@ -2612,11 +2655,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string concatv2;
     string conv2d;
     string conv2d_with_bias;
+    string conv2d_with_bias_and_relu;
+    string conv2d_with_relu;
     string conv2d_grad_input;
     string conv2d_grad_filter;
     string conv2d_grad_filter_with_bias;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string fused_batch_norm_with_relu;
     string identity;
     string lrn;
     string lrn_grad;
@@ -2629,12 +2675,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_grad_filter;
     string mkl_conv2d_grad_filter_with_bias;
     string mkl_conv2d_with_bias;
+    string mkl_conv2d_with_bias_and_relu;
+    string mkl_conv2d_with_relu;
+    string mkl_fused_batch_norm_with_relu;
     string mul;
     string relu;
     string relu_grad;
     string tanh;
     string tanh_grad;
     string reshape;
+    string shape;
+    string shape_n;
     string softmax;
     string split;
     string squared_difference;
@@ -2734,9 +2785,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status MergeNode(std::unique_ptr<Graph>* g, Node* m, Node* n);
 
   // Helper function to merge different nodes
-  Status MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g, Node* m, Node* n);
-  Status MergeConv2DBackpropFilterWithBiasAddGrad(std::unique_ptr<Graph>* g,
-                                                  Node* m, Node* n);
+  static Status MergeConv2DWithBiasAdd(
+    std::unique_ptr<Graph>* g, Node* m, Node* n);
+  static Status MergeConv2DWithBiasAndRelu(
+    std::unique_ptr<Graph>* g, Node* m, Node* n);
+  static Status MergeConv2DWithRelu(
+    std::unique_ptr<Graph>* g, Node* m, Node* n);
+  static Status MergeConv2DBackpropFilterWithBiasAddGrad(
+    std::unique_ptr<Graph>* g, Node* m, Node* n);
+  static Status MergeFusedBatchNormWithRelu(
+    std::unique_ptr<Graph>* g, Node* m, Node* n);
 
   // Find BiasAdd or Conv2D node that can be merged with input node 'm'.
   // If input 'm' is BiasAdd, then check if there exists Conv2D node that can be
@@ -2766,6 +2824,104 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (n == nullptr) {
       VLOG(1) << "MklLayoutRewritePass: Could not find matching "
               << "Conv2D and BiasAdd node for merging. Input node: "
+              << m->DebugString();
+    }
+
+    return n;
+  }
+
+  // Find Relu or Conv2D node that can be merged with input node 'm'.
+  // If input 'm' is Relu, then check if there exists Conv2D node that can be
+  // merged with 'm'. If input 'm' is Conv2D, then check if there exists Relu
+  // node that can be merged with 'm'.
+  static Node* GetConv2DOrRelu(const Node* m) {
+    CHECK_NOTNULL(m);
+    Node* n = nullptr;
+
+    if (m->type_string() == csinfo_.relu) {
+      // If a is Relu, then Conv2D is 0th input of Relu.
+      TF_CHECK_OK(m->input_node(0, &n));
+    } else {
+      CHECK_EQ(m->type_string(), csinfo_.conv2d);
+      // Go over all output edges and search for Relu Node.
+      // 0th input of Relu is Conv2D.
+      for (const Edge* e : m->out_edges()) {
+        if (!e->IsControlEdge() &&
+            e->dst()->type_string() == csinfo_.relu &&
+            e->dst_input() == 0) {
+          n = e->dst();
+          break;
+        }
+      }
+    }
+
+    if (n == nullptr) {
+      VLOG(1) << "MklLayoutRewritePass: Could not find matching "
+              << "Conv2D and Relu node for merging. Input node: "
+              << m->DebugString();
+    }
+
+    return n;
+  }
+
+  // Find Conv2DWithBias or Relu node that can be merged with input node 'm'.
+  // If input 'm' is Conv2DWithBias, then check if there exists Relu node that
+  // can be merged with 'm'. If input 'm' is Relu, then check if there exists
+  // Conv2DWithBias node that can be merged with 'm'.
+  static Node* GetConv2DWithBiasOrRelu(const Node* m) {
+    CHECK_NOTNULL(m);
+    Node* n = nullptr;
+
+    if (m->type_string() == csinfo_.relu) {
+      // If m is Relu, then Conv2DWithBias is 0th input of Relu.
+      TF_CHECK_OK(m->input_node(0, &n));
+    } else {
+      CHECK_EQ(m->type_string(), csinfo_.conv2d_with_bias);
+      // Go over all output edges and search for Relu Node.
+      // 0th input of Relu is Conv2DWithBias.
+      for (const Edge* e : m->out_edges()) {
+        if (!e->IsControlEdge() &&
+            e->dst()->type_string() == csinfo_.relu &&
+            e->dst_input() == 0) {
+          n = e->dst();
+          break;
+        }
+      }
+    }
+
+    if (n == nullptr) {
+      VLOG(1) << "MklLayoutRewritePass: Could not find matching "
+              << "Conv2DWithBias and Relu node for merging. Input node: "
+              << m->DebugString();
+    }
+
+    return n;
+  }
+
+  static Node* GetFusedBatchNormWithRelu(const Node* m) {
+    CHECK_NOTNULL(m);
+    Node* n = nullptr;
+
+    if (m->type_string() == csinfo_.relu) {
+      // If m is Relu, then FusedBatchNorm is 0th input of Relu.
+      TF_CHECK_OK(m->input_node(0, &n));
+    } else {
+      CHECK_EQ(m->type_string(), csinfo_.fused_batch_norm);
+      // Go over all output edges and search for Relu Node.
+      // 0th input of Relu is FusedBatchNorm.
+      for (const Edge* e : m->out_edges()) {
+        if (!e->IsControlEdge() &&
+            e->dst()->type_string() == csinfo_.relu &&
+            e->dst_input() == 0) {
+          n = e->dst();
+          break;
+        }
+      }
+    }
+
+    if (n == nullptr) {
+      VLOG(1) << "MklLayoutRewritePass: Could not find matching "
+              << "FusedBatchNorm and Relu node for merging. Input node: "
               << m->DebugString();
     }
 
@@ -2839,6 +2995,48 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @return - true (since we want to always rewrite)
   static bool AlwaysRewrite(const Node* n) { return true; }
 
+  // For elementwise node, we reuse the Eigen implementation and pass the MKL
+  // metadata tensor through so we can avoid conversions. However, if all
+  // incoming edges are in TF format, we don't need all this overhead, so
+  // replace the elementwise node only if at least one of its parents is a MKL
+  // node.
+  //
+  // Identity nodes can also skip replacement if they are not being served by
+  // any MKL nodes.
+  //
+  // TODO(vrane): Add implementation for element-wise ops that doesn't reuse
+  // eigen code to reduce cross-library dependency.
+  //
+  // Rewrite node 'n' if either of the ops feeding n are Mkl ops
+  //
+  // This function allows context-specific rewrite of nodes. For element-wise
+  // ops such as Add, Sub, Mul, etc, rewriting them to their respective Mkl ops
+  // may not provide any performance improvement if the ops feeding these ops
+  // are not Mkl ops. On the contrary, such rewrite for Mkl ops may degrade
+  // performance by adding non-Eigen ops in the subgraph containing Eigen ops.
+  // This is because element-wise ops just offer performance
+  // improvement by propagating Mkl layout from input to output.
+  // @return - true if node is to be rewritten to Mkl op; false otherwise.
+  static bool RewriteIfPredecessorOpMkl(const Node* n) {
+    CHECK_NOTNULL(n);
+
+    for (const Edge* e : n->in_edges()) {
+      if (!e->IsControlEdge()) {
+        DataType T = DT_INVALID;
+        // We don't check for error here since if T is not present, we are
+        // setting default to DT_INVALID.
+        GetNodeAttr(e->src()->def(), "T", &T);
+
+        if (mkl_op_registry::IsMklOp(e->src()->type_string(), T)) {
+          // Return true since the op is Mkl op.
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
   // @return - true (if it is not a depth/batch wise pooling case);
@@ -2865,9 +3063,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
-  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized 
-  // path. The unoptimized path is slow. Thus we dont rewrite the node 
-  // and use default Eigen. But for depth_radius=2, MKL DNN optimized 
+  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized
+  // path. The unoptimized path is slow. Thus we dont rewrite the node
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized
   // path is taken, i.e., eigen node is rewritten by MKl DNN node.
   static bool LrnRewrite(const Node* n) {
     CHECK_NOTNULL(n);
@@ -2876,13 +3074,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
 
     // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
-    // and use eigen node instead 
+    // and use eigen node instead
     if (depth_radius == 2) {
       return true;
     }
     VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
             << "case is not optimized by Intel MKL, thus using Eigen op"
-            << "for LRN " ; 
+            << "for LRN ";
 
     return false;
   }
@@ -3029,6 +3227,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsShape(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsShapeN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -3223,10 +3423,12 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
-    // 2nd input (slot 1) of _MklConv2D and _MklConv2DWithBias.
+    // 2nd input (slot 1) of _MklConv2D and its fused versions.
     for (const Edge* e : filter_node->out_edges()) {
       if ((e->dst()->type_string() == csinfo_.mkl_conv2d ||
-           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias) &&
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias ||
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias_and_relu ||
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_relu) &&
           e->dst_input() == kConv2DFilterInputSlotIdx
           /* filter is 2nd input of Conv2D and _MklConv2D. */) {
         if (conv2d_node != nullptr) {
@@ -3719,6 +3921,34 @@ void MklLayoutRewritePass::CopyAttrsConcatV2(const Node* orig_node,
   nb->Attr("Tidx", tidx);
 }
 
+void MklLayoutRewritePass::CopyAttrsShape(const Node* orig_node,
+                                             NodeBuilder* nb) {
+  DataType T;
+  DataType out_type;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "out_type", &out_type));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("out_type", out_type);
+}
+
+void MklLayoutRewritePass::CopyAttrsShapeN(const Node* orig_node,
+                                             NodeBuilder* nb) {
+  // Reuse code for copying Shape attributes.
+  CopyAttrsShape(orig_node, nb);
+
+  int N;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "N", &N));
+
+  // Add attributes to new node.
+  nb->Attr("N", N);
+}
+
 void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
                                                    NodeBuilder* nb) {
   DataType T;
@@ -3758,8 +3988,10 @@ Node* MklLayoutRewritePass::CheckForNodeMerge(const Node* a) const {
 
   for (const MergeInfo* mi : matching_mi) {
     // Get the operand with which 'a' can be merged.
-    Node* b = nullptr;
-    if ((b = mi->get_node_to_be_merged(a)) == nullptr) {
+    Node* b = mi->get_node_to_be_merged(a);
+    if (b == nullptr ||
+        (b->type_string() != mi->op1 &&
+         b->type_string() != mi->op2)) {
       continue;
     }
 
@@ -3801,19 +4033,11 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   // 1. Get all attributes from input nodes.
   DataType T_pred, T_succ;
-  string padding;
-  std::vector<int32> strides;
-  std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
-  bool use_cudnn_on_gnu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
   // We check to ensure that data formats of both succ and pred are same.
   // We expect them to be same, so we can enforce this as assert.
   // But assert can be too strict, so we enforce this as a check.
@@ -3935,6 +4159,408 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   return Status::OK();
 }
+
+Status MklLayoutRewritePass::MergeConv2DWithRelu(std::unique_ptr<Graph>* g,
+                                                 Node* m, Node* n) {
+  CHECK_EQ(((m->type_string() == csinfo_.relu &&
+             n->type_string() == csinfo_.conv2d)) ||
+               ((n->type_string() == csinfo_.relu &&
+                 m->type_string() == csinfo_.conv2d)),
+           true);
+
+  // If 'm' is Relu, then 'n' is Conv2D. Since Conv2D feeds Relu,
+  // Relu is successor node, and Conv2D predecessor node.
+  Node* pred = m->type_string() == csinfo_.relu ? n : m;
+  Node* succ = m->type_string() == csinfo_.relu ? m : n;
+
+  // 1. Get all attributes from input nodes.
+  DataType T_pred, T_succ;
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
+  TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
+  // We check to ensure that types of both succ and pred are same.
+  // We expect them to be same, so we can enforce this as assert.
+  // But assert can be too strict, so we enforce this as a check.
+  // If the check fails, then we do not merge two nodes.
+  // We also do same check for devices.
+  if (T_pred != T_succ ||
+      pred->assigned_device_name() != succ->assigned_device_name() ||
+      pred->def().device() != succ->def().device()) {
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "T attribute or devices of Conv2D and "
+                  "Relu do not match. Will skip node merge optimization");
+  }
+
+  const int succ_num = succ->num_inputs();
+  gtl::InlinedVector<Node*, 4> succ_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> succ_in(succ_num);
+  FillInputs(succ, &succ_control_edges, &succ_in);
+
+  const int pred_num = pred->num_inputs();
+  gtl::InlinedVector<Node*, 4> pred_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> pred_in(pred_num);
+  FillInputs(pred, &pred_control_edges, &pred_in);
+
+  // We need to ensure that Conv2D only feeds to Relu (some other operator is
+  // not expecting output of Conv2D). If this is not the case, then we cannot
+  // merge Conv2D with Relu.
+  const int kFirstOutputSlot = 0;
+  for (const Edge* e : pred->out_edges()) {
+    if (e->src_output() == kFirstOutputSlot && e->dst() != succ) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "Conv2D does not feed to Relu, or "
+                    "it feeds Relu but has multiple outputs. "
+                    "Will skip node merge optimization");
+    }
+  }
+
+  // 2. Get inputs Conv2D node. We dont need to get input from Relu, since
+  // output of Conv2D is input of Relu.
+  // Get operand 0, 1 of conv2D.
+  CHECK_EQ(pred->in_edges().size(), 2);  // Conv2D must have 2 inputs.
+
+  // We will use the node name of Relu as the name of new node
+  // Build new node. We use same name as original node, but change the op
+  // name.
+  NodeBuilder nb(succ->name(), csinfo_.conv2d_with_relu);
+  nb.Input(pred_in[0].first, pred_in[0].second);  // In1 of Conv2D
+  // pred_in[1] will be 2nd Tensorflow tensor for Conv2D.
+  nb.Input(pred_in[1].first, pred_in[1].second);  // In2 of Conv2D
+
+  // Copy attributes from Conv2D to Conv2DWithRelu.
+  CopyAttrsConv2D(const_cast<const Node*>(pred), &nb);
+
+  // Copy the device assigned to old node to new node.
+  nb.Device(succ->def().device());
+
+  // Create node.
+  Node* new_node;
+  nb.Finalize(&**g, &new_node);
+  CHECK_NOTNULL(new_node);
+
+  // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
+  // node are already copied in BuildNode. We handle control edges now.
+  for (const Edge* e : pred->in_edges()) {
+    if (e->IsControlEdge()) {
+      // Allow duplicate while adding control edge as it would fail (return
+      // NULL) if we try to add duplicate edge.
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+  for (const Edge* e : succ->in_edges()) {
+    if (e->IsControlEdge()) {
+      // Allow duplicate while adding control edge as it would fail (return
+      // NULL) if we try to add duplicate edge.
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+
+  // Incoming edges are fixed, we will fix the outgoing edges now.
+  // First, we will fix outgoing control edges from 'pred' node.
+  for (const Edge* e : pred->out_edges()) {
+    if (e->IsControlEdge()) {
+      // Allow duplicate while adding control edge as it would fail (return
+      // NULL) if we try to add duplicate edge.
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    }
+  }
+
+  // Second, we will fix outgoing control and data edges from 'succ' node.
+  for (const Edge* e : succ->out_edges()) {
+    if (e->IsControlEdge()) {
+      // Allow duplicate while adding control edge as it would fail (return
+      // NULL) if we try to add duplicate edge.
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    } else {
+      // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
+      // output (at slot 0).
+      const int kConv2DWithReluOutputSlot = 0;
+      CHECK_NOTNULL((*g)->AddEdge(new_node, kConv2DWithReluOutputSlot, e->dst(),
+                                  e->dst_input()));
+    }
+  }
+
+  // Copy device assigned to old node to new node.
+  // It's ok to use pred or succ as we have enforced a check that
+  // both have same device assigned.
+  new_node->set_assigned_device_name(pred->assigned_device_name());
+
+  VLOG(1) << "MklLayoutRewritePass: Merged old node:" << pred->DebugString()
+          << ", and node: " << succ->DebugString()
+          << ", into node:" << new_node->DebugString();
+
+  (*g)->RemoveNode(succ);
+  (*g)->RemoveNode(pred);
+
+  return Status::OK();
+}
+
+Status MklLayoutRewritePass::MergeFusedBatchNormWithRelu(
+    std::unique_ptr<Graph>* g, Node* m, Node* n) {
+  CHECK_EQ(((m->type_string() == csinfo_.fused_batch_norm &&
+             n->type_string() == csinfo_.relu)) ||
+           ((n->type_string() == csinfo_.fused_batch_norm &&
+             m->type_string() == csinfo_.relu)), true);
+
+  // If 'm' is Relu, then 'n' is FusedBatchNorm. Since FusedBatchNorm feeds
+  // Relu, Relu is successor node, and FusedBatchNorm predecessor node.
+  Node* pred = m->type_string() == csinfo_.relu ? n : m;
+  Node* succ = m->type_string() == csinfo_.relu ? m : n;
+
+  // 1. Get all attributes from input nodes.
+  DataType T_pred, T_succ;
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
+  TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
+
+  // We check to ensure that data formats of both succ and pred are same.
+  // We expect them to be same, so we can enforce this as assert.
+  // But assert can be too strict, so we enforce this as a check.
+  // If the check fails, then we do not merge two nodes.
+  // We also do same check for devices.
+  if (T_pred != T_succ ||
+      pred->assigned_device_name() != succ->assigned_device_name() ||
+      pred->def().device() != succ->def().device()) {
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "data_format or T attribute or devices of FusedBatchNorm and "
+                  "Relu do not match. Will skip node merge optimization");
+  }
+
+  const int succ_num = succ->num_inputs();
+  gtl::InlinedVector<Node*, 4> succ_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> succ_in(succ_num);
+  FillInputs(succ, &succ_control_edges, &succ_in);
+
+  const int pred_num = pred->num_inputs();
+  gtl::InlinedVector<Node*, 4> pred_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> pred_in(pred_num);
+  FillInputs(pred, &pred_control_edges, &pred_in);
+
+  // We need to ensure that FusedBatchNorm only feeds to Relu (some other
+  // operator is not expecting output of FusedBatchNorm). If this is not the
+  // case, then we cannot merge FusedBatchNorm with Relu.
+  const int kFusedBatchNormOutputSlot0 = 0;
+  for (const Edge* e : pred->out_edges()) {
+    if (e->src_output() == kFusedBatchNormOutputSlot0 && e->dst() != succ) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "FusedBatchNorm does not feed to Relu, or "
+                    "it feeds Relu but has multiple outputs. "
+                    "Will skip node merge optimization");
+    }
+  }
+
+  // 2. Get inputs from both the nodes.
+  // Find the 5 inputs from FusedBatchNorm.
+  const int kNumFusedBatchNormInputs = 5;
+  CHECK_EQ(pred->in_edges().size(), kNumFusedBatchNormInputs);
+  // Get input of Relu.
+  // We checked that input of Relu comes from FusedBatchNorm.
+  CHECK_EQ(succ->in_edges().size(), 1);
+
+  // We will use the node name of Relu as the name of new node
+  // Build new node. We use same name as original node, but change the op
+  // name.
+  NodeBuilder nb(succ->name(), csinfo_.fused_batch_norm_with_relu);
+  for (size_t i = 0; i < kNumFusedBatchNormInputs; ++i) {
+    nb.Input(pred_in[i].first, pred_in[i].second);
+  }
+
+  // Copy attributes from FusedBatchNorm to new node.
+  CopyAttrsFusedBatchNorm(const_cast<const Node*>(pred), &nb);
+
+  // Copy the device assigned to old node to new node.
+  nb.Device(succ->def().device());
+
+  // Create node.
+  Node* new_node;
+  nb.Finalize(&**g, &new_node);
+  CHECK_NOTNULL(new_node);
+
+  // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
+  // node are already copied in BuildNode. We handle control edges now.
+  for (const Edge* e : pred->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+  for (const Edge* e : succ->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+
+  // Incoming edges are fixed, we will fix the outgoing edges now.
+  // First, we will fix outgoing control edges from 'pred' node.
+  for (const Edge* e : pred->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    } else {
+      // If output edge from FusedBatchNorm is not from slot 0,
+      // then we need to add that edge from same slot number of
+      // new node.
+      if (e->src_output() != kFusedBatchNormOutputSlot0) {
+        CHECK_NOTNULL((*g)->AddEdge(new_node, e->src_output(),
+                                    e->dst(), e->dst_input()));
+      }
+    }
+  }
+
+  // Second, we will fix outgoing control and data edges from 'succ' node.
+  for (const Edge* e : succ->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    } else {
+      // Relu has only 1 output (at slot 0) and merged node also has only 1
+      // output (at slot 0).
+      CHECK_NOTNULL((*g)->AddEdge(new_node, kFusedBatchNormOutputSlot0,
+                                    e->dst(), e->dst_input()));
+    }
+  }
+
+  // Copy device assigned to old node to new node.
+  // It's ok to use pred or succ as we have enforced a check that
+  // both have same device assigned.
+  new_node->set_assigned_device_name(pred->assigned_device_name());
+
+  VLOG(1) << "MklLayoutRewritePass: Merged old node:" << pred->DebugString()
+          << ", and node: " << succ->DebugString()
+          << ", into node:" << new_node->DebugString();
+
+  (*g)->RemoveNode(succ);
+  (*g)->RemoveNode(pred);
+
+  return Status::OK();
+}
+
+Status MklLayoutRewritePass::MergeConv2DWithBiasAndRelu(
+    std::unique_ptr<Graph>* g, Node* m, Node* n) {
+  CHECK_EQ(((m->type_string() == csinfo_.conv2d_with_bias &&
+             n->type_string() == csinfo_.relu)) ||
+           ((n->type_string() == csinfo_.conv2d_with_bias &&
+             m->type_string() == csinfo_.relu)), true);
+
+  // If 'm' is Conv2DWithBias, then 'n' is Relu. Since Conv2DWithBias feeds
+  // Relu, Relu is successor node, and Conv2DWithBias is predecessor node.
+  Node* pred = m->type_string() == csinfo_.relu ? n : m;
+  Node* succ = m->type_string() == csinfo_.relu ? m : n;
+
+  // 1. Get all attributes from input nodes.
+  DataType T_pred, T_succ;
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
+  TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
+  // We check to ensure that types of both succ and pred are same.
+  // We expect them to be same, so we can enforce this as assert.
+  // But assert can be too strict, so we enforce this as a check.
+  // If the check fails, then we do not merge two nodes.
+  // We also do same check for devices.
+  if (T_pred != T_succ ||
+      pred->assigned_device_name() != succ->assigned_device_name() ||
+      pred->def().device() != succ->def().device()) {
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "data_format or T attribute or devices of Conv2DWithBias and "
+                  "Relu do not match. Will skip node merge optimization");
+  }
+
+  const int succ_num = succ->num_inputs();
+  gtl::InlinedVector<Node*, 4> succ_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> succ_in(succ_num);
+  FillInputs(succ, &succ_control_edges, &succ_in);
+
+  const int pred_num = pred->num_inputs();
+  gtl::InlinedVector<Node*, 4> pred_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> pred_in(pred_num);
+  FillInputs(pred, &pred_control_edges, &pred_in);
+
+  // We need to ensure that Conv2DWithBias only feeds to Relu (some other
+  // operator is not expecting output of Conv2DWithBias). If this is not
+  // the case, then we cannot merge Conv2DWithBias with Relu.
+  const int kFirstOutputSlot = 0;
+  for (const Edge* e : pred->out_edges()) {
+    if (e->src_output() == kFirstOutputSlot && e->dst() != succ) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "Conv2DWithBias does not feed to Relu, or "
+                    "it feeds Relu but has multiple outputs. "
+                    "Will skip node merge optimization");
+    }
+  }
+
+  // 2. Get inputs from both the nodes.
+  // Find the 2 inputs from the conv and the bias from the add Bias.
+  // Get operand 0, 1, 2 of Conv2DWithBias.
+  CHECK_EQ(pred->in_edges().size(), 3);  // Conv2DWithBias must have 3 inputs.
+  // Relu must have 1 input: Conv2DWithBias
+  CHECK_EQ(succ->in_edges().size(), 1);
+
+  // We will use the node name of Relu as the name of new node
+  // Build new node. We use same name as original node, but change the op
+  // name.
+  NodeBuilder nb(succ->name(), csinfo_.conv2d_with_bias_and_relu);
+  nb.Input(pred_in[0].first, pred_in[0].second);  // In1 of Conv2DWithBias
+  // pred_in[1] will be 2nd Tensorflow tensor for Conv2DWithBias.
+  nb.Input(pred_in[1].first, pred_in[1].second);  // In2 of Conv2DWithBias
+  // pred_in[2] will be 3rd Tensorflow tensor for Conv2DWithBias.
+  nb.Input(pred_in[2].first, pred_in[2].second);  // In3 of Conv2DWithBias
+
+  // Copy attributes from Conv2DWithBias to Conv2DWithBiasAndRelu.
+  // We can use Conv2D function as attributes for Conv2DWithBias and Conv2D
+  // are same.
+  CopyAttrsConv2D(const_cast<const Node*>(pred), &nb);
+
+  // Copy the device assigned to old node to new node.
+  nb.Device(succ->def().device());
+
+  // Create node.
+  Node* new_node;
+  nb.Finalize(&**g, &new_node);
+  CHECK_NOTNULL(new_node);
+
+  // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
+  // node are already copied in BuildNode. We handle control edges now.
+  for (const Edge* e : pred->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+  for (const Edge* e : succ->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(e->src(), new_node, true));
+    }
+  }
+
+  // Incoming edges are fixed, we will fix the outgoing edges now.
+  // First, we will fix outgoing control edges from 'pred' node.
+  for (const Edge* e : pred->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    }
+  }
+
+  // Second, we will fix outgoing control and data edges from 'succ' node.
+  for (const Edge* e : succ->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
+    } else {
+      // Relu has only 1 output (at slot 0) and merged node also has only 1
+      // output (at slot 0).
+      const int kReluOutputSlot = 0;
+      CHECK_NOTNULL((*g)->AddEdge(new_node, kReluOutputSlot,
+                                    e->dst(), e->dst_input()));
+    }
+  }
+
+  // Copy device assigned to old node to new node.
+  // It's ok to use pred or succ as we have enforced a check that
+  // both have same device assigned.
+  new_node->set_assigned_device_name(pred->assigned_device_name());
+
+  VLOG(1) << "MklLayoutRewritePass: Merged old node:" << pred->DebugString()
+          << ", and node: " << succ->DebugString()
+          << ", into node:" << new_node->DebugString();
+
+  (*g)->RemoveNode(succ);
+  (*g)->RemoveNode(pred);
+
+  return Status::OK();
+}
+
 
 Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     std::unique_ptr<Graph>* g, Node* m, Node* n) {
@@ -4063,18 +4689,12 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
   CHECK_NOTNULL(m);
   CHECK_NOTNULL(n);
 
-  if (((m->type_string() == csinfo_.bias_add &&
-        n->type_string() == csinfo_.conv2d)) ||
-      ((n->type_string() == csinfo_.bias_add &&
-        m->type_string() == csinfo_.conv2d))) {
-    return this->MergeConv2DWithBiasAdd(g, m, n);
-  }
-
-  if (((m->type_string() == csinfo_.bias_add_grad &&
-        n->type_string() == csinfo_.conv2d_grad_filter)) ||
-      ((n->type_string() == csinfo_.bias_add_grad &&
-        m->type_string() == csinfo_.conv2d_grad_filter))) {
-    return this->MergeConv2DBackpropFilterWithBiasAddGrad(g, m, n);
+  // Search matching mergeinfo and call its merge function.
+  for (auto mi = minfo_.cbegin(); mi != minfo_.cend(); ++mi) {
+    if ((m->type_string() == mi->op1 && n->type_string() == mi->op2) ||
+        (m->type_string() == mi->op2 && n->type_string() == mi->op1)) {
+      return mi->merge_fn(g, m, n);
+    }
   }
 
   return Status(error::Code::UNIMPLEMENTED,
@@ -4179,54 +4799,16 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
     return nullptr;
   }
 
-  // We make an exception for __MklDummyConv2DWithBias and
-  // __MklConv2DBackpropFilterWithBias since their names do not match Mkl node
-  // names.
+  // We make an exception for __MklDummyConv2DWithBias and other dummy ops
+  // since their names do not match Mkl node names.
   if (n->type_string() != csinfo_.conv2d_with_bias &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
-      !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
-                                T)) {
-    return nullptr;
-  }
-
-  // For elementwise node, we reuse the Eigen implementation and pass the MKL
-  // metadata tensor through so we can avoid conversions. However, if all
-  // incoming edges are in TF format, we don't need all this overhead, so
-  // replace the elementwise node only if at least one of its parents is a MKL
-  // node.
-  //
-  // Identity nodes can also skip replacement if they are not being served by
-  // any MKL nodes.
-  //
-  // TODO(vrane): Add implementation for element-wise ops that doesn't reuse
-  // eigen code to reduce cross-library dependency.
-  VLOG(1) << "ELEMENTWISE: checking op: " << n->type_string();
-  if (mkl_op_registry::IsMklElementWiseOp(
-          mkl_op_registry::GetMklOpName(n->type_string()), T) ||
-      n->type_string().find("Identity") != string::npos) {
-    VLOG(1) << "ELEMENTWISE: op is elementwise: " << n->type_string();
-    bool incoming_mkl_edge = false;
-    int num_parent = 0;
-    for (auto parent : n->in_edges()) {
-      if (mkl_op_registry::IsMklOp(parent->src()->type_string(), T)) {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is MKL op: " << parent->src()->type_string();
-        incoming_mkl_edge = true;
-        break;
-      } else {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is NON-MKL op: " << parent->src()->type_string();
-      }
-    }
-    if (incoming_mkl_edge == false) {
-      VLOG(1) << "ELEMENTWISE: Skipping replacement of elementwise node which "
-                 "has no MKL "
-                 "parents.";
+      n->type_string() != csinfo_.conv2d_with_bias_and_relu &&
+      n->type_string() != csinfo_.conv2d_with_relu &&
+      n->type_string() != csinfo_.fused_batch_norm_with_relu &&
+      !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(
+                                        n->type_string()), T)) {
       return nullptr;
-    } else {
-      VLOG(1) << "ELEMENTWISE: Replacing elementwise node " << n->type_string()
-              << " which has MKL parents";
-    }
   }
 
   // We now check if rewrite rule applies for this op. If rewrite rule passes

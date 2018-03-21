@@ -44,6 +44,7 @@ limitations under the License.
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
+#include "tensorflow/core/kernels/no_op.h"
 
 using mkldnn::convolution_backward_weights;
 using mkldnn::memory;
@@ -658,24 +659,22 @@ class MklConv2DCustomBackpropFilterOp
   }
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklConv2DBackpropFilter")                                   \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
-      MklConv2DCustomBackpropFilterOp<CPUDevice, T, false>);             \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklConv2DBackpropFilterWithBias")                           \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklOpLabel),                          \
-      MklConv2DCustomBackpropFilterOp<CPUDevice, T, true>);              \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias") \
-                              .Device(DEVICE_CPU)                        \
-                              .TypeConstraint<T>("T")                    \
-                              .Label(mkl_op_registry::kMklOpLabel),      \
-                          MklDummyOp<CPUDevice, T>);
+#define REGISTER_MKL_FILTER_KERNELS(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+              MklConv2DCustomBackpropFilterOp<CPUDevice, T, false>);\
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilterWithBias")  \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+              MklConv2DCustomBackpropFilterOp<CPUDevice, T, true>); \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias")  \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+              NoOp);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS

@@ -606,25 +606,6 @@ class MklConv2DBackpropCommonOp : public OpKernel {
 };
 #endif  // INTEL_MKL_ML
 
-/////////////////////////////////////////////////////////////////////
-///  Dummy Mkl op that is just used for operators that are intermediate
-///  output of node fusion in the graph
-/////////////////////////////////////////////////////////////////////
-
-template <typename Device, typename T>
-class MklDummyOp : public OpKernel {
- public:
-  ~MklDummyOp() {}
-
-  explicit MklDummyOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    TF_CHECK_OK(
-        errors::Unimplemented("This is a dummy op."
-                              "It should not have been invoked."));
-  }
-};
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_CONV_OPS_H_

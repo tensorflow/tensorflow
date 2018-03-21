@@ -1253,6 +1253,30 @@ REGISTER_OP("ShapeN")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(ShapeShapeFn);
 
+#ifdef INTEL_MKL
+#ifdef INTEL_MKL_DNN
+
+REGISTER_OP("_MklShape")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Output("output: out_type")
+    .Output("mkl_output: uint8")
+    .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(ShapeShapeFn);
+
+REGISTER_OP("_MklShapeN")
+    .Input("input: N * T")
+    .Input("mkl_input: N * uint8")
+    .Output("output: N * out_type")
+    .Output("mkl_output: N * uint8")
+    .Attr("N: int")
+    .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(ShapeShapeFn);
+
+#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL
 // --------------------------------------------------------------------------
 REGISTER_OP("ReverseSequence")
     .Input("input: T")

@@ -360,9 +360,9 @@ class MklInputConversionOp : public OpKernel {
       VLOG(1) << "MklInputConversionOp: Broadcast needed, "
               << "converted MKL inputs to TF format";
 
-      MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
+      MklToTfOp<Device, T>::ConvertMklToTf(this, context,
                                            op_data_type, has_avx512f_, 0);
-      MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
+      MklToTfOp<Device, T>::ConvertMklToTf(this, context,
                                            op_data_type, has_avx512f_, 1);
       SetDummyMklShapeOutput(context, 0);
       SetDummyMklShapeOutput(context, 1);
@@ -456,7 +456,7 @@ class MklInputConversionOp : public OpKernel {
       VLOG(1) << "MklInputConversionOp: Broadcast needed.";
       VLOG(1) << "MklInputConversionOp: Converting input " << mkl_tensor_index
               << " to TF format";
-      MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
+      MklToTfOp<Device, T>::ConvertMklToTf(this, context,
                                            op_data_type, has_avx512f_,
                                            mkl_tensor_index);
       SetDummyMklShapeOutput(context, mkl_tensor_index);

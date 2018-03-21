@@ -1994,7 +1994,6 @@ REGISTER_OP("_MklInput2")
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to node merge optiimization
 /////////////////////////////////////////////////////////////////////
-
 TEST_F(MklLayoutPassTest, Basic) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -2022,6 +2021,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Positive) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'BiasAdd'"
@@ -2051,6 +2051,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_NoAddBias) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(_MklConv2D);DMT/_0(Const);DMT/_1(Const)|"
@@ -2069,6 +2070,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_Dataflow1) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'Input'}"
@@ -2095,6 +2097,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_Dataflow2) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'Input'}"
@@ -2125,6 +2128,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_AttrMismatch) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'BiasAdd'"
@@ -2138,8 +2142,29 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_AttrMismatch) {
             "DMT/_1->C:3");
 }
 
-// Test set 2: BiasAddGrad + Conv2DBackpropFilter fusion tests
+// data_format attribute value mismatch. Merge should not be done
+// in such case.
+TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_NoConv2D) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'MatMul'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'transpose_a'      value { b: false } }"
+      " attr { key: 'transpose_b'      value { b: false } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'BiasAdd'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHCW' } }"
+      " input: ['C', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(MatMul);D(Input);"
+            "E(BiasAdd)|A->C;"
+            "B->C:1;C->E;D->E:1");
+}
 
+// Test set 2: BiasAddGrad + Conv2DBackpropFilter fusion tests
 TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackpropFilterFusion_Positive) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -2151,6 +2176,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackpropFilterFusion_Positive) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C'] }"
       "node { name: 'E' op: 'BiasAddGrad'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2178,6 +2204,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackpropFilterFusion_Negative1) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C'] }"
       "node { name: 'E' op: 'BiasAddGrad'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2204,6 +2231,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackpropFilterFusion_Negative2) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C'] }"
       "node { name: 'E' op: 'BiasAddGrad'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2233,6 +2261,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackpropFilterFusion_Negative3) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C', 'M', 'N', 'O']}"
       "node { name: 'E' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
@@ -2272,6 +2301,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'BiasAdd'"
@@ -2289,6 +2319,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['F', 'B', 'E']}"
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
@@ -2301,6 +2332,134 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
             "A:control->DMT/_2:control;B->E:1;D->E:2;DMT/_0->E:3;"
             "DMT/_1->E:4;DMT/_2->E:5;DMT/_3->G:3;E->G:2;E->Y;E:1->G:1;E:2->G:5;"
             "E:3->G:4;F->G;F:control->DMT/_3:control;G->Z;X->Y:1;X->Z:1");
+}
+
+// Test set 3: Conv2DWithBias + Relu -> Conv2DWithBiasAndRelu merge tests
+// C=Conv2D(A,B); E=BiasAdd(C,D); F=Relu(E); Z=Zeta(F,Y)
+TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBiasAndRelu_Positive) {
+  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'BiasAdd'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'F' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['E'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['F', 'Y']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);F(_MklConv2DWithBiasAndRelu);Y(Input);Z(Zeta)|A->F;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->F:1;D->F:2;DMT/_0->F:3;DMT/_1->F:4;"
+            "DMT/_2->F:5;F->Z;Y->Z:1");
+}
+
+// Test 4: FusedBatchNorm + Relu fusion
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormWithRelu_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'FusedBatchNorm'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'  value { s: 'NCHW' } }"
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"
+      " attr { key: 'is_training'  value { b: true } }"
+      " input: ['A', 'B', 'C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['F'] }"
+      "node { name: 'H' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F:1'] }"
+      "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F:2'] }"
+      "node { name: 'J' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F:3'] }"
+      "node { name: 'K' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'F:4'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
+            "G(_MklFusedBatchNormWithRelu);H(Zeta);I(Zeta);J(Zeta);K(Zeta)"
+            "|A->G;A->H;A->I;A->J;A->K;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+            "A:control->DMT/_4:control;B->G:1;C->G:2;D->G:3;"
+            "DMT/_0->G:5;DMT/_1->G:6;DMT/_2->G:7;DMT/_3->G:8;DMT/_4->G:9;"
+            "E->G:4;G:1->H:1;G:2->I:1;G:3->J:1;G:4->K:1");
+}
+
+// Test set 5:
+// C=Conv2D(A,B); D=Relu(C); Z=Zeta(D,Y)
+TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithRelu_Positive) {
+  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:2, i:2, i:1} } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['C'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['D', 'Y']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);D(_MklConv2DWithRelu);DMT/_0(Const);"
+            "DMT/_1(Const);Y(Input);Z(Zeta)|A->D;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->D:1;D->Z;DMT/_0->D:2;DMT/_1->D:3;"
+            "Y->Z:1");
+}
+
+// Conv2D+ReLU fusion negative test - Conv2D feeds multiple nodes.
+TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithRelu_Negative1) {
+  CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:2, i:2, i:1} } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['C'] }"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['C', 'D']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklConv2D);D(_MklRelu);DMT/_0(Const);"
+            "DMT/_1(Const);Z(Zeta)|A->C;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->C:1;C->D;C->Z;C:2->D:1;D->Z:1;"
+            "DMT/_0->C:2;DMT/_1->C:3");
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -2319,6 +2478,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Basic) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
@@ -2341,6 +2501,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Positive1) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:2, i:2, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Conv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2348,6 +2509,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Positive1) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['C', 'D'] }");
@@ -2370,6 +2532,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Negative_UnsupportedType) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_HALF } }"
       " input: ['B', 'C'] }");
@@ -2389,6 +2552,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_Positive) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
@@ -2411,6 +2575,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradInput_Positive) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['B', 'A', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
@@ -2477,6 +2642,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_BiasAddGrad_Positive2) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'M', 'N']}"
       "node { name: 'D' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
@@ -2529,6 +2695,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'F' op: 'Conv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2536,6 +2703,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['C', 'D']}"
       "node { name: 'G' op: 'Const' "
       " attr { key: 'dtype' value { type: DT_INT32 } }"
@@ -2572,6 +2740,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_MixedMkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['C', 'D']}"
@@ -2634,6 +2803,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'F' op: 'Conv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
@@ -2641,6 +2811,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['C', 'D']}"
       "node { name: 'G' op: 'Const' "
       " attr { key: 'dtype' value { type: DT_INT32 } }"
@@ -2678,6 +2849,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_MixedMkl) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['C', 'D']}"
@@ -3274,6 +3446,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_DeviceTest) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }",
@@ -3296,6 +3469,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_DeviceTest) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C', 'M', 'N', 'O']}"
       "node { name: 'E' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
@@ -3323,6 +3497,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_DeviceTest) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }",
@@ -3474,6 +3649,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
       " input: ['A', 'B', 'M', 'N']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'BiasAdd'"

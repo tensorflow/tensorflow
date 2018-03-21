@@ -5985,6 +5985,15 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_shape_ops",
+    hdrs = ["shape_ops.h"],
+    prefix = "mkl_shape_ops",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_identity_op",
     prefix = "mkl_identity_op",
     deps = ARRAY_DEPS + [
