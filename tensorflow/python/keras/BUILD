@@ -613,6 +613,7 @@ py_test(
         "no_windows",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out
     ],
     deps = [
         ":keras",
