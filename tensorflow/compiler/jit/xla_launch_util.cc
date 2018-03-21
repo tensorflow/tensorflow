@@ -56,12 +56,20 @@ XlaAllocator::XlaAllocator(const gpu::Platform* platform,
                            OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
-XlaAllocator::~XlaAllocator() { CHECK(allocated_.empty()); }
+XlaAllocator::~XlaAllocator() {
+  for (void* ptr : allocated_) {
+    op_context_->device()->GetAllocator({})->DeallocateRaw(ptr);
+  }
+}
 
 xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
   void* data = op_context_->device()->GetAllocator({})->AllocateRaw(
       Allocator::kAllocatorAlignment, size);
+  if (!data) {
+    return errors::ResourceExhausted(
+        "OOM when allocating temporary tensor with size ", size);
+  }
   allocated_.insert(data);
   return gpu::DeviceMemoryBase(data, size);
 }
@@ -182,8 +190,8 @@ void XlaComputationLaunchContext::PopulateOutputs(
         // Copy host -> device. (Empty tensors don't have backing buffers.)
         VLOG(1) << "Constant output tensor on device";
 
-        TF_CHECK_OK(
-            ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
 
         const void* src_ptr = DMAHelper::base(&const_tensor);
         void* dst_ptr = DMAHelper::base(output_tensor);

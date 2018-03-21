@@ -36,10 +36,14 @@ XlaDeviceAllocator::~XlaDeviceAllocator() = default;
 string XlaDeviceAllocator::Name() { return "xla"; }
 
 void* XlaDeviceAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
-  se::DeviceMemoryBase dmem =
-      backend_->memory_allocator()
-          ->Allocate(device_ordinal_, num_bytes, /*retry_on_failure=*/false)
-          .ValueOrDie();
+  auto status_or_dmem = backend_->memory_allocator()->Allocate(
+      device_ordinal_, num_bytes, /*retry_on_failure=*/false);
+  if (!status_or_dmem.status().ok()) {
+    LOG(ERROR) << "Failed to allocate memory: "
+               << status_or_dmem.status().ToString();
+    return nullptr;
+  }
+  se::DeviceMemoryBase dmem = status_or_dmem.ValueOrDie();
   VLOG(2) << "Allocated XLA device tensor " << dmem.opaque() << "(" << num_bytes
           << ")";
   return dmem.opaque();
