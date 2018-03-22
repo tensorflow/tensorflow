@@ -1121,10 +1121,10 @@ bool OutputIsSubsetOfOperandElements(HloInstruction* instruction,
 
 Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   auto operand = broadcast->mutable_operand(0);
-  auto dims = broadcast->dimensions();
   // A degenerate broadcast of a reshape that does not change the number of
   // elements can be replaced by a reshape.
-  if (std::is_sorted(dims.begin(), dims.end()) &&
+  if (std::is_sorted(broadcast->dimensions().begin(),
+                     broadcast->dimensions().end()) &&
       ShapeUtil::ElementsIn(broadcast->shape()) ==
           ShapeUtil::ElementsIn(operand->shape())) {
     VLOG(10) << "transform broadcast(X) -> reshape(X) where "
@@ -1142,8 +1142,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     VLOG(10) << "transform broadcast(X) -> transpose(X) where "
                 "n(broadcast(X)) == n(X)";
     return ReplaceWithNewInstruction(
-        broadcast,
-        HloInstruction::CreateTranspose(broadcast->shape(), operand, dims));
+        broadcast, HloInstruction::CreateTranspose(broadcast->shape(), operand,
+                                                   broadcast->dimensions()));
   }
 
   // A broadcast of a reshape which merely inserts 1-sized dimensions can
@@ -1157,6 +1157,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     if (merely_inserts_or_deletes_1_sized_dimensions &&
         deleted_indices.empty()) {
       std::reverse(inserted_indices.begin(), inserted_indices.end());
+      auto dims = broadcast->dimensions();
       for (auto inserted_index : inserted_indices) {
         dims.erase(dims.begin() + inserted_index);
       }
@@ -1200,19 +1201,6 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
         return user->ReplaceAllUsesWith(new_broadcast);
       }
     }
-    return Status::OK();
-  }
-
-  // Merge two consecutive broadcasts into a single one.
-  if (operand->opcode() == HloOpcode::kBroadcast) {
-    std::vector<int64> new_dimensions(operand->dimensions().size());
-    for (auto dim : operand->dimensions()) {
-      new_dimensions.push_back(dims[dim]);
-    }
-    return ReplaceWithNewInstruction(
-        broadcast,
-        HloInstruction::CreateBroadcast(
-            broadcast->shape(), operand->mutable_operand(0), new_dimensions));
   }
   return Status::OK();
 }
