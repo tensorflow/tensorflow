@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "Unpool"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D input to unpool from.
+END
+	}
+  in_arg {
+    name: "indices"
+    description: <<END
+The where indices values from the pooled tensor are placed in the 
+unpooled tensor. Must be the same shape as the input.
+END
+	}
+  in_arg {
+    name: "unpool_shape"
+    description: <<END
+The shape of the unpooled output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Unpooled output tensor.
+END
+  }
+  summary: "Performs unpooling on the input."
+}
