@@ -198,9 +198,9 @@ Classifier"](#training_and_evaluating_the_cnn_mnist_classifier).
 ### Input Layer
 
 The methods in the `layers` module for creating convolutional and pooling layers
-for two-dimensional image data expect input tensors to have a shape of
-<code>[<em>batch_size</em>, <em>image_width</em>, <em>image_height</em>,
-<em>channels</em>]</code>, defined as follows:
+for two-dimensional image data expect input tensors to have a `channels_last` shape of
+<code>[<em>batch_size</em>, <em>image_height</em>, <em>image_width</em>, <em>channels</em>]</code>
+or a `channels_first` shape of <code>[<em>batch_size</em>, <em>channels</em>, <em>image_height</em>, <em>image_width</em>]</code>, defined as follows:
 
 *   _`batch_size`_. Size of the subset of examples to use when performing
     gradient descent during training.
