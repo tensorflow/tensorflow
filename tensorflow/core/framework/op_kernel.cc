@@ -282,8 +282,13 @@ OpKernelContext::~OpKernelContext() {
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
-  Allocator* allocator =
-      params_->device->GetStepAllocator(attr, resource_manager());
+  Allocator* allocator = nullptr;
+  if (attr.scope_id > 0) {
+    allocator = params_->device->GetScopedAllocator(attr, step_id());
+    CHECK(allocator);
+  } else {
+    allocator = params_->device->GetStepAllocator(attr, resource_manager());
+  }
   if (track_allocations()) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {

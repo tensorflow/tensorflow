@@ -1667,6 +1667,43 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "scoped_allocator_ops",
+    prefix = "scoped_allocator_ops",
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:scoped_allocator_ops_op_lib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "scoped_allocator_ops_test",
+    srcs = ["scoped_allocator_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  #Required for benchmarking
+    deps = [
+        ":cwise_op",
+        ":dense_update_ops",
+        ":ops_testutil",
+        ":ops_util",
+        ":scoped_allocator_ops",
+        ":variable_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "session_ops",
     prefix = "session_ops",
     deps = DATA_FLOW_DEPS,
