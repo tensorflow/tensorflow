@@ -524,7 +524,7 @@ def set_tf_cuda_clang(environ_cp):
 
 def set_tf_download_clang(environ_cp):
   """Set TF_DOWNLOAD_CLANG action_env."""
-  question = 'Do you want to download a fresh release of clang? (Experimental)'
+  question = 'Do you wish to download a fresh release of clang? (Experimental)'
   yes_reply = 'Clang will be downloaded and used to compile tensorflow.'
   no_reply = 'Clang will not be downloaded.'
   set_action_env_var(
@@ -1380,7 +1380,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.5.4')
+  check_bazel_version('0.10.0')
 
   reset_tf_configure_bazelrc(args.workspace)
   cleanup_makefile()
@@ -1397,6 +1397,9 @@ def main():
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+    # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
+    # Windows.
+    environ_cp['TF_DOWNLOAD_CLANG'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1444,16 +1447,8 @@ def main():
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      if not is_windows():
-        # Ask if we want to download clang release while building.
-        set_tf_download_clang(environ_cp)
-      else:
-        # We use bazel's generated crosstool on Windows and there is no
-        # way to provide downloaded toolchain for that yet.
-        # TODO(ibiryukov): Investigate using clang as a cuda compiler on
-        # Windows.
-        environ_cp['TF_DOWNLOAD_CLANG'] = '0'
-
+      # Ask whether we should download the clang toolchain.
+      set_tf_download_clang(environ_cp)
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
@@ -1463,6 +1458,13 @@ def main():
       if not is_windows():
         set_gcc_host_compiler_path(environ_cp)
     set_other_cuda_vars(environ_cp)
+  else:
+    # CUDA not required. Ask whether we should download the clang toolchain and
+    # use it for the CPU build.
+    set_tf_download_clang(environ_cp)
+    if environ_cp.get('TF_DOWNLOAD_CLANG') == '1':
+      write_to_bazelrc('build --config=download_clang')
+      write_to_bazelrc('test --config=download_clang')
 
   set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
   if environ_cp.get('TF_NEED_MPI') == '1':

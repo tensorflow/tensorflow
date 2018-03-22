@@ -53,6 +53,7 @@ from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -201,6 +202,7 @@ def _strip_checkpoint_v2_randomized(graph_def):
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
+
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
 
@@ -335,6 +337,8 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
     # Make sure default graph reflects prev_value in case next test doesn't call
     # reset_default_graph().
     ops.reset_default_graph()
+
+
 # pylint: disable=protected-access
 
 
@@ -451,7 +455,8 @@ def with_c_api(cls):
   # If the C API is already enabled, don't do anything. Some tests break if the
   # same test is run twice, so this allows us to turn on the C API by default
   # without breaking these tests.
-  if ops._USE_C_API: return cls
+  if ops._USE_C_API:
+    return cls
 
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
@@ -469,6 +474,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
   """
+
   def decorator(self, **kwargs):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
@@ -483,7 +489,9 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       new_count = len(gc.get_objects())
       self.assertEqual(previous_count, new_count)
       gc.enable()
+
   return decorator
+
 
 def assert_no_new_tensors(f):
   """Decorator for asserting that no new Tensors persist after a test.
@@ -508,17 +516,15 @@ def assert_no_new_tensors(f):
 
     def _is_tensorflow_object(obj):
       try:
-        return isinstance(obj, (
-            ops.Tensor,
-            variables.Variable,
-            tensor_shape.Dimension,
-            tensor_shape.TensorShape))
+        return isinstance(obj,
+                          (ops.Tensor, variables.Variable,
+                           tensor_shape.Dimension, tensor_shape.TensorShape))
       except ReferenceError:
         # If the object no longer exists, we don't care about it.
         return False
 
-    tensors_before = set(id(obj) for obj in gc.get_objects()
-                         if _is_tensorflow_object(obj))
+    tensors_before = set(
+        id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
     outside_graph_key = ops.get_default_graph()._graph_key
     with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
@@ -572,18 +578,18 @@ def assert_no_garbage_created(f):
           "likely due to a reference cycle. New objects in cycle(s):")
       for i, obj in enumerate(gc.garbage[previous_garbage:]):
         try:
-          logging.error(
-              "Object %d of %d" % (i, len(gc.garbage) - previous_garbage))
+          logging.error("Object %d of %d", i,
+                        len(gc.garbage) - previous_garbage)
+
           def _safe_object_str(obj):
             return "<%s %d>" % (obj.__class__.__name__, id(obj))
-          logging.error("  Object type: %s" % (_safe_object_str(obj),))
-          logging.error("  Referrer types: %s" % (
-              ', '.join([_safe_object_str(ref)
-                         for ref in gc.get_referrers(obj)]),))
-          logging.error("  Referent types: %s" % (
-              ', '.join([_safe_object_str(ref)
-                         for ref in gc.get_referents(obj)]),))
-          logging.error("  Object attribute names: %s" % (dir(obj),))
+
+          logging.error("  Object type: %s", _safe_object_str(obj))
+          logging.error("  Referrer types: %s", ", ".join(
+              [_safe_object_str(ref) for ref in gc.get_referrers(obj)]))
+          logging.error("  Referent types: %s", ", ".join(
+              [_safe_object_str(ref) for ref in gc.get_referents(obj)]))
+          logging.error("  Object attribute names: %s", dir(obj))
           logging.error("  Object __str__:")
           logging.error(obj)
           logging.error("  Object __repr__:")
@@ -705,15 +711,23 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
       return 0, 0
     return int(match.group(1)), int(match.group(2))
 
-  for local_device in device_lib.list_local_devices():
-    if local_device.device_type == "GPU":
-      if (min_cuda_compute_capability is None or
-          compute_capability_from_device_desc(local_device.physical_device_desc)
-          >= min_cuda_compute_capability):
+  try:
+    for local_device in device_lib.list_local_devices():
+      if local_device.device_type == "GPU":
+        if (min_cuda_compute_capability is None or
+            compute_capability_from_device_desc(
+                local_device.physical_device_desc) >=
+            min_cuda_compute_capability):
+          return True
+      if local_device.device_type == "SYCL" and not cuda_only:
         return True
-    if local_device.device_type == "SYCL" and not cuda_only:
-      return True
-  return False
+    return False
+  except errors_impl.NotFoundError as e:
+    if not all([x in str(e) for x in ["CUDA", "not find"]]):
+      raise e
+    else:
+      logging.error(str(e))
+      return False
 
 
 @contextlib.contextmanager
@@ -1256,9 +1270,9 @@ class TensorFlowTestCase(googletest.TestCase):
             msg="Mismatched value: a%s is different from b%s." % (path_str,
                                                                   path_str))
       except TypeError as e:
-        msg = "Error: a%s has %s, but b%s has %s" % (
-            path_str, type(a), path_str, type(b))
-        e.args = ((e.args[0] + ' : ' + msg,) + e.args[1:])
+        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
+                                                     path_str, type(b))
+        e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
@@ -1438,8 +1452,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
-    self.assertEqual(device1, device2,
-                     "Devices %s and %s are not equal. %s" % 
+    self.assertEqual(device1, device2, "Devices %s and %s are not equal. %s" %
                      (device1, device2, msg))
 
   # Fix Python 3 compatibility issues

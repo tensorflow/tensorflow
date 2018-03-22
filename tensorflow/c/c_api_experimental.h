@@ -60,39 +60,32 @@ extern "C" {
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
 
-// Sets up TPU execution, by rewriting the graph accordingly, and initializing
-// TPU system.
+// Initializes TPU system. Must be called exactly once before TF_SessionRun() is
+// called on a TPU graph.
 //
-// When `infeed_enqueue_node` is non-NULL and there are input tensors, rewrites
-// the graph by adding the relevant infeed enqueue/dequeue ops, and returns the
-// enqueue op in `infeed_enqueue_node` on success, so that user can run that
-// node and feed input tensors. When there are no input tensors,
-// `infeed_enqueue_node` is ignored, and user should not run that node later.
-// TODO(hongm): In this case, we currently only support input tensors of dim 0
-// shape. Lift that constraint.
-//
-// On success, also returns a shutdown node to be used in a subsequent
-// TF_ShutdownTPUExecution(), and sets the new output nodes in
-// `new_output_nodes` for caller to fetch from. Must be called exactly once
-// before TF_SessionRun().
-//
-// The API and logic is modeled after the python counterparts
-// tpu.{initialize_system(), rewrite(), shutdown_system()}.
-//
-// TODO(b/74774824): Create separate APIs for initializing TPU system and graph
-// rewrite.
-TF_CAPI_EXPORT extern TF_Output TF_SetupTPUExecution(
-    TF_Session* session, int num_input_nodes, const TF_Output* input_nodes,
-    int num_output_nodes, const TF_Output* output_nodes,
-    TF_Output* new_output_nodes, TF_Operation** infeed_enqueue_node,
-    TF_Status* status);
+// The session graph must contain a node named ConfigureDistributedTPU.
+// TODO(b/74774824): Improve the API on initializing TPU system.
+TF_CAPI_EXPORT extern void TF_InitializeTPU(TF_Session* session,
+                                            TF_Status* status);
 
-// Shuts down TPU system. For any `session` where TF_SetupTPUExecution() has
+// Shuts down TPU system. For any `session` where TF_InitializeTPU() has
 // been successfully called, this call must be made exactly once before the
 // session is closed.
-TF_CAPI_EXPORT extern void TF_ShutdownTPUExecution(TF_Session* session,
-                                                   TF_Output shutdown_node,
-                                                   TF_Status* status);
+// The session graph must contain a node named ShutdownDistributedTPU.
+TF_CAPI_EXPORT extern void TF_ShutdownTPU(TF_Session* session,
+                                          TF_Status* status);
+
+// Returns the graph content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len);
+
+// Returns the graph content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len);
 
 #ifdef __cplusplus
 } /* end extern "C" */
