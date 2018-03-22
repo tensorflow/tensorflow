@@ -940,6 +940,18 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                   predictions=class_ids,
                   weights=weights,
                   name=keys.ACCURACY),
+          _summary_key(self._name, keys.PRECISION):
+              metrics_lib.precision(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.PRECISION),
+          _summary_key(self._name, keys.RECALL):
+              metrics_lib.recall(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.RECALL),
           _summary_key(self._name, keys.PREDICTION_MEAN):
               _predictions_mean(
                   predictions=logistic,

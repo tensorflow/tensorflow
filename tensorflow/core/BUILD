@@ -594,6 +594,7 @@ cc_library(
         "platform/prefetch.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "platform/cpu_info.h",
     ] + if_windows(["platform/windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
@@ -721,6 +722,7 @@ cc_library(
         ":sendrecv_ops_op_lib",
         ":set_ops_op_lib",
         ":sparse_ops_op_lib",
+        ":summary_ops_op_lib",
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
@@ -1035,6 +1037,7 @@ filegroup(
             "util/tensor_bundle/*.h",
             "util/tensor_bundle/*.cc",
             "common_runtime/gpu/**/*",
+            "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
         ],
     ),
@@ -1060,6 +1063,7 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "common_runtime/gpu/**/*",
+            "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
             "graph/dot.*",
         ],
@@ -1404,6 +1408,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "protobuf/device_properties_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/device_properties.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "protobuf/meta_graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/meta_graph.proto",
@@ -1411,9 +1422,9 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
-    name = "protobuf/device_properties_pyclif",
+    name = "protobuf/saved_model_pyclif",
     proto_lib = ":protos_all_cc",
-    proto_srcfile = "protobuf/device_properties.proto",
+    proto_srcfile = "protobuf/saved_model.proto",
     visibility = ["//visibility:public"],
 )
 

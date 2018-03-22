@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace Eigen {
-struct half;
-}
-
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
 // The basic idea is that by accepting a "const AlphaNum &" as an argument
@@ -122,7 +118,6 @@ class AlphaNum {
   AlphaNum(double f)  // NOLINT(runtime/explicit)
       : piece_(digits_, strlen(DoubleToBuffer(f, digits_))) {}
 
-  AlphaNum(const Eigen::half &f);  // NOLINT(runtime/explicit)
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)

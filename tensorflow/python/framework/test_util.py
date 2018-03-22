@@ -902,9 +902,9 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
     `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
-    `use_gpu`
-    is True, TensorFlow tries to run as many ops on the GPU as possible. If both
-    `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
+    `use_gpu` is True, TensorFlow tries to run as many ops on the GPU as
+    possible. If both `force_gpu and `use_gpu` are False, all ops are pinned to
+    the CPU.
 
     Example:
     ```python

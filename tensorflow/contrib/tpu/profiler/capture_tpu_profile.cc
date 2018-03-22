@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/contrib/tpu/profiler/version.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -62,10 +65,13 @@ Status ValidateHostPortPair(const string& host_port) {
 }
 
 ProfileResponse Profile(const string& service_addr, int duration_ms,
+                        const string& repository_root, const string& session_id,
                         const ProfileOptions& opts) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
+  request.set_repository_root(repository_root);
+  request.set_session_id(session_id);
   request.add_tools("input_pipeline");
   request.add_tools("overview_page");
   *request.mutable_opts() = opts;
@@ -137,10 +143,17 @@ int main(int argc, char** argv) {
   opts.set_include_dataset_ops(FLAGS_include_dataset_ops);
   tensorflow::ProfileResponse response;
 
+  // Use the current timestamp as the run name.
+  tensorflow::string session_id =
+      tensorflow::tpu::GetCurrentTimeStampAsString();
+  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
+  tensorflow::string repository_root =
+      ::tensorflow::io::JoinPath(FLAGS_logdir, kProfilePluginDirectory);
   while (true) {
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
-    response = tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms, opts);
+    response = tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms,
+                                        repository_root, session_id, opts);
     if (remaining_attempts <= 0 || !response.encoded_trace().empty()) break;
     std::cout << "No trace event is collected. Automatically retrying."
               << std::endl
@@ -158,10 +171,8 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  // Use the current timestamp as the run name.
-  tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
   TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
-      FLAGS_logdir, run, response, &std::cout));
+      FLAGS_logdir, session_id, response, &std::cout));
   // Print this at the end so that it's not buried in irrelevant LOG messages.
   std::cout
       << "NOTE: using the trace duration " << duration_ms << "ms." << std::endl

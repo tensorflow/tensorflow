@@ -195,6 +195,15 @@ class MetricsTest(test.TestCase):
         m2 = metrics.Mean()
         m2(2)
 
+  def testBuildMean(self):
+    # Verify that calling build() on Mean and then calling it won't recreate
+    # variables.
+    m = metrics.Mean()
+    m.build()
+    old_numer = m.numer
+    m(0.0)
+    self.assertTrue(old_numer is m.numer)
+
   def testMetricsChain(self):
     with context.graph_mode(), self.test_session():
       m1 = metrics.Mean()

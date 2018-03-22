@@ -222,6 +222,9 @@ class AttentionWrapperTest(test.TestCase):
           self.assertEqual(
               (None, batch_size, None),
               tuple(state_alignment_history.get_shape().as_list()))
+        nest.assert_same_structure(
+            cell.state_size,
+            cell.zero_state(batch_size, dtypes.float32))
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
         final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access

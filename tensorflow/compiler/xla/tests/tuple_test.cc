@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -512,6 +513,34 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                           Literal::CreateR0<complex64>({123, 456}).get()});
   ComputeAndCompareTuple(&builder, *expected, {arg0.get(), arg1.get()},
                          error_spec_);
+}
+
+class TupleHloTest : public HloTestBase {};
+
+// Disabled on CPU parallel because that's broken and will be removed soon.
+// Disabled on the interpreter because bitcast doesn't exist on the interpreter.
+TEST_F(TupleHloTest,
+       DISABLED_ON_INTERPRETER(DISABLED_ON_CPU_PARALLEL(BitcastAfterGTE))) {
+  const char* testcase = R"(
+    HloModule m
+
+    ENTRY test {
+      name.1 = (f32[3]{0}) parameter(0)
+      get-tuple-element.1 = f32[3]{0} get-tuple-element(name.1), index=0
+      bitcast = f32[1,3]{1,0} bitcast(get-tuple-element.1)
+      copy = f32[1,3]{1,0} copy(bitcast)
+      ROOT tuple.4 = (f32[1,3]{1,0}) tuple(copy)
+    }
+  )";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::MakeTupleOwned(Literal::CreateR1<float>({1, 2, 3}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          ExecuteNoHloPasses(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result,
+      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}}))));
 }
 
 }  // namespace

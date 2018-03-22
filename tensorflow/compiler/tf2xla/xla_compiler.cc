@@ -600,6 +600,48 @@ Status XlaCompiler::BuildArguments(
   return Status::OK();
 }
 
+Status XlaCompiler::CompileSingleOp(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    OpKernelContext* ctx, const std::vector<XlaCompiler::Argument>& args,
+    CompilationResult* result) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Status status;
+  // First create the actual node we care about computing.
+  Node* main_node = graph->AddNode(ctx->op_kernel().def(), &status);
+  TF_RETURN_IF_ERROR(status);
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64 i = 0; i < ctx->num_inputs(); ++i) {
+    Node* node;
+    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
+    Status status = NodeBuilder(name, "_Arg")
+                        .ControlInput(graph->source_node())
+                        .Attr("T", ctx->input_dtype(i))
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
+  }
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64 i = 0; i < ctx->num_outputs(); ++i) {
+    Node* node;
+    string name = strings::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
+    Status status = NodeBuilder(name, "_Retval")
+                        .Input(main_node, i)
+                        .Attr("T", ctx->expected_output_dtype(i))
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+  }
+
+  return CompileGraph(options, name, std::move(graph), args, result);
+}
+
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,

@@ -20,8 +20,12 @@ from __future__ import print_function
 
 from functools import wraps
 
+from enum import Enum
+
+# pylint:disable=g-bad-import-order
 import gast
 import six
+# pylint:enable=g-bad-import-order
 
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import conversion
@@ -29,61 +33,13 @@ from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import inspect_utils
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.utils import builtins
+from tensorflow.contrib.py2tf.utils import py_func
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 # TODO(mdan): Properly document the type hints.
 # TODO(mdan): Reduce the type hint information to (module, type).
 # (currently we require (module + class name, type))
-
-
-def graph_ready(f):
-  """No-op decorator that explicitly marks a function as graph-ready.
-
-  Graph-ready functions are assumed to not need any conversion.
-
-  Args:
-    f: Any callable.
-  Returns:
-    f itself.
-  """
-  setattr(f, '__pyct_is_compile_decorator', True)
-  return f
-
-
-def convert_inline(f, *args, **kwargs):
-  """Shorthand to convert and call a function.
-
-  For example, the following two statements are equivalent:
-
-      @convert()
-      def foo():
-        ...
-      foo(bar)
-
-      def foo():
-        ...
-      convert_inline(foo, bar)
-
-  Args:
-    f: Function to convert. Only this call will be converted.
-    *args: Passed through to f.
-    **kwargs: Passed through to f, with the following exceptions:
-        * arg_value_hints: A dict mapping parameter names to objects that can
-            hint at the type of those parameters.
-
-  Returns:
-    The result of the converted f applied to args and kwargs.
-  """
-  if 'arg_value_hints' in kwargs:
-    arg_value_hints = kwargs['arg_value_hints']
-    del kwargs['arg_value_hints']
-  else:
-    arg_value_hints = None
-  if tf_inspect.ismethod(f):
-    # When converting methods, the result is still an unbound function.
-    args = (f.__self__,) + args
-  return convert(arg_value_hints)(f)(*args, **kwargs)
 
 
 def convert(recursive=False, verbose=False, arg_types=None):
@@ -113,6 +69,55 @@ def convert(recursive=False, verbose=False, arg_types=None):
     @wraps(f)
     def wrapper(*args, **kwargs):
       return converted_call(f, recursive, verbose, arg_types, *args, **kwargs)
+
+    # Sometimes the decorator is just desugared, making it impossible to detect.
+    # This attribute makes detection easier.
+    setattr(wrapper, '__pyct_is_compile_decorator', True)
+    return wrapper
+
+  return decorator
+
+
+class RunMode(Enum):
+  GRAPH = 1
+  PY_FUNC = 2
+
+
+def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
+  """Decorator that suppresses compilation of a function.
+
+  Args:
+    run_as: RunMode value. Whether to run the function as-is, or wrap it into
+        a py_func.
+    return_dtypes: See py2tf.utils.py_func.wrap_py_func. Setting to None or
+        empty list or tuple will create a dummy return value that can be used
+        to set control dependencies.
+
+  Returns:
+    A decorator that wraps the original function.
+  """
+  def decorator(f):
+    """Decorator implementation."""
+
+    @wraps(f)
+    def graph_wrapper(*args, **kwargs):
+      return f(*args, **kwargs)
+
+    @wraps(f)
+    def py_func_wrapper(*args, **kwargs):
+      if kwargs:
+        raise NotImplementedError(
+            'RunMode.PY_FUNC does not yet support kwargs')
+      # TODO(mdan): Add support for kwargs.
+      return py_func.wrap_py_func(
+          f, return_dtypes, args, use_dummy_return=not return_dtypes)
+
+    if run_as == RunMode.GRAPH:
+      wrapper = graph_wrapper
+    elif run_as == RunMode.PY_FUNC:
+      wrapper = py_func_wrapper
+    else:
+      raise ValueError('unknown value for run_as: %s' % run_as)
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
@@ -227,7 +232,7 @@ def to_graph(e,
   """
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
-      nocompile_decorators=(convert, graph_ready, convert_inline),
+      nocompile_decorators=(convert, do_not_convert, converted_call),
       partial_types=partial_types,
       api_module=tf_inspect.getmodule(to_graph))
   _, name = conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
@@ -274,7 +279,7 @@ def to_code(e,
   """
   conversion_map = conversion.ConversionMap(
       recursive=recursive,
-      nocompile_decorators=(convert, graph_ready, convert_inline),
+      nocompile_decorators=(convert, do_not_convert, converted_call),
       partial_types=partial_types,
       api_module=tf_inspect.getmodule(to_graph))
   conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)

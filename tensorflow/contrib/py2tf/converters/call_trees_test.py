@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.py2tf.converters import call_trees
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -104,6 +108,20 @@ class CallTreesTest(converter_test_base.TestCase):
         self.assertFalse(hasattr(a, 'foo'))
         sess.run(sess.graph.get_operations()[0])
         self.assertEquals('bar', a.foo)
+
+  def test_py_func_wrap_known_function(self):
+
+    def test_fn():
+      return np.random.binomial(2, 0.5)
+
+    node = self.parse_and_analyze(test_fn, {'np': np})
+    node = call_trees.transform(node, self.ctx, (), ())
+
+    with self.compiled(node, dtypes.int64) as result:
+      result.np = np
+      with self.test_session() as sess:
+        self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
+        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
 
   def test_uncompiled_modules(self):
 

@@ -568,13 +568,22 @@ Status GraphConstructor::ValidateShape(Node* node) {
   auto* ic = refiner_->GetContext(node);
   DCHECK(ic != nullptr)
       << "ShapeRefiner::AddNode() should have created the InferenceContext";
-  if (shape_attrs.size() != node->num_outputs()) {
+  if (shape_attrs.size() < node->num_outputs()) {
     return errors::InvalidArgument(
         "Node '", node->name(), "' has ", node->num_outputs(),
         " outputs but the ", kAttrName, " attribute specifies shapes for ",
         shape_attrs.size(), " outputs");
   }
-  for (int i = 0; i < shape_attrs.size(); ++i) {
+  // NOTE(skyewm): we don't raise an error here because some users depend on
+  // this behavior, even though it's unsafe.
+  // TODO(b/74619486): raise an error.
+  if (shape_attrs.size() > node->num_outputs()) {
+    LOG(WARNING) << "Node '" << node->name() << "' has " << node->num_outputs()
+                 << " outputs but the " << kAttrName
+                 << " attribute specifies shapes for " << shape_attrs.size()
+                 << " outputs. Output shapes may be inaccurate.";
+  }
+  for (int i = 0; i < node->num_outputs(); ++i) {
     const TensorShapeProto& p = shape_attrs[i];
     shape_inference::ShapeHandle h;
     Status s = ic->MakeShapeFromShapeProto(p, &h);

@@ -81,7 +81,6 @@ py_test(
     name = "builtin_functions_test",
     srcs = ["builtin_functions_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":test_lib",
         "//tensorflow/python:client_testlib",
@@ -92,7 +91,6 @@ py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/impl",

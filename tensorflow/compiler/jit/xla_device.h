@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 
 #include "tensorflow/compiler/jit/xla_tensor_info.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -81,7 +82,7 @@ class XlaDevice : public LocalDevice {
   static Status Create(const string& platform_name, const string& device_name,
                        int device_ordinal, const string& jit_device_name,
                        const SessionOptions& options, const string& name_prefix,
-                       bool register_device_for_compilation,
+                       const XlaOpRegistry::DeviceRegistration& registration,
                        bool transfer_as_literal,
                        std::unique_ptr<XlaDevice>* device);
 
@@ -113,7 +114,7 @@ class XlaDevice : public LocalDevice {
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
-  const DeviceType& jit_device_name_;
+  DeviceType jit_device_name_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_;                   // Not owned.
   ::perftools::gputools::Platform* platform_;  // Not owned.
@@ -134,7 +135,7 @@ class XlaDevice : public LocalDevice {
   bool transfer_as_literal_;
 };
 
-// Builds dummy OpKernel registrations on 'device' for the JIT operators
+// Builds OpKernel registrations on 'device' for the JIT operators
 // registered on 'jit_device'. Returns ownership of a XlaDeviceOpRegistrations
 // object that encapsulates the kernel registrations.
 struct XlaDeviceOpRegistrations {

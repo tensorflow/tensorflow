@@ -31,6 +31,7 @@ See the @{$python/train} guide.
 @@custom_gradient
 @@gradients
 @@AggregationMethod
+@@GradientTape
 @@stop_gradient
 @@hessians
 @@clip_by_value

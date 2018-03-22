@@ -5231,6 +5231,7 @@ tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
     deps = [
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu",
@@ -5293,6 +5294,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5354,6 +5356,7 @@ tf_cc_test(
         ":math",
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
@@ -5376,6 +5379,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
@@ -5440,6 +5444,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5460,6 +5465,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5499,6 +5505,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5555,6 +5562,7 @@ tf_cc_test(
         ":math",
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
@@ -5577,6 +5585,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
@@ -5613,6 +5622,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu",
@@ -5634,6 +5644,7 @@ tf_cc_test(
     deps = [
         ":batch_norm_op",
         ":ops_testutil",
+        ":quantization_utils",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu_internal",

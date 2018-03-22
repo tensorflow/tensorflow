@@ -545,13 +545,13 @@ class CheckpointingTests(test.TestCase):
       checkpoint = checkpointable_utils.Checkpoint(
           model=model, optimizer=optimizer)
       for _ in range(2):
+        checkpoint.save(checkpoint_prefix)
         with backprop.GradientTape() as tape:
           loss = (constant_op.constant(1.)
                   - model(constant_op.constant(1.))) ** 2
         grad = tape.gradient(loss, model.vars)
         optimizer.apply_gradients(
             [(g, v) for g, v in zip(grad, model.vars)])
-        checkpoint.save(checkpoint_prefix)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLateDependencyTracking(self):
@@ -898,6 +898,52 @@ class CheckpointingTests(test.TestCase):
         self,
         expected_filenames,
         os.listdir(checkpoint_directory))
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testCheckpointCleanupChangingVarList(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    obj = checkpointable.Checkpointable()
+    obj.var = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(checkpointable_utils.gather_initializers(obj))
+    checkpoint = checkpointable_utils.Checkpoint(obj=obj)
+    looped_variables = []
+    for iteration in range(10):
+      new_variable = resource_variable_ops.ResourceVariable(iteration)
+      self.evaluate(new_variable.initializer)
+      setattr(checkpoint, "var_%d" % iteration, new_variable)
+      checkpoint.save(checkpoint_prefix)
+      looped_variables.append(new_variable)
+    expected_filenames = ["checkpoint"]
+    # We've copied the saver each time, but checkpoint management should still
+    # be consistent.
+    for checkpoint_number in range(6, 11):
+      expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
+      expected_filenames.append(
+          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
+    six.assertCountEqual(
+        self,
+        expected_filenames,
+        os.listdir(checkpoint_directory))
+    for v in looped_variables:
+      self.evaluate(v.assign(314))
+    checkpoint.restore(checkpoint_prefix + "-6").run_restore_ops()
+    self.assertEqual(314, self.evaluate(checkpoint.var_9))
+    self.assertEqual(314, self.evaluate(checkpoint.var_8))
+    self.assertEqual(314, self.evaluate(checkpoint.var_6))
+    self.assertEqual(5, self.evaluate(checkpoint.var_5))
+    self.assertEqual(1, self.evaluate(checkpoint.var_1))
+    self.assertEqual(0, self.evaluate(checkpoint.var_0))
+    if context.executing_eagerly():
+      checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
+      self.assertEqual(9, self.evaluate(checkpoint.var_9))
+      self.assertEqual(8, self.evaluate(checkpoint.var_8))
+      self.assertEqual(1, self.evaluate(checkpoint.var_1))
+      self.assertEqual(0, self.evaluate(checkpoint.var_0))
+    else:
+      # Restoring into modified graphs is an error while graph building.
+      with self.assertRaises(NotImplementedError):
+        checkpoint.restore(checkpoint_prefix + "-10").run_restore_ops()
 
   def testManyRestoresGraph(self):
     """Restores after the first should not modify the graph."""
