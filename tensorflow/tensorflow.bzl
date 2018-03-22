@@ -202,7 +202,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
           "-ftemplate-depth=900"])
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
-      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
+      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + if_ios_x86_64(["-msse4.1"])
