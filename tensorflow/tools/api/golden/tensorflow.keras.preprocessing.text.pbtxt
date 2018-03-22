@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
+    name: "hashing_trick"
+    argspec: "args=[\'text\', \'n\', \'hash_function\', \'filters\', \'lower\', \'split\'], varargs=None, keywords=None, defaults=[\'None\', \'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \'], "
+  }
+  member_method {
     name: "one_hot"
     argspec: "args=[\'text\', \'n\', \'filters\', \'lower\', \'split\'], varargs=None, keywords=None, defaults=[\'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \'], "
   }
