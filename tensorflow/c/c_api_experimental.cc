@@ -483,3 +483,13 @@ void TF_ShutdownTPUExecution(TF_Session* session, TF_Output shutdown_node,
                 /*targets*/ &shutdown_node.oper, /*ntargets*/ 1,
                 /*run_metadata*/ nullptr, status);
 }
+
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len) {
+  tensorflow::mutex_lock c(graph->mu);
+  const auto& debug_str = graph->graph.ToGraphDefDebug().DebugString();
+  *len = debug_str.size();
+  char* ret = static_cast<char*>(malloc(*len + 1));
+  memcpy(ret, debug_str.c_str(), *len + 1);
+  return ret;
+}

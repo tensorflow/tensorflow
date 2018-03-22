@@ -94,6 +94,12 @@ TF_CAPI_EXPORT extern void TF_ShutdownTPUExecution(TF_Session* session,
                                                    TF_Output shutdown_node,
                                                    TF_Status* status);
 
+// Returns the graph content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
