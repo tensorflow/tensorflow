@@ -309,6 +309,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_CAST:
     case BuiltinOperator_DEQUANTIZE:
+    case BuiltinOperator_PRELU:
       break;
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =

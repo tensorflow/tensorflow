@@ -27,6 +27,7 @@ from tensorflow.python.keras._impl.keras.preprocessing.image import img_to_array
 from tensorflow.python.keras._impl.keras.preprocessing.image import Iterator
 from tensorflow.python.keras._impl.keras.preprocessing.image import load_img
 from tensorflow.python.keras._impl.keras.preprocessing.image import NumpyArrayIterator
+from tensorflow.python.keras._impl.keras.preprocessing.image import random_brightness
 from tensorflow.python.keras._impl.keras.preprocessing.image import random_channel_shift
 from tensorflow.python.keras._impl.keras.preprocessing.image import random_rotation
 from tensorflow.python.keras._impl.keras.preprocessing.image import random_shear

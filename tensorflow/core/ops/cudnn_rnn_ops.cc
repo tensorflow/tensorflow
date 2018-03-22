@@ -21,31 +21,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr auto kCudnnRNNCommonInputs = R"doc(
-num_layers: Specifies the number of layers in the RNN model.
-num_units: Specifies the size of the hidden state.
-input_size: Specifies the size of the input state.
-)doc";
-
-constexpr auto kCudnnRNNCommonAttrs = R"doc(
-rnn_mode: Indicates the type of the RNN model.
-input_mode: Indicate whether there is a linear projection between the input and
-    The actual computation before the first layer. 'skip_input' is only allowed
-    when input_size == num_units; 'auto_select' implies 'skip_input' when
-    input_size == num_units; otherwise, it implies 'linear_input'.
-direction: Indicates whether a bidirectional model will be used.
-    dir = (direction == bidirectional) ? 2 : 1
-dropout: dropout probability. When set to 0., dropout is disabled.
-seed: the 1st part of a seed to initialize dropout.
-seed2: the 2nd part of a seed to initialize dropout.
-)doc";
-
-constexpr auto kCudnnRNNParamsBuffer = R"doc(
-Note that the params buffer may not be compatible across different GPUs. So any
-save and restoration should be converted to and from the canonical weights and
-biases.
-)doc";
-
 constexpr auto kRNNModeAttrs =
     "rnn_mode: {'rnn_relu', 'rnn_tanh', 'lstm', 'gru'} = 'lstm'";
 
@@ -56,20 +31,12 @@ constexpr auto kRNNInputModeAttrs =
 constexpr auto kRNNDirectionAttrs =
     "direction: {'unidirectional', 'bidirectional'} = 'unidirectional'";
 
-constexpr auto kCudnnRNNParamsCanonical = R"doc(
-weights: the canonical form of weights that can be used for saving
-    and restoration. They are more likely to be compatible across different
-    generations.
-biases: the canonical form of biases that can be used for saving
-    and restoration. They are more likely to be compatible across different
-    generations.
-)doc";
-
 }  // namespace
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+
 
 REGISTER_OP("CudnnRNNParamsSize")
     .Input("num_layers: int32")
@@ -87,38 +54,8 @@ REGISTER_OP("CudnnRNNParamsSize")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(1));
       return Status::OK();
-    })
-    .Doc(strings::StrCat(R"doc(
-Return the params size that can be used by the Cudnn RNN model. Subsequent
-weight allocation and initialization should use this size.
-)doc",
-                         kCudnnRNNCommonInputs, kCudnnRNNCommonAttrs,
-                         R"doc(
-params_size: The size of the params buffer that should be allocated and
-    initialized for this RNN model. Note that this params buffer may not be
-    compatible across GPUs. Please use CudnnRNNParamsWeights and
-    CudnnRNNParamsBiases to save and restore them in a way that is compatible
-    across different runs.
-)doc",
-                         kCudnnRNNParamsBuffer));
+    });
 
-static string CudnnRNNForwardTensors() {
-  return R"doc(
-input: a 3-D tensor with the shape of [seq_length, batch_size, input_size].
-input_h: a 3-D tensor with the shape of [num_layer * dir, batch_size,
-    num_units].
-input_c: For LSTM, a 3-D tensor with the shape of
-    [num_layer * dir, batch, num_units]. For other models, it is ignored.
-params: a 1-D tensor that contains the weights and biases in an opaque layout.
-    The size must be created through CudnnRNNParamsSize, and initialized
-    separately. Note that they might not be compatible across different
-    generations. So it is a good idea to save and restore
-output: a 3-D tensor with the shape of [seq_length, batch_size,
-    dir * num_units].
-output_h: the same shape has input_h.
-output_c: the same shape as input_c for LSTM. An empty tensor for other models.
-)doc";
-}
 
 REGISTER_OP("CudnnRNN")
     .Input("input: T")
@@ -160,18 +97,8 @@ REGISTER_OP("CudnnRNN")
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
       return Status::OK();
-    })
-    .Doc(strings::StrCat(R"doc(
-Computes the RNN from the input and initial states, with respect to the params
-buffer.
-)doc",
-                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(),
-                         R"doc(
-is_training: Indicates whether this operation is used for inferenece or
-    training.
-reserve_space: an opaque tensor that can be used in backprop calculation. It
-    is only produced if is_training is false.
-)doc"));
+    });
+
 
 REGISTER_OP("CudnnRNNBackprop")
     .Input("input: T")
@@ -207,27 +134,8 @@ REGISTER_OP("CudnnRNNBackprop")
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
       return Status::OK();
-    })
-    .Doc(strings::StrCat(R"doc(
-Compute the backprop of both data and weights in a RNN.
-)doc",
-                         kCudnnRNNCommonAttrs, CudnnRNNForwardTensors(),
-                         R"doc(
-output_backprop: A 3-D tensor with the same shape as output in the forward pass.
-output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
-    pass.
-output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
-    pass.
-reserve_space: The same reserve_space produced in for forward operation.
-input_backprop: The backprop to input in the forward pass. Has the same shape
-    as input.
-input_h_backprop: The backprop to input_h in the forward pass. Has the same
-    shape as input_h.
-input_c_backprop: The backprop to input_c in the forward pass. Has the same
-    shape as input_c.
-params_backprop: The backprop to the params buffer in the forward pass. Has the
-    same shape as params.
-)doc"));
+    });
+
 
 REGISTER_OP("CudnnRNNParamsToCanonical")
     .Input("num_layers: int32")
@@ -259,17 +167,8 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
         c->set_output(num_params + i, c->Vector(InferenceContext::kUnknownDim));
       }
       return Status::OK();
-    })
-    .Doc(strings::StrCat(R"doc(
-Retrieves a set of weights from the opaque params buffer that can be saved and
-restored in a way compatible with future runs.
-)doc",
-                         kCudnnRNNCommonInputs, kCudnnRNNParamsBuffer, R"doc(
-num_params: number of parameter sets for all layers.
-    Each layer may contain multiple parameter sets, with each set consisting of
-    a weight matrix and a bias vector.
-)doc",
-                         kCudnnRNNParamsCanonical, kCudnnRNNCommonAttrs));
+    });
+
 
 REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("num_layers: int32")
@@ -289,17 +188,6 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
-    })
-    .Doc(strings::StrCat(R"doc(
-Writes a set of weights into the opaque params buffer so they can be used in
-upcoming training or inferences.
-)doc",
-                         kCudnnRNNCommonInputs, kCudnnRNNParamsCanonical,
-                         kCudnnRNNParamsBuffer, R"doc(
-num_params: number of parameter sets for all layers.
-    Each layer may contain multiple parameter sets, with each set consisting of
-    a weight matrix and a bias vector.
-)doc",
-                         kCudnnRNNCommonAttrs));
+    });
 
 }  // namespace tensorflow
