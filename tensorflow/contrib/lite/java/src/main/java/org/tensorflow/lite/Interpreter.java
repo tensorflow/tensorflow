@@ -78,6 +78,17 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
+  }
+
+  /**
    * Runs model inference if the model takes only one input, and provides only one output.
    *
    * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please

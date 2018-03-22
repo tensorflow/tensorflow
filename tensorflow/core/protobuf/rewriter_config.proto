@@ -42,7 +42,7 @@ message RewriterConfig {
   // Control dependency optimizations (default is ON).
   // Remove redundant control dependencies, which may enable other optimization.
   Toggle dependency_optimization = 8;
-  // Loop optimizations (default is OFF).
+  // Loop optimizations (default is ON).
   Toggle loop_optimization = 9;
   // Function optimizations (default is ON).
   Toggle function_optimization = 10;

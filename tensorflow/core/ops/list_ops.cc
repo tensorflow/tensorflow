@@ -135,10 +135,6 @@ REGISTER_OP("TensorListStack")
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &ignored));
-        if (!c->FullyDefined(list_shape_type.shape)) {
-          return errors::InvalidArgument(
-              "Can only stack a list with fully defined shapes.");
-        }
         s = list_shape_type.shape;
       }
       int expected_num_elements = -1;

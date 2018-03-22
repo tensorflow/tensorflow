@@ -41,6 +41,12 @@ def _ArgMaxGrad(op, grad):
   return [None, None]
 
 
+@ops.RegisterGradient("ArgMin")
+def _ArgMinGrad(op, grad):
+  del op, grad
+  return [None, None]
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""

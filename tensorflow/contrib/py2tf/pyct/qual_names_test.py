@@ -208,6 +208,24 @@ class QNResolverTest(test.TestCase):
     self.assertQNStringIs(nodes[8], 'a.b[c[d]].e.f')
     self.assertQNStringIs(nodes[9], 'a.b[c[d.e.f].g].h')
 
+  def test_function_calls(self):
+    samples = """
+      a.b
+      a.b()
+      a().b
+      z[i]
+      z[i]()
+      z()[i]
+    """
+    nodes = resolve(parser.parse_str(textwrap.dedent(samples)))
+    nodes = tuple(n.value for n in nodes.body)
+    self.assertQNStringIs(nodes[0], 'a.b')
+    self.assertQNStringIs(nodes[1].func, 'a.b')
+    self.assertQNStringIs(nodes[2].value.func, 'a')
+    self.assertQNStringIs(nodes[3], 'z[i]')
+    self.assertQNStringIs(nodes[4].func, 'z[i]')
+    self.assertQNStringIs(nodes[5].value.func, 'z')
+
 
 if __name__ == '__main__':
   test.main()

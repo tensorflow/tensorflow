@@ -889,6 +889,8 @@ class BaseSession(SessionInterface):
       Either a single value if `fetches` is a single graph element, or
       a list of values if `fetches` is a list, or a dictionary with the
       same keys as `fetches` if that is a dictionary (described above).
+      Order in which `fetches` operations are evaluated inside the call
+      is undefined.
 
     Raises:
       RuntimeError: If this `Session` is in an invalid state (e.g. has been
@@ -1663,7 +1665,11 @@ class InteractiveSession(BaseSession):
                       'explicitly call `InteractiveSession.close()` to release '
                       'resources held by the other session(s).')
       InteractiveSession._active_session_count += 1
-    self._closed = False
+    # NOTE(mrry): We do not use `Session._closed` here because it has unhelpful
+    # semantics (in particular, it is not set to true if `Session.close()` is
+    # called on a session that has not been "opened" by running a step) and we
+    # cannot change those semantics without breaking existing code.
+    self._explicitly_closed = False
 
     self._default_session = self.as_default()
     self._default_session.enforce_nesting = False
@@ -1678,11 +1684,13 @@ class InteractiveSession(BaseSession):
     """Closes an `InteractiveSession`."""
     super(InteractiveSession, self).close()
     with InteractiveSession._count_lock:
-      if not self._closed:
+      if not self._explicitly_closed:
         InteractiveSession._active_session_count -= 1
-        self._closed = True
+        self._explicitly_closed = True
       else:
         return
     if self._explicit_graph is not None:
       self._default_graph.__exit__(None, None, None)
+      self._default_graph = None
     self._default_session.__exit__(None, None, None)
+    self._default_session = None

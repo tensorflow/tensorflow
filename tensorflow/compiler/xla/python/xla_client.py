@@ -320,6 +320,9 @@ class CompileOptions(object):
 
   def __init__(self):
     self.generate_hlo_graph = None
+    self.dump_optimized_hlo_proto_to = None
+    self.dump_per_pass_hlo_proto_to = None
+    self.hlo_profile = False
 
 
 def transfer_to_infeed(value, replica_number=None):

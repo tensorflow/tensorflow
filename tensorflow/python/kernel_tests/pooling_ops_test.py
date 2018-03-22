@@ -123,8 +123,9 @@ class PoolingTest(test.TestCase):
       if input_sizes[-1] % 4 != 0:
         tf_logging.info("Skipping test for depth %d", input_sizes[-1])
         return
-    tf_logging.info("Running %s test. %r %r %d %r %r %r", data_format, v2,
-                    input_sizes, total_size, pool_func, ksize, strides)
+    tf_logging.info("Running %s test. %r %r %d %r %r %r %s", data_format, v2,
+                    input_sizes, total_size, pool_func, ksize, strides,
+                    data_type)
     # Initializes the input tensor with array containing incrementing
     # numbers from 1, wrapping round to -127 after 127 to support int8.
     x = [((f + 128) % 255) - 127 for f in range(total_size)]
@@ -193,6 +194,8 @@ class PoolingTest(test.TestCase):
 
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float32, expected, use_gpu, v2)
+    self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                        data_format, dtypes.float64, expected, use_gpu, v2)
 
     if not use_gpu or test_util.CudaSupportsHalfMatMulAndConv():
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,

@@ -617,4 +617,44 @@ TEST_F(BFloat16PropagationTest, DoNotPropagateWhilesCallingSameComputation) {
   EXPECT_EQ(computation->root_instruction(), dot);
 }
 
+// Tests that if this pass turns an F32 -> BF16 conversion into a no-op (BF16 ->
+// BF16 conversion), then it will remove that conversion.
+TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "param"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, param, param));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, param, param));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, tuple, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32_shape, tuple, 1));
+  HloInstruction* convert0 =
+      builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte0));
+  HloInstruction* convert1 =
+      builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte1));
+  HloInstruction* add2 = builder.AddInstruction(HloInstruction::CreateBinary(
+      bf16_shape, HloOpcode::kAdd, convert0, convert1));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), add2);
+  EXPECT_EQ(add2->operand(0), gte0);
+  EXPECT_EQ(add2->operand(1), gte1);
+  EXPECT_EQ(gte0->shape().element_type(), BF16);
+  EXPECT_EQ(gte1->shape().element_type(), BF16);
+  EXPECT_EQ(add0->shape().element_type(), BF16);
+  EXPECT_EQ(add1->shape().element_type(), BF16);
+}
+
 }  // namespace xla

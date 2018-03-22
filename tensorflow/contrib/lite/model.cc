@@ -679,9 +679,27 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       // but we really only support one value for the whole tensor.
       // TODO(aselle): This breaks as well if these are nullptr's.
       // TODO(aselle): This assumes non per-channel quantization.
-      if (q_params->scale()) quantization.scale = q_params->scale()->Get(0);
-      if (q_params->zero_point())
+
+      if (q_params->scale()) {
+        if (q_params->scale()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d scale values (only 1 is supported).",
+              q_params->scale()->size());
+          return kTfLiteError;
+        }
+        quantization.scale = q_params->scale()->Get(0);
+      }
+
+      if (q_params->zero_point()) {
+        if (q_params->zero_point()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d zero_point values"
+              " (only 1 is supported).",
+              q_params->zero_point()->size());
+          return kTfLiteError;
+        }
         quantization.zero_point = q_params->zero_point()->Get(0);
+      }
     }
 
     TfLiteType type;
@@ -759,6 +777,11 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
+  return operator()(interpreter, /*num_threads=*/-1);
+}
+
+TfLiteStatus InterpreterBuilder::operator()(
+    std::unique_ptr<Interpreter>* interpreter, int num_threads) {
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
@@ -813,7 +836,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   if ((**interpreter).AddTensors(tensors->Length()) != kTfLiteOk) {
     return cleanup_and_error();
   }
-
+  // Set num threads
+  (**interpreter).SetNumThreads(num_threads);
   // Parse inputs/outputs
   (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
   (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));

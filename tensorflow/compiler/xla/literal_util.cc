@@ -929,7 +929,7 @@ string Literal::GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
     case U64:
       return StrCat(Get<uint64>(multi_index, shape_index));
     case F16:
-      return StrCat(Get<half>(multi_index, shape_index));
+      return StrCat(static_cast<float>(Get<half>(multi_index, shape_index)));
     case F32:
       return StrCat(Get<float>(multi_index, shape_index));
     case BF16:
@@ -979,7 +979,8 @@ string Literal::GetSparseElementAsString(int64 sparse_element_number,
       return StrCat(
           GetSparseElement<uint64>(sparse_element_number, shape_index));
     case F16:
-      return StrCat(GetSparseElement<half>(sparse_element_number, shape_index));
+      return StrCat(static_cast<float>(
+          GetSparseElement<half>(sparse_element_number, shape_index)));
     case F32:
       return StrCat(
           GetSparseElement<float>(sparse_element_number, shape_index));
@@ -1462,6 +1463,9 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
 StatusOr<std::unique_ptr<Literal>> Literal::Convert(
     PrimitiveType primitive_dest_type) const {
   TF_RET_CHECK(ShapeUtil::IsArray(shape()));
+  if (shape().element_type() == primitive_dest_type) {
+    return CloneToUnique();
+  }
   switch (shape().element_type()) {
 #define CONVERT_IF_DEST_TYPE_MATCHES(type) \
   case (type):                             \

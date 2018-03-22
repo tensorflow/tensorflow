@@ -838,41 +838,51 @@ class _EagerTensorBase(Tensor):
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
       raise ValueError(
-          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          "Tensor's shape %s is not compatible with supplied shape %s" %
           (self.shape, shape))
 
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise AttributeError("op not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.op is meaningless when eager execution is enabled.")
 
   @property
   def graph(self):
-    raise AttributeError("graph not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.graph is meaningless when eager execution is enabled.")
 
   @property
   def name(self):
-    raise AttributeError("name not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.name is meaningless when eager execution is enabled.")
 
   @property
   def value_index(self):
-    raise AttributeError("value_index not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.value_index is meaningless when eager execution is enabled.")
 
   def consumers(self):
-    raise NotImplementedError("consumers not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "Tensor.consumers is meaningless when eager execution is enabled.")
 
   def _add_consumer(self, consumer):
-    raise NotImplementedError("_add_consumer not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_add_consumer not supported when eager execution is enabled.")
 
   def _as_node_def_input(self):
     raise NotImplementedError(
-        "_as_node_def_input not supported for Eager Tensors.")
+        "_as_node_def_input not supported when eager execution is enabled.")
 
   def _as_tf_output(self):
-    raise NotImplementedError("_as_tf_output not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_as_tf_output not supported when eager execution is enabled.")
 
   def eval(self, feed_dict=None, session=None):
-    raise NotImplementedError("eval not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "eval is not supported when eager execution is enabled, "
+        "is .numpy() what you're looking for?"
+    )
 
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
@@ -1906,7 +1916,8 @@ class Operation(object):
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
-  def _update_input(self, index, tensor):
+  # TODO(skyewm): Remove `update_dtype` when we enable the C API.
+  def _update_input(self, index, tensor, update_dtype=True):
     """Update the input to this operation at the given index.
 
     NOTE: This is for TF internal use only. Please don't use it.
@@ -1914,6 +1925,7 @@ class Operation(object):
     Args:
       index: the index of the input to update.
       tensor: the Tensor to be used as the input at the given index.
+      update_dtype: If `False`, the type for this input is not updated.
 
     Raises:
       TypeError: if tensor is not a Tensor,
@@ -1933,7 +1945,8 @@ class Operation(object):
     else:
       self._inputs_val[index].consumers().remove(self)
       self._inputs_val[index] = tensor
-      self._input_types_val[index] = tensor.dtype
+      if update_dtype:
+        self._input_types_val[index] = tensor.dtype
       tensor._add_consumer(self)  # pylint: disable=protected-access
       self._recompute_node_def()
 
@@ -2717,8 +2730,6 @@ class Graph(object):
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
     self._version = 0  # GUARDED_BY(self._lock)
-    # Current name stack: uniquified names
-    self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
     self._stack_state_is_thread_local = False
@@ -3293,6 +3304,20 @@ class Graph(object):
           input_types=input_types,
           original_op=self._default_original_op,
           op_def=op_def)
+
+      # TODO(vrv): Instead of eagerly filling in shape property for every op,
+      # only populate the shape when requested.
+      #
+      # TODO(skyewm): unlike in the original Python implementation, the C API
+      # always computes shape information (even for function calls, which the
+      # original Python shape inference code doesn't handle). Deprecate the
+      # compute_shapes argument.
+      #
+      # TODO(b/74620627): move this back to _create_op_helper once _USE_C_SHAPES
+      # is removed
+      if (ret._c_op and _USE_C_SHAPES) or compute_shapes:  # pylint: disable=protected-access
+        set_shapes_for_outputs(ret)
+
       self._create_op_helper(ret, compute_shapes=compute_shapes,
                              compute_device=compute_device)
     return ret
@@ -3326,15 +3351,6 @@ class Graph(object):
 
   def _create_op_helper(self, op, compute_shapes=True, compute_device=True):
     """Common logic for creating an op in this graph."""
-    # TODO(vrv): Instead of eagerly filling in shape property for every op, only
-    # populate the shape when requested.
-    #
-    # TODO(skyewm): unlike in the original Python implementation, the C API
-    # always computes shape information (even for function calls, which the
-    # original Python shape inference code doesn't handle). Deprecate the
-    # compute_shapes argument.
-    if (op._c_op and _USE_C_SHAPES) or compute_shapes:  # pylint: disable=protected-access
-      set_shapes_for_outputs(op)
     # TODO(b/XXXX): move to Operation.__init__ once _USE_C_API flag is removed.
     self._add_op(op)
 
@@ -3439,6 +3455,12 @@ class Graph(object):
     ]
 
     for op in new_ops:
+      # The Python shape inference code does not support imported functions. It
+      # also needs access to op.inputs, which is why we call it here.
+      # TODO(b/74620627): move this back to _create_op_helper once _USE_C_SHAPES
+      # is removed.
+      if not self._is_function(op.type) or _USE_C_SHAPES:
+        set_shapes_for_outputs(op)
       new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
       # pylint: disable=protected-access
       op._add_control_inputs(new_control_inputs)
@@ -3885,6 +3907,17 @@ class Graph(object):
       yield
     finally:
       self._default_original_op = old_original_op
+
+  @property
+  def _name_stack(self):
+    # This may be called from a thread where name_stack doesn't yet exist.
+    if not hasattr(self._thread_local, "_name_stack"):
+      self._thread_local._name_stack = ""
+    return self._thread_local._name_stack
+
+  @_name_stack.setter
+  def _name_stack(self, name_stack):
+    self._thread_local._name_stack = name_stack
 
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
@@ -5937,8 +5970,9 @@ def get_from_proto_function(collection_name):
 def _assert_collection_is_ok(collection_name):
   if context.executing_eagerly():
     if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
-      raise ValueError("When Eager Execution is enabled, variable "
-                       "collections are not supported.")
+      raise ValueError(
+          "variable collections are not supported when eager execution is enabled."
+      )
 
 
 def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):

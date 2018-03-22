@@ -295,6 +295,7 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -392,6 +393,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -407,6 +409,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -1138,6 +1141,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1906,7 +1910,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "softmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["softmax_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2327,6 +2331,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2457,6 +2462,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(

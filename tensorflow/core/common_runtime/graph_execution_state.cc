@@ -237,6 +237,42 @@ void GraphExecutionState::RestoreStatefulNodes(Graph* graph) {
   }
 }
 
+Status GraphExecutionState::PruneGraph(
+    const BuildGraphOptions& options, Graph* graph,
+    subgraph::RewriteGraphMetadata* out_rewrite_metadata) {
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> feed_rewrites;
+  feed_rewrites.reserve(options.callable_options.feed_size());
+  std::vector<std::unique_ptr<subgraph::PruneRewrite>> fetch_rewrites;
+  fetch_rewrites.reserve(options.callable_options.fetch_size());
+  const DeviceAttributes* device_info =
+      &device_set_->client_device()->attributes();
+  if (options.use_function_convention) {
+    for (int i = 0; i < options.callable_options.feed_size(); ++i) {
+      feed_rewrites.emplace_back(new subgraph::ArgFeedRewrite(
+          &options.callable_options.feed(i), device_info, i));
+    }
+    for (int i = 0; i < options.callable_options.fetch_size(); ++i) {
+      fetch_rewrites.emplace_back(new subgraph::RetvalFetchRewrite(
+          &options.callable_options.fetch(i), device_info, i));
+    }
+  } else {
+    for (const string& feed : options.callable_options.feed()) {
+      feed_rewrites.emplace_back(
+          new subgraph::RecvFeedRewrite(&feed, device_info));
+    }
+    for (const string& fetch : options.callable_options.fetch()) {
+      fetch_rewrites.emplace_back(
+          new subgraph::SendFetchRewrite(&fetch, device_info));
+    }
+  }
+  std::vector<string> target_node_names(
+      options.callable_options.target().begin(),
+      options.callable_options.target().end());
+  return subgraph::RewriteGraphForExecution(graph, feed_rewrites,
+                                            fetch_rewrites, target_node_names,
+                                            out_rewrite_metadata);
+}
+
 Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
@@ -251,10 +287,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
     rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        new_graph.get(), options.callable_options,
-        device_set_->client_device()->attributes(),
-        options.use_function_convention, rewrite_metadata_.get()));
+    TF_RETURN_IF_ERROR(
+        PruneGraph(options, new_graph.get(), rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
@@ -404,12 +438,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
-    // Extract the subset of the graph that needs to be run, adding feed/fetch
-    // ops as needed.
-    TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-        ng.get(), options.callable_options,
-        device_set_->client_device()->attributes(),
-        options.use_function_convention, &rewrite_metadata));
+    TF_RETURN_IF_ERROR(PruneGraph(options, ng.get(), &rewrite_metadata));
   } else {
     // This GraphExecutionState represents a graph that was
     // pruned when this was constructed, so we copy the metadata from

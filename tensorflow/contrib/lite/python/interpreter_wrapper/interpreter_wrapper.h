@@ -37,7 +37,11 @@ namespace interpreter_wrapper {
 class InterpreterWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPP(const char* model_path);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path);
+
+  // SWIG caller takes ownership of pointer.
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(const char* data,
+                                                        size_t len);
 
   ~InterpreterWrapper();
   bool AllocateTensors();
@@ -50,6 +54,7 @@ class InterpreterWrapper {
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
+  PyObject* TensorQuantization(int i) const;
   bool SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
 

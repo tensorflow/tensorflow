@@ -94,3 +94,12 @@ def rename_symbols(node, name_map):
   elif isinstance(node, tuple):
     return tuple(renamer.visit(n) for n in node)
   return renamer.visit(node)
+
+
+def keywords_to_dict(keywords):
+  keys = []
+  values = []
+  for kw in keywords:
+    keys.append(gast.Str(kw.arg))
+    values.append(kw.value)
+  return gast.Dict(keys=keys, values=values)

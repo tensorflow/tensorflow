@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import io
 import numpy as np
 
 from tensorflow.contrib.lite.python import interpreter as interpreter_wrapper
@@ -29,7 +30,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
     interpreter = interpreter_wrapper.Interpreter(
-        resource_loader.get_path_to_datafile('testdata/permute_float.tflite'))
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
@@ -37,12 +39,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual('input', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+    self.assertEqual((0.0, 0), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('output', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+    self.assertEqual((0.0, 0), output_details[0]['quantization'])
 
     test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
     expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
@@ -53,8 +57,12 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertTrue((expected_output == output_data).all())
 
   def testUint8(self):
-    interpreter = interpreter_wrapper.Interpreter(
-        resource_loader.get_path_to_datafile('testdata/permute_uint8.tflite'))
+    model_path = resource_loader.get_path_to_datafile(
+        'testdata/permute_uint8.tflite')
+    with io.open(model_path, 'rb') as model_file:
+      data = model_file.read()
+
+    interpreter = interpreter_wrapper.Interpreter(model_content=data)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
@@ -62,12 +70,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual('input', input_details[0]['name'])
     self.assertEqual(np.uint8, input_details[0]['dtype'])
     self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+    self.assertEqual((1.0, 0), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('output', output_details[0]['name'])
     self.assertEqual(np.uint8, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+    self.assertEqual((1.0, 0), output_details[0]['quantization'])
 
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)

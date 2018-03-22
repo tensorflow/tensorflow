@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import threading
 
 import numpy
 
@@ -1347,6 +1348,92 @@ class PartitionInfoTest(test.TestCase):
     partition_info = variable_scope._PartitionInfo(
         full_shape=[9, 3], var_offset=[4, 0])
     self.assertEqual(0, partition_info.single_slice_dim([2, 3]))
+
+
+class VariableScopeMultithreadedTest(test.TestCase):
+
+  def testTwoThreadsDisjointScopeEntry(self):
+
+    def thread_fn(i, graph):
+      with graph.as_default():
+        with variable_scope.variable_scope("foo"):
+          if i == 0:
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("foo/v:0", v.name)
+          else:
+            # Any thread after the first one should fail to create variable
+            # with the same name.
+            with self.assertRaises(ValueError):
+              variable_scope.get_variable("v", [])
+
+    graph = ops.get_default_graph()
+    threads = [
+        threading.Thread(target=thread_fn, args=(i, graph,)) for i in range(2)]
+
+    threads[0].start()
+    # Allow thread 0 to finish before starting thread 1.
+    threads[0].join()
+    threads[1].start()
+    threads[1].join()
+
+  def testTwoThreadsNestedScopeEntry(self):
+
+    def thread_fn(i, graph, run_event, pause_event):
+      with graph.as_default():
+        with variable_scope.variable_scope("foo"):
+          if i == 0:
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("foo/v:0", v.name)
+          else:
+            # Any thread after the first one should fail to create variable
+            # with the same name.
+            with self.assertRaises(ValueError):
+              variable_scope.get_variable("v", [])
+          pause_event.set()
+          run_event.wait()
+
+    graph = ops.get_default_graph()
+    run_events = [threading.Event() for _ in range(2)]
+    pause_events = [threading.Event() for _ in range(2)]
+    threads = [
+        threading.Thread(
+            target=thread_fn, args=(i, graph, run_events[i], pause_events[i]))
+        for i in range(2)
+    ]
+
+    # Start first thread.
+    threads[0].start()
+    pause_events[0].wait()
+    # Start next thread once the first thread has paused.
+    threads[1].start()
+    pause_events[1].wait()
+    # Resume both threads.
+    run_events[0].set()
+    run_events[1].set()
+    threads[0].join()
+    threads[1].join()
+
+  def testReenterMainScope(self):
+
+    def thread_fn(graph, main_thread_scope):
+      with graph.as_default():
+        # Variable created with main scope will have prefix "main".
+        with variable_scope.variable_scope(main_thread_scope):
+          with variable_scope.variable_scope("foo"):
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("main/foo/v:0", v.name)
+
+        # Variable created outside main scope will not have prefix "main".
+        with variable_scope.variable_scope("bar"):
+          v = variable_scope.get_variable("v", [])
+          self.assertEquals("bar/v:0", v.name)
+
+    graph = ops.get_default_graph()
+    with variable_scope.variable_scope("main") as main_thread_scope:
+      thread = threading.Thread(
+          target=thread_fn, args=(graph, main_thread_scope))
+      thread.start()
+      thread.join()
 
 
 if __name__ == "__main__":

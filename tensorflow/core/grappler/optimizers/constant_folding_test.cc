@@ -2103,7 +2103,8 @@ TEST_F(ConstantFoldingTest, Enter) {
   item.fetch.push_back("id2");
   item.fetch.push_back("id3");
 
-  ConstantFolding optimizer(nullptr /* cpu_device */);
+  ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                            nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);

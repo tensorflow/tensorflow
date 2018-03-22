@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 _op_attr_type_cache = {}
@@ -637,64 +638,55 @@ _default_vspace = imperative_grad.VSpace(
     ones=_ones)
 
 
+@tf_export("GradientTape")
 class GradientTape(object):
-  """Records operations to use to compute gradients.
+  """Record operations for automatic differentiation.
 
-  Operations are recorded if:
-    - they happen in code marked by this context manager
-    - at least one of their inputs is being watched
+  Operations are recorded if they are executed within this context manager and
+  at least one of their inputs is being "watched".
 
-  Outputs of recorded operations are watched. Variables are automatically
-  watched and tensors can be manually watched by calling the watch method on the
-  context manager.
+  Variables (created by `tf.contrib.eager.Variable` or @{tf.get_variable})
+  are automatically watched. Tensors can be manually watched by invoking the
+  `watch`
+  method on this context manager.
 
-  Example usage:
+  For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
+  be computed as:
 
   ```python
+  x = tf.constant(3.)
   with tfe.GradientTape() as g:
-    x = tf.constant(3.0)
     g.watch(x)
     y = x * x
-  grad = g.gradient(y, [x])[0]
-  assert grad.numpy() == 6.0
+  grad = g.gradient(y, [x])[0] # Will compute to 6.0
   ```
 
-  It is possible to use GradientTapes to compute higher-order derivatives as
-  follows:
+  GradientTapes can be nested to compute higher-order derivatives. For example,
 
   ```python
+  x = tf.constant(3.0)
   with tfe.GradientTape() as g:
-    x = tf.constant(3.0)
-    g.watch(x)
-    y = x * x
     with tfe.GradientTape() as gg:
-      gg.watch(y)
-      z = 2 * y
-    inner_grad = gg.gradient(z, [y])[0]
-    assert inner_grad.numpy() == 2
-    y = y + inner_grad
-  grad = g.gradient(y, [x])[0]
-  assert grad.numpy() == 6.0
+      gg.watch(x)
+      y = x * x
+    dy_dx = gg.gradient(y, [x])[0]     # Will compute to 6.0
+  d2y_dx2 = g.gradient(dy_dx, [x])[0]  # Will compute to 2.0
   ```
 
   By default, the resources held by a GradientTape are released as soon as
-  GradientTape.gradient() method is called. However, if one need to compute
-  multiple gradients over the same computation, she can create a persistent
-  GradientTape. Persistent tapes allow multiple calls to the gradient() method
-  and release resources when the tape object is destructed.
-
-  Example usage:
+  GradientTape.gradient() method is called. To compute multiple gradients over
+  the same computation, create a persistent gradient tape. This allows multiple
+  calls to the gradient() method as resources are released when the tape object
+  is garbage collected. For example:
 
   ```python
+  x = tf.constant(3.0)
   with tfe.GradientTape(persistent=True) as g:
-    x = tf.constant(3.0)
     g.watch(x)
     y = x * x
     z = y * y
-  dz_dx = g.gradient(z, [x])[0]
-  assert dz_dx.numpy() == 108.0   # 4*x^3 at x = 3
-  dy_dx = g.gradient(y, [x])[0]
-  assert dy_dx.numpy() == 6.0
+  dy_dx = g.gradient(z, [x])[0]  # 6.0
+  dz_dx = g.gradient(y, [x])[0]  # 108.0 (4*x^3 at x = 3)
   del g  # Drop the reference to the tape
   """
 
@@ -703,8 +695,8 @@ class GradientTape(object):
 
     Args:
       persistent: Boolean controlling whether a persistent gradient tape
-        is created. Must be True or False.
-
+        is created. False by default, which means at most one call can
+        be made to the gradient() method on this object.
     """
     self._tape = None
     self._persistent = persistent
@@ -720,7 +712,7 @@ class GradientTape(object):
     """Ensures that `tensor` is being traced by this tape.
 
     Args:
-      tensor: a Tensor or Variable a list of Tensors or Variables.
+      tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
       if isinstance(t, resource_variable_ops.ResourceVariable):
@@ -735,14 +727,14 @@ class GradientTape(object):
                        key=lambda v: v.handle._id))  # pylint: disable=protected-access
 
   def gradient(self, target, sources, output_gradients=None):
-    """Computes the gradient using information traced by the tape.
+    """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: the tensor to be differentiated.
-      sources: a list of Tensors or Variables, the target will be
-       differentiated with respect to the sources.
+      target: Tensor to be differentiated.
+      sources: a list of Tensors or Variables. `target` will be differentiated
+        against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
-       target. Defaults to None.
+        target. Defaults to None.
 
     Returns:
       a list of Tensors (or IndexedSlices, or None), one for each element in
@@ -750,7 +742,7 @@ class GradientTape(object):
 
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
-       than once.
+       than once on a non-persistent tape.
     """
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once "
