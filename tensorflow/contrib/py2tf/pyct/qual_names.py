@@ -169,14 +169,6 @@ class QnResolver(gast.NodeTransformer):
   Note: Not using NodeAnnos to avoid circular dependencies.
   """
 
-  def visit_Call(self, node):
-    node = self.generic_visit(node)
-    # This helps treat the following cases uniformly:
-    #   a = b[i]
-    #   a = b()[i]
-    anno.copyanno(node.func, node, anno.Basic.QN)
-    return node
-
   def visit_Name(self, node):
     node = self.generic_visit(node)
     anno.setanno(node, anno.Basic.QN, QN(node.id))
@@ -184,8 +176,9 @@ class QnResolver(gast.NodeTransformer):
 
   def visit_Attribute(self, node):
     node = self.generic_visit(node)
-    anno.setanno(node, anno.Basic.QN,
-                 QN(anno.getanno(node.value, anno.Basic.QN), attr=node.attr))
+    if anno.hasanno(node.value, anno.Basic.QN):
+      anno.setanno(node, anno.Basic.QN,
+                   QN(anno.getanno(node.value, anno.Basic.QN), attr=node.attr))
     return node
 
   def visit_Subscript(self, node):
@@ -201,9 +194,10 @@ class QnResolver(gast.NodeTransformer):
       subscript = QN(StringLiteral(s.value.s))
     else:
       subscript = anno.getanno(node.slice.value, anno.Basic.QN)
-    anno.setanno(node, anno.Basic.QN,
-                 QN(anno.getanno(node.value, anno.Basic.QN),
-                    subscript=subscript))
+    if anno.hasanno(node.value, anno.Basic.QN):
+      anno.setanno(node, anno.Basic.QN,
+                   QN(anno.getanno(node.value, anno.Basic.QN),
+                      subscript=subscript))
     return node
 
 
