@@ -70,17 +70,18 @@ class ExecutableBuildOptions {
       tensorflow::StringPiece dirpath);
   const tensorflow::gtl::optional<string>& dump_per_pass_hlo_proto_to() const;
 
-  // If set, specifies that we should record an HLO profile during execution and
-  // log it after execution (as in DebugOptions).
+  // If true, specifies that we should record an HLO profile during execution
+  // and log it after execution (as in DebugOptions). If nullopt the default is
+  // used.
   ExecutableBuildOptions& set_hlo_profile(bool enabled);
-  bool hlo_profile() const;
+  tensorflow::gtl::optional<bool> hlo_profile() const;
 
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
 
  private:
-  bool hlo_profile_ = false;
+  tensorflow::gtl::optional<bool> hlo_profile_;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
