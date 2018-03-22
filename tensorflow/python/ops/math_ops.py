@@ -180,6 +180,8 @@ linspace = gen_math_ops.lin_space
 
 arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+tf_export("arg_max")(arg_max)
+tf_export("arg_min")(arg_min)
 
 
 # This is set by resource_variable_ops.py. It is included in this way since
@@ -1196,7 +1198,7 @@ tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
 tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
-tf_export("floormod")(floormod)
+tf_export("floormod", "mod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):
