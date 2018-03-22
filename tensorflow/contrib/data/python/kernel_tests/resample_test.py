@@ -23,9 +23,9 @@ from tensorflow.contrib.data.python.ops import resampling
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -75,7 +75,8 @@ class ResampleTest(test.TestCase):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     target_dist = [0.0, 0.0, 0.0, 1.0]
     num_classes = len(init_dist)
-    num_samples = 100   # We don't need many samples to test a dirac-delta target distribution
+    # We don't need many samples to test a dirac-delta target distribution
+    num_samples = 100
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
@@ -94,7 +95,6 @@ class ResampleTest(test.TestCase):
             initial_dist=init_dist))
 
     get_next = dataset.make_one_shot_iterator().get_next()
-
 
     with self.test_session() as sess:
       returned = []

@@ -1910,7 +1910,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "softmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["softmax_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
