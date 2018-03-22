@@ -34,7 +34,7 @@ def src_to_test_name(src):
   return src.replace("/", "_").split(".")[0]
 
 def full_path(relative_paths):
-  return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+  return [native.package_name() + "/" + relative for relative in relative_paths]
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -265,7 +265,7 @@ def _rpath_linkopts(name):
   # deployed. Other shared object dependencies (e.g. shared between contrib/
   # ops) are picked up as long as they are in either the same or a parent
   # directory in the tensorflow/ tree.
-  levels_to_root = PACKAGE_NAME.count("/") + name.count("/")
+  levels_to_root = native.package_name().count("/") + name.count("/")
   return select({
       clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
