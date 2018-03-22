@@ -1972,9 +1972,9 @@ void FinishBuildingRNNStates(Model* model) {
 
 void UseArraysExtraInfo(Model* model) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
-    QCHECK(model->HasArray(entry.name()))
-        << "ArraysExtraInfo refers to non-existent array name: "
-        << entry.name();
+    if (!model->HasArray(entry.name())) {
+      continue;
+    }
     auto& array = model->GetArray(entry.name());
     auto& minmax = array.GetOrCreateMinMax();
     if (entry.has_min() || entry.has_max()) {
@@ -1985,6 +1985,24 @@ void UseArraysExtraInfo(Model* model) {
     if (entry.has_data_type()) {
       array.final_data_type =
           ConvertIODataTypeToArrayDataType(entry.data_type());
+    }
+    if (entry.has_shape()) {
+      array.clear_shape();
+      // Make sure to create the shape even if there are no dims, to
+      // correctly record 0-D shapes.
+      array.mutable_shape();
+      for (int dim : entry.shape().dims()) {
+        array.mutable_shape()->mutable_dims()->push_back(dim);
+      }
+    }
+    if (entry.has_constant_float_value()) {
+      CHECK(array.has_shape());
+      CHECK(array.data_type == ArrayDataType::kFloat);
+      auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+      data.resize(RequiredBufferSizeForShape(array.shape()));
+      for (float& f : data) {
+        f = entry.constant_float_value();
+      }
     }
   }
 }
