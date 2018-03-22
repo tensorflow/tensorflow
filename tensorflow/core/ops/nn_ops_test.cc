@@ -412,6 +412,16 @@ TEST(NNOpsTest, SoftmaxCrossEntropyWithLogits_ShapeFn) {
 
   INFER_ERROR("Shape must be broadcasted with rank 2", op, "[1,2,3];?");
   INFER_ERROR("Shape must be broadcasted with rank 2", op, "?;[1,2,3]");
+
+  // Broadcast example
+  // [1,4] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,4];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [2,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[2,1]", "[d0_0];[d0_0|d1_0,d0_1]");
+  // [1,?] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,?];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [?,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[?,1]", "[d0_0];[d0_0|d1_0,d0_1]");
 }
 
 TEST(NNOpsTest, SparseSoftmaxCrossEntropyWithLogits_ShapeFn) {
