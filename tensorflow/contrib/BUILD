@@ -119,7 +119,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
-        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/data/kernels:dataset_kernels",
         "//tensorflow/contrib/kafka:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
@@ -143,7 +142,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
-        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
         "//tensorflow/contrib/data:dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",

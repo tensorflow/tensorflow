@@ -689,6 +689,34 @@ cc_library(
 )
 
 cc_library(
+    name = "cudnn_rnn_ops",
+    srcs = [
+        "ops/cudnn_rnn_ops.cc",
+    ],
+    linkstatic = 1,
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+    alwayslink = 1,
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "cudnn_rnn_ops",
+    ],
+    deps = [
+        ":lib",
+    ],
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -700,6 +728,7 @@ cc_library(
         ":checkpoint_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
+        ":cudnn_rnn_ops_op_lib",
         ":data_flow_ops_op_lib",
         ":dataset_ops_op_lib",
         ":function_ops_op_lib",
@@ -840,6 +869,7 @@ cc_library(
         "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
+        "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
@@ -2911,6 +2941,23 @@ tf_cc_tests(
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_rnn_ops_test_cc",
+    size = "small",
+    srcs = [
+        "ops/cudnn_rnn_ops_test.cc",
+    ],
+    deps = [
+        ":cudnn_rnn_ops",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

@@ -99,6 +99,10 @@ from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
 
+# Import cudnn rnn ops to make sure their ops are registered.
+from tensorflow.python.ops import gen_cudnn_rnn_ops as _
+
+
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
 

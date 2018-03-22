@@ -920,6 +920,22 @@ tf_kernel_library(
     ]) + ARRAY_DEPS,
 )
 
+tf_kernel_library(
+    name = "cudnn_rnn_kernels",
+    srcs = ["cudnn_rnn_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:cudnn_rnn_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+)
+
 tf_cc_test(
     name = "batch_norm_op_test",
     size = "small",
@@ -5079,6 +5095,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "cudnn_rnn_ops.*",
             "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",

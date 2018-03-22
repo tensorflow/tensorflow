@@ -78,6 +78,7 @@ py_library(
         ":client_testlib",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":cudnn_rnn_ops_gen",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -1384,6 +1385,13 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/contrib/framework:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "cudnn_rnn_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
     ],
 )
 
