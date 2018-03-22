@@ -39,12 +39,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual('input', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+    self.assertEqual((0.0, 0), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('output', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+    self.assertEqual((0.0, 0), output_details[0]['quantization'])
 
     test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
     expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
@@ -67,12 +69,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
       self.assertEqual('input', input_details[0]['name'])
       self.assertEqual(np.uint8, input_details[0]['dtype'])
       self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+      self.assertEqual((1.0, 0), input_details[0]['quantization'])
 
       output_details = interpreter.get_output_details()
       self.assertEqual(1, len(output_details))
       self.assertEqual('output', output_details[0]['name'])
       self.assertEqual(np.uint8, output_details[0]['dtype'])
       self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+      self.assertEqual((1.0, 0), output_details[0]['quantization'])
 
       test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
       expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
