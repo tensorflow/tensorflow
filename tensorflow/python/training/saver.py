@@ -1970,7 +1970,7 @@ def export_meta_graph(filename=None,
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
-    graph: The `Graph` to import into. If `None`, use the default graph.
+    graph: The `Graph` to export. If `None`, use the default graph.
     export_scope: Optional `string`. Name scope under which to extract
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph

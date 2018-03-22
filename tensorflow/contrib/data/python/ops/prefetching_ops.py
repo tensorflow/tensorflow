@@ -27,7 +27,7 @@ def function_buffering_resource(string_arg,
                                 target_device,
                                 f,
                                 buffer_size,
-                                thread_pool_size=1,
+                                thread_pool_size=0,
                                 container="",
                                 shared_name=None,
                                 name=None):

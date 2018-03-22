@@ -81,7 +81,7 @@ TEST_F(LoopOptimizerTest, Basic) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -128,7 +128,7 @@ TEST_F(LoopOptimizerTest, Const) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -175,7 +175,7 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -235,7 +235,7 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -302,7 +302,7 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -365,7 +365,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -429,7 +429,7 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   GrapplerItem item;
   item.graph = graph;
 
-  LoopOptimizer optimizer;
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -502,6 +502,7 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   AddSimpleNode("stack3", "StackV2", {}, &graph);
   AddSimpleNode("push3", "StackPushV2", {"stack3", "c"}, &graph);
   AddSimpleNode("stop", "StopGradient", {"stack3"}, &graph);
+
   LoopOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -525,12 +526,19 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   AddSimpleNode("stack3", "StackV2", {}, &graph);
   AddSimpleNode("push3", "StackPushV2", {"stack3", "c"}, &graph);
   AddSimpleNode("pop3", "StackPopV2", {"stack3"}, &graph);
+  // Push for a Pop without consumer that is fetched should not be removed.
+  AddSimpleNode("stack4", "StackV2", {}, &graph);
+  AddSimpleNode("push4", "StackPushV2", {"stack4", "c"}, &graph);
+  AddSimpleNode("pop4", "StackPopV2", {"stack4"}, &graph);
+
+  item.fetch.push_back("pop4");
 
   LoopOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(10, output.node_size());
+
+  EXPECT_EQ(13, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     if (node.name() == "push1") {

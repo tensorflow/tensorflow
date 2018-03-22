@@ -165,7 +165,7 @@ bazel-bin/tensorflow/python/tools/freeze_graph\
     --input_graph=/tmp/mobilenet_v1_224.pb \
     --input_checkpoint=/tmp/checkpoints/mobilenet-10202.ckpt \
     --input_binary=true --output_graph=/tmp/frozen_mobilenet_v1_224.pb \
-    --output_node_names=MobileNet/Predictions/Reshape_1
+    --output_node_names=MobilenetV1/Predictions/Reshape_1
 ```
 
 The user has to first build the freeze_graph script using bazel and then run the script.  The input_binary flag has to be enabled to ensure that the protobuf is read and written in binary format.  The user has to input the .pb and the .ckpt files to freeze the graph The output_node_names may not be obvious outside of the code that built the model. The easiest way to find them is to visualize the graph, either with

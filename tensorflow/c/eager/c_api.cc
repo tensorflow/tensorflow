@@ -165,7 +165,7 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 
 // Note: this function looks up a thread local policy. So it should be called in
 // the appropriate client thread. In particular, in async mode, it may not be
-// safe to call this function from the async TFE_Executor threads.
+// safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
   tensorflow::mutex_lock ml(ctx->policy_map_mu);
@@ -346,8 +346,13 @@ void TFE_DeleteOp(TFE_Op* op) { delete op; }
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = op->ctx->device_manager->LookupDevice(device_name, &d);
-    if (!status->status.ok()) return;
+    auto it = op->ctx->devices_map.find(device_name);
+    if (it == op->ctx->devices_map.end()) {
+      status->status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+      return;
+    }
+    d = it->second;
   }
   op->device = d;
 }
@@ -731,15 +736,15 @@ tensorflow::Status Execute(
   return tensorflow::Status::OK();
 }
 
-// TODO(agarwal): move TFE_Executor and TFE_Node related code to a separate
+// TODO(agarwal): move EagerExecutor and EagerNode related code to a separate
 // file.
-class ExecuteNode : public TFE_Node {
+class ExecuteNode : public tensorflow::EagerNode {
  public:
   ExecuteNode(TFE_Op* op, tensorflow::KernelAndDevice* kernel,
               tensorflow::NodeExecStats* maybe_stats,
               const tensorflow::DataTypeVector& output_dtypes,
               TFE_TensorHandle** retvals, int num_retvals)
-      : TFE_Node(op->ctx->executor.NextId()),
+      : tensorflow::EagerNode(op->ctx->executor.NextId()),
         ctx_(op->ctx),
         op_device_(op->device),
         inputs_(op->inputs),
@@ -791,11 +796,11 @@ class ExecuteNode : public TFE_Node {
   tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals_;
 };
 
-class CopyToDeviceNode : public TFE_Node {
+class CopyToDeviceNode : public tensorflow::EagerNode {
  public:
   CopyToDeviceNode(TFE_TensorHandle* src, tensorflow::Device* dstd,
                    TFE_Context* ctx)
-      : TFE_Node(ctx->executor.NextId()),
+      : tensorflow::EagerNode(ctx->executor.NextId()),
         src_(src),
         dstd_(dstd),
         ctx_(ctx),
@@ -1182,8 +1187,9 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     // Note that for async mode, execution order will make sure that all
     // input handles are ready before executing them.
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
-    TFE_Node* node = new ExecuteNode(op, kernel, maybe_stats.release(),
-                                     output_dtypes, retvals, *num_retvals);
+    tensorflow::EagerNode* node =
+        new ExecuteNode(op, kernel, maybe_stats.release(), output_dtypes,
+                        retvals, *num_retvals);
     ctx->executor.Add(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
@@ -1214,8 +1220,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     // make sure that `h` is ready before the copy is actually done.
     CopyToDeviceNode* node = new CopyToDeviceNode(h, dstd, ctx);
     TFE_TensorHandle* output = node->dst();
-    // Note that calling Add makes `node` accessible by the TFE_Executor thread.
-    // So further accesses need to be thread-safe.
+    // Note that calling Add makes `node` accessible by the EagerExecutor
+    // thread. So further accesses need to be thread-safe.
     ctx->executor.Add(node);
     return output;
   } else {
@@ -1356,137 +1362,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
 }
 }  // namespace tensorflow
 
-TFE_Node::TFE_Node(tensorflow::uint64 id) : id(id) {}
-
-TFE_Executor::~TFE_Executor() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  thread_done_ = true;
-  nodes_pending_.notify_all();
-}
-
-tensorflow::uint64 TFE_Executor::NextId() {
-  tensorflow::mutex_lock l(next_id_mutex_);
-  return next_id_++;
-}
-
-void TFE_Executor::EnableAsync() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  if (thread_ == nullptr) {
-    thread_.reset(tensorflow::Env::Default()->StartThread(
-        tensorflow::ThreadOptions(), "eager_async_executor",
-        std::bind(&TFE_Executor::Run, this)));
-  }
-}
-
-void TFE_Executor::Add(TFE_Node* node) {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  DCHECK(thread_) << "EnableAsync should have been called before Add";
-  if (!status_.ok()) {
-    delete node;
-    return;
-  }
-  int qlen = node_queue_.size();
-  if (qlen > 0) {
-    if (node_queue_.back()->id >= node->id) {
-      status_ = tensorflow::errors::InvalidArgument(
-          "Inserting TFE_Node with non-increasing ids:", node_queue_.back()->id,
-          " vs ", node->id);
-      delete node;
-      return;
-    }
-    node_queue_.push(node);
-  } else {
-    node_queue_.push(node);
-    nodes_pending_.notify_all();
-  }
-}
-
-tensorflow::Status TFE_Executor::WaitFor(tensorflow::uint64 node_id) {
-  return WaitImpl(false, node_id);
-}
-
-tensorflow::Status TFE_Executor::WaitForAllPendingNodes() {
-  return WaitImpl(true, 0);
-}
-
-tensorflow::Status TFE_Executor::WaitImpl(bool wait_all,
-                                          tensorflow::uint64 node_id) {
-  tensorflow::condition_variable cond;
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  // Don't wait if an error is already set.
-  if (!status_.ok()) return status_;
-  if (node_queue_.empty()) return tensorflow::Status::OK();
-  if (wait_all) {
-    node_id = node_queue_.back()->id;
-  } else if (node_id < node_queue_.front()->id) {
-    // Note that we are relying on the ops being dispatched sequentially from
-    // the queue.
-    return tensorflow::Status::OK();
-  }
-  node_done_notifications_.insert(std::make_pair(node_id, &cond));
-  cond.wait(l);
-  // Note that we could be woken up if an error occurs, even though the node has
-  // not actually executed.
-  return status_;
-}
-
-void TFE_Executor::ClearError() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  if (status_.ok()) return;
-  // If an error was set, node_done_notifications_ and node_queue_ should have
-  // been cleared, and no new entries should have been added since.
-  DCHECK(node_done_notifications_.empty());
-  DCHECK(node_queue_.empty());
-  status_ = tensorflow::Status::OK();
-  nodes_pending_.notify_all();
-}
-
-tensorflow::Status TFE_Executor::status() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  return status_;
-}
-
-void TFE_Executor::Run() {
-  while (true) {
-    std::unique_ptr<TFE_Node> curr_node;
-    {
-      tensorflow::mutex_lock l(node_queue_mutex_);
-      while (node_queue_.empty() || !status_.ok()) {
-        if (thread_done_) return;
-        nodes_pending_.wait(l);
-      }
-      curr_node.reset(node_queue_.front());
-    }
-    tensorflow::Status status = curr_node->Run();
-    const bool ok = status.ok();
-    tensorflow::mutex_lock l(node_queue_mutex_);
-    node_queue_.pop();
-    if (!ok) {
-      status_ = status;
-      // TODO(agarwal): mark all affected handles as corrupted before clearing
-      // this queue.
-      // We remove any pending ops so that we don't try to execute them if
-      // ClearError is called.
-      for (int i = 0; i < node_queue_.size(); ++i) {
-        delete node_queue_.front();
-        node_queue_.pop();
-      }
-    }
-    if (!node_done_notifications_.empty()) {
-      tensorflow::uint64 node_id = curr_node->id;
-      // Note that we notify all waiting threads in case an error has occurred.
-      // These calling threads are responsible for checking status_ before
-      // proceeding.
-      const auto range = ok ? node_done_notifications_.equal_range(node_id)
-                            : make_pair(node_done_notifications_.begin(),
-                                        node_done_notifications_.end());
-      for (auto it = range.first; it != range.second; ++it) {
-        it->second->notify_all();
-      }
-      node_done_notifications_.erase(range.first, range.second);
-    }
-  }
-}
 
 bool TFE_Context::Async() const {
   tensorflow::mutex_lock l(async_map_mu);
@@ -1502,7 +1377,7 @@ bool TFE_TensorHandle::IsReady() {
 
 tensorflow::Status TFE_TensorHandle::WaitReady() {
   if (node_id == 0) return tensorflow::Status::OK();
-  TFE_Executor* executor = nullptr;
+  tensorflow::EagerExecutor* executor = nullptr;
   {
     tensorflow::mutex_lock l(ctx_mutex_);
     if (ctx_ == nullptr) return tensorflow::Status::OK();

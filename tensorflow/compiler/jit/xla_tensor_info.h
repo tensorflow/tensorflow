@@ -43,9 +43,25 @@ class XlaTensorInfo {
     shaped_buffer_.reset(new xla::ShapedBuffer(std::move(shaped_buffer)));
   }
 
+  // Some tensors on the device may have known values on the host. We use these
+  // in on-demand mode to avoid re-copying values from the device if we know the
+  // host value already.
+
+  // Return true if this TensorInfo contains a host tensor.
+  bool has_host_tensor() const { return host_tensor_ != nullptr; }
+  // Return the contained host tensor.
+  // REQUIRES: has_host_tensor()
+  const Tensor& host_tensor() const { return *host_tensor_; }
+  // Sets the contained host tensor.
+  void set_host_tensor(const Tensor& tensor) {
+    host_tensor_.reset(new Tensor(tensor));
+  }
+
  private:
   // The optional contained ShapedBuffer.
   std::unique_ptr<xla::ShapedBuffer> shaped_buffer_;
+  // An optional host tensor value.
+  std::unique_ptr<Tensor> host_tensor_;
 };
 
 // Manages XlaTensorInfo objects. This class is also an Allocator, so that

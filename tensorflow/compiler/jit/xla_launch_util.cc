@@ -169,28 +169,40 @@ void XlaComputationLaunchContext::PopulateOutputs(
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     AllocatorAttributes alloc_attrs = ctx->output_alloc_attr(i);
-    Allocator* allocator = ctx->device()->GetAllocator(alloc_attrs);
+    Allocator* allocator = ctx->device()->GetAllocator({});
     if (tensor_info_manager_ && !alloc_attrs.on_host()) {
       allocator = tensor_info_manager_;
     }
     if (kernel->outputs[i].is_constant) {
       // Output is a constant.
       const Tensor& const_tensor = kernel->outputs[i].constant_value;
+      Tensor* output_tensor;
       const size_t total_bytes = const_tensor.TotalBytes();
       if (stream && total_bytes > 0) {
         // Copy host -> device. (Empty tensors don't have backing buffers.)
         VLOG(1) << "Constant output tensor on device";
-        Tensor* output_tensor;
+
         TF_CHECK_OK(
             ctx->allocate_output(i, const_tensor.shape(), &output_tensor));
 
         const void* src_ptr = DMAHelper::base(&const_tensor);
         void* dst_ptr = DMAHelper::base(output_tensor);
         gpu::DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
+        // Memcpying asynchronously is safe for the GPU, but the CPU uses a
+        // shared allocator so hold a reference to the copied-to buffer until
+        // complete.
+        TensorReference ref(*output_tensor);
         stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
+        stream->ThenDoHostCallback([ref] { ref.Unref(); });
       } else {
         // No copy required.
         ctx->set_output(i, const_tensor);
+        output_tensor = ctx->mutable_output(i);
+      }
+      if (tensor_info_manager_) {
+        XlaTensorInfo* tensor_info =
+            tensor_info_manager_->GetOrCreateTensorInfo(*output_tensor);
+        tensor_info->set_host_tensor(const_tensor);
       }
     } else {
       const TensorShape& shape = kernel->outputs[i].shape;

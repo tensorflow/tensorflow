@@ -534,7 +534,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
       num_unit_shards: (optional) int, default 1, How to split the weight
-        matrix. If > 1,the weight matrix is stored across num_unit_shards.
+        matrix. If > 1, the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
         of the training.
@@ -993,7 +993,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
       num_unit_shards: (optional) int, default 1, How to split the weight
-        matrix. If > 1,the weight matrix is stored across num_unit_shards.
+        matrix. If > 1, the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
         of the training.

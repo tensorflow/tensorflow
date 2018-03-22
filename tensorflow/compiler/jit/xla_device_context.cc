@@ -93,6 +93,10 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
       }
     }
 
+    XlaTensorInfo* tensor_info =
+        tensor_info_manager_->GetOrCreateTensorInfo(*device_tensor);
+    tensor_info->set_host_tensor(*cpu_tensor);
+
     done(status);
     return;
   }

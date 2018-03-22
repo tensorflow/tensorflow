@@ -123,9 +123,46 @@ def Quantize(graph,
           vars_collection=vars_collection,
           bits=activation_bits)
 
+    if layer_match.post_activation_bypass_op is not None:
+      _InsertQuantOp(
+          add_context,
+          'post_activation_bypass_quant',
+          layer_match.post_activation_bypass_op,
+          input_to_ops_map.ConsumerOperations(
+              layer_match.post_activation_bypass_op),
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits)
+
 
 def _FindLayersToQuantize(graph):
   """Matches layers in graph to quantize.
+
+  The following patterns get matched. Nodes surrounded by [] will be
+  optionally matched:
+
+          weight|folded_weight
+                /
+         conv|fc
+            |
+    [post_conv_correction]
+            |
+     biasadd|folded_bias
+            |
+         [bypass]
+            |
+        activation
+            |
+   [post_activation_bypass]
+
+  Match replacements:
+    If weight_folded_weight is found, FakeQuant is added afterwards.
+    If bypass is found, FakeQuant is added before and after.
+    If activation is found, FakeQuant is added afterwards.
+    If post_activation_bypass is found, FakeQuant is added afterwards.
 
   Args:
     graph: Graph to perform match on.
@@ -179,7 +216,7 @@ def _FindLayersToQuantize(graph):
               [bias_add_pattern, folded_bias_add_pattern])
       ])
 
-  # The input to the activation can come from bias add, fold bias add or the
+  # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
   activation_pattern = graph_matcher.OpTypePattern(
       '|'.join(_ACTIVATION_TYPES),
@@ -190,7 +227,16 @@ def _FindLayersToQuantize(graph):
           ])
       ])
 
-  layer_matcher = graph_matcher.GraphMatcher(activation_pattern)
+  post_activation_bypass_pattern_a = graph_matcher.OpTypePattern(
+      'Add', inputs=['*', activation_pattern])
+  post_activation_bypass_pattern_b = graph_matcher.OpTypePattern(
+      'Add', inputs=[activation_pattern, '*'])
+
+  layer_matcher = graph_matcher.GraphMatcher(
+      graph_matcher.OneofPattern([
+          post_activation_bypass_pattern_a, post_activation_bypass_pattern_b,
+          activation_pattern
+      ]))
   for match_result in layer_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_pattern)
@@ -203,8 +249,19 @@ def _FindLayersToQuantize(graph):
     bypass_op = match_result.get_op(bypass_pattern_a)
     if bypass_op is None:
       bypass_op = match_result.get_op(bypass_pattern_b)
+    post_activation_bypass_op = match_result.get_op(
+        post_activation_bypass_pattern_a)
+    if post_activation_bypass_op is None:
+      post_activation_bypass_op = match_result.get_op(
+          post_activation_bypass_pattern_b)
+    # If we don't find a post_activation_bypass_op but activation_op has a
+    # bypass following it, then we need to skip this match, since there will be
+    # another match that includes post_activation_bypass_op.
+    if post_activation_bypass_op is None and _HasPostActivationBypass(
+        activation_op):
+      continue
     yield _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op,
-                      bias_add_op)
+                      post_activation_bypass_op, bias_add_op)
 
   # Match the final layer, where there will not be an activation and instead
   # the output of the final BiasAdd must be quantized, so we treat it as the
@@ -215,19 +272,32 @@ def _FindLayersToQuantize(graph):
   for match_result in final_layer_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_pattern)
+    if weight_tensor is None:
+      weight_tensor = match_result.get_tensor(folded_weight_pattern)
     activation_op = match_result.get_op(bias_add_pattern)
-    yield _LayerMatch(layer_op, weight_tensor, activation_op, None, None)
+    if activation_op is None:
+      activation_op = match_result.get_op(folded_bias_add_pattern)
+    yield _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None)
+
+
+def _HasPostActivationBypass(activation_op):
+  for activation_tensor in activation_op.outputs:
+    for output_op in activation_tensor.consumers():
+      if output_op.type == 'Add':
+        return True
+  return False
 
 
 class _LayerMatch(object):
   """Contains all information related to a matched Layer."""
 
   def __init__(self, layer_op, weight_tensor, activation_op, bypass_op,
-               bias_add_op):
+               post_activation_bypass_op, bias_add_op):
     self._layer_op = layer_op
     self._weight_tensor = weight_tensor
     self._activation_op = activation_op
     self._bypass_op = bypass_op
+    self._post_activation_bypass_op = post_activation_bypass_op
     self._bias_add_op = bias_add_op
 
   @property
@@ -245,6 +315,10 @@ class _LayerMatch(object):
   @property
   def bypass_op(self):
     return self._bypass_op
+
+  @property
+  def post_activation_bypass_op(self):
+    return self._post_activation_bypass_op
 
   @property
   def bias_add_op(self):
@@ -293,6 +367,12 @@ def _InsertQuantOp(context,
       consumer operation.
   """
   name_prefix = _AddContextToName(context, name)
+  # This is needed on TPU where name_scope == 'TPUReplicate/loop', and
+  # name_prefix starts with 'TPUReplicate/loop/'; without dropping it
+  # variables are created as TPUReplicate/loop/TPUReplicate/loop/..., which
+  # breaks things later.
+  name_prefix = common.DropStringPrefix(name_prefix, ops.get_name_scope() + '/')
+
   inputs = producer.outputs[0]
   if moving_avg:
     quant = (

@@ -1176,22 +1176,6 @@ def tf_custom_op_library_additional_deps():
       "@protobuf_archive//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
-  ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
-
-# A list of targets that contains the implemenation of
-# tf_custom_op_library_additional_deps. It's used to generate a DEF file for
-# exporting symbols from _pywrap_tensorflow.dll on Windows.
-def tf_custom_op_library_additional_deps_impl():
-  return [
-      # for @protobuf_archive//:protobuf_headers
-      "@protobuf_archive//:protobuf",
-      # for @nsync//:nsync_headers
-      "@nsync//:nsync_cpp",
-      # for //third_party/eigen3
-      clean_dep("//third_party/eigen3"),
-      # for //tensorflow/core:framework_headers_lib
-      clean_dep("//tensorflow/core:framework"),
-      clean_dep("//tensorflow/core:reader_base"),
   ]
 
 # Traverse the dependency graph along the "deps" attribute of the
@@ -1278,7 +1262,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(is_external=True),
-      features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({
           "//conditions:default": [
               "-lm",
@@ -1425,8 +1408,7 @@ def tf_py_wrap_cc(name,
       ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
-      deps=deps + extra_deps,
-      **kwargs)
+      deps=deps + extra_deps)
   native.genrule(
       name="gen_" + cc_library_pyd_name,
       srcs=[":" + cc_library_name],

@@ -318,7 +318,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     // Note this is not run for AOT because it would bring in thread pool
     // and thread synchronization dependencies which would likely increase
     // binary size (and most AOT applications are single-threaded).
-    // TODO(29630486) Support multi-threaded AOT.
+    // TODO(b/29630486) Support multi-threaded AOT.
     pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
                                            ShapeSizeBytesFunction());
   }

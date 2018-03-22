@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
 
 #include <memory>
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/oauth_client.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -46,7 +47,10 @@ class GoogleAuthProvider : public AuthProvider {
   /// standard gcloud tool's location.
   Status GetTokenFromFiles() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Gets the bearer token from Google Compute Engine environment.
+  /// Gets the bearer token from Google Compute Engine environment. May return
+  /// an empty token if the current process is not running under GCE. If that
+  /// happens the caller will try to use the empty token and either succeed
+  /// if the resource is publicly accessible or fail with a permissions error.
   Status GetTokenFromGce() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Gets the bearer token from the systen env variable, for testing purposes.
@@ -57,6 +61,7 @@ class GoogleAuthProvider : public AuthProvider {
   Env* env_;
   mutex mu_;
   string current_token_ GUARDED_BY(mu_);
+  tensorflow::gtl::optional<bool> is_running_on_gce_ GUARDED_BY(mu_);
   uint64 expiration_timestamp_sec_ GUARDED_BY(mu_) = 0;
   // The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_;

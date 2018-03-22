@@ -40,7 +40,6 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["state_space_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":state_space_model",
         "//tensorflow/contrib/layers:layers_py",

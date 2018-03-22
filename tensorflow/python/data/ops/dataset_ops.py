@@ -563,7 +563,7 @@ class Dataset(object):
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
-        maximum number elements that will be buffered when prefetching.
+        maximum number of elements that will be buffered when prefetching.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1950,47 +1950,13 @@ class FlatMapDataset(Dataset):
     return self._output_types
 
 
-class InterleaveDataset(Dataset):
+class InterleaveDataset(FlatMapDataset):
   """A `Dataset` that maps a function over its input and interleaves the result.
   """
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
-    super(InterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
+    super(InterleaveDataset, self).__init__(input_dataset, map_func)
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
@@ -1999,26 +1965,14 @@ class InterleaveDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
+        self._map_func.captured_inputs,  # pylint: disable=protected-access
         self._cycle_length,
         self._block_length,
-        f=self._map_func,
+        f=self._map_func,  # pylint: disable=protected-access
         output_types=nest.flatten(
             sparse.as_dense_types(self.output_types, self.output_classes)),
         output_shapes=nest.flatten(
             sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
 
 
 class FilterDataset(Dataset):

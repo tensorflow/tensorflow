@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import types
 
 import gast
@@ -32,6 +33,16 @@ from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
+
+
+class FunctionInfo(namedtuple('FunctionInfo', ('dtype',))):
+  pass
+
+
+# TODO(mdan): Move this to config.py.
+KNOWN_NUMPY_FUNCTIONS = {
+    ('numpy', 'random', 'binomial'): FunctionInfo(dtype='tf.int64'),
+}
 
 
 class FunctionNamer(object):
@@ -185,6 +196,18 @@ class CallTreeTransformer(transformer.Base):
     """
     return templates.replace(template, func=node.func, original_args=node.args)
 
+  def _wrap_to_py_func_single_return(self, node, fqn):
+    # TODO(mdan): Properly handle varargs, kwargs, etc.
+    template = """
+      py2tf_utils.wrap_py_func(func, dtype, (original_args,), False)
+    """
+    dtype = KNOWN_NUMPY_FUNCTIONS[fqn].dtype
+    return templates.replace_as_expression(
+        template,
+        func=node.func,
+        dtype=parser.parse_expression(dtype),
+        original_args=node.args)
+
   def _insert_dynamic_conversion(self, node):
     """Inlines a dynamic conversion for a dynamic function."""
     # TODO(mdan): Pass information on the statically compiled functions.
@@ -248,10 +271,16 @@ class CallTreeTransformer(transformer.Base):
     self.generic_visit(node)
     if anno.hasanno(node.func, 'live_val'):
       target_entity = anno.getanno(node.func, 'live_val')
+      if anno.hasanno(node.func, 'fqn'):
+        target_fqn = anno.getanno(node.func, 'fqn')
       if self._function_is_compilable(target_entity):
         node = self._rename_compilable_function(node)
+      elif target_fqn in KNOWN_NUMPY_FUNCTIONS:
+        # TODO(mdan): Should we replace these with equivalent TF ops instead?
+        node = self._wrap_to_py_func_single_return(node, target_fqn)
       else:
-        raise NotImplementedError('py_func with return values')
+        raise NotImplementedError(
+            'py_func with return values (unknown function)')
     else:
       if self.context.recursive:
         node = self._insert_dynamic_conversion(node)

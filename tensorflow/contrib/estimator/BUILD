@@ -142,6 +142,7 @@ py_test(
     deps = [
         ":extenders",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/predictor",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",

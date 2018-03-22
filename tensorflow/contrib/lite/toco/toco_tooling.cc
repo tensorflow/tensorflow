@@ -289,6 +289,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
+  // Fix any issues with IO edges. This must happen after any transform that
+  // may modify the structure of the edges.
+  FixEdgeArrays(model);
+
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
   if (output_format != GRAPHVIZ_DOT && output_format != TFLITE) {

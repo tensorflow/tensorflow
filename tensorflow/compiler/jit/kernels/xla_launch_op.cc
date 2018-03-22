@@ -148,7 +148,11 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
 
-  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_,
+  std::map<int, Tensor> constant_args;
+  for (int i = 0; i < num_constant_args_; ++i) {
+    constant_args.insert({i, ctx->input(i)});
+  }
+  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, constant_args,
                                      variables, ctx, &kernel, &executable,
                                      /*compile_options=*/nullptr));
 

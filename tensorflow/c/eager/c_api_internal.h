@@ -30,9 +30,12 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -40,101 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/version.h"
 
-// A unit of execution for the TFE_Executor class below. Example subclasses
-// encapsulate execution of a TFE_Op, or copying a TFE_TensorHandle from one
-// device to another.
-class TFE_Node {
- public:
-  explicit TFE_Node(tensorflow::uint64 id);
-
-  virtual ~TFE_Node() {}
-
-  // Runs the computation corresponding to this node and blocks till the
-  // execution is done.
-  virtual tensorflow::Status Run() = 0;
-
-  // An id unique to the TFE_Context under which this node is created. Allocated
-  // monotonically.
-  const tensorflow::uint64 id;
-};
-
-// A class for handling async execution (see TFE_ContextSetAsync).
-// Note that this class is thread-safe.
-// TODO(agarwal): TFE_OpAddInput may currently block if it tries to access the
-// device of the input handle. Fix that.
-// TODO(agarwal): On error, mark all affected handles as corrupted.
-// TODO(agarwal): Implement support for control dependencies.
-// TODO(agarwal): Support out-of-order execution and dispatching multiple
-// TFE_Node in parallel.
-// TODO(agarwal): Implement optimizations over TFE_Node traces.
-class TFE_Executor {
- public:
-  ~TFE_Executor();
-
-  // This is called whenever async mode is enabled. Note that it may be called
-  // multiple times as different calling threads may switch async mode on or off
-  // independently.
-  void EnableAsync();
-
-  // Helper function to create monotonically increasing ids unique to this
-  // object.
-  tensorflow::uint64 NextId();
-
-  // Schedules `node` for execution.
-  // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(TFE_Node* node);
-
-  // Causes the caller to block till node with id `node_id` has finished
-  // execution.
-  tensorflow::Status WaitFor(tensorflow::uint64 node_id);
-
-  // Blocks till all currently pending ops are done.
-  tensorflow::Status WaitForAllPendingNodes();
-
-  // Clears all currently set errors which re-enables async execution.
-  void ClearError();
-
-  // Returns Status based on any errors that occurred during async execution.
-  tensorflow::Status status();
-
- private:
-  // Starts execution of pending TFE_Nodes. This function loops till
-  // thread_done_ is set to true. If any errors are encontered, these are set
-  // inside `status_`. The loop blocks anytime there are no pending nodes, or if
-  // `status_` is not ok.
-  void Run();
-
-  tensorflow::Status WaitImpl(bool wait_all, tensorflow::uint64 node_id);
-
-  tensorflow::mutex node_queue_mutex_;
-
-  // Used to signal that some TFE_Nodes are pending execution.
-  tensorflow::condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
-
-  // Queue of pending TFE_Nodes.
-  std::queue<TFE_Node*> node_queue_ GUARDED_BY(node_queue_mutex_);
-
-  // `status_` is set based on any errors raised during execution of a TFE_Node.
-  // It remains set until ClearError is called.
-  tensorflow::Status status_ GUARDED_BY(node_queue_mutex_);
-
-  // Map from id of a TFE_Node to condition_variables (not owned by the map).
-  // These condition_variables are notified and removed when that TFE_Node is
-  // done executing, or if an error is found in execution of any TFE_Node.
-  std::multimap<tensorflow::uint64, tensorflow::condition_variable*>
-      node_done_notifications_ GUARDED_BY(node_queue_mutex_);
-
-  // Thread object that calls the `Run` method. Currently we use only one thread
-  // for executing the TFE_Nodes one-by-one.
-  std::unique_ptr<tensorflow::Thread> thread_ GUARDED_BY(node_queue_mutex_);
-
-  // Indicates that `thread_` should stop as soon as it is done executing the
-  // current TFE_Node.
-  bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
-
-  tensorflow::mutex next_id_mutex_;
-  tensorflow::uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
-};
 
 struct TFE_ContextOptions {
   TF_SessionOptions session_options;
@@ -164,6 +72,10 @@ struct TFE_Context {
             opts.session_options.options.config.log_device_placement()),
         async_default(opts.async) {
     if (async_default) executor.EnableAsync();
+
+    for (auto* device : devices) {
+      devices_map[tensorflow::StringPiece(device->name())] = device;
+    }
   }
 
   const bool soft_placement;
@@ -177,7 +89,11 @@ struct TFE_Context {
 
   std::unique_ptr<tensorflow::DeviceMgr> device_manager;
   // Devices owned by device_manager
-  const std::vector<tensorflow::Device*> devices;
+  std::vector<tensorflow::Device*> devices;
+  // All devices are not owned.
+  tensorflow::gtl::FlatMap<tensorflow::StringPiece, tensorflow::Device*,
+                           tensorflow::StringPieceHasher>
+      devices_map;
   tensorflow::Rendezvous* const rendezvous;
 
   tensorflow::mutex functions_mu;
@@ -203,8 +119,8 @@ struct TFE_Context {
   tensorflow::mutex metadata_mu;
   tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
   const bool log_device_placement;
-  // TFE_Executor for async execution.
-  TFE_Executor executor;
+  // EagerExecutor for async execution.
+  tensorflow::EagerExecutor executor;
 
   // True if running in asynchronous mode.
   bool Async() const;
@@ -263,13 +179,13 @@ struct TFE_TensorHandle : public tensorflow::core::RefCounted {
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
-  // computed by a TFE_Node, this function will block till that compuatation is
+  // computed by a EagerNode, this function will block till that compuatation is
   // done and the handle is "ready".
   tensorflow::Status WaitReady();
 
   bool IsReady();
 
-  // Id for the TFE_Node that will compute the value pointed to by this handle.
+  // Id for the EagerNode that will compute the value pointed to by this handle.
   // If the value is 0, the handle is already ready, but not vice-versa.
   const tensorflow::uint64 node_id;
 

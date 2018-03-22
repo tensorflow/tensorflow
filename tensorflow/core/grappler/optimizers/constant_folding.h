@@ -38,7 +38,7 @@ class ConstantFolding : public GraphOptimizer {
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
-  ConstantFolding(DeviceBase* cpu_device);
+  explicit ConstantFolding(DeviceBase* cpu_device);
   ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}

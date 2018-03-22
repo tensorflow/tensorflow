@@ -201,24 +201,6 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
   return MakeReshapeHlo(new_shape, operand);
 }
 
-StatusOr<HloInstruction*> ExpandLastDimIntoNDims(
-    HloInstruction* operand, ArraySlice<int64> expanded_dims) {
-  CHECK_GT(operand->shape().dimensions_size(), 0);
-  CHECK_EQ(operand->shape().dimensions(operand->shape().dimensions_size() - 1),
-           Product(expanded_dims));
-
-  std::vector<int64> expanded_shape_dim_bounds;
-  expanded_shape_dim_bounds.reserve(expanded_dims.size() +
-                                    operand->shape().dimensions_size() - 1);
-  std::copy(operand->shape().dimensions().begin(),
-            operand->shape().dimensions().end() - 1,
-            std::back_inserter(expanded_shape_dim_bounds));
-  c_copy(expanded_dims, std::back_inserter(expanded_shape_dim_bounds));
-  Shape new_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
-                                         expanded_shape_dim_bounds);
-  return MakeReshapeHlo(new_shape, operand);
-}
-
 StatusOr<HloInstruction*> ElideDegenerateDims(HloInstruction* operand,
                                               ArraySlice<int64> dims_to_elide) {
   CHECK(c_is_sorted(dims_to_elide));

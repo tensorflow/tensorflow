@@ -70,7 +70,6 @@ py_test(
         "python/ops/core_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":_typecheck",
         ":core",
