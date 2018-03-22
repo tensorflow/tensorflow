@@ -23,6 +23,7 @@ import six
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
+from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -319,6 +320,7 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
             all_estimator_spec[0].export_outputs,
             self._heads[0].name),
     }
+    merged_predict_outputs = {}
     for head, spec in zip(self._heads, all_estimator_spec):
       head_name = head.name
       for k, v in six.iteritems(spec.export_outputs):
@@ -327,8 +329,15 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         else:
           key = '%s/%s' % (k, head_name)
         export_outputs[key] = v
+        if (k == head_lib._PREDICT_SERVING_KEY and  # pylint:disable=protected-access
+            isinstance(v, export_output_lib.PredictOutput)):
+          for kp, vp in six.iteritems(v.outputs):
+            key = '%s/%s' % (head_name, kp)
+            merged_predict_outputs[key] = vp
       for k, v in six.iteritems(spec.predictions):
         predictions[(head_name, k)] = v
+    export_outputs[head_lib._PREDICT_SERVING_KEY] = (  # pylint:disable=protected-access
+        export_output_lib.PredictOutput(merged_predict_outputs))
 
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.PREDICT,
