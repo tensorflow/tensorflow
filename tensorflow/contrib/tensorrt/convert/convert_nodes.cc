@@ -456,8 +456,8 @@ class Converter {
       } else {
         string str("Node ");
         StrAppend(&str, node_def.name(), " should have an input named '", name,
-                  "' but it is not avaliable");
-        LOG(WARNING) << "input: " << name << " not available for node at, "
+                  "' but it is not available");
+        LOG(WARNING) << "input: " << name << " not available for node at "
                      << node_def.name();
         return tensorflow::errors::InvalidArgument(str);
       }
@@ -1383,8 +1383,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
           LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
                        << " kUNIFORM, at: " << node_def.name();
           string err_str("Broadcast method is not supported for '");
-          StrAppend(&err_str, node_def.name(), "' of type ",
-                    node_def.op());
+          StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
           return tensorflow::errors::InvalidArgument(err_str);
         }
       }
@@ -1443,8 +1442,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
           LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
                        << " kUNIFORM, at: " << node_def.name();
           string err_str("Broadcast method is not supported for '");
-          StrAppend(&err_str, node_def.name(), "' of type ",
-                    node_def.op());
+          StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
           return tensorflow::errors::InvalidArgument(err_str);
         }
       }

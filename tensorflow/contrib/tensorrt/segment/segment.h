@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-    class Node;
+class Node;
 namespace tensorrt {
 namespace segment {
 

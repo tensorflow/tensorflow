@@ -87,7 +87,7 @@ void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,
           !edge->src()->IsSource() && !edge->IsControlEdge()) {
         incoming_edges->insert(edge);
       } else {
-        VLOG(2) << node->name()<<" -> "<<edge->src()->name() << " N, ";
+        VLOG(2) << node->name() << " -> " << edge->src()->name() << " N, ";
       }
     }
   }
@@ -101,10 +101,10 @@ void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
     for (const tensorflow::Edge* edge : node->out_edges()) {
       if (!subgraph_node_ids.count(edge->dst()->id()) &&
           !edge->dst()->IsSink() && !edge->IsControlEdge()) {
-        VLOG(2) << node->name()<<" -> " << edge->dst()->name() << " Y, ";
+        VLOG(2) << node->name() << " -> " << edge->dst()->name() << " Y, ";
         outgoing_edges->insert(edge);
       } else {
-        VLOG(2) << node->name()<<" -> " << edge->dst()->name() << " N, ";
+        VLOG(2) << node->name() << " -> " << edge->dst()->name() << " N, ";
       }
     }
   }
@@ -409,9 +409,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       tensorflow::Status status = ConvertSubGraphToTensorRT(&p);
       if (status != tensorflow::Status::OK()) {
         LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
-                     << " due to: \""
-                     << status.ToString() << "\" SKIPPING......( "
-                     << subgraph_node_names.size()<<" nodes)";
+                     << " due to: \"" << status.ToString()
+                     << "\" SKIPPING......( " << subgraph_node_names.size()
+                     << " nodes)";
       }
       count++;
     }
