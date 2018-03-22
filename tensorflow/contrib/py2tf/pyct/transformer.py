@@ -24,11 +24,19 @@ import gast
 import six
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import pretty_printer
 
 
 class PyFlowParseError(SyntaxError):
   pass
+
+
+def try_ast_to_source(node):
+  try:
+    return compiler.ast_to_source(node)
+  except AssertionError:
+    return '<could not convert AST to source>'
 
 
 class Base(gast.NodeTransformer):
@@ -62,8 +70,9 @@ class Base(gast.NodeTransformer):
       return super(Base, self).visit(node)
     except (ValueError, AttributeError, KeyError, NotImplementedError,
             AssertionError) as e:
-      msg = '%s: %s\nOccurred at node:\n%s' % (
-          e.__class__.__name__, str(e), pretty_printer.fmt(node, color=False))
+      msg = '%s: %s\nOffending source:\n%s\n\nOccurred at node:\n%s' % (
+          e.__class__.__name__, str(e), try_ast_to_source(node),
+          pretty_printer.fmt(node, color=False))
       if source_code:
         line = source_code.splitlines()[self._lineno - 1]
       else:

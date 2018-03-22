@@ -679,9 +679,27 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       // but we really only support one value for the whole tensor.
       // TODO(aselle): This breaks as well if these are nullptr's.
       // TODO(aselle): This assumes non per-channel quantization.
-      if (q_params->scale()) quantization.scale = q_params->scale()->Get(0);
-      if (q_params->zero_point())
+
+      if (q_params->scale()) {
+        if (q_params->scale()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d scale values (only 1 is supported).",
+              q_params->scale()->size());
+          return kTfLiteError;
+        }
+        quantization.scale = q_params->scale()->Get(0);
+      }
+
+      if (q_params->zero_point()) {
+        if (q_params->zero_point()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d zero_point values"
+              " (only 1 is supported).",
+              q_params->zero_point()->size());
+          return kTfLiteError;
+        }
         quantization.zero_point = q_params->zero_point()->Get(0);
+      }
     }
 
     TfLiteType type;

@@ -171,6 +171,10 @@ class ActivityAnalizer(transformer.Base):
     self._in_return_statement = False
 
   def _track_symbol(self, node):
+    # This can happen when we have an attribute (or subscript) on a function
+    # call.  Example: a().b
+    if not anno.hasanno(node, anno.Basic.QN):
+      return
     qn = anno.getanno(node, anno.Basic.QN)
 
     if isinstance(node.ctx, gast.Store):

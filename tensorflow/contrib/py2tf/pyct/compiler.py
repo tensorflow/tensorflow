@@ -31,7 +31,7 @@ import astor
 import gast
 
 
-def ast_to_source(node, indentation):
+def ast_to_source(node, indentation='  '):
   """Return the source code of given AST."""
   if isinstance(node, gast.AST):
     node = gast.gast_to_ast(node)
