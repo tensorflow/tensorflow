@@ -22,21 +22,16 @@ import six
 
 from tensorflow.contrib.py2tf.utils.type_check import is_tensor
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 
 
 def dynamic_is(left, right):
-  if is_tensor(left, right):
-    return math_ops.equal(left.name, right.name)
-  else:
-    return left is right
+  # TODO(alexbw) if we're sure we should leave 'is' in place,
+  # then change the semantics in converters/logical_expressions.py
+  return left is right
 
 
 def dynamic_is_not(left, right):
-  if is_tensor(left, right):
-    return math_ops.not_equal(left.name, right.name)
-  else:
-    return left is not right
+  return left is not right
 
 
 def run_cond(condition, true_fn, false_fn):
