@@ -65,6 +65,7 @@ enum class OperatorType {
   kRelu,
   kRelu1,
   kRelu6,
+  kPRelu,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -564,6 +565,18 @@ struct Relu1Operator : Operator {
 // TensorFlow equivalent: Relu6
 struct Relu6Operator : Operator {
   Relu6Operator() : Operator(OperatorType::kRelu6) {}
+};
+
+// PRelu
+//   f(x) = alpha * x for x < 0, f(x) = x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the alpha array
+//
+// Equivalent to keras.layers.PReLU.
+struct PReluOperator : Operator {
+  PReluOperator() : Operator(OperatorType::kPRelu) {}
 };
 
 // Element-wise Logistic operator:

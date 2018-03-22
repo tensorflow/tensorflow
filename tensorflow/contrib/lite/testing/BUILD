@@ -39,6 +39,7 @@ gen_zipped_test_files(
         "mean.zip",
         "mul.zip",
         "pad.zip",
+        "prelu.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",

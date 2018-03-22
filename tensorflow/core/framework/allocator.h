@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
 
@@ -359,7 +359,12 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-  void Merge(AllocatorAttributes other) { value |= other.value; }
+  void Merge(AllocatorAttributes other) {
+    value |= other.value;
+    scope_id = (scope_id > 0 && other.scope_id == 0)
+                   ? scope_id
+                   : ((scope_id == 0) ? other.scope_id : 0);
+  }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.
   bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
@@ -371,6 +376,9 @@ struct AllocatorAttributes {
   // upper 8 bits in device-specific ways, and ops implemented for those
   // devices are responsible for setting those 8 bits appropriately.
   uint32 value = 0;
+  // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
+  // a named special-purpose allocator on the same device.
+  int32 scope_id = 0;
 };
 
 // Returns a trivial implementation of Allocator which uses the system
@@ -396,4 +404,4 @@ class SubAllocator {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_

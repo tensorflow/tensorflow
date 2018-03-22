@@ -130,6 +130,7 @@ enum BuiltinOperator : byte {
   DELEGATE = 51,
   BIDIRECTIONAL_SEQUENCE_LSTM = 52,
   CAST = 53,
+  PRELU = 54,
 }
 
 // Options for the builtin operators.

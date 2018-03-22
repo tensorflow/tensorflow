@@ -348,6 +348,7 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

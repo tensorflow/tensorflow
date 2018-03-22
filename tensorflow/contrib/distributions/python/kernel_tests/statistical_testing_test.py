@@ -31,34 +31,30 @@ class StatisticalTestingTest(test.TestCase):
   def test_dkwm_design_mean_one_sample_soundness(self):
     numbers = [1e-5, 1e-2, 1.1e-1, 0.9, 1., 1.02, 2., 10., 1e2, 1e5, 1e10]
     rates = [1e-6, 1e-3, 1e-2, 1.1e-1, 0.2, 0.5, 0.7, 1.]
-    def check_soundness(ff, fp):
-      sufficient_n = st.min_num_samples_for_dkwm_mean_test(
-          numbers, 0., 1., false_fail_rate=ff, false_pass_rate=fp)
-      detectable_d = st.min_discrepancy_of_true_means_detectable_by_dkwm(
-          sufficient_n, 0., 1., false_fail_rate=ff, false_pass_rate=fp)
-      return check_ops.assert_less_equal(detectable_d, numbers)
     with self.test_session() as sess:
-      sess.run([check_soundness(ff, fp)
-                for ff in rates
-                for fp in rates])
+      for ff in rates:
+        for fp in rates:
+          sufficient_n = st.min_num_samples_for_dkwm_mean_test(
+              numbers, 0., 1., false_fail_rate=ff, false_pass_rate=fp)
+          detectable_d = st.min_discrepancy_of_true_means_detectable_by_dkwm(
+              sufficient_n, 0., 1., false_fail_rate=ff, false_pass_rate=fp)
+          sess.run(check_ops.assert_less_equal(detectable_d, numbers))
 
   def test_dkwm_design_mean_two_sample_soundness(self):
     numbers = [1e-5, 1e-2, 1.1e-1, 0.9, 1., 1.02, 2., 10., 1e2, 1e5, 1e10]
     rates = [1e-6, 1e-3, 1e-2, 1.1e-1, 0.2, 0.5, 0.7, 1.]
-    def check_soundness(ff, fp):
-      (sufficient_n1,
-       sufficient_n2) = st.min_num_samples_for_dkwm_mean_two_sample_test(
-           numbers, 0., 1., 0., 1.,
-           false_fail_rate=ff, false_pass_rate=fp)
-      d_fn = st.min_discrepancy_of_true_means_detectable_by_dkwm_two_sample
-      detectable_d = d_fn(
-          sufficient_n1, 0., 1., sufficient_n2, 0., 1.,
-          false_fail_rate=ff, false_pass_rate=fp)
-      return check_ops.assert_less_equal(detectable_d, numbers)
     with self.test_session() as sess:
-      sess.run([check_soundness(ff, fp)
-                for ff in rates
-                for fp in rates])
+      for ff in rates:
+        for fp in rates:
+          (sufficient_n1,
+           sufficient_n2) = st.min_num_samples_for_dkwm_mean_two_sample_test(
+               numbers, 0., 1., 0., 1.,
+               false_fail_rate=ff, false_pass_rate=fp)
+          d_fn = st.min_discrepancy_of_true_means_detectable_by_dkwm_two_sample
+          detectable_d = d_fn(
+              sufficient_n1, 0., 1., sufficient_n2, 0., 1.,
+              false_fail_rate=ff, false_pass_rate=fp)
+          sess.run(check_ops.assert_less_equal(detectable_d, numbers))
 
   def test_true_mean_confidence_interval_by_dkwm_one_sample(self):
     rng = np.random.RandomState(seed=0)

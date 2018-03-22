@@ -88,6 +88,9 @@ std::map<string, string> kBrokenTests = {
 
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
+
+    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
+    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -253,6 +256,7 @@ INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
+INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
