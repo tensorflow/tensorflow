@@ -72,8 +72,22 @@ auto* direct_session_runs = monitoring::Counter<0>::New(
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 t = options.config.inter_op_parallelism_threads();
   if (t != 0) return t;
+#ifdef INTEL_MKL
+  // MKL library executes ops in parallel using OMP threads
+  // Set inter_op conservatively to avoid thread oversubscription that could 
+  // lead to severe perf degradations and OMP resource exhaustion
+  const int mkl_intra_op = omp_get_max_threads();
+  CHECK_GE(mkl_intra_op, 1);
+  const int32 mkl_inter_op = std::ceil(
+    static_cast<float>(port::NumSchedulableCPUs()) / mkl_intra_op);
+  VLOG(0) << "Creating new thread pool with default inter op setting: "
+          << mkl_inter_op
+          << ". Tune using inter_op_parallelism_threads for best performance.";
+  return mkl_inter_op;
+#else
   // Default to using the number of cores available in the process.
   return port::NumSchedulableCPUs();
+#endif
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
