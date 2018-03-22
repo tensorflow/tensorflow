@@ -71,18 +71,6 @@ std::atomic_int_fast64_t func_id_generator(0);
 
 }  // namespace
 
-TFE_ContextDevicePlacementPolicy PlacementPolicy(
-    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy) {
-  if (!soft_placement) {
-    return original_policy;
-  }
-  if (original_policy == TFE_DEVICE_PLACEMENT_EXPLICIT ||
-      original_policy == TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32) {
-    return TFE_DEVICE_PLACEMENT_SILENT;
-  }
-  return original_policy;
-}
-
 extern "C" {
 
 TFE_ContextOptions* TFE_NewContextOptions() { return new TFE_ContextOptions; }
@@ -104,19 +92,7 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char async,
                                                         TF_Status* status) {
-  {
-    tensorflow::mutex_lock l(ctx->async_map_mu);
-    ctx->thread_local_async[std::this_thread::get_id()] = async;
-  }
-  if (async) {
-    ctx->executor.EnableAsync();
-  } else {
-    // TODO(agarwal): Currently we add a wait here to handle cases where a sync
-    // op has a control dependency on an async op, and the latter has not
-    // executed yet. This wait can be removed by storing all the control inputs
-    // and waiting for them when executing ops.
-    status->status = ctx->executor.WaitForAllPendingNodes();
-  }
+  status->status = ctx->context.SetAsyncForThread(async);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
@@ -133,34 +109,26 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       new tensorflow::DeviceMgr(devices));
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
-  return new TFE_Context(*opts, std::move(device_mgr), r);
+  return new TFE_Context(opts->session_options.options, opts->policy,
+                         opts->async, std::move(device_mgr), r);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->executor.WaitForAllPendingNodes();
-  {
-    tensorflow::mutex_lock ml(ctx->cache_mu);
-    tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
-  }
-  ctx->rendezvous->Unref();
   delete ctx;
 }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
-  ctx->device_manager->ListDeviceAttributes(&list->response);
+  ctx->context.device_mgr()->ListDeviceAttributes(&list->response);
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) {
-  tensorflow::mutex_lock ml(ctx->cache_mu);
-  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
-}
+void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context.ClearCaches(); }
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
-  tensorflow::mutex_lock ml(ctx->policy_map_mu);
-  ctx->thread_local_policies[std::this_thread::get_id()] = policy;
+  ctx->context.SetThreadLocalDevicePlacementPolicy(
+      static_cast<tensorflow::ContextDevicePlacementPolicy>(policy));
 }
 
 // Note: this function looks up a thread local policy. So it should be called in
@@ -168,25 +136,20 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 // safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
-  tensorflow::mutex_lock ml(ctx->policy_map_mu);
-  auto policy_map_it =
-      ctx->thread_local_policies.find(std::this_thread::get_id());
-  if (policy_map_it != ctx->thread_local_policies.end()) {
-    return policy_map_it->second;
-  }
-  return ctx->policy;
+  return static_cast<TFE_ContextDevicePlacementPolicy>(
+      ctx->context.GetDevicePlacementPolicy());
 }
 
 void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->executor.WaitForAllPendingNodes();
+  status->status = ctx->context.AsyncWait();
 }
 
 void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->executor.status();
+  status->status = ctx->context.GetStatus();
 }
 
 void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->executor.ClearError();
+  ctx->context.ClearAsyncError();
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -259,7 +222,7 @@ tensorflow::Status TensorHandleCopyToDevice(TFE_TensorHandle* h,
   // nullptr.
   tensorflow::Device* src_opd = nullptr;
   TF_RETURN_IF_ERROR(h->TensorAndDevice(&src, &srcd, &src_opd));
-  if (srcd == nullptr) srcd = ctx->devices[0];
+  if (srcd == nullptr) srcd = ctx->context.HostCPU();
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
@@ -332,8 +295,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
   status->status = tensorflow::AttrTypeMapForOp(name, &types);
   if (status->status.ok()) return new TFE_Op(ctx, name, types);
   if (TF_GetCode(status) == TF_NOT_FOUND) {
-    tensorflow::mutex_lock l(ctx->functions_mu);
-    if (ctx->func_lib_def.Find(name) != nullptr) {
+    if (ctx->context.FindFunctionByName(name)) {
       status->status = tensorflow::Status::OK();
       return new TFE_Op(ctx, name, nullptr);
     }
@@ -346,20 +308,14 @@ void TFE_DeleteOp(TFE_Op* op) { delete op; }
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    auto it = op->ctx->devices_map.find(device_name);
-    if (it == op->ctx->devices_map.end()) {
-      status->status =
-          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
-      return;
-    }
-    d = it->second;
+    status->status = op->ctx->context.FindDeviceByName(device_name, &d);
   }
   op->device = d;
 }
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device =
-      (op->device == nullptr) ? op->ctx->devices[0] : op->device;
+      (op->device == nullptr) ? op->ctx->context.HostCPU() : op->device;
   return device->name().c_str();
 }
 
@@ -634,7 +590,7 @@ tensorflow::Status ValidateInputTypeAndPlacement(
 tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
                                  TFE_Context* ctx, TF_Status* status) {
   tensorflow::DeviceSet ds;
-  for (tensorflow::Device* d : ctx->devices) {
+  for (tensorflow::Device* d : *ctx->context.devices()) {
     ds.AddDevice(d);
   }
   tensorflow::DeviceTypeVector final_devices;
@@ -648,7 +604,7 @@ tensorflow::Device* SelectDevice(const tensorflow::NodeDef& ndef,
         "Could not find valid device for node ", ndef.DebugString());
     return nullptr;
   }
-  for (tensorflow::Device* d : ctx->devices) {
+  for (tensorflow::Device* d : *ctx->context.devices()) {
     if (d->device_type() == final_devices[0].type_string()) {
       return d;
     }
@@ -663,9 +619,8 @@ tensorflow::Status Execute(
     const tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>& op_inputs,
     tensorflow::KernelAndDevice* kernel, tensorflow::NodeExecStats* maybe_stats,
     TFE_TensorHandle** retvals, int num_retvals) {
-  if (!ctx->soft_placement && device == nullptr) {
-    // TODO(ashankar): ASSUMPTION: ctx->devices[0] is always CPU
-    device = ctx->devices[0];
+  if (!ctx->context.SoftPlacement() && device == nullptr) {
+    device = ctx->context.HostCPU();
   }
 
   if (device == nullptr) {
@@ -684,8 +639,8 @@ tensorflow::Status Execute(
     inputs[i] = *input_tensor;
   }
   // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
-  // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def,
-  // which is GUARDED_BY(ctx->functions_mu). But knowledge of the implementation
+  // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def.
+  // But knowledge of the implementation
   // of FunctionLibraryRuntime tells us that func_lib_def is not accessed by
   // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
   // This is quite subtle. Re-work things to make this better?  (Would it make
@@ -697,18 +652,18 @@ tensorflow::Status Execute(
   if (maybe_stats != nullptr) {
     maybe_stats->set_op_end_rel_micros(tensorflow::Env::Default()->NowMicros() -
                                        maybe_stats->all_start_micros());
-    tensorflow::mutex_lock ml(ctx->metadata_mu);
-    if (ctx->should_store_metadata.load()) {
-      auto* step_stats = ctx->run_metadata.mutable_step_stats();
+    tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
+    if (ctx->context.ShouldStoreMetadata()) {
+      auto* step_stats = ctx->context.RunMetadataProto()->mutable_step_stats();
       // Lazily initialize the RunMetadata with information about all devices if
       // this is the first call.
-      while (step_stats->dev_stats_size() < ctx->devices.size()) {
+      while (step_stats->dev_stats_size() < ctx->context.devices()->size()) {
         step_stats->add_dev_stats();
       }
       // Find the current device's index.
       int device_idx = 0;
-      for (int i = 0; i < ctx->devices.size(); ++i) {
-        if (ctx->devices[i] == device) {
+      for (int i = 0; i < ctx->context.devices()->size(); ++i) {
+        if (ctx->context.devices()->at(i) == device) {
           device_idx = i;
           break;
         }
@@ -744,7 +699,7 @@ class ExecuteNode : public tensorflow::EagerNode {
               tensorflow::NodeExecStats* maybe_stats,
               const tensorflow::DataTypeVector& output_dtypes,
               TFE_TensorHandle** retvals, int num_retvals)
-      : tensorflow::EagerNode(op->ctx->executor.NextId()),
+      : tensorflow::EagerNode(op->ctx->context.NextId()),
         ctx_(op->ctx),
         op_device_(op->device),
         inputs_(op->inputs),
@@ -800,7 +755,7 @@ class CopyToDeviceNode : public tensorflow::EagerNode {
  public:
   CopyToDeviceNode(TFE_TensorHandle* src, tensorflow::Device* dstd,
                    TFE_Context* ctx)
-      : tensorflow::EagerNode(ctx->executor.NextId()),
+      : tensorflow::EagerNode(ctx->context.NextId()),
         src_(src),
         dstd_(dstd),
         ctx_(ctx),
@@ -866,8 +821,7 @@ const tensorflow::FunctionDef* OpToFunction(
   TFE_Context* ctx = op->ctx;
   const tensorflow::OpRegistrationData* op_data;
   {
-    tensorflow::tf_shared_lock l(ctx->functions_mu);
-    status->status = ctx->func_lib_def.LookUp(op->name, &op_data);
+    status->status = ctx->context.FindFunctionOpData(op->name, &op_data);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -963,10 +917,9 @@ const tensorflow::FunctionDef* OpToFunction(
   }
   VLOG(1) << "Fixed Output names and all types: " << fdef.DebugString();
 
-  tensorflow::mutex_lock l(ctx->functions_mu);
-  status->status = ctx->func_lib_def.AddFunctionDef(fdef);
+  ctx->context.AddFunctionDef(fdef);
   if (!status->status.ok()) return nullptr;
-  const auto ret = ctx->func_lib_def.Find(signature->name());
+  const auto ret = ctx->context.FindFunctionDef(signature->name());
   DCHECK(ret != nullptr);
   return ret;
 }
@@ -985,8 +938,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
 
   const tensorflow::FunctionDef* fdef;
   {
-    tensorflow::tf_shared_lock l(op->ctx->functions_mu);
-    fdef = op->ctx->func_lib_def.Find(op->name);
+    fdef = op->ctx->context.FindFunctionDef(op->name);
   }
   std::vector<TF_DataType> const_input_types;
   std::vector<TF_DataType> arg_input_types;
@@ -1063,7 +1015,7 @@ extern "C" {
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
   TFE_Context* ctx = op->ctx;
-  status->status = ctx->executor.status();
+  status->status = ctx->context.GetStatus();
   if (!status->status.ok()) {
     return;
   }
@@ -1087,7 +1039,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     if (op->inputs[i]->dtype == tensorflow::DT_RESOURCE &&
         input_op_device != op->device) {
       tensorflow::Device* d =
-          input_op_device == nullptr ? ctx->devices[0] : input_op_device;
+          input_op_device == nullptr ? ctx->context.HostCPU() : input_op_device;
       VLOG(1) << "Changing device of operation " << op->name << " to "
               << d->name() << " because input #" << i
               << " is a resource in this device.";
@@ -1095,40 +1047,35 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     }
   }
   tensorflow::Device* device = op->device;
-  if (!ctx->soft_placement && device == nullptr) {
-    // TODO(ashankar): ASSUMPTION: ctx->devices[0] is always CPU
-    device = ctx->devices[0];
+  if (!ctx->context.SoftPlacement() && device == nullptr) {
+    device = ctx->context.HostCPU();
   }
 
   tensorflow::Fprint128 cache_key =
       op->attrs.CacheKey(device == nullptr ? "unspecified" : device->name());
-  tensorflow::KernelAndDevice* kernel;
-  {
-    tensorflow::tf_shared_lock l(ctx->cache_mu);
-    kernel = tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
-  }
+  tensorflow::KernelAndDevice* kernel = ctx->context.GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
-    if (ctx->soft_placement && device == nullptr) {
+    if (ctx->context.SoftPlacement() && device == nullptr) {
       device = SelectDevice(ndef, ctx, status);
       if (!status->status.ok()) {
         return;
       }
     }
     CHECK(device != nullptr);
-    if (ctx->log_device_placement) {
+    if (ctx->context.LogDevicePlacement()) {
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
-    kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
+    kernel = new tensorflow::KernelAndDevice(ctx->context.GetRendezvous());
     // Knowledge of the implementation of Init (and in-turn
     // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
     // will be accessed, so grab on to the lock.
     // See WARNING comment in Execute (before kernel->Run) - would be nice to
     // rework to avoid this subtlety.
-    tensorflow::tf_shared_lock l(ctx->functions_mu);
-    status->status =
-        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
+    tensorflow::tf_shared_lock l(*ctx->context.FunctionsMu());
+    status->status = tensorflow::KernelAndDevice::Init(
+        ndef, ctx->context.func_lib(device), kernel);
     if (!status->status.ok()) {
       delete kernel;
       return;
@@ -1136,7 +1083,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     // Update output_dtypes inside `kernel`.
     const tensorflow::OpDef* op_def = nullptr;
     const tensorflow::FunctionDef* function_def =
-        ctx->func_lib_def.Find(ndef.op());
+        ctx->context.FuncLibDef()->Find(ndef.op());
     if (function_def != nullptr) {
       op_def = &(function_def->signature());
     }
@@ -1152,8 +1099,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     if (!status->status.ok()) {
       return;
     }
-    tensorflow::mutex_lock ml(ctx->cache_mu);
-    tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
+    ctx->context.AddKernelToCache(cache_key, kernel);
   }
   const tensorflow::DataTypeVector& output_dtypes = kernel->output_dtypes();
   const int output_dtypes_size = output_dtypes.size();
@@ -1171,11 +1117,11 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     // device from the one requested above.
     device = kernel->device();
   }
-  status->status = ValidateInputTypeAndPlacement(ctx, ctx->devices[0], device,
-                                                 op, kernel->kernel());
+  status->status = ValidateInputTypeAndPlacement(ctx, ctx->context.HostCPU(),
+                                                 device, op, kernel->kernel());
   if (!status->status.ok()) return;
   std::unique_ptr<tensorflow::NodeExecStats> maybe_stats;
-  if (ctx->should_store_metadata.load()) {
+  if (ctx->context.ShouldStoreMetadata()) {
     maybe_stats.reset(new tensorflow::NodeExecStats);
     maybe_stats->set_node_name(op->name);
     maybe_stats->set_all_start_micros(tensorflow::Env::Default()->NowMicros());
@@ -1183,14 +1129,14 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     maybe_stats->set_scheduled_micros(tensorflow::Env::Default()->NowMicros());
     // TODO(apassos) track referenced tensors
   }
-  if (ctx->Async()) {
+  if (ctx->context.Async()) {
     // Note that for async mode, execution order will make sure that all
     // input handles are ready before executing them.
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::EagerNode* node =
         new ExecuteNode(op, kernel, maybe_stats.release(), output_dtypes,
                         retvals, *num_retvals);
-    ctx->executor.Add(node);
+    ctx->context.ExecutorAdd(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
@@ -1206,23 +1152,24 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                TFE_Context* ctx,
                                                const char* device_name,
                                                TF_Status* status) {
-  status->status = ctx->executor.status();
+  status->status = ctx->context.GetStatus();
   if (!status->status.ok()) {
     return nullptr;
   }
-  tensorflow::Device* dstd = ctx->devices[0];
+  tensorflow::Device* dstd = ctx->context.HostCPU();
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->device_manager->LookupDevice(device_name, &dstd);
+    status->status =
+        ctx->context.device_mgr()->LookupDevice(device_name, &dstd);
     if (!status->status.ok()) return nullptr;
   }
-  if (ctx->Async()) {
+  if (ctx->context.Async()) {
     // Note that `h` may not be currently ready. However execution order will
     // make sure that `h` is ready before the copy is actually done.
     CopyToDeviceNode* node = new CopyToDeviceNode(h, dstd, ctx);
     TFE_TensorHandle* output = node->dst();
     // Note that calling Add makes `node` accessible by the EagerExecutor
     // thread. So further accesses need to be thread-safe.
-    ctx->executor.Add(node);
+    ctx->context.ExecutorAdd(node);
     return output;
   } else {
     TFE_TensorHandle* output = nullptr;
@@ -1240,24 +1187,20 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
-  tensorflow::mutex_lock l(ctx->functions_mu);
-  status->status = ctx->func_lib_def.AddFunctionDef(function_def);
+  status->status = ctx->context.AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  tensorflow::mutex_lock l(ctx->functions_mu);
-  status->status = ctx->func_lib_def.AddFunctionDef(function->fdef);
+  status->status = ctx->context.AddFunctionDef(function->fdef);
 }
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  ctx->should_store_metadata.store(true);
+  ctx->context.SetShouldStoreMetadata(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  tensorflow::mutex_lock ml(ctx->metadata_mu);
-  ctx->should_store_metadata.store(false);
-  ctx->run_metadata.Clear();
+  ctx->context.SetShouldStoreMetadata(false);
 }
 
 }  // extern "C"
@@ -1286,9 +1229,9 @@ void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
   TFE_ContextAsyncWait(ctx, status);
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(ctx->metadata_mu);
-  status->status = MessageToBuffer(ctx->run_metadata, buf);
-  ctx->run_metadata.Clear();
+  tensorflow::mutex_lock ml(*ctx->context.MetadataMu());
+  status->status = MessageToBuffer(*ctx->context.RunMetadataProto(), buf);
+  ctx->context.RunMetadataProto()->Clear();
 }
 
 namespace {
@@ -1363,11 +1306,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
 }  // namespace tensorflow
 
 
-bool TFE_Context::Async() const {
-  tensorflow::mutex_lock l(async_map_mu);
-  return tensorflow::gtl::FindWithDefault(
-      thread_local_async, std::this_thread::get_id(), async_default);
-}
 
 bool TFE_TensorHandle::IsReady() {
   if (node_id == 0) return true;
@@ -1381,7 +1319,7 @@ tensorflow::Status TFE_TensorHandle::WaitReady() {
   {
     tensorflow::mutex_lock l(ctx_mutex_);
     if (ctx_ == nullptr) return tensorflow::Status::OK();
-    executor = &ctx_->executor;
+    executor = ctx_->context.Executor();
   }
   return executor->WaitFor(node_id);
 }
