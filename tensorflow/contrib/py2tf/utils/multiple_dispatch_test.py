@@ -50,10 +50,10 @@ class MultipleDispatchTest(test.TestCase):
       should_be_false1 = multiple_dispatch.dynamic_is_not(a, also_a)
       should_be_true2 = multiple_dispatch.dynamic_is_not(a, not_actually_a)
       should_be_false2 = multiple_dispatch.dynamic_is(a, not_actually_a)
-      self.assertTrue(should_be_true1.eval())
-      self.assertTrue(should_be_true2.eval())
-      self.assertFalse(should_be_false1.eval())
-      self.assertFalse(should_be_false2.eval())
+      self.assertTrue(should_be_true1)
+      self.assertTrue(should_be_true2)
+      self.assertFalse(should_be_false1)
+      self.assertFalse(should_be_false2)
 
   def test_run_cond_python(self):
     true_fn = lambda: 2.0
