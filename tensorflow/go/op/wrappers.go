@@ -605,75 +605,123 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 	return op.Output(0)
 }
 
-// MapPeekAttr is an optional argument to MapPeek.
-type MapPeekAttr func(optionalAttr)
+// SpaceToDepthAttr is an optional argument to SpaceToDepth.
+type SpaceToDepthAttr func(optionalAttr)
 
-// MapPeekCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
+// SpaceToDepthDataFormat sets the optional data_format attribute to value.
+// If not specified, defaults to "NHWC"
+func SpaceToDepthDataFormat(value string) SpaceToDepthAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// SpaceToDepth for tensors of type T.
 //
-// REQUIRES: value >= 0
-func MapPeekCapacity(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
+// Rearranges blocks of spatial data, into depth. More specifically,
+// this op outputs a copy of the input tensor where values from the `height`
+// and `width` dimensions are moved to the `depth` dimension.
+// The attr `block_size` indicates the input block size.
 //
-// REQUIRES: value >= 0
-func MapPeekMemoryLimit(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapPeekContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func MapPeekContainer(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MapPeekSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func MapPeekSharedName(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op peeks at the values at the specified key.  If the
+//   * Non-overlapping blocks of size `block_size x block size` are rearranged
+//     into depth at each location.
+//   * The depth of the output tensor is `block_size * block_size * input_depth`.
+//   * The Y, X coordinates within each block of the input become the high order
+//     component of the output channel index.
+//   * The input tensor's height and width must be divisible by block_size.
 //
-// underlying container does not contain this key
-// this op will block until it does.
-func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
+// The `data_format` attr specifies the layout of the input and output tensors
+// with the following options:
+//   "NHWC": `[ batch, height, width, channels ]`
+//   "NCHW": `[ batch, channels, height, width ]`
+//   "NCHW_VECT_C":
+//       `qint8 [ batch, channels / 4, height, width, 4 ]`
+//
+// It is useful to consider the operation as transforming a 6-D Tensor.
+// e.g. for data_format = NHWC,
+//      Each element in the input tensor can be specified via 6 coordinates,
+//      ordered by decreasing memory layout significance as:
+//      n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+//                         within the output image, bX, bY means coordinates
+//                         within the input block, iC means input channels).
+//      The output would be a transpose to the following layout:
+//      n,oY,oX,bY,bX,iC
+//
+// This operation is useful for resizing the activations between convolutions
+// (but keeping all data), e.g. instead of pooling. It is also useful for training
+// purely convolutional models.
+//
+// For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
+// block_size = 2:
+//
+// ```
+// x = [[[[1], [2]],
+//       [[3], [4]]]]
+// ```
+//
+// This operation will output a tensor of shape `[1, 1, 1, 4]`:
+//
+// ```
+// [[[[1, 2, 3, 4]]]]
+// ```
+//
+// Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+// the corresponding output will have a single element (i.e. width and height are
+// both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+// The output element shape is `[1, 1, 4]`.
+//
+// For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+//
+// ```
+// x = [[[[1, 2, 3], [4, 5, 6]],
+//       [[7, 8, 9], [10, 11, 12]]]]
+// ```
+//
+// This operation, for block_size of 2, will return the following tensor of shape
+// `[1, 1, 1, 12]`
+//
+// ```
+// [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+// ```
+//
+// Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+//
+// ```
+// x = [[[[1],   [2],  [5],  [6]],
+//       [[3],   [4],  [7],  [8]],
+//       [[9],  [10], [13],  [14]],
+//       [[11], [12], [15],  [16]]]]
+// ```
+//
+// the operator will return the following tensor of shape `[1 2 2 4]`:
+//
+// ```
+// x = [[[[1, 2, 3, 4],
+//        [5, 6, 7, 8]],
+//       [[9, 10, 11, 12],
+//        [13, 14, 15, 16]]]]
+// ```
+//
+// Arguments:
+//
+//	block_size: The size of the spatial block.
+func SpaceToDepth(scope *Scope, input tf.Output, block_size int64, optional ...SpaceToDepthAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
+	attrs := map[string]interface{}{"block_size": block_size}
 	for _, a := range optional {
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "MapPeek",
+		Type: "SpaceToDepth",
 		Input: []tf.Input{
-			key, indices,
+			input,
 		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("MapPeek", err)
-		return
-	}
-	return values
+	return op.Output(0)
 }
 
 // Returns (x - y)(x - y) element-wise.
@@ -3383,45 +3431,6 @@ func MatrixDiag(scope *Scope, diagonal tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed Precision at `k` as a `bool Tensor`.
-func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"k": k}
-	opspec := tf.OpSpec{
-		Type: "InTopK",
-		Input: []tf.Input{
-			predictions, targets,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Given a quantized tensor described by (input, input_min, input_max), outputs a
 //
 // range that covers the actual values present in that tensor.  This op is
@@ -5090,6 +5099,170 @@ func FusedBatchNormV2(scope *Scope, x tf.Output, scale tf.Output, offset tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
+}
+
+// AvgPoolGradAttr is an optional argument to AvgPoolGrad.
+type AvgPoolGradAttr func(optionalAttr)
+
+// AvgPoolGradDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func AvgPoolGradDataFormat(value string) AvgPoolGradAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes gradients of the average pooling function.
+//
+// Arguments:
+//	orig_input_shape: 1-D.  Shape of the original input to `avg_pool`.
+//	grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
+// the output of `avg_pool`.
+//	ksize: The size of the sliding window for each dimension of the input.
+//	strides: The stride of the sliding window for each dimension of the input.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D.  Gradients w.r.t. the input of `avg_pool`.
+func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPoolGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AvgPoolGrad",
+		Input: []tf.Input{
+			orig_input_shape, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StageClearAttr is an optional argument to StageClear.
+type StageClearAttr func(optionalAttr)
+
+// StageClearCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageClearCapacity(value int64) StageClearAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// StageClearMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageClearMemoryLimit(value int64) StageClearAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// StageClearContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func StageClearContainer(value string) StageClearAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// StageClearSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func StageClearSharedName(value string) StageClearAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op removes all elements in the underlying container.
+//
+// Returns the created operation.
+func StageClear(scope *Scope, dtypes []tf.DataType, optional ...StageClearAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StageClear",
+
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// ComputeAccidentalHitsAttr is an optional argument to ComputeAccidentalHits.
+type ComputeAccidentalHitsAttr func(optionalAttr)
+
+// ComputeAccidentalHitsSeed sets the optional seed attribute to value.
+//
+// value: If either seed or seed2 are set to be non-zero, the random number
+// generator is seeded by the given seed.  Otherwise, it is seeded by a
+// random seed.
+// If not specified, defaults to 0
+func ComputeAccidentalHitsSeed(value int64) ComputeAccidentalHitsAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// ComputeAccidentalHitsSeed2 sets the optional seed2 attribute to value.
+//
+// value: An second seed to avoid seed collision.
+// If not specified, defaults to 0
+func ComputeAccidentalHitsSeed2(value int64) ComputeAccidentalHitsAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Computes the ids of the positions in sampled_candidates that match true_labels.
+//
+// When doing log-odds NCE, the result of this op should be passed through a
+// SparseToDense op, then added to the logits of the sampled candidates. This has
+// the effect of 'removing' the sampled labels that match the true labels by
+// making the classifier sure that they are sampled labels.
+//
+// Arguments:
+//	true_classes: The true_classes output of UnpackSparseLabels.
+//	sampled_candidates: The sampled_candidates output of CandidateSampler.
+//	num_true: Number of true labels per context.
+//
+// Returns A vector of indices corresponding to rows of true_candidates.A vector of IDs of positions in sampled_candidates that match a true_label
+// for the row with the corresponding index in indices.A vector of the same length as indices and ids, in which each element
+// is -FLOAT_MAX.
+func ComputeAccidentalHits(scope *Scope, true_classes tf.Output, sampled_candidates tf.Output, num_true int64, optional ...ComputeAccidentalHitsAttr) (indices tf.Output, ids tf.Output, weights tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_true": num_true}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ComputeAccidentalHits",
+		Input: []tf.Input{
+			true_classes, sampled_candidates,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // TensorArrayGatherV3Attr is an optional argument to TensorArrayGatherV3.
@@ -8454,6 +8627,81 @@ func RestoreV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and
 	return tensors
 }
 
+// Computes the maximum along segments of a tensor.
+//
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// Computes a tensor such that
+// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the max is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+// </div>
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMax",
+		Input: []tf.Input{
+			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that skips `count` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of elements from the `input_dataset`
+// that should be skipped.  If count is -1, skips everything.
+//
+//
+func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SkipDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes hyperbolic tangent of `x` element-wise.
+func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Tanh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Decode web-safe base64-encoded strings.
 //
 // Input may or may not have padding at the end. See EncodeBase64 for padding.
@@ -8901,6 +9149,121 @@ func IRFFT2D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Out
 	return op.Output(0)
 }
 
+// DecodeJpegAttr is an optional argument to DecodeJpeg.
+type DecodeJpegAttr func(optionalAttr)
+
+// DecodeJpegChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodeJpegChannels(value int64) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodeJpegRatio sets the optional ratio attribute to value.
+//
+// value: Downscaling ratio.
+// If not specified, defaults to 1
+func DecodeJpegRatio(value int64) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["ratio"] = value
+	}
+}
+
+// DecodeJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
+//
+// value: If true use a slower but nicer upscaling of the
+// chroma planes (yuv420/422 only).
+// If not specified, defaults to true
+func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["fancy_upscaling"] = value
+	}
+}
+
+// DecodeJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
+//
+// value: If true try to recover an image from truncated input.
+// If not specified, defaults to false
+func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["try_recover_truncated"] = value
+	}
+}
+
+// DecodeJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
+//
+// value: The minimum required fraction of lines before a truncated
+// input is accepted.
+// If not specified, defaults to 1
+func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["acceptable_fraction"] = value
+	}
+}
+
+// DecodeJpegDctMethod sets the optional dct_method attribute to value.
+//
+// value: string specifying a hint about the algorithm used for
+// decompression.  Defaults to "" which maps to a system-specific
+// default.  Currently valid values are ["INTEGER_FAST",
+// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+// jpeg library changes to a version that does not have that specific
+// option.)
+// If not specified, defaults to ""
+func DecodeJpegDctMethod(value string) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["dct_method"] = value
+	}
+}
+
+// Decode a JPEG-encoded image to a uint8 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the JPEG-encoded image.
+// *   1: output a grayscale image.
+// *   3: output an RGB image.
+//
+// If needed, the JPEG-encoded image is transformed to match the requested number
+// of color channels.
+//
+// The attr `ratio` allows downscaling the image by an integer factor during
+// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+// downscaling the image later.
+//
+//
+// This op also supports decoding PNGs and non-animated GIFs since the interface is
+// the same, though it is cleaner to use `tf.image.decode_image`.
+//
+// Arguments:
+//	contents: 0-D.  The JPEG-encoded image.
+//
+// Returns 3-D with shape `[height, width, channels]`..
+func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeJpeg",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Transforms a vector of brain.Example protos (as strings) into typed tensors.
 //
 // Arguments:
@@ -9121,6 +9484,202 @@ func ResourceSparseApplyAdagradDA(scope *Scope, var_ tf.Output, gradient_accumul
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// EncodeJpegAttr is an optional argument to EncodeJpeg.
+type EncodeJpegAttr func(optionalAttr)
+
+// EncodeJpegFormat sets the optional format attribute to value.
+//
+// value: Per pixel image format.
+// If not specified, defaults to ""
+func EncodeJpegFormat(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["format"] = value
+	}
+}
+
+// EncodeJpegQuality sets the optional quality attribute to value.
+//
+// value: Quality of the compression from 0 to 100 (higher is better and slower).
+// If not specified, defaults to 95
+func EncodeJpegQuality(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["quality"] = value
+	}
+}
+
+// EncodeJpegProgressive sets the optional progressive attribute to value.
+//
+// value: If True, create a JPEG that loads progressively (coarse to fine).
+// If not specified, defaults to false
+func EncodeJpegProgressive(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["progressive"] = value
+	}
+}
+
+// EncodeJpegOptimizeSize sets the optional optimize_size attribute to value.
+//
+// value: If True, spend CPU/RAM to reduce size with no quality change.
+// If not specified, defaults to false
+func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["optimize_size"] = value
+	}
+}
+
+// EncodeJpegChromaDownsampling sets the optional chroma_downsampling attribute to value.
+//
+// value: See http://en.wikipedia.org/wiki/Chroma_subsampling.
+// If not specified, defaults to true
+func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["chroma_downsampling"] = value
+	}
+}
+
+// EncodeJpegDensityUnit sets the optional density_unit attribute to value.
+//
+// value: Unit used to specify `x_density` and `y_density`:
+// pixels per inch (`'in'`) or centimeter (`'cm'`).
+// If not specified, defaults to "in"
+func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["density_unit"] = value
+	}
+}
+
+// EncodeJpegXDensity sets the optional x_density attribute to value.
+//
+// value: Horizontal pixels per density unit.
+// If not specified, defaults to 300
+func EncodeJpegXDensity(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["x_density"] = value
+	}
+}
+
+// EncodeJpegYDensity sets the optional y_density attribute to value.
+//
+// value: Vertical pixels per density unit.
+// If not specified, defaults to 300
+func EncodeJpegYDensity(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["y_density"] = value
+	}
+}
+
+// EncodeJpegXmpMetadata sets the optional xmp_metadata attribute to value.
+//
+// value: If not empty, embed this XMP metadata in the image header.
+// If not specified, defaults to ""
+func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["xmp_metadata"] = value
+	}
+}
+
+// JPEG-encode an image.
+//
+// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+//
+// The attr `format` can be used to override the color format of the encoded
+// output.  Values can be:
+//
+// *   `''`: Use a default format based on the number of channels in the image.
+// *   `grayscale`: Output a grayscale JPEG image.  The `channels` dimension
+//     of `image` must be 1.
+// *   `rgb`: Output an RGB JPEG image. The `channels` dimension
+//     of `image` must be 3.
+//
+// If `format` is not specified or is the empty string, a default format is picked
+// in function of the number of channels in `image`:
+//
+// *   1: Output a grayscale image.
+// *   3: Output an RGB image.
+//
+// Arguments:
+//	image: 3-D with shape `[height, width, channels]`.
+//
+// Returns 0-D. JPEG-encoded image.
+func EncodeJpeg(scope *Scope, image tf.Output, optional ...EncodeJpegAttr) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "EncodeJpeg",
+		Input: []tf.Input{
+			image,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MultinomialAttr is an optional argument to Multinomial.
+type MultinomialAttr func(optionalAttr)
+
+// MultinomialSeed sets the optional seed attribute to value.
+//
+// value: If either seed or seed2 is set to be non-zero, the internal random number
+// generator is seeded by the given seed.  Otherwise, a random seed is used.
+// If not specified, defaults to 0
+func MultinomialSeed(value int64) MultinomialAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// MultinomialSeed2 sets the optional seed2 attribute to value.
+//
+// value: A second seed to avoid seed collision.
+// If not specified, defaults to 0
+func MultinomialSeed2(value int64) MultinomialAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// MultinomialOutputDtype sets the optional output_dtype attribute to value.
+// If not specified, defaults to DT_INT64
+func MultinomialOutputDtype(value tf.DataType) MultinomialAttr {
+	return func(m optionalAttr) {
+		m["output_dtype"] = value
+	}
+}
+
+// Draws samples from a multinomial distribution.
+//
+// Arguments:
+//	logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i, :]`
+// represents the unnormalized log probabilities for all classes.
+//	num_samples: 0-D.  Number of independent samples to draw for each row slice.
+//
+// Returns 2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`
+// contains the drawn class labels with range `[0, num_classes)`.
+func Multinomial(scope *Scope, logits tf.Output, num_samples tf.Output, optional ...MultinomialAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Multinomial",
+		Input: []tf.Input{
+			logits, num_samples,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Returns the truth value of NOT x element-wise.
@@ -14938,202 +15497,6 @@ func SparseMatMul(scope *Scope, a tf.Output, b tf.Output, optional ...SparseMatM
 	return op.Output(0)
 }
 
-// MultinomialAttr is an optional argument to Multinomial.
-type MultinomialAttr func(optionalAttr)
-
-// MultinomialSeed sets the optional seed attribute to value.
-//
-// value: If either seed or seed2 is set to be non-zero, the internal random number
-// generator is seeded by the given seed.  Otherwise, a random seed is used.
-// If not specified, defaults to 0
-func MultinomialSeed(value int64) MultinomialAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// MultinomialSeed2 sets the optional seed2 attribute to value.
-//
-// value: A second seed to avoid seed collision.
-// If not specified, defaults to 0
-func MultinomialSeed2(value int64) MultinomialAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// MultinomialOutputDtype sets the optional output_dtype attribute to value.
-// If not specified, defaults to DT_INT64
-func MultinomialOutputDtype(value tf.DataType) MultinomialAttr {
-	return func(m optionalAttr) {
-		m["output_dtype"] = value
-	}
-}
-
-// Draws samples from a multinomial distribution.
-//
-// Arguments:
-//	logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i, :]`
-// represents the unnormalized log probabilities for all classes.
-//	num_samples: 0-D.  Number of independent samples to draw for each row slice.
-//
-// Returns 2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`
-// contains the drawn class labels with range `[0, num_classes)`.
-func Multinomial(scope *Scope, logits tf.Output, num_samples tf.Output, optional ...MultinomialAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Multinomial",
-		Input: []tf.Input{
-			logits, num_samples,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// EncodeJpegAttr is an optional argument to EncodeJpeg.
-type EncodeJpegAttr func(optionalAttr)
-
-// EncodeJpegFormat sets the optional format attribute to value.
-//
-// value: Per pixel image format.
-// If not specified, defaults to ""
-func EncodeJpegFormat(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["format"] = value
-	}
-}
-
-// EncodeJpegQuality sets the optional quality attribute to value.
-//
-// value: Quality of the compression from 0 to 100 (higher is better and slower).
-// If not specified, defaults to 95
-func EncodeJpegQuality(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["quality"] = value
-	}
-}
-
-// EncodeJpegProgressive sets the optional progressive attribute to value.
-//
-// value: If True, create a JPEG that loads progressively (coarse to fine).
-// If not specified, defaults to false
-func EncodeJpegProgressive(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["progressive"] = value
-	}
-}
-
-// EncodeJpegOptimizeSize sets the optional optimize_size attribute to value.
-//
-// value: If True, spend CPU/RAM to reduce size with no quality change.
-// If not specified, defaults to false
-func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["optimize_size"] = value
-	}
-}
-
-// EncodeJpegChromaDownsampling sets the optional chroma_downsampling attribute to value.
-//
-// value: See http://en.wikipedia.org/wiki/Chroma_subsampling.
-// If not specified, defaults to true
-func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["chroma_downsampling"] = value
-	}
-}
-
-// EncodeJpegDensityUnit sets the optional density_unit attribute to value.
-//
-// value: Unit used to specify `x_density` and `y_density`:
-// pixels per inch (`'in'`) or centimeter (`'cm'`).
-// If not specified, defaults to "in"
-func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["density_unit"] = value
-	}
-}
-
-// EncodeJpegXDensity sets the optional x_density attribute to value.
-//
-// value: Horizontal pixels per density unit.
-// If not specified, defaults to 300
-func EncodeJpegXDensity(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["x_density"] = value
-	}
-}
-
-// EncodeJpegYDensity sets the optional y_density attribute to value.
-//
-// value: Vertical pixels per density unit.
-// If not specified, defaults to 300
-func EncodeJpegYDensity(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["y_density"] = value
-	}
-}
-
-// EncodeJpegXmpMetadata sets the optional xmp_metadata attribute to value.
-//
-// value: If not empty, embed this XMP metadata in the image header.
-// If not specified, defaults to ""
-func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["xmp_metadata"] = value
-	}
-}
-
-// JPEG-encode an image.
-//
-// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
-//
-// The attr `format` can be used to override the color format of the encoded
-// output.  Values can be:
-//
-// *   `''`: Use a default format based on the number of channels in the image.
-// *   `grayscale`: Output a grayscale JPEG image.  The `channels` dimension
-//     of `image` must be 1.
-// *   `rgb`: Output an RGB JPEG image. The `channels` dimension
-//     of `image` must be 3.
-//
-// If `format` is not specified or is the empty string, a default format is picked
-// in function of the number of channels in `image`:
-//
-// *   1: Output a grayscale image.
-// *   3: Output an RGB image.
-//
-// Arguments:
-//	image: 3-D with shape `[height, width, channels]`.
-//
-// Returns 0-D. JPEG-encoded image.
-func EncodeJpeg(scope *Scope, image tf.Output, optional ...EncodeJpegAttr) (contents tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "EncodeJpeg",
-		Input: []tf.Input{
-			image,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the power of one value to another.
 //
 // Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
@@ -15511,6 +15874,45 @@ func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, upd
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed Precision at `k` as a `bool Tensor`.
+func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"k": k}
+	opspec := tf.OpSpec{
+		Type: "InTopK",
+		Input: []tf.Input{
+			predictions, targets,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes the gradient for the inverse of `x` wrt its input.
@@ -16588,171 +16990,50 @@ func NextIteration(scope *Scope, data tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Creates a dataset that skips `count` elements from the `input_dataset`.
-//
-// Arguments:
-//
-//	count: A scalar representing the number of elements from the `input_dataset`
-// that should be skipped.  If count is -1, skips everything.
-//
-//
-func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "SkipDataset",
-		Input: []tf.Input{
-			input_dataset, count,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
+// MapPeekAttr is an optional argument to MapPeek.
+type MapPeekAttr func(optionalAttr)
 
-// Computes hyperbolic tangent of `x` element-wise.
-func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Tanh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the maximum along segments of a tensor.
-//
-// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// Computes a tensor such that
-// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the max is empty for a given segment ID `i`, `output[i] = 0`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
-// </div>
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentMax",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// AvgPoolGradAttr is an optional argument to AvgPoolGrad.
-type AvgPoolGradAttr func(optionalAttr)
-
-// AvgPoolGradDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func AvgPoolGradDataFormat(value string) AvgPoolGradAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes gradients of the average pooling function.
-//
-// Arguments:
-//	orig_input_shape: 1-D.  Shape of the original input to `avg_pool`.
-//	grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
-// the output of `avg_pool`.
-//	ksize: The size of the sliding window for each dimension of the input.
-//	strides: The stride of the sliding window for each dimension of the input.
-//	padding: The type of padding algorithm to use.
-//
-// Returns 4-D.  Gradients w.r.t. the input of `avg_pool`.
-func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPoolGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AvgPoolGrad",
-		Input: []tf.Input{
-			orig_input_shape, grad,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StageClearAttr is an optional argument to StageClear.
-type StageClearAttr func(optionalAttr)
-
-// StageClearCapacity sets the optional capacity attribute to value.
+// MapPeekCapacity sets the optional capacity attribute to value.
 // If not specified, defaults to 0
 //
 // REQUIRES: value >= 0
-func StageClearCapacity(value int64) StageClearAttr {
+func MapPeekCapacity(value int64) MapPeekAttr {
 	return func(m optionalAttr) {
 		m["capacity"] = value
 	}
 }
 
-// StageClearMemoryLimit sets the optional memory_limit attribute to value.
+// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
 // If not specified, defaults to 0
 //
 // REQUIRES: value >= 0
-func StageClearMemoryLimit(value int64) StageClearAttr {
+func MapPeekMemoryLimit(value int64) MapPeekAttr {
 	return func(m optionalAttr) {
 		m["memory_limit"] = value
 	}
 }
 
-// StageClearContainer sets the optional container attribute to value.
+// MapPeekContainer sets the optional container attribute to value.
 // If not specified, defaults to ""
-func StageClearContainer(value string) StageClearAttr {
+func MapPeekContainer(value string) MapPeekAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
 	}
 }
 
-// StageClearSharedName sets the optional shared_name attribute to value.
+// MapPeekSharedName sets the optional shared_name attribute to value.
 // If not specified, defaults to ""
-func StageClearSharedName(value string) StageClearAttr {
+func MapPeekSharedName(value string) MapPeekAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
 	}
 }
 
-// Op removes all elements in the underlying container.
+// Op peeks at the values at the specified key.  If the
 //
-// Returns the created operation.
-func StageClear(scope *Scope, dtypes []tf.DataType, optional ...StageClearAttr) (o *tf.Operation) {
+// underlying container does not contain this key
+// this op will block until it does.
+func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -16761,70 +17042,23 @@ func StageClear(scope *Scope, dtypes []tf.DataType, optional ...StageClearAttr) 
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "StageClear",
-
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// ComputeAccidentalHitsAttr is an optional argument to ComputeAccidentalHits.
-type ComputeAccidentalHitsAttr func(optionalAttr)
-
-// ComputeAccidentalHitsSeed sets the optional seed attribute to value.
-//
-// value: If either seed or seed2 are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
-// If not specified, defaults to 0
-func ComputeAccidentalHitsSeed(value int64) ComputeAccidentalHitsAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// ComputeAccidentalHitsSeed2 sets the optional seed2 attribute to value.
-//
-// value: An second seed to avoid seed collision.
-// If not specified, defaults to 0
-func ComputeAccidentalHitsSeed2(value int64) ComputeAccidentalHitsAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Computes the ids of the positions in sampled_candidates that match true_labels.
-//
-// When doing log-odds NCE, the result of this op should be passed through a
-// SparseToDense op, then added to the logits of the sampled candidates. This has
-// the effect of 'removing' the sampled labels that match the true labels by
-// making the classifier sure that they are sampled labels.
-//
-// Arguments:
-//	true_classes: The true_classes output of UnpackSparseLabels.
-//	sampled_candidates: The sampled_candidates output of CandidateSampler.
-//	num_true: Number of true labels per context.
-//
-// Returns A vector of indices corresponding to rows of true_candidates.A vector of IDs of positions in sampled_candidates that match a true_label
-// for the row with the corresponding index in indices.A vector of the same length as indices and ids, in which each element
-// is -FLOAT_MAX.
-func ComputeAccidentalHits(scope *Scope, true_classes tf.Output, sampled_candidates tf.Output, num_true int64, optional ...ComputeAccidentalHitsAttr) (indices tf.Output, ids tf.Output, weights tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_true": num_true}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ComputeAccidentalHits",
+		Type: "MapPeek",
 		Input: []tf.Input{
-			true_classes, sampled_candidates,
+			key, indices,
 		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("MapPeek", err)
+		return
+	}
+	return values
 }
 
 // Looks up keys in a table, outputs the corresponding values.
@@ -18815,6 +19049,249 @@ func ShardedFilename(scope *Scope, basename tf.Output, shard tf.Output, num_shar
 	return op.Output(0)
 }
 
+// BatchToSpace for N-D tensors of type T.
+//
+// This operation reshapes the "batch" dimension 0 into `M + 1` dimensions of shape
+// `block_shape + [batch]`, interleaves these blocks back into the grid defined by
+// the spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as
+// the input.  The spatial dimensions of this intermediate result are then
+// optionally cropped according to `crops` to produce the output.  This is the
+// reverse of SpaceToBatch.  See below for a precise description.
+//
+// Arguments:
+//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+// where spatial_shape has M dimensions.
+//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
+//	crops: 2-D with shape `[M, 2]`, all values must be >= 0.
+//   `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input
+//   dimension `i + 1`, which corresponds to spatial dimension `i`.  It is
+//   required that
+//   `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.
+//
+// This operation is equivalent to the following steps:
+//
+// 1. Reshape `input` to `reshaped` of shape:
+//      [block_shape[0], ..., block_shape[M-1],
+//       batch / prod(block_shape),
+//       input_shape[1], ..., input_shape[N-1]]
+//
+// 2. Permute dimensions of `reshaped` to produce `permuted` of shape
+//      [batch / prod(block_shape),
+//
+//       input_shape[1], block_shape[0],
+//       ...,
+//       input_shape[M], block_shape[M-1],
+//
+//       input_shape[M+1], ..., input_shape[N-1]]
+//
+// 3. Reshape `permuted` to produce `reshaped_permuted` of shape
+//      [batch / prod(block_shape),
+//
+//       input_shape[1] * block_shape[0],
+//       ...,
+//       input_shape[M] * block_shape[M-1],
+//
+//       input_shape[M+1],
+//       ...,
+//       input_shape[N-1]]
+//
+// 4. Crop the start and end of dimensions `[1, ..., M]` of
+//    `reshaped_permuted` according to `crops` to produce the output of shape:
+//      [batch / prod(block_shape),
+//
+//       input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+//       ...,
+//       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
+//
+//       input_shape[M+1], ..., input_shape[N-1]]
+//
+// Some examples:
+//
+// (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
+//     `crops = [[0, 0], [0, 0]]`:
+//
+// ```
+// [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+// ```
+//
+// The output tensor has shape `[1, 2, 2, 1]` and value:
+//
+// ```
+// x = [[[[1], [2]], [[3], [4]]]]
+// ```
+//
+// (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
+//     `crops = [[0, 0], [0, 0]]`:
+//
+// ```
+// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+// ```
+//
+// The output tensor has shape `[1, 2, 2, 3]` and value:
+//
+// ```
+// x = [[[[1, 2, 3], [4, 5, 6]],
+//       [[7, 8, 9], [10, 11, 12]]]]
+// ```
+//
+// (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
+//     `crops = [[0, 0], [0, 0]]`:
+//
+// ```
+// x = [[[[1], [3]], [[9], [11]]],
+//      [[[2], [4]], [[10], [12]]],
+//      [[[5], [7]], [[13], [15]]],
+//      [[[6], [8]], [[14], [16]]]]
+// ```
+//
+// The output tensor has shape `[1, 4, 4, 1]` and value:
+//
+// ```
+// x = [[[1],   [2],  [3],  [4]],
+//      [[5],   [6],  [7],  [8]],
+//      [[9],  [10], [11],  [12]],
+//      [[13], [14], [15],  [16]]]
+// ```
+//
+// (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
+//     `crops = [[0, 0], [2, 0]]`:
+//
+// ```
+// x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
+//      [[[0], [2], [4]]], [[[0], [10], [12]]],
+//      [[[0], [5], [7]]], [[[0], [13], [15]]],
+//      [[[0], [6], [8]]], [[[0], [14], [16]]]]
+// ```
+//
+// The output tensor has shape `[2, 2, 4, 1]` and value:
+//
+// ```
+// x = [[[[1],   [2],  [3],  [4]],
+//       [[5],   [6],  [7],  [8]]],
+//      [[[9],  [10], [11],  [12]],
+//       [[13], [14], [15],  [16]]]]
+// ```
+func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BatchToSpaceND",
+		Input: []tf.Input{
+			input, block_shape, crops,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UnpackAttr is an optional argument to Unpack.
+type UnpackAttr func(optionalAttr)
+
+// UnpackAxis sets the optional axis attribute to value.
+//
+// value: Dimension along which to unpack.  Negative values wrap around, so the
+// valid range is `[-R, R)`.
+// If not specified, defaults to 0
+func UnpackAxis(value int64) UnpackAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
+//
+// Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
+// For example, given a tensor of shape `(A, B, C, D)`;
+//
+// If `axis == 0` then the i'th tensor in `output` is the slice `value[i, :, :, :]`
+//   and each tensor in `output` will have shape `(B, C, D)`. (Note that the
+//   dimension unpacked along is gone, unlike `split`).
+//
+// If `axis == 1` then the i'th tensor in `output` is the slice `value[:, i, :, :]`
+//   and each tensor in `output` will have shape `(A, C, D)`.
+// Etc.
+//
+// This is the opposite of `pack`.
+//
+// Arguments:
+//	value: 1-D or higher, with `axis` dimension size equal to `num`.
+//
+//
+// Returns The list of tensors unpacked from `value`.
+func Unpack(scope *Scope, value tf.Output, num int64, optional ...UnpackAttr) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num": num}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Unpack",
+		Input: []tf.Input{
+			value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("Unpack", err)
+		return
+	}
+	return output
+}
+
+// Increments variable pointed to by 'resource' until it reaches 'limit'.
+//
+// Arguments:
+//	resource: Should be from a scalar `Variable` node.
+//	limit: If incrementing ref would bring it above limit, instead generates an
+// 'OutOfRange' error.
+//
+//
+// Returns A copy of the input before increment. If nothing else modifies the
+// input, the values produced will all be distinct.
+func ResourceCountUpTo(scope *Scope, resource tf.Output, limit int64, T tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"limit": limit, "T": T}
+	opspec := tf.OpSpec{
+		Type: "ResourceCountUpTo",
+		Input: []tf.Input{
+			resource,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Delete the stack from its resource container.
+//
+// Arguments:
+//	handle: The handle to a stack.
+//
+// Returns the created operation.
+func StackCloseV2(scope *Scope, handle tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StackCloseV2",
+		Input: []tf.Input{
+			handle,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Generate a glob pattern matching all sharded file names.
 func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (filename tf.Output) {
 	if scope.Err() != nil {
@@ -19436,121 +19913,6 @@ func ResizeNearestNeighborGrad(scope *Scope, grads tf.Output, size tf.Output, op
 		Type: "ResizeNearestNeighborGrad",
 		Input: []tf.Input{
 			grads, size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodeJpegAttr is an optional argument to DecodeJpeg.
-type DecodeJpegAttr func(optionalAttr)
-
-// DecodeJpegChannels sets the optional channels attribute to value.
-//
-// value: Number of color channels for the decoded image.
-// If not specified, defaults to 0
-func DecodeJpegChannels(value int64) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["channels"] = value
-	}
-}
-
-// DecodeJpegRatio sets the optional ratio attribute to value.
-//
-// value: Downscaling ratio.
-// If not specified, defaults to 1
-func DecodeJpegRatio(value int64) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["ratio"] = value
-	}
-}
-
-// DecodeJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
-//
-// value: If true use a slower but nicer upscaling of the
-// chroma planes (yuv420/422 only).
-// If not specified, defaults to true
-func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["fancy_upscaling"] = value
-	}
-}
-
-// DecodeJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
-//
-// value: If true try to recover an image from truncated input.
-// If not specified, defaults to false
-func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["try_recover_truncated"] = value
-	}
-}
-
-// DecodeJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
-//
-// value: The minimum required fraction of lines before a truncated
-// input is accepted.
-// If not specified, defaults to 1
-func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["acceptable_fraction"] = value
-	}
-}
-
-// DecodeJpegDctMethod sets the optional dct_method attribute to value.
-//
-// value: string specifying a hint about the algorithm used for
-// decompression.  Defaults to "" which maps to a system-specific
-// default.  Currently valid values are ["INTEGER_FAST",
-// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-// jpeg library changes to a version that does not have that specific
-// option.)
-// If not specified, defaults to ""
-func DecodeJpegDctMethod(value string) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["dct_method"] = value
-	}
-}
-
-// Decode a JPEG-encoded image to a uint8 tensor.
-//
-// The attr `channels` indicates the desired number of color channels for the
-// decoded image.
-//
-// Accepted values are:
-//
-// *   0: Use the number of channels in the JPEG-encoded image.
-// *   1: output a grayscale image.
-// *   3: output an RGB image.
-//
-// If needed, the JPEG-encoded image is transformed to match the requested number
-// of color channels.
-//
-// The attr `ratio` allows downscaling the image by an integer factor during
-// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-// downscaling the image later.
-//
-//
-// This op also supports decoding PNGs and non-animated GIFs since the interface is
-// the same, though it is cleaner to use `tf.image.decode_image`.
-//
-// Arguments:
-//	contents: 0-D.  The JPEG-encoded image.
-//
-// Returns 3-D with shape `[height, width, channels]`..
-func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeJpeg",
-		Input: []tf.Input{
-			contents,
 		},
 		Attrs: attrs,
 	}
@@ -25140,125 +25502,6 @@ func Snapshot(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// SpaceToDepthAttr is an optional argument to SpaceToDepth.
-type SpaceToDepthAttr func(optionalAttr)
-
-// SpaceToDepthDataFormat sets the optional data_format attribute to value.
-// If not specified, defaults to "NHWC"
-func SpaceToDepthDataFormat(value string) SpaceToDepthAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// SpaceToDepth for tensors of type T.
-//
-// Rearranges blocks of spatial data, into depth. More specifically,
-// this op outputs a copy of the input tensor where values from the `height`
-// and `width` dimensions are moved to the `depth` dimension.
-// The attr `block_size` indicates the input block size.
-//
-//   * Non-overlapping blocks of size `block_size x block size` are rearranged
-//     into depth at each location.
-//   * The depth of the output tensor is `block_size * block_size * input_depth`.
-//   * The Y, X coordinates within each block of the input become the high order
-//     component of the output channel index.
-//   * The input tensor's height and width must be divisible by block_size.
-//
-// The `data_format` attr specifies the layout of the input and output tensors
-// with the following options:
-//   "NHWC": `[ batch, height, width, channels ]`
-//   "NCHW": `[ batch, channels, height, width ]`
-//   "NCHW_VECT_C":
-//       `qint8 [ batch, channels / 4, height, width, 4 ]`
-//
-// It is useful to consider the operation as transforming a 6-D Tensor.
-// e.g. for data_format = NHWC,
-//      Each element in the input tensor can be specified via 6 coordinates,
-//      ordered by decreasing memory layout significance as:
-//      n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
-//                         within the output image, bX, bY means coordinates
-//                         within the input block, iC means input channels).
-//      The output would be a transpose to the following layout:
-//      n,oY,oX,bY,bX,iC
-//
-// This operation is useful for resizing the activations between convolutions
-// (but keeping all data), e.g. instead of pooling. It is also useful for training
-// purely convolutional models.
-//
-// For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
-// block_size = 2:
-//
-// ```
-// x = [[[[1], [2]],
-//       [[3], [4]]]]
-// ```
-//
-// This operation will output a tensor of shape `[1, 1, 1, 4]`:
-//
-// ```
-// [[[[1, 2, 3, 4]]]]
-// ```
-//
-// Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
-// the corresponding output will have a single element (i.e. width and height are
-// both 1) and will have a depth of 4 channels (1 * block_size * block_size).
-// The output element shape is `[1, 1, 4]`.
-//
-// For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
-//
-// ```
-// x = [[[[1, 2, 3], [4, 5, 6]],
-//       [[7, 8, 9], [10, 11, 12]]]]
-// ```
-//
-// This operation, for block_size of 2, will return the following tensor of shape
-// `[1, 1, 1, 12]`
-//
-// ```
-// [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
-// ```
-//
-// Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
-//
-// ```
-// x = [[[[1],   [2],  [5],  [6]],
-//       [[3],   [4],  [7],  [8]],
-//       [[9],  [10], [13],  [14]],
-//       [[11], [12], [15],  [16]]]]
-// ```
-//
-// the operator will return the following tensor of shape `[1 2 2 4]`:
-//
-// ```
-// x = [[[[1, 2, 3, 4],
-//        [5, 6, 7, 8]],
-//       [[9, 10, 11, 12],
-//        [13, 14, 15, 16]]]]
-// ```
-//
-// Arguments:
-//
-//	block_size: The size of the spatial block.
-func SpaceToDepth(scope *Scope, input tf.Output, block_size int64, optional ...SpaceToDepthAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"block_size": block_size}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SpaceToDepth",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // AbortAttr is an optional argument to Abort.
 type AbortAttr func(optionalAttr)
 
@@ -27640,249 +27883,6 @@ func SpaceToBatch(scope *Scope, input tf.Output, paddings tf.Output, block_size 
 			input, paddings,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// UnpackAttr is an optional argument to Unpack.
-type UnpackAttr func(optionalAttr)
-
-// UnpackAxis sets the optional axis attribute to value.
-//
-// value: Dimension along which to unpack.  Negative values wrap around, so the
-// valid range is `[-R, R)`.
-// If not specified, defaults to 0
-func UnpackAxis(value int64) UnpackAttr {
-	return func(m optionalAttr) {
-		m["axis"] = value
-	}
-}
-
-// Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
-//
-// Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-// For example, given a tensor of shape `(A, B, C, D)`;
-//
-// If `axis == 0` then the i'th tensor in `output` is the slice `value[i, :, :, :]`
-//   and each tensor in `output` will have shape `(B, C, D)`. (Note that the
-//   dimension unpacked along is gone, unlike `split`).
-//
-// If `axis == 1` then the i'th tensor in `output` is the slice `value[:, i, :, :]`
-//   and each tensor in `output` will have shape `(A, C, D)`.
-// Etc.
-//
-// This is the opposite of `pack`.
-//
-// Arguments:
-//	value: 1-D or higher, with `axis` dimension size equal to `num`.
-//
-//
-// Returns The list of tensors unpacked from `value`.
-func Unpack(scope *Scope, value tf.Output, num int64, optional ...UnpackAttr) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num": num}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Unpack",
-		Input: []tf.Input{
-			value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("Unpack", err)
-		return
-	}
-	return output
-}
-
-// Increments variable pointed to by 'resource' until it reaches 'limit'.
-//
-// Arguments:
-//	resource: Should be from a scalar `Variable` node.
-//	limit: If incrementing ref would bring it above limit, instead generates an
-// 'OutOfRange' error.
-//
-//
-// Returns A copy of the input before increment. If nothing else modifies the
-// input, the values produced will all be distinct.
-func ResourceCountUpTo(scope *Scope, resource tf.Output, limit int64, T tf.DataType) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"limit": limit, "T": T}
-	opspec := tf.OpSpec{
-		Type: "ResourceCountUpTo",
-		Input: []tf.Input{
-			resource,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Delete the stack from its resource container.
-//
-// Arguments:
-//	handle: The handle to a stack.
-//
-// Returns the created operation.
-func StackCloseV2(scope *Scope, handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "StackCloseV2",
-		Input: []tf.Input{
-			handle,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// BatchToSpace for N-D tensors of type T.
-//
-// This operation reshapes the "batch" dimension 0 into `M + 1` dimensions of shape
-// `block_shape + [batch]`, interleaves these blocks back into the grid defined by
-// the spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as
-// the input.  The spatial dimensions of this intermediate result are then
-// optionally cropped according to `crops` to produce the output.  This is the
-// reverse of SpaceToBatch.  See below for a precise description.
-//
-// Arguments:
-//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-// where spatial_shape has M dimensions.
-//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
-//	crops: 2-D with shape `[M, 2]`, all values must be >= 0.
-//   `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input
-//   dimension `i + 1`, which corresponds to spatial dimension `i`.  It is
-//   required that
-//   `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.
-//
-// This operation is equivalent to the following steps:
-//
-// 1. Reshape `input` to `reshaped` of shape:
-//      [block_shape[0], ..., block_shape[M-1],
-//       batch / prod(block_shape),
-//       input_shape[1], ..., input_shape[N-1]]
-//
-// 2. Permute dimensions of `reshaped` to produce `permuted` of shape
-//      [batch / prod(block_shape),
-//
-//       input_shape[1], block_shape[0],
-//       ...,
-//       input_shape[M], block_shape[M-1],
-//
-//       input_shape[M+1], ..., input_shape[N-1]]
-//
-// 3. Reshape `permuted` to produce `reshaped_permuted` of shape
-//      [batch / prod(block_shape),
-//
-//       input_shape[1] * block_shape[0],
-//       ...,
-//       input_shape[M] * block_shape[M-1],
-//
-//       input_shape[M+1],
-//       ...,
-//       input_shape[N-1]]
-//
-// 4. Crop the start and end of dimensions `[1, ..., M]` of
-//    `reshaped_permuted` according to `crops` to produce the output of shape:
-//      [batch / prod(block_shape),
-//
-//       input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
-//       ...,
-//       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
-//
-//       input_shape[M+1], ..., input_shape[N-1]]
-//
-// Some examples:
-//
-// (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
-//     `crops = [[0, 0], [0, 0]]`:
-//
-// ```
-// [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
-// ```
-//
-// The output tensor has shape `[1, 2, 2, 1]` and value:
-//
-// ```
-// x = [[[[1], [2]], [[3], [4]]]]
-// ```
-//
-// (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
-//     `crops = [[0, 0], [0, 0]]`:
-//
-// ```
-// [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
-// ```
-//
-// The output tensor has shape `[1, 2, 2, 3]` and value:
-//
-// ```
-// x = [[[[1, 2, 3], [4, 5, 6]],
-//       [[7, 8, 9], [10, 11, 12]]]]
-// ```
-//
-// (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
-//     `crops = [[0, 0], [0, 0]]`:
-//
-// ```
-// x = [[[[1], [3]], [[9], [11]]],
-//      [[[2], [4]], [[10], [12]]],
-//      [[[5], [7]], [[13], [15]]],
-//      [[[6], [8]], [[14], [16]]]]
-// ```
-//
-// The output tensor has shape `[1, 4, 4, 1]` and value:
-//
-// ```
-// x = [[[1],   [2],  [3],  [4]],
-//      [[5],   [6],  [7],  [8]],
-//      [[9],  [10], [11],  [12]],
-//      [[13], [14], [15],  [16]]]
-// ```
-//
-// (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
-//     `crops = [[0, 0], [2, 0]]`:
-//
-// ```
-// x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
-//      [[[0], [2], [4]]], [[[0], [10], [12]]],
-//      [[[0], [5], [7]]], [[[0], [13], [15]]],
-//      [[[0], [6], [8]]], [[[0], [14], [16]]]]
-// ```
-//
-// The output tensor has shape `[2, 2, 4, 1]` and value:
-//
-// ```
-// x = [[[[1],   [2],  [3],  [4]],
-//       [[5],   [6],  [7],  [8]]],
-//      [[[9],  [10], [11],  [12]],
-//       [[13], [14], [15],  [16]]]]
-// ```
-func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BatchToSpaceND",
-		Input: []tf.Input{
-			input, block_shape, crops,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
