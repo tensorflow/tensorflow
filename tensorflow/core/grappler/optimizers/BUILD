@@ -425,6 +425,7 @@ cc_library(
 tf_cuda_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
     deps = [
         ":memory_optimizer",
         "//tensorflow/cc:cc_ops",
