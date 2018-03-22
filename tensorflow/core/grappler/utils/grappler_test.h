@@ -24,11 +24,15 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace grappler {
 
 class GrapplerTest : public ::testing::Test {
+ public:
+  GrapplerTest();
+
  protected:
   std::vector<Tensor> EvaluateNodes(
       const GraphDef& graph, const std::vector<string>& node_names) const;
@@ -48,6 +52,9 @@ class GrapplerTest : public ::testing::Test {
 
   // Count nodes of the given op-type in a graph.
   int CountOpNodes(const GraphDef& graph, const string& op);
+
+ private:
+  SessionOptions options_;
 };
 
 }  // end namespace grappler
