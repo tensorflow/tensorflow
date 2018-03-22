@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -227,8 +228,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         weights=example_weights_by_head,
         processed_labels=labels_by_head)
 
+  # TODO(b/65403806): Support regularization_losses arg.
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None):
+      self, features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None):
     """See `_Head`."""
     if isinstance(logits, dict):
       logits_dict = logits
@@ -249,9 +252,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
               train_op_fn=_no_op_train_fn))
 
     if mode == model_fn.ModeKeys.TRAIN:
-      if train_op_fn is None:
-        raise ValueError('train_op_fn can not be None in TRAIN mode.')
-      spec = self._merge_train(all_estimator_spec, train_op_fn)
+      spec = self._merge_train(
+          all_estimator_spec=all_estimator_spec,
+          optimizer=optimizer,
+          train_op_fn=train_op_fn)
       with ops.name_scope(''):
         summary.scalar(metric_keys.MetricKeys.LOSS, spec.loss)
       return spec
@@ -280,16 +284,21 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
         begin_idx += head.logits_dimension
     return logits_dict
 
-  def _merge_train(self, all_estimator_spec, train_op_fn):
+  def _merge_train(self, all_estimator_spec, optimizer, train_op_fn):
     """Merges list of `EstimatorSpec` for training.
 
     Args:
       all_estimator_spec: list of `EstimatorSpec` for the individual heads.
-      train_op_fn: Function to create train op. See `create_estimator_spec`
-        documentation for more details.
+      optimizer: `Optimizer` instance to create train op. See
+        `create_estimator_spec` documentation for more details.
+      train_op_fn: Function to create train op. Used if `optimizer` is `None`.
 
     Returns:
       `EstimatorSpec` that merges all heads for TRAIN.
+
+    Raises:
+      ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
+        mode.
     """
     losses = []
     metrics = {}
@@ -298,11 +307,20 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
       # Metric keys already contain head.name.
       metrics.update(spec.eval_metric_ops or {})
     loss = _merge_losses(losses, self._head_weights)
+    if optimizer is not None:
+      if train_op_fn is not None:
+        raise ValueError('train_op_fn and optimizer cannot both be set.')
+      train_op = optimizer.minimize(
+          loss, global_step=training_util.get_global_step())
+    elif train_op_fn is not None:
+      train_op = train_op_fn(loss)
+    else:
+      raise ValueError('train_op_fn and optimizer cannot both be None.')
 
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         loss=loss,
-        train_op=train_op_fn(loss),
+        train_op=train_op,
         eval_metric_ops=metrics)
 
   def _merge_predict(self, all_estimator_spec):

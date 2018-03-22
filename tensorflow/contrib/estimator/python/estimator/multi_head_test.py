@@ -550,6 +550,44 @@ class MultiHeadTest(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN + '/head1': expected_loss / 2,
       }, summary_str, tol)
 
+  def test_train_one_head_with_optimizer(self):
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    multi_head = multi_head_lib.multi_head([head1])
+
+    logits = {'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)}
+    labels = {'head1': np.array([[1, 0], [1, 1]], dtype=np.int64)}
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes, sum over weights.
+    expected_loss = 17.5
+    expected_train_result = 'my_train_op'
+
+    class _Optimizer(object):
+
+      def minimize(self, loss, global_step):
+        del global_step
+        return string_ops.string_join(
+            [constant_op.constant(expected_train_result),
+             string_ops.as_string(loss, precision=3)])
+
+    spec = multi_head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        optimizer=_Optimizer())
+
+    tol = 1e-3
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
+
   def test_train_two_heads_with_weights(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3, name='head2')
