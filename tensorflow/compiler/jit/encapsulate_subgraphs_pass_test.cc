@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -31,6 +33,24 @@ namespace {
 
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
+
+Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
+                                    const string& name_suffix,
+                                    FunctionDefLibrary* library) {
+  GraphDef graphdef;
+  TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
+  std::unique_ptr<Graph> graph =
+      std::unique_ptr<Graph>(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graphdef, graph.get()));
+  FunctionDef* fdef = library->add_function();
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *graph,
+      strings::StrCat("_outside_compilation_shape_inference_", name_suffix),
+      fdef));
+  return Status::OK();
+}
 
 template <class Tkey, class Tvalue>
 bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
@@ -115,23 +135,7 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
       a.attr(), b.attr(), [](const string& s) { return s; },
       [](const AttrValue& v) { return v.DebugString(); },
       [](const string& key, const AttrValue& av, const AttrValue& bv) {
-        if (key == "shape_inference_graph") {
-          // Default serialization of GraphDef is unstable because maps don't
-          // serialize deterministically. Rather than go through the hoops to
-          // turn on deterministic serialization of this attr just for this
-          // test, add logic here to compare determinstically.
-          GraphDef ga;
-          if (!ga.ParseFromString(av.s())) {
-            return false;
-          }
-          GraphDef gb;
-          if (!gb.ParseFromString(bv.s())) {
-            return false;
-          }
-          return EqualGraphDef(ga, gb, nullptr);
-        } else {
-          return av.DebugString() == bv.DebugString();
-        }
+        return av.DebugString() == bv.DebugString();
       },
       strings::StrCat(diff_preamble, " attr mismatch for node ", a.name()),
       diff);
@@ -848,7 +852,6 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
@@ -861,9 +864,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
                      shape.opts().WithName("E"));
     SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
                  {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   *library_expected.add_function() = test::function::XTimesTwo();
@@ -883,7 +885,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"c"}},
       },
@@ -969,7 +972,6 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected_1;
   {
     GraphDefBuilder shape1(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
@@ -982,12 +984,10 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
                      shape1.opts().WithName("E"));
     SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
                  {e}, shape1.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape1_graph;
-    TF_EXPECT_OK(shape1.ToGraphDef(&shape1_graph));
-    EXPECT_TRUE(shape1_graph.SerializeToString(&shape_string_expected_1));
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape1, "F1_O1", &library_expected));
   }
 
-  string shape_string_expected_2;
   {
     GraphDefBuilder shape2(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
@@ -1005,9 +1005,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
     Node* h = Binary(ops::NodeOut(recv2, 0), e, shape2.opts().WithName("H"));
     SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O2",
                  {h}, shape2.opts().WithName("outside_compilation_F1_O2_send"));
-    GraphDef shape2_graph;
-    TF_EXPECT_OK(shape2.ToGraphDef(&shape2_graph));
-    EXPECT_TRUE(shape2_graph.SerializeToString(&shape_string_expected_2));
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape2, "F1_O2", &library_expected));
   }
 
   *library_expected.add_function() = FunctionDefHelper::Create(
@@ -1029,7 +1028,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O2"},
-            {"shape_inference_graph", shape_string_expected_2},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O2"},
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"F"}},
           {{"outside_compilation_O1_host_compute"},
@@ -1038,7 +1038,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected_1},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"D"}},
       },
@@ -1134,7 +1135,6 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
@@ -1147,9 +1147,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
                      shape.opts().WithName("E"));
     SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
                  {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   TensorShapeProto shape_proto_expected;
@@ -1172,7 +1171,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"D"}},
       },
@@ -1661,7 +1661,6 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
-  string shape_string_expected;
   {
     GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
     Node* key_constant =
@@ -1673,9 +1672,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
     Node* e = BinaryUnknownShape(known, recv, shape.opts().WithName("E"));
     SendFromHost(ops::NodeOut(key_constant, 0), "host_compute_channel_F1_O1",
                  {e}, shape.opts().WithName("outside_compilation_F1_O1_send"));
-    GraphDef shape_graph;
-    TF_EXPECT_OK(shape.ToGraphDef(&shape_graph));
-    EXPECT_TRUE(shape_graph.SerializeToString(&shape_string_expected));
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
   }
 
   *library_expected.add_function() = test::function::XTimesTwo();
@@ -1694,7 +1692,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"key", "host_compute_channel_F1_O1"},
-            {"shape_inference_graph", shape_string_expected},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
             {"shapes", gtl::ArraySlice<DataType>({})}},
            {"c"}},
       },
