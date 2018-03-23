@@ -282,5 +282,14 @@ TEST_F(HloShardingTest, TransformShardedTileShapeTest) {
   EXPECT_EQ(result, expected);
 }
 
+TEST_F(HloShardingTest, OstreamTest) {
+  HloSharding sharding =
+      HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 5, 7, 11}),
+                        Array4D<int64>({{{{0, 1}, {2, 3}}}}));
+  std::ostringstream oss;
+  oss << sharding;
+  EXPECT_EQ(oss.str(), "{f32[3,5,7,11] devices=(0, 1, 2, 3)}");
+}
+
 }  // namespace
 }  // namespace xla

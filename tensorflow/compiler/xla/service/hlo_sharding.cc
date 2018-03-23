@@ -374,4 +374,9 @@ HloSharding HloSharding::TransformShardedTileShape(
   return HloSharding::Tile(new_tile_shape, tile_assignment());
 }
 
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {
+  out << sharding.ToString();
+  return out;
+}
+
 }  // namespace xla
