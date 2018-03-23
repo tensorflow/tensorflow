@@ -37,6 +37,14 @@ REGISTER_OP("UniqueDataset")
 Creates a dataset that contains the unique elements of `input_dataset`.
 )doc");
 
+REGISTER_OP("IteratorGetDevice")
+    .Input("resource: resource")
+    .Output("device: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns the name of the device on which `resource` has been placed.
+)doc");
+
 REGISTER_OP("FunctionBufferingResource")
     .Input("string_arg: string")
     .Input("target_device: string")

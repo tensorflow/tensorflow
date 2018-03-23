@@ -269,6 +269,8 @@ class HloSharding {
   std::vector<HloSharding> tuple_elements_;
 };
 
+std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
