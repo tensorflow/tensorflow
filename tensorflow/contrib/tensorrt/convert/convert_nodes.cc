@@ -346,11 +346,10 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     case tensorflow::DataType::DT_HALF: {
-      Reorder2(
-          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-          istrides,
-          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
-          ostrides);
+      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+               istrides, static_cast<Eigen::half*>(
+                             const_cast<void*>(oweights->GetValues())),
+               ostrides);
       break;
     }
     default:
@@ -552,6 +551,19 @@ class Converter {
   }
 };
 
+TRT_ShapedWeights ConvertFP32ToFP16(Converter& ctx,
+                                    const TRT_ShapedWeights& weights_src) {
+  auto dtype_new = tensorflow::DataType::DT_HALF;
+  TRT_ShapedWeights weights =
+      ctx.get_temp_weights(dtype_new, weights_src.shape_);
+  const float* src = static_cast<const float*>(weights_src.GetValues());
+  Eigen::half* dst = const_cast<Eigen::half*>(
+      static_cast<Eigen::half const*>(weights.GetValues()));
+  for (int64_t i = 0; i < weights_src.count(); i++) {
+    dst[i] = Eigen::half_impl::float_to_half_rtne(src[i]);
+  }
+  return weights;
+}
 // ****************************************************************************
 // Constant folding functions
 // TODO(jie): once optimizer kicks in, we should have done constant folding
@@ -961,6 +973,10 @@ tensorflow::Status BinaryTensorOpWeight(
     }
   }
 
+  if (ctx.isFP16()) {
+    weights = ConvertFP32ToFP16(ctx, weights);
+  }
+
   // prepare weights
   TRT_ShapedWeights shift_weights(weights.type_);
   TRT_ShapedWeights scale_weights(weights.type_);
@@ -1002,9 +1018,7 @@ enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
 tensorflow::Status ConvertConv2DHelper(
     Converter& ctx, const tensorflow::NodeDef& node_def,
     const std::vector<TRT_TensorOrWeights>& inputs,
-    std::vector<TRT_TensorOrWeights>* outputs,
-    int group  // group ==0 specifies depthwise conv
-) {
+    std::vector<TRT_TensorOrWeights>* outputs, int group) {
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   TFAttrs attrs(node_def);
@@ -1029,6 +1043,10 @@ tensorflow::Status ConvertConv2DHelper(
   VLOG(2) << "groups count: " << num_groups;
 
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
+  if (ctx.isFP16()) {
+    weights_rsck = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
+  }
+
   TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
@@ -1299,8 +1317,11 @@ tensorflow::Status ConvertScale(Converter& ctx,
   // Implement tensor binaryOp weight [channel wise] for now;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
-  // TODO(jie): handle NHWC/NCHW transpose;
   TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (ctx.isFP16()) {
+    weights = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
+  }
+
   TRT_ShapedWeights empty_weights(weights.type_);
 
   TFAttrs attrs(node_def);
@@ -1398,33 +1419,16 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    if (ctx.isFP16()) {
-      auto dtype_new = tensorflow::DataType::DT_HALF;
-      size_t len_data = tensorflow::DataTypeSize(dtype_new);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
-      auto half_tensor = temp_tensor.flat<Eigen::half>();
-      Eigen::DefaultDevice defd;
-      half_tensor.device(defd) =
-          tensor.flat<float>().template cast<Eigen::half>();
-      memcpy(dst, half_tensor.data(), len_data);  // store into weight store
-      weights = TRT_ShapedWeights(dtype_new, dst, scalar_shape);
-    } else {
-      size_t len_data = tensorflow::DataTypeSize(dtype);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      std::vector<float> tensor_data(
-          weights_tensor.float_val().begin(),
-          weights_tensor.float_val()
-              .end());  //  make a local copy first to flatten
-      memcpy(dst, tensor_data.data(), len_data);  // store into weight store
-      weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
-    }
+    size_t len_data = tensorflow::DataTypeSize(dtype);
+    for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
+    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
+    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+    std::vector<float> tensor_data(
+        weights_tensor.float_val().begin(),
+        weights_tensor.float_val()
+            .end());  //  make a local copy first to flatten
+    memcpy(dst, tensor_data.data(), len_data);  // store into weight store
+    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
   } else if (!weights_tensor.int_val().empty()) {
     VLOG(2) << "int!!!" << node_def.name();
     nvinfer1::Dims scalar_shape;
@@ -1457,62 +1461,23 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    if (ctx.isFP16()) {
-      auto dtype_new = tensorflow::DataType::DT_HALF;
-      size_t len_data = tensorflow::DataTypeSize(dtype_new);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      tensorflow::Tensor temp_tensor(tensorflow::DT_HALF, tensor.shape());
-      TTypes<Eigen::half>::Flat half_tensor = temp_tensor.flat<Eigen::half>();
-      Eigen::DefaultDevice defd;
-      switch (dtype) {
-        case (tensorflow::DT_INT32): {
-          half_tensor.device(defd) =
-              tensor.flat<int32>().template cast<Eigen::half>();
-          break;
-        }
-        case (tensorflow::DT_INT16): {
-          half_tensor.device(defd) =
-              tensor.flat<int16>().template cast<Eigen::half>();
-          break;
-        }
-        case (tensorflow::DT_INT8): {
-          half_tensor.device(defd) =
-              tensor.flat<int8>().template cast<Eigen::half>();
-          break;
-        }
-        case (tensorflow::DT_UINT8): {
-          half_tensor.device(defd) =
-              tensor.flat<uint8>().template cast<Eigen::half>();
-          break;
-        }
-        default:
-          return tensorflow::errors::InvalidArgument(
-              "Datatype " + tensorflow::DataTypeString(dtype) +
-              " for FP16 conversion");
-          break;
-      };
-      memcpy(dst, half_tensor.data(), len_data);  // store into weight store
-      weights = TRT_ShapedWeights(dtype_new, dst, scalar_shape);
-    } else {
-      size_t len_data = tensorflow::DataTypeSize(dtype);
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        len_data *= scalar_shape.d[i];
-      size_t len_tensor = weights_tensor.int_val_size() * sizeof(int32);
-      len_data = std::max(len_data, len_tensor);
-      ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-      void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-      std::vector<int32> tensor_data(
-          weights_tensor.int_val().begin(),
-          weights_tensor.int_val()
-              .end());  //  make a local copy first to flatten
-                        //  doesn't have to be contiguous
-      memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
-      weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
-    }
+    //  we should not have converted //if (ctx.isFP16()) {
+    size_t len_data = tensorflow::DataTypeSize(dtype);
+    for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
+    size_t len_tensor = weights_tensor.int_val_size() * sizeof(int32);
+    len_data = std::max(len_data, len_tensor);
+    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
+    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+    std::vector<int32> tensor_data(
+        weights_tensor.int_val().begin(),
+        weights_tensor.int_val().end());  //  make a local copy first to flatten
+                                          //  doesn't have to be contigous
+    memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
+    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
   } else if (!weights_tensor.tensor_content().empty()) {
+    //  obsolete method.
+    //  After optimization path, we do not see weights in this format.
+    //  fp16 conversion technically should be needed here.
     VLOG(2) << "TENSOR!!!" << node_def.name();
     const auto& content = weights_tensor.tensor_content();
 
@@ -1794,8 +1759,6 @@ tensorflow::Status ConvertConcat(Converter& ctx,
   TRT_ShapedWeights axis = inputs.at(input_size).weights();
 
   TFAttrs attrs(node_def);
-  // auto attr_size = attrs.at("N")->i();
-  // auto data_type = attrs.get<nvinfer1::DataType>("T");
   auto index_type = attrs.get<tensorflow::DataType>("Tidx");
 
   // TODO(jie): handle data type
@@ -1885,71 +1848,103 @@ tensorflow::Status ConvertFusedBatchNorm(
         "only is_training=false is supported, at " + node_def.name());
   }
   nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
-  TRT_ShapedWeights scale_weights = inputs.at(1).weights();
-  TRT_ShapedWeights offset_weights = inputs.at(2).weights();
-  TRT_ShapedWeights mean_weights = inputs.at(3).weights();
-  TRT_ShapedWeights variance_weights = inputs.at(4).weights();
-  TRT_ShapedWeights dummy_power_weights(scale_weights.type_);
-  TRT_ShapedWeights combined_scale_weights =
-      ctx.get_temp_weights_like(scale_weights);
-  TRT_ShapedWeights combined_offset_weights =
-      ctx.get_temp_weights_like(offset_weights);
-  size_t nweight = scale_weights.count();
-  if ((scale_weights.type_ == offset_weights.type_) &&
-      (mean_weights.type_ == variance_weights.type_) &&
-      (scale_weights.type_ == variance_weights.type_)) {
-    if ((scale_weights.type_ != tensorflow::DataType::DT_FLOAT) &&
-        (scale_weights.type_ != tensorflow::DataType::DT_HALF)) {
+
+  //  Check parameter types
+  auto parameter_type = inputs.at(1).weights().type_;
+  if ((parameter_type != tensorflow::DataType::DT_FLOAT) &&
+      (parameter_type != tensorflow::DataType::DT_HALF)) {
+    return tensorflow::errors::Unimplemented(
+        "only float32 or float16 weight data type is supported, for node " +
+        node_def.name() + " got " + tensorflow::DataTypeString(parameter_type));
+  }
+  for (int i = 1; i < 5; i++) {
+    if (inputs.at(i).weights().type_ != parameter_type) {
       return tensorflow::errors::Unimplemented(
-          "only float32 or float16 weight data type is supported, for node " +
-          node_def.name() + " got " +
-          tensorflow::DataTypeString(scale_weights.type_));
-    }
-    if (scale_weights.type_ == tensorflow::DT_FLOAT) {
-      for (size_t i = 0; i < nweight; ++i) {
-        float scale = (static_cast<float const*>(scale_weights.GetValues()))[i];
-        float offset =
-            (static_cast<float const*>(offset_weights.GetValues()))[i];
-        float mean = (static_cast<float const*>(mean_weights.GetValues()))[i];
-        float variance =
-            (static_cast<float const*>(variance_weights.GetValues()))[i];
-        float& combined_scale_ref = const_cast<float*>(
-            static_cast<float const*>(combined_scale_weights.GetValues()))[i];
-        float& combined_offset_ref = const_cast<float*>(
-            static_cast<float const*>(combined_offset_weights.GetValues()))[i];
-        combined_scale_ref = scale / sqrtf(variance + epsilon);
-        combined_offset_ref = offset - mean * combined_scale_ref;
-      }
-    } else {
-      const Eigen::half* scale_vals =
-          (static_cast<Eigen::half const*>(scale_weights.GetValues()));
-      const Eigen::half* off_vals =
-          (static_cast<Eigen::half const*>(offset_weights.GetValues()));
-      const Eigen::half* mean_vals =
-          (static_cast<Eigen::half const*>(mean_weights.GetValues()));
-      const Eigen::half* variance_vals =
-          (static_cast<Eigen::half const*>(variance_weights.GetValues()));
-      Eigen::half* comb_scale_vals = const_cast<Eigen::half*>(
-          static_cast<Eigen::half const*>(combined_scale_weights.GetValues()));
-      Eigen::half* comb_off_vals = const_cast<Eigen::half*>(
-          static_cast<Eigen::half const*>(combined_offset_weights.GetValues()));
-      for (size_t i = 0; i < nweight; ++i) {
-        float scale(scale_vals[i]);
-        float offset(off_vals[i]);
-        float mean(mean_vals[i]);
-        float variance(variance_vals[i]);
-        float combined_scale_ref = scale / sqrtf(variance + epsilon);
-        comb_scale_vals[i] = Eigen::half(combined_scale_ref);
-        float combined_offset_ref = offset - mean * combined_scale_ref;
-        comb_off_vals[i] = Eigen::half(combined_offset_ref);
-      }
+          "Inconsistent parameter type for batchnormis not supported, at: " +
+          node_def.name());
     }
   }
-  nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
-      *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::ScaleMode::kCHANNEL,
-      combined_offset_weights.GetWeightsForTRT(),
-      combined_scale_weights.GetWeightsForTRT(),
-      dummy_power_weights.GetWeightsForTRT());
+
+  TRT_ShapedWeights dummy_power_weights(parameter_type);
+  size_t nweight = 0;
+  for (int i = 1; i < 5; i++) {
+    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+  }
+  TRT_ShapedWeights* ptr_shape_weights = nullptr;
+  for (int i = 1; i < 5; i++) {
+    if (inputs.at(i).weights().count() == nweight) {
+      ptr_shape_weights =
+          const_cast<TRT_ShapedWeights*>(&(inputs.at(i).weights()));
+    } else if (inputs.at(i).weights().count() != 1) {
+      return tensorflow::errors::InvalidArgument(
+          "Inconsistent batchnorm parameter count, at: " + node_def.name());
+    }
+  }
+  //  We could technically have two weights with different shape.
+  //  that requires two addScale op, arguably less performant
+  TRT_ShapedWeights combined_scale_weights =
+      ctx.get_temp_weights_like(*ptr_shape_weights);
+  TRT_ShapedWeights combined_offset_weights =
+      ctx.get_temp_weights_like(*ptr_shape_weights);
+
+  const Eigen::half* cast_vals_array[4];
+  const float* vals_array[4];
+  for (int j = 0; j < 4; j++) {
+    cast_vals_array[j] =
+        static_cast<Eigen::half const*>(inputs.at(j + 1).weights().GetValues());
+    vals_array[j] =
+        static_cast<float const*>(inputs.at(j + 1).weights().GetValues());
+  }
+  Eigen::half* cast_combined_scale_vals = const_cast<Eigen::half*>(
+      static_cast<Eigen::half const*>(combined_scale_weights.GetValues()));
+  Eigen::half* cast_combined_offset_vals = const_cast<Eigen::half*>(
+      static_cast<Eigen::half const*>(combined_offset_weights.GetValues()));
+  float* combined_scale_vals = const_cast<float*>(
+      static_cast<float const*>(combined_scale_weights.GetValues()));
+  float* combined_offset_vals = const_cast<float*>(
+      static_cast<float const*>(combined_offset_weights.GetValues()));
+
+  for (size_t i = 0; i < nweight; ++i) {
+    float batchnorm_data[4];
+    for (int j = 0; j < 4; j++) {
+      if (inputs.at(j + 1).weights().count() != 1) {
+        if (parameter_type == tensorflow::DT_FLOAT) {
+          batchnorm_data[j] = vals_array[j][i];
+        } else if (parameter_type == tensorflow::DT_HALF) {
+          batchnorm_data[j] =
+              Eigen::half_impl::half_to_float(cast_vals_array[j][i]);
+        }
+      } else {
+        if (parameter_type == tensorflow::DT_FLOAT) {
+          batchnorm_data[j] = vals_array[j][0];
+        } else if (parameter_type == tensorflow::DT_HALF) {
+          batchnorm_data[j] =
+              Eigen::half_impl::half_to_float(cast_vals_array[j][0]);
+        }
+      }
+    }
+    float scale = batchnorm_data[0];
+    float offset = batchnorm_data[1];
+    float mean = batchnorm_data[2];
+    float variance = batchnorm_data[3];
+    float combined_scale_val = scale / sqrtf(variance + epsilon);
+    float combined_offset_val = offset - mean * combined_scale_val;
+    if (parameter_type == tensorflow::DT_FLOAT) {
+      combined_scale_vals[i] = combined_scale_val;
+      combined_offset_vals[i] = combined_offset_val;
+    } else if (parameter_type == tensorflow::DT_HALF) {
+      cast_combined_scale_vals[i] = Eigen::half(combined_scale_val);
+      cast_combined_offset_vals[i] = Eigen::half(combined_offset_val);
+    }
+  }
+
+  nvinfer1::ScaleMode mode = nweight == 1 ? nvinfer1::ScaleMode::kUNIFORM
+                                          : nvinfer1::ScaleMode::kCHANNEL;
+  nvinfer1::IScaleLayer* layer =
+      ctx.network()->addScale(*const_cast<nvinfer1::ITensor*>(tensor), mode,
+                              combined_offset_weights.GetWeightsForTRT(),
+                              combined_scale_weights.GetWeightsForTRT(),
+                              dummy_power_weights.GetWeightsForTRT());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -2060,6 +2055,7 @@ void Converter::register_op_converters() {
   op_registry_["Const"] = ConvertConst;
   // TODO(ben,jie): this is a temp hack.
   op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
+  op_registry_["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
 
   // resnet_50_v1 slim implementation
   op_registry_["Add"] = ConvertBinary;
