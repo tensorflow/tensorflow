@@ -101,22 +101,22 @@ class AlphaNum {
   // A bool ctor would also convert incoming pointers (bletch).
 
   AlphaNum(int i32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_)) {}
   AlphaNum(unsigned int u32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_)) {}
   AlphaNum(long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(x, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt64ToBufferLeft(x, digits_)) {}
   AlphaNum(unsigned long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_)) {}
   AlphaNum(long long int i64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_)) {}
   AlphaNum(unsigned long long int u64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_)) {}
 
   AlphaNum(float f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, strlen(FloatToBuffer(f, digits_))) {}
+      : piece_(digits_, FloatToBuffer(f, digits_)) {}
   AlphaNum(double f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, strlen(DoubleToBuffer(f, digits_))) {}
+      : piece_(digits_, DoubleToBuffer(f, digits_)) {}
 
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 

@@ -110,7 +110,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
             'RunMode.PY_FUNC does not yet support kwargs')
       # TODO(mdan): Add support for kwargs.
       return py_func.wrap_py_func(
-          f, return_dtypes, args, use_dummy_return=not return_dtypes)
+          f, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
     if run_as == RunMode.GRAPH:
       wrapper = graph_wrapper

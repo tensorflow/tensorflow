@@ -36,10 +36,12 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
+# TODO(b/65403806): Switch loss_reduction default to SUM_OVER_BATCH_SIZE.
 def multi_class_head(n_classes,
                      weight_column=None,
                      label_vocabulary=None,
@@ -489,8 +491,8 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         processed_labels=processed_labels)
 
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None,
-      regularization_losses=None):
+      self, features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None, regularization_losses=None):
     """Returns an `EstimatorSpec`.
 
     Args:
@@ -502,8 +504,11 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         with shape `[D0, D1, ... DN, n_classes]` or `SparseTensor` with
         `dense_shape` `[D0, D1, ... DN, ?]`. `labels` is required argument when
         `mode` equals `TRAIN` or `EVAL`.
+      optimizer: `Optimizer` instance to optimize the loss in TRAIN mode.
+        Namely, sets `train_op = optimizer.minimize(loss, global_step)`, which
+        updates variables and increments `global_step`.
       train_op_fn: Function that takes a scalar loss `Tensor` and returns
-        `train_op`. Required in TRAIN mode.
+        `train_op`. Used if `optimizer` is `None`.
       regularization_losses: A list of additional scalar losses to be added to
         the training loss, such as regularization losses. These losses are
         usually expressed as a batch average, so for best results users need to
@@ -513,7 +518,8 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
     Returns:
       `EstimatorSpec`.
     Raises:
-      ValueError: If `train_op_fn` is `None` in TRAIN mode.
+      ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
+        mode, or if both are set.
     """
     with ops.name_scope(self._name, 'head'):
       logits = head_lib._check_logits_final_dim(logits, self.logits_dimension)  # pylint:disable=protected-access
@@ -565,8 +571,16 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 regularization_loss=regularization_loss))
 
       # Train.
-      if train_op_fn is None:
-        raise ValueError('train_op_fn can not be None.')
+      if optimizer is not None:
+        if train_op_fn is not None:
+          raise ValueError('train_op_fn and optimizer cannot both be set.')
+        train_op = optimizer.minimize(
+            regularized_training_loss,
+            global_step=training_util.get_global_step())
+      elif train_op_fn is not None:
+        train_op = train_op_fn(regularized_training_loss)
+      else:
+        raise ValueError('train_op_fn and optimizer cannot both be None.')
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -592,7 +606,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,
-        train_op=train_op_fn(regularized_training_loss))
+        train_op=train_op)
 
   def _eval_metric_ops(
       self, labels, probabilities, weights, unreduced_loss,

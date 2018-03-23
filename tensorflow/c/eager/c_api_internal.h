@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -52,85 +53,18 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
 };
 
-TFE_ContextDevicePlacementPolicy PlacementPolicy(
-    bool soft_placement, TFE_ContextDevicePlacementPolicy original_policy);
-
 struct TFE_Context {
-  explicit TFE_Context(const TFE_ContextOptions& opts,
+  explicit TFE_Context(const tensorflow::SessionOptions& opts,
+                       TFE_ContextDevicePlacementPolicy default_policy,
+                       bool async,
                        std::unique_ptr<tensorflow::DeviceMgr> device_mgr,
                        tensorflow::Rendezvous* rendezvous)
-      : soft_placement(
-            opts.session_options.options.config.allow_soft_placement()),
-        policy(PlacementPolicy(soft_placement, opts.policy)),
-        device_manager(std::move(device_mgr)),
-        devices(device_manager->ListDevices()),
-        rendezvous(rendezvous),
-        pflr(new tensorflow::ProcessFunctionLibraryRuntime(
-            device_manager.get(), opts.session_options.options.env,
-            TF_GRAPH_DEF_VERSION, &func_lib_def, {})),
-        log_device_placement(
-            opts.session_options.options.config.log_device_placement()),
-        async_default(opts.async) {
-    if (async_default) executor.EnableAsync();
+      : context(opts,
+                static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                    default_policy),
+                async, std::move(device_mgr), rendezvous) {}
 
-    for (auto* device : devices) {
-      devices_map[tensorflow::StringPiece(device->name())] = device;
-    }
-  }
-
-  const bool soft_placement;
-  const TFE_ContextDevicePlacementPolicy policy;
-
-  // Note: we cannot use C++11 thread_local here as there is no concept of a
-  // thread-local-object-local variable in C++11.
-  tensorflow::mutex policy_map_mu;
-  std::unordered_map<std::thread::id, TFE_ContextDevicePlacementPolicy>
-      thread_local_policies GUARDED_BY(policy_map_mu);
-
-  std::unique_ptr<tensorflow::DeviceMgr> device_manager;
-  // Devices owned by device_manager
-  std::vector<tensorflow::Device*> devices;
-  // All devices are not owned.
-  tensorflow::gtl::FlatMap<tensorflow::StringPiece, tensorflow::Device*,
-                           tensorflow::StringPieceHasher>
-      devices_map;
-  tensorflow::Rendezvous* const rendezvous;
-
-  tensorflow::mutex functions_mu;
-  tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
-      tensorflow::OpRegistry::Global(), {}};
-
-  // One FunctionLibraryRuntime per device.
-  // func_libs[i] is the FunctionLibraryRuntime corresponding to
-  // session->devices[i].
-  const std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
-
-  tensorflow::mutex cache_mu;
-  std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
-                     tensorflow::Fprint128Hasher>
-      kernel_cache GUARDED_BY(cache_mu);
-
-  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) const {
-    return pflr->GetFLR(d->name());
-  }
-
-  // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_metadata{false};
-  tensorflow::mutex metadata_mu;
-  tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
-  const bool log_device_placement;
-  // EagerExecutor for async execution.
-  tensorflow::EagerExecutor executor;
-
-  // True if running in asynchronous mode.
-  bool Async() const;
-
-  // True if the default value for execution mode is async. Note that this value
-  // can be overridden per thread based on `thread_local_async` overrides.
-  const bool async_default;
-  mutable tensorflow::mutex async_map_mu;
-  std::unordered_map<std::thread::id, bool> thread_local_async
-      GUARDED_BY(async_map_mu);
+  tensorflow::EagerContext context;
 };
 
 struct TFE_TensorHandle : public tensorflow::core::RefCounted {

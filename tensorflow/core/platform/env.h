@@ -291,10 +291,10 @@ class Env {
   virtual string FormatLibraryFileName(const string& name,
                                        const string& version) = 0;
 
- private:
   // Returns a possible list of local temporary directories.
-  void GetLocalTempDirectories(std::vector<string>* list);
+  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
 
+ private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
   EnvTime* envTime = EnvTime::Default();
@@ -358,6 +358,10 @@ class EnvWrapper : public Env {
   }
 
  private:
+  void GetLocalTempDirectories(std::vector<string>* list) override {
+    target_->GetLocalTempDirectories(list);
+  }
+
   Env* target_;
 };
 
