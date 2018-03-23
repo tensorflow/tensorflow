@@ -157,6 +157,7 @@ sh_binary(
             "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/lite/python:interpreter_test_data",
+            "//tensorflow/contrib/lite/python:tf_lite_py_pip",
             "//tensorflow/contrib/lite/toco:toco",
             "//tensorflow/contrib/lite/toco/python:toco_wrapper",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",

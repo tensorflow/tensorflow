@@ -406,4 +406,25 @@ REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
                         FunctionBufferingResourceGetNextOp);
 #endif  // TENSORFLOW_USE_SYCL
 
+class IteratorGetDeviceOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    // NOTE(mrry): We do not currently Validate that the handle
+    // corresponds to a real IteratorResource, because that symbol is
+    // not exposed from the framework library.
+    Tensor* device_name_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &device_name_t));
+    // NOTE(mrry): Since the operation's input is a resource, we must be
+    // colocated with it, and so we can simply return the current device's
+    // name without looking at the input.
+    device_name_t->scalar<string>()() = ctx->device()->name();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
+                        IteratorGetDeviceOp);
+
 }  // namespace tensorflow

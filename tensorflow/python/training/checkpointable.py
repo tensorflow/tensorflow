@@ -321,8 +321,10 @@ class CheckpointableBase(object):
     # Maps names -> Checkpointable objects
     self._unconditional_dependency_names = {}
     # Restorations for other Checkpointable objects on which this object may
-    # eventually depend.
-    self._deferred_dependencies = {}  # local name -> _CheckpointPosition list
+    # eventually depend. Maps local name -> _CheckpointPosition list. Optimizers
+    # tack on conditional dependencies, and so need separate management of
+    # deferred dependencies too.
+    self._unconditional_deferred_dependencies = {}
     # The UID of the highest assignment to this object. Used to ensure that the
     # last requested assignment determines the final value of an object.
     if hasattr(self, "_update_uid"):
@@ -343,6 +345,21 @@ class CheckpointableBase(object):
       object.
     """
     return self._unconditional_checkpoint_dependencies
+
+  @property
+  def _deferred_dependencies(self):
+    """A dictionary with deferred dependencies.
+
+    Stores restorations for other Checkpointable objects on which this object
+    may eventually depend. May be overridden by sub-classes (e.g. Optimizers use
+    conditional dependencies based the current graph, and so need separate
+    management of deferred dependencies too).
+
+    Returns:
+      A dictionary mapping from local name to a list of _CheckpointPosition
+      objects.
+    """
+    return self._unconditional_deferred_dependencies
 
   def _lookup_dependency(self, name):
     """Look up a dependency by name.

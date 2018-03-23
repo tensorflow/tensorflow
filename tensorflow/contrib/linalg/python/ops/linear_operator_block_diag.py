@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 
@@ -332,6 +333,18 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     mat = array_ops.concat(rows, axis=-2)
     mat.set_shape(self.shape)
     return mat
+
+  def _assert_non_singular(self):
+    return control_flow_ops.group([
+        operator.assert_non_singular() for operator in self.operators])
+
+  def _assert_self_adjoint(self):
+    return control_flow_ops.group([
+        operator.assert_self_adjoint() for operator in self.operators])
+
+  def _assert_positive_definite(self):
+    return control_flow_ops.group([
+        operator.assert_positive_definite() for operator in self.operators])
 
   def _split_input_into_blocks(self, x, axis=-1):
     """Split `x` into blocks matching `operators`'s `domain_dimension`.
