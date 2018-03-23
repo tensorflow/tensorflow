@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
+#include <numeric>
 #include <string>
 #include <utility>
 
@@ -80,40 +81,32 @@ void XlaBuilder::NoteError(const Status& error) {
   }
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build() {
-  if (!first_error_.ok()) {
-    string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
-    return AppendStatus(first_error_, backtrace);
-  }
-
-  HloComputationProto entry;
-  ProgramShape* program_shape = entry.mutable_program_shape();
-
-  entry.set_name(name_);
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape(int64* root_id) {
+  TF_RET_CHECK(root_id != nullptr);
+  ProgramShape program_shape;
 
   // Not all instructions can be roots. Walk backwards from the last added
   // instruction until a valid root is found.
-  entry.set_root_id(-1);
-  for (int64 i = instructions_.size() - 1; i >= 0; i--) {
+  int64 index = instructions_.size() - 1;
+  for (; index >= 0; index--) {
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
-                        StringToHloOpcode(instructions_[i].opcode()));
+                        StringToHloOpcode(instructions_[index].opcode()));
     if (CanBeRoot(opcode)) {
-      entry.set_root_id(instructions_[i].id());
-      *program_shape->mutable_result() = instructions_[i].shape();
       break;
     }
   }
-  if (entry.root_id() == -1) {
+  if (index < 0) {
     return FailedPrecondition("no root instruction was found");
   }
+  *root_id = instructions_[index].id();
+  *program_shape.mutable_result() = instructions_[index].shape();
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
   const int64 param_count = parameter_numbers_.size();
   for (int64 i = 0; i < param_count; i++) {
-    program_shape->add_parameters();
-    program_shape->add_parameter_names();
+    program_shape.add_parameters();
+    program_shape.add_parameter_names();
   }
   for (const HloInstructionProto& instr : instructions_) {
     // Parameter number uniqueness is guaranteed in XlaBuilder::Parameter(). So
@@ -123,9 +116,34 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
       const int64 index = instr.parameter_number();
       TF_RET_CHECK(index >= 0 && index < param_count)
           << "invalid parameter number: " << index;
-      *program_shape->mutable_parameters(index) = instr.shape();
-      *program_shape->mutable_parameter_names(index) = instr.name();
+      *program_shape.mutable_parameters(index) = instr.shape();
+      *program_shape.mutable_parameter_names(index) = instr.name();
     }
+  }
+  return program_shape;
+}
+
+StatusOr<ProgramShape> XlaBuilder::GetProgramShape() {
+  int64 root_id;
+  return GetProgramShape(&root_id);
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build() {
+  if (!first_error_.ok()) {
+    string backtrace;
+    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
+    return AppendStatus(first_error_, backtrace);
+  }
+
+  HloComputationProto entry;
+  entry.set_name(name_);
+
+  {
+    int64 root_id;
+    ProgramShape program_shape;
+    TF_ASSIGN_OR_RETURN(program_shape, GetProgramShape(&root_id));
+    entry.mutable_program_shape()->Swap(&program_shape);
+    entry.set_root_id(root_id);
   }
 
   for (auto& instruction : instructions_) {
@@ -149,19 +167,120 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
   return std::move(computation);
 }
 
-XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
-                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  auto op = [&]() -> StatusOr<XlaOp> {
+StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
+    const Shape& shape, const XlaOp& operand,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape;
+  for (int64 dim : broadcast_dimensions) {
+    instr.add_dimensions(dim);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
+}
+
+StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
+                                                 const XlaOp& operand) {
+  TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+
+  CHECK(ShapeUtil::IsScalar(operand_shape) ||
+        ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape));
+  Shape broadcast_shape =
+      ShapeUtil::ChangeElementType(output_shape, operand_shape.element_type());
+
+  // Do explicit broadcast for scalar.
+  if (ShapeUtil::IsScalar(operand_shape)) {
+    return InDimBroadcast(broadcast_shape, operand, {});
+  }
+
+  // Do explicit broadcast for degenerate broadcast.
+  std::vector<int64> broadcast_dimensions;
+  std::vector<int64> reshaped_dimensions;
+  for (int i = 0; i < ShapeUtil::Rank(operand_shape); i++) {
+    if (operand_shape.dimensions(i) == output_shape.dimensions(i)) {
+      broadcast_dimensions.push_back(i);
+      reshaped_dimensions.push_back(operand_shape.dimensions(i));
+    } else {
+      TF_RET_CHECK(operand_shape.dimensions(i) == 1)
+          << "An explicit broadcast sequence requires the broadcasted "
+             "dimensions to be trivial; operand shape: "
+          << operand_shape << "; output_shape: " << output_shape;
+    }
+  }
+  // Eliminate the size one dimensions.
+  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
+                      Reshape(ShapeUtil::MakeShape(operand_shape.element_type(),
+                                                   reshaped_dimensions),
+                              operand));
+  // Broadcast 'reshape' up to the larger size.
+  return InDimBroadcast(broadcast_shape, reshaped_operand,
+                        broadcast_dimensions);
+}
+
+XlaOp XlaBuilder::BinaryOp(
+    HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, lhs.GetShape());
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, rhs.GetShape());
-    TF_ASSIGN_OR_RETURN(
-        *instr.mutable_shape(),
-        ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, lhs_shape,
-                                           rhs_shape, broadcast_dimensions));
-    return AddInstruction(std::move(instr), HloOpcode::kAdd, {lhs, rhs});
-  };
-  return NoteErrorOrReturn(op());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferBinaryOpShape(
+                            binop, lhs_shape, rhs_shape, broadcast_dimensions));
+
+    const int64 lhs_rank = ShapeUtil::Rank(lhs_shape);
+    const int64 rhs_rank = ShapeUtil::Rank(rhs_shape);
+
+    XlaOp updated_lhs = lhs;
+    XlaOp updated_rhs = rhs;
+
+    if (!broadcast_dimensions.empty() && lhs_rank != rhs_rank) {
+      const bool should_broadcast_lhs = lhs_rank < rhs_rank;
+      XlaOp from = should_broadcast_lhs ? lhs : rhs;
+      const Shape& from_shape = should_broadcast_lhs ? lhs_shape : rhs_shape;
+
+      std::vector<int64> to_size;
+      for (int64 size : instr.shape().dimensions()) {
+        to_size.push_back(size);
+      }
+      for (int64 from_dim = 0; from_dim < ShapeUtil::Rank(from_shape);
+           from_dim++) {
+        int64 to_dim = broadcast_dimensions[from_dim];
+        to_size[to_dim] = from_shape.dimensions(from_dim);
+      }
+
+      const Shape& broadcasted_shape =
+          ShapeUtil::MakeShape(from_shape.element_type(), to_size);
+      TF_ASSIGN_OR_RETURN(
+          XlaOp broadcasted_operand,
+          InDimBroadcast(broadcasted_shape, from, broadcast_dimensions));
+
+      updated_lhs = should_broadcast_lhs ? broadcasted_operand : lhs;
+      updated_rhs = !should_broadcast_lhs ? broadcasted_operand : rhs;
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape updated_lhs_shape, updated_lhs.GetShape());
+    if (!ShapeUtil::SameDimensions(instr.shape(), updated_lhs_shape)) {
+      TF_ASSIGN_OR_RETURN(updated_lhs,
+                          AddBroadcastSequence(instr.shape(), updated_lhs));
+    }
+    TF_ASSIGN_OR_RETURN(Shape updated_rhs_shape, updated_rhs.GetShape());
+    if (!ShapeUtil::SameDimensions(instr.shape(), updated_rhs_shape)) {
+      TF_ASSIGN_OR_RETURN(updated_rhs,
+                          AddBroadcastSequence(instr.shape(), updated_rhs));
+    }
+
+    return AddInstruction(std::move(instr), binop, {updated_lhs, updated_rhs});
+  }());
+}
+
+XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
+                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(HloOpcode::kAdd, lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp XlaBuilder::Mul(const XlaOp& lhs, const XlaOp& rhs,
+                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(HloOpcode::kMultiply, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ConstantLiteral(const Literal& literal) {
@@ -173,7 +292,7 @@ XlaOp XlaBuilder::ConstantLiteral(const Literal& literal) {
 
 XlaOp XlaBuilder::Call(const XlaComputation& computation,
                        tensorflow::gtl::ArraySlice<XlaOp> operands) {
-  auto op = [&]() -> StatusOr<XlaOp> {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     std::vector<Shape> operand_shapes;
@@ -196,13 +315,12 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kCall, operands);
-  };
-  return NoteErrorOrReturn(op());
+  }());
 }
 
 XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
                             const string& name) {
-  auto op = [&]() -> StatusOr<XlaOp> {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (parameter_numbers_.find(parameter_number) != parameter_numbers_.end()) {
       return InvalidArgument("parameter %lld already registered",
@@ -213,8 +331,37 @@ XlaOp XlaBuilder::Parameter(int64 parameter_number, const Shape& shape,
     instr.set_name(name);
     *instr.mutable_shape() = shape;
     return AddInstruction(std::move(instr), HloOpcode::kParameter);
-  };
-  return NoteErrorOrReturn(op());
+  }());
+}
+
+XlaOp XlaBuilder::Broadcast(
+    const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(
+        const Shape& shape,
+        ShapeInference::InferBroadcastShape(operand_shape, broadcast_sizes));
+
+    // The client-level broadcast op just appends dimensions on the left (adds
+    // lowest numbered dimensions). The HLO broadcast instruction is more
+    // flexible and can add new dimensions anywhere. The instruction's
+    // dimensions field maps operand dimensions to dimensions in the broadcast
+    // output, so to append dimensions on the left the instruction's dimensions
+    // should just be the n highest dimension numbers of the output shape where
+    // n is the number of input dimensions.
+    const int64 operand_rank = ShapeUtil::Rank(operand_shape);
+    std::vector<int64> dimensions(operand_rank);
+    for (int i = 0; i < operand_rank; ++i) {
+      dimensions[i] = i + ShapeUtil::Rank(shape) - operand_rank;
+    }
+    return InDimBroadcast(shape, operand, dimensions);
+  }());
+}
+
+StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, const XlaOp& operand) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape;
+  return AddInstruction(std::move(instr), HloOpcode::kReshape, {operand});
 }
 
 XlaOp XlaBuilder::Slice(const XlaOp& operand,
@@ -660,6 +807,7 @@ XlaOp XlaBuilder::AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
   }
   for (const auto& operand : operands) {
     instr.add_operand_ids(operand.handle());
+    // TODO(b/74197823): Set metadata and sharding.
   }
   instructions_.push_back(instr);
 

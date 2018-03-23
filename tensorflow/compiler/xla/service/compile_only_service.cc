@@ -100,7 +100,7 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options, *user_computation));
+                           &execution_options, user_computation));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(

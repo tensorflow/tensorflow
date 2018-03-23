@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -63,38 +64,6 @@ class XlaOp {
 
   int64 handle_;
   XlaBuilder* builder_;  // Not owned.
-};
-
-// The computation graph that the user builds up with the XlaBuilder.
-//
-// TODO(b/74197823): Replace xla::Computation with this one.
-class XlaComputation {
- public:
-  XlaComputation(const XlaComputation&) = delete;
-  XlaComputation& operator=(const XlaComputation&) = delete;
-
-  XlaComputation(XlaComputation&& from) { *this = std::move(from); }
-
-  XlaComputation& operator=(XlaComputation&& from) {
-    proto_ = std::move(from.proto());
-    unique_id_ = from.unique_id_;
-    return *this;
-  }
-
-  // Returns the "program shape" (parameter and return shapes) for this
-  // computation.
-  const ProgramShape& GetProgramShape() const { return proto_.program_shape(); }
-
-  const HloModuleProto& proto() const { return proto_; }
-
- private:
-  // Creates a null Computation.
-  XlaComputation(const int64 unique_id) : unique_id_(unique_id) {}
-  HloModuleProto* mutable_proto() { return &proto_; }
-  friend class XlaBuilder;
-
-  int64 unique_id_;
-  HloModuleProto proto_;
 };
 
 // A convenient interface for building up computations.
@@ -733,6 +702,9 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
+  // Returns the (inferred) result for the current computation's shape.
+  StatusOr<ProgramShape> GetProgramShape();
+
  private:
   XlaOp AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                        tensorflow::gtl::ArraySlice<XlaOp> operands = {});
@@ -755,6 +727,29 @@ class XlaBuilder {
   XlaOp UnimplementedOp();
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
+
+  // Internal helper method that does the building for an arbitrary binary op.
+  // broadcast_dimensions specifies which dimensions to use for broadcasting
+  // when the operation is between tensors of different ranks.
+  XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
+                 tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
+  StatusOr<XlaOp> InDimBroadcast(
+      const Shape& shape, const XlaOp& operand,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
+  // Internal helper method that creates a sequence of instructions that
+  // performs an explicit broadcast of the operand to the target shape.
+  StatusOr<XlaOp> AddBroadcastSequence(const Shape& output_shape,
+                                       const XlaOp& operand);
+
+  // Internal helper method for creating a Reshape op with the already inferred
+  // shape.
+  StatusOr<XlaOp> Reshape(const Shape& shape, const XlaOp& operand);
+
+  // Returns the (inferred) result for the program shape for the current
+  // computation and fills the root_id in the pointer.
+  StatusOr<ProgramShape> GetProgramShape(int64* root_id);
 
   string name_;  // Name to use for the built computation.
 

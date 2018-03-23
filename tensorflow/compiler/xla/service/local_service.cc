@@ -146,10 +146,9 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     LayoutUtil::SetToDefaultLayout(
         execution_options.mutable_shape_with_output_layout());
   }
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
-                         *user_computation));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, argument_layouts,
+                                         &execution_options, user_computation));
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,

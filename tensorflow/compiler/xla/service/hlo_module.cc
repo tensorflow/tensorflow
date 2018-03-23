@@ -237,8 +237,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
     const Shape& parameter_shape =
         module_config.entry_computation_layout().parameter_layout(i).shape();
-    TF_RET_CHECK(
-        ShapeUtil::Equal(expected_program_shape.parameters(i), parameter_shape))
+    TF_RET_CHECK(ShapeUtil::Compatible(expected_program_shape.parameters(i),
+                                       parameter_shape))
         << "HloModuleConfig has different shape for parameter " << i
         << " than the HLO module. Expected: "
         << ShapeUtil::HumanStringWithLayout(
@@ -247,7 +247,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   const Shape& result_shape =
       module_config.entry_computation_layout().result_layout().shape();
-  TF_RET_CHECK(ShapeUtil::Equal(expected_program_shape.result(), result_shape))
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(expected_program_shape.result(), result_shape))
       << "HloModuleConfig has different result shape than the HLO module. "
          "Expected: "
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())

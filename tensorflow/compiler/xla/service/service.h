@@ -258,7 +258,7 @@ class Service : public ServiceInterface {
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutionOptions& execution_options,
-      const UserComputation& user_computation);
+      const UserComputation* user_computation = nullptr);
 
  protected:
   friend class LocalExecutable;
@@ -286,7 +286,7 @@ class Service : public ServiceInterface {
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
       const ExecutionOptions* execution_options,
-      const UserComputation& user_computation);
+      const UserComputation* user_computation = nullptr);
 
   // Builds an Executable for the given parameters.
   //

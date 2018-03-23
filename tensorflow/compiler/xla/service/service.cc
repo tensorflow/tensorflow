@@ -272,7 +272,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
     const ExecutionOptions* execution_options,
-    const UserComputation& user_computation) {
+    const UserComputation* user_computation) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = config->mutable_entry_computation_layout();
 
@@ -286,8 +286,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     // ProgramShape.
     if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
+      if (user_computation == nullptr) {
+        return InvalidArgument(
+            "Argument does not match shape of computation parameter %d: want "
+            "%s, got %s",
+            i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
+            ShapeUtil::HumanString(*argument_shapes[i]).c_str());
+      }
       return InvalidParameterArgument(
-          *user_computation.ParameterMetadata(i).value(),
+          *user_computation->ParameterMetadata(i).value(),
           "Argument does not match shape of computation parameter %d: want %s, "
           "got %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
@@ -330,7 +337,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     const ExecutionOptions& execution_options,
-    const UserComputation& user_computation) {
+    const UserComputation* user_computation) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
@@ -778,7 +785,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                           request.execution_options(), *user_computation));
+                           request.execution_options(), user_computation));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -894,7 +901,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                         arg->execution_options(), *user_computation));
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -935,9 +942,49 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* /*arg*/,
-                                         ExecuteResponse* /*result*/) {
-  return Unimplemented("execute-graph is not yet implemented");
+tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
+                                         ExecuteResponse* result) {
+  VLOG(1) << "running execute-graph request";
+
+  if (!arg->has_computation()) {
+    return InvalidArgument("computations may not be empty");
+  }
+
+  // TODO(b/74197823): Handle partitioning.
+
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
+
+  TF_ASSIGN_OR_RETURN(const auto& config,
+                      CreateModuleConfig(arg->computation().program_shape(),
+                                         replicated_arguments.front(),
+                                         arg->execution_options()));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), *config));
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+
+  TF_ASSIGN_OR_RETURN(module, execute_backend_->compiler()->RunHloPasses(
+                                  std::move(module),
+                                  execute_backend_->default_stream_executor(),
+                                  /*device_allocator=*/nullptr));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      execute_backend_->compiler()->RunBackend(
+          std::move(module), execute_backend_->default_stream_executor(),
+          /*device_allocator=*/nullptr));
+
+  TF_ASSIGN_OR_RETURN(
+      *result->mutable_output(),
+      ExecuteAndRegisterResult(
+          executable.get(), replicated_arguments, execute_backend_.get(),
+          "result of " + arg->computation().name(), result->mutable_profile()));
+
+  VLOG(1) << "successfully completed 'execute-graph' request";
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
@@ -967,7 +1014,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, replicated_arguments.front(),
-                         arg->execution_options(), *user_computation));
+                         arg->execution_options(), user_computation));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -1268,7 +1315,7 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(program_shape, {}, execution_options,
-                                         *user_computation));
+                                         user_computation));
 
   // Exclude dead parameter instructions for the purpose of computing constants.
   TF_ASSIGN_OR_RETURN(
