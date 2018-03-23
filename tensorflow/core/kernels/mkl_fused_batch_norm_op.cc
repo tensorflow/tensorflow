@@ -933,7 +933,7 @@ class MklFusedBatchNormOp : public OpKernel {
   bool is_training_;
   T* mean_values_;
   T* variance_values_;
-  size_t depth_;  // batch normalization is done for per channel.
+  int depth_;  // batch normalization is done for per channel.
 
   void ExtractParams(OpKernelContext* context) {
     const Tensor& input = MklGetInput(context, 0);

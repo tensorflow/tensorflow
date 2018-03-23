@@ -502,7 +502,6 @@ def set_cc_opt_flags(environ_cp):
   write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
   write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
-
 def set_tf_cuda_clang(environ_cp):
   """set TF_CUDA_CLANG action_env.
 
