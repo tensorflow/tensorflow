@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -102,6 +103,76 @@ void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
   tensor_ = tensor;
   device_ = device;
   op_device_ = op_device;
+}
+
+Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+                                  TensorHandle** output) {
+  const tensorflow::Tensor* src = nullptr;
+  tensorflow::Device* srcd = nullptr;
+  // TODO(agarwal): src_opd is unused. Perhaps allow TensorAndDevice to accept
+  // nullptr.
+  tensorflow::Device* src_opd = nullptr;
+  TF_RETURN_IF_ERROR(TensorAndDevice(&src, &srcd, &src_opd));
+  if (srcd == nullptr) srcd = ctx->HostCPU();
+  bool is_same_device = (srcd == dstd) || (srcd->name() == dstd->name());
+  const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
+  const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
+  // both_on_cpu can be true and yet is_same_device is false, if one of src/dst
+  // has device type XLA_CPU, and the other CPU.
+  const bool both_on_cpu = src_cpu && dst_cpu;
+  if (is_same_device || both_on_cpu) {
+    dstd = dst_cpu ? nullptr : dstd;
+    *output = new tensorflow::TensorHandle(*src, dstd, dstd);
+    return tensorflow::Status::OK();
+  }
+  if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
+                   !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
+    return tensorflow::errors::InvalidArgument(
+        "Can't copy Tensor with type ",
+        tensorflow::DataTypeString(src->dtype()), " to device ", dstd->name(),
+        ".");
+  }
+  tensorflow::AllocatorAttributes attr;
+  if (src->dtype() == tensorflow::DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+  tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
+  if (src->shape().num_elements() == 0) {
+    dstd = dst_cpu ? nullptr : dstd;
+    *output = new tensorflow::TensorHandle(dst, dstd, dstd);
+    return tensorflow::Status::OK();
+  }
+  tensorflow::DeviceContext* src_device_context = nullptr;
+  if (!src_cpu) {
+    src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
+  }
+  tensorflow::DeviceContext* dst_device_context = nullptr;
+  if (!dst_cpu) {
+    dst_device_context = dstd->tensorflow_gpu_device_info()->default_context;
+  }
+  // TODO(ashankar): The Sync() call below may be more aggressive than
+  // necessary. It is based on knowledge of implementation details - that
+  // GPU devices are implemented using 3 streams - one for host->device copies,
+  // one for device->host copies and one for sending operations to the GPU.
+  // With that setup, Sync()ing across all 3 streams should be sufficient
+  // but more than necessary (since it waits for operations that might have
+  // nothing to do with this tensor to complete).
+  TF_RETURN_IF_ERROR(srcd->Sync());
+  tensorflow::Notification n;
+  tensorflow::Status status;
+  tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
+                                 srcd, dstd, tensorflow::AllocatorAttributes(),
+                                 tensorflow::AllocatorAttributes(), src, &dst,
+                                 [&status, &n](const tensorflow::Status& s) {
+                                   status = s;
+                                   n.Notify();
+                                 });
+  n.WaitForNotification();
+  if (status.ok()) {
+    dstd = dst_cpu ? nullptr : dstd;
+    *output = new tensorflow::TensorHandle(dst, dstd, dstd);
+  }
+  return status;
 }
 
 }  // namespace tensorflow

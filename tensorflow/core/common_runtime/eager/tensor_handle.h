@@ -85,6 +85,9 @@ class TensorHandle : public core::RefCounted {
                           tensorflow::Device* device,
                           tensorflow::Device* op_device);
 
+  Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+                      TensorHandle** output);
+
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
   const DataType dtype;
