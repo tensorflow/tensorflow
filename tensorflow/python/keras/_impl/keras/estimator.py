@@ -296,9 +296,6 @@ def _clone_and_build_model(mode,
         sample_weight_mode=keras_model.sample_weight_mode,
         weighted_metrics=keras_model.weighted_metrics,
         target_tensors=target_tensors)
-
-  if isinstance(model, models.Sequential):
-    model = model.model
   return model
 
 
@@ -396,8 +393,6 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
       training_util.create_global_step()
       model = _clone_and_build_model(model_fn_lib.ModeKeys.TRAIN, keras_model,
                                      custom_objects)
-      if isinstance(model, models.Sequential):
-        model = model.model
       # save to checkpoint
       with session.Session(config=estimator._session_config) as sess:
         model.set_weights(keras_weights)

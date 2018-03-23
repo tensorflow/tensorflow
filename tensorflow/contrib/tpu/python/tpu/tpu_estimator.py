@@ -2109,8 +2109,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_eval_step, [_ZERO_LOSS],
-        name='loop')
+        single_tpu_eval_step, [_ZERO_LOSS])
 
   (loss,) = tpu.shard(
       multi_tpu_eval_steps_on_single_shard,
@@ -2133,8 +2132,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_train_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_train_step, [_INITIAL_LOSS],
-        name=b'loop')
+        single_tpu_train_step, [_INITIAL_LOSS])
 
   (loss,) = tpu.shard(
       multi_tpu_train_steps_on_single_shard,

@@ -87,6 +87,26 @@ TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
 TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
                                                       size_t* len);
 
+// Creates a stack of data set + iterator nodes reading the TFRecord files from
+// `file_path`, and outputs the following info on success:
+//
+// 1. Returns the IteratorGetNext node, which caller can run or feed into an
+// node.
+//
+// 2. Sets `dataset_func` to the created function that encapsulates the data set
+// nodes. Caller owns that function, and must call TF_DeleteFunction() on it.
+//
+//
+// The nodes are currently hard-coded to return a single Int32 of value 1.
+// TODO(hongm): Extend the API to allow customization of the nodes created.
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeIteratorGetNextWithDatasets(
+    TF_Graph* graph, const char* file_path, TF_Function** dataset_func,
+    TF_Status* status);
+
+// Returns the shape proto of shape {}.
+TF_CAPI_EXPORT extern void TF_GetAttrScalarTensorShapeProto(TF_Buffer* value,
+                                                            TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
