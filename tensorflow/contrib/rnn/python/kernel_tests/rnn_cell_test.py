@@ -1692,7 +1692,7 @@ class IndRNNCellTest(test.TestCase):
       sess.run([variables.global_variables_initializer()])
       res = sess.run([output],
                      {x.name: np.array([[1., 0., 0., 0.]]),
-                       m.name: np.array([[2., 2., 2., 2.]])})
+                      m.name: np.array([[2., 2., 2., 2.]])})
       # (Pre)activations (1*1 + 2*rec_weight) should be -5, -3, 3, 7
       self.assertAllEqual(res[0], [[-5., -3., 3., 7.]])
 
@@ -1717,7 +1717,7 @@ class IndRNNCellTest(test.TestCase):
       sess.run([variables.global_variables_initializer()])
       res = sess.run([output],
                      {x.name: np.array([[1., 0., 0., 0.]]),
-                       m.name: np.array([[2., 2., 2., 2.]])})
+                      m.name: np.array([[2., 2., 2., 2.]])})
       # Recurrent weights should be clipped to -3, -2, 1, 3
       # (Pre)activations (1*1 + 2*rec_weight) should be -5, -3, 3, 7
       self.assertAllEqual(res[0], [[-5., -3., 3., 7.]])
