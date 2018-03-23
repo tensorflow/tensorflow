@@ -2984,6 +2984,12 @@ def maxout(inputs, num_units, axis=-1, scope=None):
         shape[i] = array_ops.shape(inputs)[i]
     outputs = math_ops.reduce_max(
         array_ops.reshape(inputs, shape), -1, keepdims=False)
+
+    # Specify the final number of features in the maxout axis
+    shape = inputs.get_shape().as_list()
+    shape[self.axis] = self.num_units
+    outputs.set_shape(shape)
+
     return outputs
 
 
