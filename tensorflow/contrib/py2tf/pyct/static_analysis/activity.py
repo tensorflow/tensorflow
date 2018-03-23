@@ -71,13 +71,33 @@ class Scope(object):
                                         tuple(self.modified))
 
   def copy_from(self, other):
+    """Recursively copies the contents of this scope from another scope."""
+    if (self.parent is None) != (other.parent is None):
+      raise ValueError('cannot copy scopes of different structures')
+    if other.parent is not None:
+      self.parent.copy_from(other.parent)
+    self.isolated = other.isolated
     self.modified = copy.copy(other.modified)
     self.created = copy.copy(other.created)
     self.used = copy.copy(other.used)
     self.params = copy.copy(other.params)
     self.returned = copy.copy(other.returned)
 
+  @classmethod
+  def copy_of(cls, other):
+    if other.parent is not None:
+      parent = cls.copy_of(other.parent)
+    else:
+      parent = None
+    new_copy = cls(parent)
+    new_copy.copy_from(other)
+    return new_copy
+
   def merge_from(self, other):
+    if (self.parent is None) != (other.parent is None):
+      raise ValueError('cannot merge scopes of different structures')
+    if other.parent is not None:
+      self.parent.merge_from(other.parent)
     self.modified |= other.modified
     self.created |= other.created
     self.used |= other.used
@@ -151,6 +171,10 @@ class ActivityAnalizer(transformer.Base):
     self._in_return_statement = False
 
   def _track_symbol(self, node):
+    # This can happen when we have an attribute (or subscript) on a function
+    # call.  Example: a().b
+    if not anno.hasanno(node, anno.Basic.QN):
+      return
     qn = anno.getanno(node, anno.Basic.QN)
 
     if isinstance(node.ctx, gast.Store):
@@ -225,14 +249,12 @@ class ActivityAnalizer(transformer.Base):
     # modifies the parent state causing the other child blocks to be
     # processed incorrectly. So we need to checkpoint the parent scope so that
     # each child sees the same context.
-    before_parent = Scope(None)
-    before_parent.copy_from(self.scope)
+    before_parent = Scope.copy_of(self.scope)
     after_children = []
     for child, scope_name in children:
       self.scope.copy_from(before_parent)
       parent = self._process_block_node(parent, child, scope_name)
-      after_child = Scope(None)
-      after_child.copy_from(self.scope)
+      after_child = Scope.copy_of(self.scope)
       after_children.append(after_child)
     for after_child in after_children:
       self.scope.merge_from(after_child)
@@ -247,6 +269,15 @@ class ActivityAnalizer(transformer.Base):
     self.scope = fndef_scope
     self.generic_visit(node)
     anno.setanno(node, NodeAnno.BODY_SCOPE, fndef_scope)
+    self.scope = current_scope
+    return node
+
+  def visit_With(self, node):
+    current_scope = self.scope
+    with_scope = Scope(current_scope, isolated=False)
+    self.scope = with_scope
+    self.generic_visit(node)
+    anno.setanno(node, NodeAnno.BODY_SCOPE, with_scope)
     self.scope = current_scope
     return node
 

@@ -78,7 +78,10 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":dense_image_warp_py",
         ":image_ops",
+        ":interpolate_spline_py",
+        ":sparse_image_warp_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:common_shapes",
@@ -189,6 +192,117 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "dense_image_warp_py",
+    srcs = [
+        "python/ops/dense_image_warp.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "interpolate_spline_py",
+    srcs = [
+        "python/ops/interpolate_spline.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "sparse_image_warp_py",
+    srcs = [
+        "python/ops/sparse_image_warp.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dense_image_warp_py",
+        ":interpolate_spline_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "sparse_image_warp_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/sparse_image_warp_test.py"],
+    additional_deps = [
+        ":sparse_image_warp_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+    data = [":sparse_image_warp_test_data"],
+    tags = ["no_pip"],
+)
+
+filegroup(
+    name = "sparse_image_warp_test_data",
+    srcs = glob(["python/kernel_tests/test_data/*.png"]),
+)
+
+cuda_py_test(
+    name = "dense_image_warp_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/dense_image_warp_test.py"],
+    additional_deps = [
+        ":dense_image_warp_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "interpolate_spline_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/interpolate_spline_test.py"],
+    additional_deps = [
+        ":interpolate_spline_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:variables",
         "//tensorflow/core:protos_all_py",
     ],

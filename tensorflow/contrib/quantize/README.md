@@ -3,8 +3,7 @@
 tf.contrib.quantize provides tools for transforming graphs to include ops to
 model quantization of weights, biases and activations during both training and
 inference. This is done using the
-[fake quantization op]
-(https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization).
+[fake quantization op](https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization).
 
 Recent literature has shown that fixed point networks provide comparable
 performance to floating point networks [1]. This is achieved by modeling the

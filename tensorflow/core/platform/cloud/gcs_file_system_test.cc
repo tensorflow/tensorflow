@@ -393,7 +393,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Timeouts: 5 1 10\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::FailedPrecondition("308"), nullptr,
+                           "", errors::Unavailable("308"), nullptr,
                            {{"Range", "0-10"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
@@ -406,13 +406,26 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Timeouts: 5 1 10\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::FailedPrecondition("308"), nullptr,
+                           "", errors::Unavailable("308"), nullptr,
                            {{"Range", "bytes=0-12"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes 13-16/17\n"
                            "Timeouts: 5 1 30\n"
                            "Put body: ent2\n",
+                           "", errors::Unavailable("308"), 308),
+       new FakeHttpRequest("Uri: https://custom/upload/location\n"
+                           "Auth Token: fake_token\n"
+                           "Timeouts: 5 1 10\n"
+                           "Header Content-Range: bytes */17\n"
+                           "Put: yes\n",
+                           "", errors::Unavailable("308"), nullptr,
+                           {{"Range", "bytes=0-14"}}, 308),
+       new FakeHttpRequest("Uri: https://custom/upload/location\n"
+                           "Auth Token: fake_token\n"
+                           "Header Content-Range: bytes 15-16/17\n"
+                           "Timeouts: 5 1 30\n"
+                           "Put body: t2\n",
                            "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
@@ -521,14 +534,14 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
                            "Put body: content1,content2\n",
                            "", errors::Unavailable("503"), 503)});
   for (int i = 0; i < 10; i++) {
-    requests.emplace_back(new FakeHttpRequest(
-        "Uri: https://custom/upload/location\n"
-        "Auth Token: fake_token\n"
-        "Timeouts: 5 1 10\n"
-        "Header Content-Range: bytes */17\n"
-        "Put: yes\n",
-        "", errors::FailedPrecondition("important HTTP error 308"), nullptr,
-        {{"Range", "0-10"}}, 308));
+    requests.emplace_back(
+        new FakeHttpRequest("Uri: https://custom/upload/location\n"
+                            "Auth Token: fake_token\n"
+                            "Timeouts: 5 1 10\n"
+                            "Header Content-Range: bytes */17\n"
+                            "Put: yes\n",
+                            "", errors::Unavailable("important HTTP error 308"),
+                            nullptr, {{"Range", "0-10"}}, 308));
     requests.emplace_back(new FakeHttpRequest(
         "Uri: https://custom/upload/location\n"
         "Auth Token: fake_token\n"
@@ -2606,6 +2619,75 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
   request->SetUri("https://www.googleapis.com/fake");
   request->AddHeader("Hello", "world");
   TF_EXPECT_OK(request->Send());
+}
+
+TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
+  class TestGcsStats : public GcsStatsInterface {
+   public:
+    void Init(GcsFileSystem* fs, GcsThrottle* throttle,
+              const FileBlockCache* block_cache) override {
+      CHECK(fs_ == nullptr);
+      CHECK(throttle_ == nullptr);
+      CHECK(block_cache_ == nullptr);
+
+      fs_ = fs;
+      throttle_ = throttle;
+      block_cache_ = block_cache;
+    }
+
+    void RecordBlockLoadRequest(const string& file, size_t offset) override {
+      block_load_request_file_ = file;
+    }
+
+    void RecordBlockRetrieved(const string& file, size_t offset,
+                              size_t bytes_transferred) override {
+      block_retrieved_file_ = file;
+      block_retrieved_bytes_transferred_ = bytes_transferred;
+    }
+
+    HttpRequest::RequestStats* HttpStats() override { return nullptr; }
+
+    GcsFileSystem* fs_ = nullptr;
+    GcsThrottle* throttle_ = nullptr;
+    const FileBlockCache* block_cache_ = nullptr;
+
+    string block_load_request_file_;
+    string block_retrieved_file_;
+    size_t block_retrieved_bytes_transferred_ = 0;
+  };
+
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+      "Auth Token: fake_token\n"
+      "Range: 0-5\n"
+      "Timeouts: 5 1 20\n",
+      "012345")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig,
+                   nullptr /* gcs additional header */);
+
+  TestGcsStats stats;
+  fs.SetStats(&stats);
+  EXPECT_EQ(stats.fs_, &fs);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char scratch[6];
+  StringPiece result;
+
+  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  EXPECT_EQ("012345", result);
+
+  EXPECT_EQ("gs://bucket/random_access.txt", stats.block_load_request_file_);
+  EXPECT_EQ("gs://bucket/random_access.txt", stats.block_retrieved_file_);
+  EXPECT_EQ(6, stats.block_retrieved_bytes_transferred_);
 }
 
 }  // namespace

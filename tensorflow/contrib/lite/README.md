@@ -91,7 +91,7 @@ Currently, we only support building the Android demo app within a Python 2
 environment (due to a Bazel bug).
 
 ### More about the demo
-The demo is resizing each camera image frame to (224 width * 224 height) to match the quantized Mobilenet model being used (229 * 229 for Inception-v3). The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch. 224 * 224 (299 * 299) is the width and height of the image. 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. Both models have 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The model file must be downloaded and bundled within the assets directory of the app.
+The demo is resizing each camera image frame to (224 width * 224 height) to match the quantized Mobilenet model being used (299 * 299 for Inception-v3). The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch. 224 * 224 (299 * 299) is the width and height of the image. 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. Both models have 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The model file must be downloaded and bundled within the assets directory of the app.
 
 # iOS Demo App
 
@@ -99,7 +99,7 @@ Similar to the Android demo app, there's an iOS camera app that uses exactly the
 
 This demo app requires a camera so it doesn't work with simulators. It need to be executed on a real iOS device. Follow the instructions to build and run the demo app:
 
-1.   Run `third_party/tensorflow/contrib/lite/examples/ios/download_models.sh` to download the model files used by the demo app.
+1.   Run `tensorflow/contrib/lite/examples/ios/download_models.sh` to download the model files used by the demo app.
 1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
 1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the workspace file.
 1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
@@ -165,7 +165,7 @@ bazel-bin/tensorflow/python/tools/freeze_graph\
     --input_graph=/tmp/mobilenet_v1_224.pb \
     --input_checkpoint=/tmp/checkpoints/mobilenet-10202.ckpt \
     --input_binary=true --output_graph=/tmp/frozen_mobilenet_v1_224.pb \
-    --output_node_names=MobileNet/Predictions/Reshape_1
+    --output_node_names=MobilenetV1/Predictions/Reshape_1
 ```
 
 The user has to first build the freeze_graph script using bazel and then run the script.  The input_binary flag has to be enabled to ensure that the protobuf is read and written in binary format.  The user has to input the .pb and the .ckpt files to freeze the graph The output_node_names may not be obvious outside of the code that built the model. The easiest way to find them is to visualize the graph, either with

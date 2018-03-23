@@ -44,8 +44,6 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.replacements = replacements
     self.in_replacements = False
 
-  # TODO(mdan): Make a more detailed pass and clean up if needed.
-
   def visit_Expr(self, node):
     if (isinstance(node.value, gast.Name) and
         node.value.id in self.replacements):
@@ -53,16 +51,56 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.generic_visit(node)
     return node
 
+  def visit_keyword(self, node):
+    if node.arg in self.replacements:
+      repl = self.replacements[node.arg]
+      if isinstance(repl, gast.keyword):
+        return repl
+      elif (isinstance(repl, (list, tuple)) and repl and
+            all(isinstance(r, gast.keyword) for r in repl)):
+        return repl
+      # TODO(mdan): We may allow replacing with a string as well.
+      # For example, if one wanted to replace foo with bar in foo=baz, then
+      # we could allow changing just node arg, so that we end up with bar=baz.
+      raise ValueError(
+          'a keyword argument may only be replaced by another keyword or a '
+          'non-empty list of keywords. Found: %s' % repl)
+    return self.generic_visit(node)
+
   def visit_FunctionDef(self, node):
     node = self.generic_visit(node)
     if node.name in self.replacements:
       repl = self.replacements[node.name]
       if not isinstance(repl, (gast.Name, ast.Name)):
         raise ValueError(
-            'A function name can only be replaced by a Name node. Found: %s' %
+            'a function name can only be replaced by a Name node. Found: %s' %
             repl)
       node.name = repl.id
     return node
+
+  def _check_has_context(self, node):
+    if not node.ctx:
+      raise ValueError('node %s is missing ctx value' % node)
+
+  def _check_inner_children_have_context(self, node):
+    if isinstance(node, gast.Attribute):
+      self._check_inner_children_have_context(node.value)
+      self._check_has_context(node)
+    elif isinstance(node, gast.Tuple):
+      for e in node.elts:
+        self._check_inner_children_have_context(e)
+      self._check_has_context(node)
+    elif isinstance(node, gast.Dict):
+      for e in node.keys:
+        self._check_inner_children_have_context(e)
+      for e in node.values:
+        self._check_inner_children_have_context(e)
+    elif isinstance(node, gast.Name):
+      self._check_has_context(node)
+    elif isinstance(node, (gast.Str, gast.Num)):
+      pass
+    else:
+      raise ValueError('unexpected node type "%s"' % node)
 
   def _set_inner_child_context(self, node, ctx):
     if isinstance(node, gast.Attribute):
@@ -74,10 +112,36 @@ class ReplaceTransformer(gast.NodeTransformer):
       node.ctx = ctx
     elif isinstance(node, gast.Name):
       node.ctx = ctx
+    elif isinstance(node, gast.Call):
+      self._set_inner_child_context(node.func, ctx)
+      # We may be able to override these to Load(), but for now it's simpler
+      # to just assert that they're set.
+      for a in node.args:
+        self._check_inner_children_have_context(a)
+      for k in node.keywords:
+        self._check_inner_children_have_context(k.value)
+    elif isinstance(node, gast.Dict):
+      # We may be able to override these to Load(), but for now it's simpler
+      # to just assert that they're set.
+      for e in node.keys:
+        self._check_inner_children_have_context(e)
+      for e in node.values:
+        self._check_inner_children_have_context(e)
     elif isinstance(node, (gast.Str, gast.Num)):
       pass
     else:
       raise ValueError('unexpected node type "%s"' % node)
+
+  def visit_Attribute(self, node):
+    node = self.generic_visit(node)
+    if node.attr not in self.replacements:
+      return node
+    repl = self.replacements[node.attr]
+    if not isinstance(repl, gast.Name):
+      raise ValueError(
+          'An attribute can only be replaced by a Name node. Found: %s' % repl)
+    node.attr = repl.id
+    return node
 
   def visit_Name(self, node):
     if node.id not in self.replacements:
@@ -154,3 +218,17 @@ def replace(template, **replacements):
   if isinstance(results, list):
     return [qual_names.resolve(r) for r in results]
   return qual_names.resolve(results)
+
+
+def replace_as_expression(template, **replacements):
+  """Variant of replace that generates expressions, instead of code blocks."""
+  replacement = replace(template, **replacements)
+  if len(replacement) != 1:
+    raise ValueError(
+        'single expression expected; for more general templates use replace')
+  node = replacement[0]
+  if not isinstance(node, gast.Expr):
+    raise ValueError(
+        'the template is expected to generate an expression node; instead '
+        'found %s' % node)
+  return node.value

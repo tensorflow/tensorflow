@@ -24,6 +24,16 @@ from tensorflow.contrib.py2tf.utils.type_check import is_tensor
 from tensorflow.python.ops import control_flow_ops
 
 
+def dynamic_is(left, right):
+  # TODO(alexbw) if we're sure we should leave 'is' in place,
+  # then change the semantics in converters/logical_expressions.py
+  return left is right
+
+
+def dynamic_is_not(left, right):
+  return left is not right
+
+
 def run_cond(condition, true_fn, false_fn):
   """Type-dependent functional conditional.
 

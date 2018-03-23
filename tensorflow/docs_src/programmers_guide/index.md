@@ -30,8 +30,12 @@ works. The units are as follows:
     can still be helpful.
   * @{$programmers_guide/saved_model}, which
     explains how to save and restore variables and models.
+
+## Accelerators
+
   * @{$using_gpu} explains how TensorFlow assigns operations to
     devices and how you can change the arrangement manually.
+  * @{$using_tpu} explains how to modify `Estimator` programs to run on a TPU.
 
 
 ## ML Concepts

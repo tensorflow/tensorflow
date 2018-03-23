@@ -22,15 +22,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import types
 
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import ast_util
+from tensorflow.contrib.py2tf.pyct import inspect_utils
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
+
+
+class FunctionInfo(namedtuple('FunctionInfo', ('dtype',))):
+  pass
+
+
+# TODO(mdan): Move this to config.py.
+KNOWN_NUMPY_FUNCTIONS = {
+    ('numpy', 'random', 'binomial'): FunctionInfo(dtype='tf.int64'),
+}
 
 
 class FunctionNamer(object):
@@ -72,9 +85,8 @@ class CallTreeTransformer(transformer.Base):
     self.uncompiled_modules = uncompiled_modules
     self.nocompile_decorators = nocompile_decorators
 
-  # pylint:disable=invalid-name
-
   def _resolve_name(self, node):
+    """Used to resolve decorator info."""
     if isinstance(node, gast.Call):
       return self._resolve_name(node.func)
     if isinstance(node, gast.Name):
@@ -99,7 +111,13 @@ class CallTreeTransformer(transformer.Base):
                          (owner_type, node.attr))
     return None
 
+  def _function_is_compilable(self, target_entity):
+    """Determines whether an entity can be compiled at all."""
+    # TODO(mdan): This is just a placeholder. Implement.
+    return not isinstance(target_entity, types.BuiltinFunctionType)
+
   def _should_compile(self, node, fqn):
+    """Determines whether an entity should be compiled in the context."""
     for i in range(1, len(fqn)):
       if fqn[:i] in self.uncompiled_modules:
         return False
@@ -141,33 +159,6 @@ class CallTreeTransformer(transformer.Base):
 
     return True
 
-  def _determine_function_owner(self, m):
-    # TODO(mdan): The parent type should be known at analysis. Use that instead.
-    if hasattr(m, 'im_class'):  # Python 2
-      return m.im_class
-    if hasattr(m, '__qualname__'):  # Python 3
-      # Object attributes: should be bound to "self".
-      if hasattr(m, '__self__'):
-        return type(m.__self__)
-
-      # Class attributes: should have the owner name in their namespace.
-      qn = m.__qualname__.split('.')
-      if len(qn) < 2:
-        return None
-      owner_name, func_name = qn[-2:]
-      if func_name != m.__name__:
-        raise ValueError('Inconsistent names detected '
-                         '(__qualname__[1] = "%s", __name__ = "%s") for %s.' %
-                         (func_name, m.__name__, m))
-      if owner_name == '<locals>':
-        return None
-      if owner_name not in self.context.namespace:
-        raise ValueError(
-            'Could not resolve name "%s" while analyzing %s. Namespace:\n%s' %
-            (owner_name, m, self.context.namespace))
-      return self.context.namespace[owner_name]
-    return None
-
   def _rename_compilable_function(self, node):
     assert anno.hasanno(node.func, 'live_val')
     assert anno.hasanno(node.func, 'fqn')
@@ -182,7 +173,11 @@ class CallTreeTransformer(transformer.Base):
           target_fqn, live_entity=target_entity)
       do_rename = True
     else:
-      owner_type = self._determine_function_owner(target_entity)
+      if anno.hasanno(node.func, 'parent_type'):
+        owner_type = anno.getanno(node.func, 'parent_type')
+      else:
+        # Fallback - not reliable.
+        owner_type = inspect_utils.getmethodclass(target_entity)
       new_name, do_rename = self.context.namer.compiled_function_name(
           target_fqn, live_entity=target_entity, owner_type=owner_type)
 
@@ -196,15 +191,57 @@ class CallTreeTransformer(transformer.Base):
     return node
 
   def _wrap_to_py_func_no_return(self, node):
-    # TODO(mdan): Properly handle varargs, kwargs, etc.
+    # TODO(mdan): Properly handle varargs, etc.
     template = """
-      py2tf_utils.wrap_py_func(func, None, (original_args,), True)
+      py2tf_utils.wrap_py_func(func, None, (args,), kwargs, True)
     """
-    return templates.replace(template, func=node.func, original_args=node.args)
+    return templates.replace(
+        template,
+        func=node.func,
+        args=node.args,
+        kwargs=ast_util.keywords_to_dict(node.keywords))
 
-  def _function_is_compilable(self, target_entity):
-    # TODO(mdan): This is just a placeholder. Implement.
-    return not isinstance(target_entity, types.BuiltinFunctionType)
+  def _wrap_to_py_func_single_return(self, node, dtype):
+    # TODO(mdan): Properly handle varargs, etc.
+    template = """
+      py2tf_utils.wrap_py_func(func, dtype, (args,), kwargs, False)
+    """
+    return templates.replace_as_expression(
+        template,
+        func=node.func,
+        dtype=parser.parse_expression(dtype),
+        args=node.args,
+        kwargs=ast_util.keywords_to_dict(node.keywords))
+
+  def _insert_dynamic_conversion(self, node):
+    """Inlines a dynamic conversion for a dynamic function."""
+    # TODO(mdan): Pass information on the statically compiled functions.
+    # Having access to the statically compiled functions can help avoid
+    # unnecessary compilation.
+    # For example, this would lead to function `a` being compiled twice:
+    #
+    #   def a():
+    #     v = b
+    #     b()
+    #   def b():
+    #     a()
+    #
+    # This is really a problem with recursive calls, which currently can
+    # only be gated by a static condition, and should be rare.
+    # TODO(mdan): It probably makes sense to use dynamic conversion every time.
+    # Before we could convert all the time though, we'd need a reasonable
+    # caching mechanism.
+    template = """
+      py2tf_api.converted_call(func, True, False, {}, args)
+    """
+    call_expr = templates.replace(
+        template, func=node.func, args=node.args)
+    new_call = call_expr[0].value
+    # TODO(mdan): Improve the template mechanism to better support this.
+    new_call.keywords = node.keywords
+    return new_call
+
+  # pylint:disable=invalid-name
 
   def visit_Expr(self, node):
     if isinstance(node.value, gast.Call):
@@ -239,15 +276,24 @@ class CallTreeTransformer(transformer.Base):
     self.generic_visit(node)
     if anno.hasanno(node.func, 'live_val'):
       target_entity = anno.getanno(node.func, 'live_val')
+      if anno.hasanno(node.func, 'fqn'):
+        target_fqn = anno.getanno(node.func, 'fqn')
+      else:
+        target_fqn = None
       if self._function_is_compilable(target_entity):
         node = self._rename_compilable_function(node)
+      elif target_fqn and target_fqn in KNOWN_NUMPY_FUNCTIONS:
+        # TODO(mdan): Should we replace these with equivalent TF ops instead?
+        node = self._wrap_to_py_func_single_return(
+            node, KNOWN_NUMPY_FUNCTIONS[target_fqn].dtype)
       else:
-        raise NotImplementedError('py_func with return values')
+        raise NotImplementedError(
+            'py_func with return values (unknown function)')
     else:
       if self.context.recursive:
-        raise NotImplementedError('Could not resolve target function.')
+        node = self._insert_dynamic_conversion(node)
       else:
-        # TODO(mdan): Double check. Is this reachable code?
+        # Unresolved functions are allowed in non-recursive mode.
         pass
     return node
 

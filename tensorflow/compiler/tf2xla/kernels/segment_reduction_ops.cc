@@ -83,7 +83,9 @@ class UnsortedSegmentSum : public XlaOpKernel {
   DataType dtype_;
 };
 
-REGISTER_XLA_OP(Name("UnsortedSegmentSum"), UnsortedSegmentSum);
+REGISTER_XLA_OP(
+    Name("UnsortedSegmentSum").CompileTimeConstInput("num_segments"),
+    UnsortedSegmentSum);
 
 }  // namespace
 }  // namespace tensorflow

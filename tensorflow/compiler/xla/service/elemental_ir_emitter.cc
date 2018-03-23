@@ -1522,15 +1522,12 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kBroadcast:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
+        const HloInstruction* operand = hlo->operand(0);
         // The `dimensions` member of the broadcast instruction maps from
         // input dimensions to output dimensions.
-        const HloInstruction* operand = hlo->operand(0);
-        int64 rank = ShapeUtil::Rank(operand->shape());
-        IrArray::Index source_index(rank);
-        for (int64 i = 0; i < rank; ++i) {
-          source_index[i] = target_index[hlo->dimensions(i)];
-        }
-        return operand_to_generator.at(operand)(source_index);
+        return operand_to_generator.at(
+            operand)(target_index.SourceIndexOfBroadcast(
+            hlo->shape(), operand->shape(), hlo->dimensions(), ir_builder_));
       };
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
@@ -1721,6 +1718,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
 
         SetToFirstInsertPoint(if_data.after_block, ir_builder_);
         return ir_builder_->CreateLoad(ret_value_addr);
+      };
+    case HloOpcode::kBitcast:
+      CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
+               ShapeUtil::ElementsIn(hlo->operand(0)->shape()));
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        const HloInstruction* operand = hlo->operand(0);
+        return operand_to_generator.at(operand)(index.SourceIndexOfBitcast(
+            hlo->shape(), operand->shape(), ir_builder_));
       };
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),

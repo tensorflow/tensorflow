@@ -29,12 +29,30 @@ from tensorflow.python.util import tf_inspect
 
 
 def parse_entity(entity):
-  """Return the AST of given entity."""
+  """Returns the AST of given entity."""
   source = tf_inspect.getsource(entity)
   source = textwrap.dedent(source)
   return parse_str(source), source
 
 
 def parse_str(src):
-  """Return the AST of given piece of code."""
+  """Returns the AST of given piece of code."""
   return gast.parse(src)
+
+
+def parse_expression(src):
+  """Returns the AST of given identifier.
+
+  Args:
+    src: A piece of code that represents a single Python expression
+  Returns:
+    A gast.AST object.
+  Raises:
+    ValueError: if src does not consist of a single Expression.
+  """
+  node = parse_str(src)
+  assert isinstance(node, gast.Module)
+  if len(node.body) != 1 and not isinstance(node.body[0], gast.Expr):
+    raise ValueError(
+        'Expected a single expression, found instead %s' % node.body)
+  return node.body[0].value

@@ -24,23 +24,28 @@ from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.platform import test
 
 
-def f(x):
-  return x + 1
-
-
 class ParserTest(test.TestCase):
 
   def test_parse_entity(self):
+
+    def f(x):
+      return x + 1
+
     mod, _ = parser.parse_entity(f)
     self.assertEqual('f', mod.body[0].name)
 
   def test_parse_str(self):
     mod = parser.parse_str(
         textwrap.dedent("""
-        def f(x):
-          return x + 1
+            def f(x):
+              return x + 1
     """))
     self.assertEqual('f', mod.body[0].name)
+
+  def test_parse_expression(self):
+    node = parser.parse_expression('a.b')
+    self.assertEqual('a', node.value.id)
+    self.assertEqual('b', node.attr)
 
 
 if __name__ == '__main__':

@@ -45,7 +45,7 @@ class ScopeTest(test.TestCase):
     scope.mark_read(QN('bar'))
     self.assertFalse(scope.has(QN('bar')))
 
-  def test_copy(self):
+  def test_copy_from(self):
     scope = activity.Scope(None)
     scope.mark_write(QN('foo'))
 
@@ -64,6 +64,17 @@ class ScopeTest(test.TestCase):
 
     self.assertTrue(QN('bar') in scope.created)
     self.assertFalse(QN('bar') in other.created)
+
+  def test_copy_of(self):
+    scope = activity.Scope(None)
+    scope.mark_read(QN('foo'))
+
+    self.assertTrue(QN('foo') in activity.Scope.copy_of(scope).used)
+
+    child_scope = activity.Scope(scope)
+    child_scope.mark_read(QN('bar'))
+
+    self.assertTrue(QN('bar') in activity.Scope.copy_of(child_scope).used)
 
   def test_nesting(self):
     scope = activity.Scope(None)
@@ -133,7 +144,7 @@ class ActivityAnalizerTest(test.TestCase):
         anno.getanno(node.body[0].body[2].value,
                      NodeAnno.IS_LOCAL))  # b in return b
 
-  def assertScopeIs(self, scope, used, modified, created):
+  def assertScopeIsRmc(self, scope, used, modified, created):
     self.assertItemsEqual(used, tuple(str(s) for s in scope.used))
     self.assertItemsEqual(modified, tuple(str(s) for s in scope.modified))
     self.assertItemsEqual(created, tuple(str(s) for s in scope.created))
@@ -159,7 +170,7 @@ class ActivityAnalizerTest(test.TestCase):
       print_args_scope = anno.getanno(print_node, NodeAnno.ARGS_SCOPE)
     # We basically need to detect which variables are captured by the call
     # arguments.
-    self.assertScopeIs(print_args_scope, ('a', 'b'), (), ())
+    self.assertScopeIsRmc(print_args_scope, ('a', 'b'), (), ())
 
   def test_call(self):
 
@@ -173,7 +184,7 @@ class ActivityAnalizerTest(test.TestCase):
     call_node = node.body[0].body[2].value
     # We basically need to detect which variables are captured by the call
     # arguments.
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE), ('a', 'b'), (), ())
 
   def test_while(self):
@@ -187,10 +198,10 @@ class ActivityAnalizerTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn)
     while_node = node.body[0].body[1]
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'),
         ('c',))
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE).parent, ('a', 'b', 'c'),
         ('b', 'c'), ('a', 'b', 'c'))
 
@@ -205,9 +216,9 @@ class ActivityAnalizerTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn)
     for_node = node.body[0].body[1]
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'), ('c',))
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE).parent, ('a', 'b', 'c'),
         ('b', 'c', '_'), ('a', 'b', 'c', '_'))
 
@@ -226,21 +237,40 @@ class ActivityAnalizerTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('x', 'y', 'z'),
         ('y', 'z'))
     # TODO(mdan): Double check: is it ok to not mark a local symbol as not read?
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE).parent, ('x', 'z', 'u'),
         ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE), ('x', 'y'),
         ('x', 'y', 'u'), ('y', 'u'))
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent, ('x', 'z', 'u'),
         ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
 
-  def test_functiondef(self):
+  def test_nested_if_else_creation(self):
+
+    def test_fn(b):
+      if b > 0:
+        if b < 5:
+          a = b
+        else:
+          a = b * b
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    inner_if_node = node.body[0].body[0].body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(inner_if_node, NodeAnno.BODY_SCOPE), ('b',), ('a',),
+        ('a',))
+    self.assertScopeIsRmc(
+        anno.getanno(inner_if_node, NodeAnno.ORELSE_SCOPE), ('b',), ('a',),
+        ('a',))
+
+  def test_function_def(self):
 
     def test_fn(a):
 
@@ -257,11 +287,11 @@ class ActivityAnalizerTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fndef_node = node.body[0].body[0]
 
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(fndef_node,
                      NodeAnno.BODY_SCOPE).parent, ('b', 'i', 'f', 'c', 'a'),
         ('f', 'b', 'c', 'i'), ('f', 'a', 'b', 'c', 'i'))
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(fndef_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',), (
             'x',
             'y',
@@ -284,13 +314,13 @@ class ActivityAnalizerTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[0].value
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE), ('a', 'a.b', 'a.c'), (),
         ())
     if_node = node.body[0].body[1]
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('a',), ('a.b',), ())
-    self.assertScopeIs(
+    self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE),
         ('a', 'a.c', 'd', 'd.e', 'f'), ('a.c', 'd', 'd.e', 'f'), ('d', 'f'))
 

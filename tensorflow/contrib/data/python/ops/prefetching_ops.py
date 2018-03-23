@@ -25,12 +25,14 @@ from tensorflow.contrib.data.python.ops import gen_dataset_ops
 # method and provides a get_next() that calls the prefetch op.
 def function_buffering_resource(string_arg,
                                 target_device,
-                                shared_name,
                                 f,
                                 buffer_size,
-                                thread_pool_size=1,
+                                thread_pool_size=0,
                                 container="",
+                                shared_name=None,
                                 name=None):
+  if shared_name is None:
+    shared_name = ""
   return gen_dataset_ops.function_buffering_resource(
       string_arg=string_arg,
       target_device=target_device,

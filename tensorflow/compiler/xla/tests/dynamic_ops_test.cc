@@ -206,19 +206,19 @@ XLA_TEST_F(DynamicSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R1) { TestR1<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R1Wrap) { TestR1Wrap<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, double>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2Wrap) { TestR2Wrap<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, double>(); }
+XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32, float>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R3Wrap) { TestR3Wrap<int32, float>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, double>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R1Pred) {
   // Slice at dimension start.
@@ -506,7 +506,7 @@ XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R1BF16)) {
 }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, double>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, float>(); }
 
 // TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R2BF16)) {

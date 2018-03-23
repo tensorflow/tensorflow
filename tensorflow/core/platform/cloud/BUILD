@@ -38,11 +38,22 @@ cc_library(
 
 cc_library(
     name = "file_block_cache",
-    srcs = ["file_block_cache.cc"],
     hdrs = ["file_block_cache.h"],
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "ram_file_block_cache",
+    srcs = ["ram_file_block_cache.cc"],
+    hdrs = ["ram_file_block_cache.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_block_cache",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -69,6 +80,18 @@ cc_library(
 )
 
 cc_library(
+    name = "gce_env_utils",
+    srcs = ["gce_env_utils.cc"],
+    hdrs = ["gce_env_utils.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -83,6 +106,7 @@ cc_library(
         ":gcs_throttle",
         ":google_auth_provider",
         ":http_request",
+        ":ram_file_block_cache",
         ":retrying_file_system",
         ":retrying_utils",
         ":time_util",
@@ -146,6 +170,7 @@ cc_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
+        ":gce_env_utils",
         ":oauth_client",
         ":retrying_utils",
         "//tensorflow/core:lib",
@@ -231,6 +256,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "fake_env",
+    srcs = [
+        "fake_env.cc",
+    ],
+    hdrs = [
+        "fake_env.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_cc_test(
     name = "expiring_lru_cache_test",
     size = "small",
@@ -245,12 +285,12 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "file_block_cache_test",
+    name = "ram_file_block_cache_test",
     size = "small",
-    srcs = ["file_block_cache_test.cc"],
+    srcs = ["ram_file_block_cache_test.cc"],
     deps = [
-        ":file_block_cache",
         ":now_seconds_env",
+        ":ram_file_block_cache",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
@@ -336,6 +376,7 @@ tf_cc_test(
         "testdata/service_account_credentials.json",
     ],
     deps = [
+        ":fake_env",
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
@@ -378,6 +419,18 @@ tf_cc_test(
         ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gce_env_utils_test",
+    size = "small",
+    srcs = ["gcp_env_utils_test.cc"],
+    deps = [
+        ":fake_env",
+        ":gce_env_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

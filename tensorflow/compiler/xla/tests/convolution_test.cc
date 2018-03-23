@@ -53,25 +53,11 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #endif
 };
 
-#if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
-using TestTypes = ::testing::Types<float, Eigen::half>;
-#else
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 using TestTypes = ::testing::Types<float>;
+#else
+using TestTypes = ::testing::Types<float, Eigen::half>;
 #endif
-
-template <typename T>
-Shape MakeShapeWrapper(tensorflow::gtl::ArraySlice<int64> dimensions);
-
-template <>
-Shape MakeShapeWrapper<float>(tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return ShapeUtil::MakeShape(F32, dimensions);
-}
-
-template <>
-Shape MakeShapeWrapper<Eigen::half>(
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
-  return ShapeUtil::MakeShape(F16, dimensions);
-}
 
 template <typename T>
 class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
@@ -121,8 +107,8 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 1, 2});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 1, 2});
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
     auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
@@ -152,8 +138,8 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 2, 2});
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
     auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
@@ -186,8 +172,8 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
  public:
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 2, 2});
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
     auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
@@ -222,8 +208,8 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
  public:
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
-    Shape input_shape = MakeShapeWrapper<T>({1, 1, 4, 4});
-    Shape filter_shape = MakeShapeWrapper<T>({1, 1, 3, 3});
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 3, 3});
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
     auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
@@ -280,8 +266,8 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
     {
-      Shape input_shape = MakeShapeWrapper<T>({1, 2, 5});
-      Shape filter_shape = MakeShapeWrapper<T>({1, 2, 2});
+      Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
+      Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
@@ -381,8 +367,8 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
   void RunTest() {
     ComputationBuilder builder(client_, TestName());
     {
-      Shape input_shape = MakeShapeWrapper<T>({1, 2, 5});
-      Shape filter_shape = MakeShapeWrapper<T>({1, 2, 2});
+      Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
+      Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
@@ -486,8 +472,8 @@ class Convolve2D_1x3x3x5_3x3x5x5_Valid : public ConvolutionTest {
     ComputationBuilder builder(client_, TestName());
     std::vector<int64> input_dims = {1, 3, 3, 5};
     std::vector<int64> filter_dims = {3, 3, 5, 3};
-    Shape input_shape = MakeShapeWrapper<T>(input_dims);
-    Shape filter_shape = MakeShapeWrapper<T>(filter_dims);
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
@@ -611,8 +597,8 @@ class Convolve1D1WindowTestBase
                                      input_feature};
     std::vector<int64> filter_dims = {window_size, input_feature,
                                       output_feature};
-    Shape input_shape = MakeShapeWrapper<T>(input_dims);
-    Shape filter_shape = MakeShapeWrapper<T>(filter_dims);
+    Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
+    Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
       auto input = builder.Parameter(0, input_shape, "input");
       auto filter = builder.Parameter(1, filter_shape, "filter");
@@ -737,7 +723,7 @@ INSTANTIATE_TEST_CASE_P(
 );
 #endif
 
-TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
+XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   ComputationBuilder builder(client_, TestName());
   Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
   Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});

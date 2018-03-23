@@ -36,6 +36,7 @@ py_test(
     srcs = ["fisher_factors_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/kfac/python/ops:fisher_blocks",
         "//tensorflow/contrib/kfac/python/ops:fisher_factors",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

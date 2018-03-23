@@ -55,11 +55,13 @@ class LiveValueResolver(transformer.Base):
       if not symbol_is_local and not symbol_is_param:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
-          # TODO(mdan): Could live values have FQNs? i.e. 'a'.join()
         elif node.id in self.context.namespace:
           obj = self.context.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
-          anno.setanno(node, 'fqn', (obj.__name__,))
+          if hasattr(obj, '__name__'):
+            # If the symbol value is for example a primitive, then it will not
+            # have a name.
+            anno.setanno(node, 'fqn', (obj.__name__,))
         else:
           pass
           # TODO(mdan): Should we raise an error here?

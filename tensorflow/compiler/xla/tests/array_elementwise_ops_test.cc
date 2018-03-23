@@ -1648,33 +1648,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4DZeroElements) {
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
 }
 
-// GPU backend emits nvvm intrinsic for fmin and fmax, whose semantics is NOT
-// such
-// * fmin(NaN, x) = x
-// * fmax(NaN, x) = x
-// so we only test NAN on CPU.
-//
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends.
 XLA_TEST_F(ArrayElementwiseOpTest, MinF32s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
-#endif
   auto minimum = builder.Min(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                             {1.0f, -5.0f, 1.0f},
-#else
-                             {1.0f, -5.0f, 1.0f, 10.0f, 6.0f},
-#endif
-                             {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {1.0f, -5.0f, 1.0f, NAN, NAN}, {},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
@@ -1685,50 +1667,26 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
-  auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
-#endif
   auto minimum = builder.Min(lhs, rhs);
 
-  ComputeAndCompareR1<double>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                              {1.0, -5.0, 1.0},
-#else
-                              {1.0, -5.0, 1.0, 10.0, 6.0},
-#endif
-                              {}, error_spec_);
+  ComputeAndCompareR1<double>(&builder, {1.0, -5.0, 1.0, NAN, NAN}, {},
+                              error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
-#endif
   auto maximum = builder.Max(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                             {2.0f, 1.0f, 2.25f},
-#else
-                             {2.0f, 1.0f, 2.25f, 10.0f, 6.0f},
-#endif
-                             {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {2.0f, 1.0f, 2.25f, NAN, NAN}, {},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
@@ -1739,27 +1697,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
-// TODO(b/28180546): Make this compile in a way that is consistent
-// among backends. See comment on MinF32s test above.
 XLA_TEST_F(ArrayElementwiseOpTest, MaxF64s) {
   ComputationBuilder builder(client_, TestName());
-#if !defined(XLA_TEST_BACKEND_CPU)
-  auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
-  auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
-#else
   SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
-#endif
   auto maximum = builder.Max(lhs, rhs);
 
-  ComputeAndCompareR1<double>(&builder,
-#if !defined(XLA_TEST_BACKEND_CPU)
-                              {2.0, 1.0, 2.25},
-#else
-                              {2.0, 1.0, 2.25, 10.0, 6.0},
-#endif
-                              {}, error_spec_);
+  ComputeAndCompareR1<double>(&builder, {2.0, 1.0, 2.25, NAN, NAN}, {},
+                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxS32s) {

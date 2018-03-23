@@ -21,6 +21,8 @@ from __future__ import print_function
 import ast
 
 from tensorflow.contrib.py2tf.pyct import ast_util
+from tensorflow.contrib.py2tf.pyct import compiler
+from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.python.platform import test
 
@@ -33,15 +35,15 @@ class AstUtilTest(test.TestCase):
         ast.Name('b', ast.Load()),
         ast.Attribute(ast.Name('b', None), 'c', ast.Store()),
         ast.Attribute(
-            ast.Attribute(ast.Name('b', None), 'c', ast.Load()), 'd',
-            None)
+            ast.Attribute(ast.Name('b', None), 'c', ast.Load()), 'd', None)
     ], None)
     node = qual_names.resolve(node)
     node = ast_util.rename_symbols(
-        node,
-        {
-            qual_names.QN('a'): qual_names.QN('renamed_a'),
-            qual_names.QN('b.c'): qual_names.QN('renamed_b_c'),
+        node, {
+            qual_names.QN('a'):
+                qual_names.QN('renamed_a'),
+            qual_names.QN(qual_names.QN('b'), attr='c'):
+                qual_names.QN('renamed_b_c'),
         })
 
     self.assertEqual(node.elts[0].id, 'renamed_a')
@@ -73,6 +75,17 @@ class AstUtilTest(test.TestCase):
     self.assertFalse(node is new_node)
     self.assertFalse(ret is new_node.body[0])
     self.assertFalse(hasattr(new_node.body[0], '__foo'))
+
+  def test_keywords_to_dict(self):
+    keywords = parser.parse_expression('f(a=b, c=1, d=\'e\')').keywords
+    d = ast_util.keywords_to_dict(keywords)
+    # Make sure we generate a usable dict node by attaching it to a variable and
+    # compiling everything.
+    output = parser.parse_str('b = 3')
+    output.body += (ast.Assign([ast.Name(id='d', ctx=ast.Store())], d),)
+    result, _ = compiler.ast_to_object(output)
+    self.assertDictEqual(result.d, {'a': 3, 'c': 1, 'd': 'e'})
+    print(d)
 
 
 if __name__ == '__main__':

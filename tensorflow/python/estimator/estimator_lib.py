@@ -30,6 +30,8 @@ from tensorflow.python.estimator.canned.linear import LinearRegressor
 from tensorflow.python.estimator.canned.parsing_utils import classifier_parse_example_spec
 from tensorflow.python.estimator.canned.parsing_utils import regressor_parse_example_spec
 from tensorflow.python.estimator.estimator import Estimator
+from tensorflow.python.estimator.estimator import VocabInfo
+from tensorflow.python.estimator.estimator import WarmStartSettings
 from tensorflow.python.estimator.export import export_lib as export
 from tensorflow.python.estimator.exporter import Exporter
 from tensorflow.python.estimator.exporter import FinalExporter
@@ -41,8 +43,6 @@ from tensorflow.python.estimator.run_config import RunConfig
 from tensorflow.python.estimator.training import EvalSpec
 from tensorflow.python.estimator.training import train_and_evaluate
 from tensorflow.python.estimator.training import TrainSpec
-from tensorflow.python.estimator.warm_starting_util import VocabInfo
-from tensorflow.python.estimator.warm_starting_util import WarmStartSettings
 
 
 from tensorflow.python.util.all_util import remove_undocumented

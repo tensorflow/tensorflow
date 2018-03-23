@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_descent
 
 
 class FunctionTest(test.TestCase):
@@ -606,7 +607,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(v + 1)
         v.assign(2 * v)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(), 4.0)
 
   def testCondMustRun(self):
@@ -626,7 +627,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
@@ -647,7 +648,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         one = constant_op.constant(1.0)
-        c.mark_as_return(one)
+        one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
       self.assertAllEqual(v.read_value().eval(), 5.0)
       one.eval(feed_dict={p: True})
@@ -681,7 +682,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         control_flow_ops.cond(p, true_fn, false_fn)
         with ops.name_scope('final'):
           val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: True}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
@@ -703,7 +704,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
@@ -724,7 +725,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
         control_flow_ops.cond(p, true_fn, false_fn)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
@@ -745,7 +746,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         control_flow_ops.cond(p, true_fn, false_fn)
         v.assign(v * 2)
         val = v.read_value()
-        c.mark_as_return(val)
+        val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
 
@@ -761,6 +762,37 @@ class AutomaticControlDependenciesTest(test.TestCase):
         return v.read_value()
 
       self.assertAllEqual(f().eval(), 4.0)
+
+  def testOptimizerInDefun(self):
+    def loss(v):
+      return v**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(v)
+      optimizer.apply_gradients(grad)
+      return v.read_value()
+
+    value = train()
+    self.assertEqual(value.numpy(), -1.0)
+
+  def testOptimizerInDefunWithCapturedVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    def loss():
+      return v**2
+
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      grad = backprop.implicit_grad(loss)()
+      optimizer.apply_gradients(grad)
+
+    train()
+    self.assertEqual(v.numpy(), -1.0)
 
 
 if __name__ == '__main__':

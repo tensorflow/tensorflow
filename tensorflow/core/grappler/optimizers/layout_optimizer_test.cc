@@ -1102,6 +1102,34 @@ TEST_F(LayoutOptimizerTest, IdentityNWithInputsVectorAnd4D) {
   EXPECT_EQ(add_node->input(1),
             "identity_n-0-1-TransposeNCHWToNHWC-LayoutOptimizer");
 }
+
+TEST_F(LayoutOptimizerTest, LoopNoLiveLock) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto c = ops::Const(s.WithOpName("const"), 3.0f, {8, 3, 3, 2});
+  auto merge = ops::Merge(s.WithOpName("merge"), {c, c});
+  auto i0 = ops::Identity(s.WithOpName("i0"), merge.output);
+  ops::Variable v_ctrl(s.WithOpName("v_ctrl"), {}, DT_BOOL);
+  auto sw = ops::Switch(s.WithOpName("switch"), i0, v_ctrl);
+  auto next = ops::NextIteration(s.WithOpName("next"), sw.output_true);
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto mul = ops::Mul(s.WithOpName("mul"), conv, sw.output_false);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  NodeMap node_map_original(&item.graph);
+  auto merge_node = node_map_original.GetNode("merge");
+  // Modify the graph to create a loop
+  merge_node->set_input(1, "next");
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto conv_node = node_map.GetNode("Conv2D");
+  EXPECT_EQ(conv_node->input(0),
+            "Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer");
+  auto mul_node = node_map.GetNode("mul");
+  EXPECT_EQ(mul_node->input(0),
+            "Conv2D-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+}
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
