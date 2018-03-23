@@ -26,6 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -107,6 +108,53 @@ class StagingAreaOpsTest(test.TestCase):
     self._prefetch_fn_helper("cpu_gpu", "/job:localhost/replica:0/task:0/cpu:0",
                              "/job:localhost/replica:0/task:0/gpu:0")
 
+  def testPrefetchToDevice(self):
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device("/cpu:1"))
+
+    # NOTE(mrry): This device block creates the "host" dataset and iterator on
+    # /cpu:0, and ensures that the prefetching is across devices. In typical use
+    # this would not be necessary, because the GPU device would not support any
+    # of the dataset-related ops.
+    with ops.device("/cpu:0"):
+      iterator = device_dataset.make_one_shot_iterator()
+
+    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
+    self.assertEqual(host_dataset.output_types, iterator.output_types)
+    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
+    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
+    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
+    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+
+    next_element = iterator.get_next()
+    self.assertEqual(dtypes.int64, next_element.dtype)
+    self.assertEqual([], next_element.shape)
+
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+    with self.test_session(config=worker_config) as sess:
+      for i in range(10):
+        self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testPrefetchToDeviceGpu(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device("/gpu:0"))
+
+    iterator = device_dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
 
 if __name__ == "__main__":
   test.main()
