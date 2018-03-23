@@ -50,7 +50,7 @@ class MklCPUAllocator : public VisitableAllocator {
   // Constructor and other standard functions
 
   /// Environment variable that user can set to upper bound on memory allocation
-  static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
+  static inline constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// Default upper limit on allocator size - 64GB
   static constexpr size_t kDefaultMaxLimit = 64LL << 30;
