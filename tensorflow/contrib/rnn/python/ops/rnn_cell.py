@@ -3052,7 +3052,7 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
       return new_h, new_state
 
 
-class IndRNNCell(rnn_cell_impl._LayerRNNCell):
+class IndRNNCell(rnn_cell_impl.LayerRNNCell):
   """Independently RNN Cell. Adapted from `rnn_cell_impl.BasicRNNCell`.
 
   Each unit has a single recurrent weight connected to its last hidden state.
