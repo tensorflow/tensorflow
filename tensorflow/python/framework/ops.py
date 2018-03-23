@@ -42,6 +42,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -295,6 +296,7 @@ class Tensor(_TensorLike):
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
     # If set, will be a HandleData object from cpp_shape_inference.proto.
+    # TODO(b/74620627): remove when _USE_C_SHAPES is removed
     self._handle_data = None
     self._id = uid()
 
@@ -2472,6 +2474,13 @@ def _set_shapes_for_outputs_c_api(op):
       shape_vector = [None if d == -1 else d for d in shape_vector]
       output.set_shape(tensor_shape.TensorShape(shape_vector))
 
+    serialized = c_api.ResourceHandleShapeAndType(op._graph._c_graph,
+                                                  output._as_tf_output())
+    if serialized:
+      output._handle_data = (cpp_shape_inference_pb2.CppShapeInferenceResult
+                             .HandleData.FromString(serialized.encode()))
+    else:
+      output._handle_data = None
 
 # TODO(skyewm): remove this when _USE_C_API flag is removed.
 def _set_shapes_for_outputs(op):
