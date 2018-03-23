@@ -30,6 +30,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -200,8 +201,7 @@ class SvdOpGpu : public AsyncOpKernel {
     input_shape.AddDim(n);
     input_shape.AddDim(m);
     Tensor input_copy;
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
     OP_REQUIRES_OK_ASYNC(
         context,
         solver->allocate_scoped_tensor(M.dtype(), input_shape, &input_copy),
@@ -266,8 +266,7 @@ class SvdOpGpu : public AsyncOpKernel {
     // Reuse the input buffer or make a copy for the SVD depending on whether
     // this op owns the input buffer exclusively. This is needed because the
     // SVD modifies the input
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
     Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,

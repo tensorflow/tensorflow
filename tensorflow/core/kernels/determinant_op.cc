@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/determinant_op.h"
 #endif
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -164,8 +165,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
@@ -309,8 +309,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.

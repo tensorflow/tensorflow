@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -124,8 +125,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                              {0}, 0, input.shape(), &output),
                          done);
 
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
 
     // Make a copy of the (possible adjointed) input that we will use for the
     // factorization step.
