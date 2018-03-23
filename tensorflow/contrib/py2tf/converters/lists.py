@@ -67,6 +67,9 @@ class ListTransformer(transformer.Base):
     node = self.generic_visit(node)
     if isinstance(node.value, gast.Call):
       call_node = node.value
+
+      if not anno.hasanno(call_node.func, anno.Basic.QN):
+        return node
       qn = anno.getanno(call_node.func, anno.Basic.QN)
 
       if qn.qn[-1] == 'append' and (len(call_node.args) == 1):
