@@ -244,7 +244,7 @@ def sdca_model_fn(features, labels, mode, params):
   parent_scope = "linear"
 
   with variable_scope.variable_scope(
-      features.values(), parent_scope) as scope:
+          values=features.values(), name_or_scope=parent_scope) as scope:
     features = features.copy()
     features.update(layers.transform_features(features, feature_columns))
     logits, columns_to_variables, bias = (
