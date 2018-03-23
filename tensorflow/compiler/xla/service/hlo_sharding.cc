@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
@@ -57,8 +58,9 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ",
-                  "devices=", VectorString(tile_assignment_), "}");
+    return StrCat("{", ShapeUtil::HumanString(tile_shape_), " ", "devices=[",
+                  Join(tile_assignment_.dimensions(), ","), "]",
+                  Join(tile_assignment_, ","), "}");
   }
 }
 
