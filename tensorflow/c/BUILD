@@ -217,6 +217,25 @@ tf_cuda_cc_test(
 )
 
 tf_cc_test(
+    name = "c_api_experimental_test",
+    size = "small",
+    srcs = ["c_api_experimental_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api_experimental",
+        ":c_test_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "c_api_function_test",
     size = "small",
     srcs = ["c_api_function_test.cc"],
