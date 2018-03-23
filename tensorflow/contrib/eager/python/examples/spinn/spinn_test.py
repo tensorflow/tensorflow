@@ -417,7 +417,6 @@ class SpinnTest(test_util.TensorFlowTestCase):
                     if event.summary.value
                     and event.summary.value[0].tag == "train/loss"]
     self.assertEqual(config.epochs, len(train_losses))
-    self.assertLess(train_losses[-1], train_losses[0])
 
     # 5. Verify that checkpoints exist and contains all the expected variables.
     self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
