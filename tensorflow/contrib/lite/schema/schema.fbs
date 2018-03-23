@@ -129,6 +129,7 @@ enum BuiltinOperator : byte {
   // WARNING: Experimental interface, subject to change
   DELEGATE = 51,
   BIDIRECTIONAL_SEQUENCE_LSTM = 52,
+  MAXIMUM = 53,
 }
 
 // Options for the builtin operators.
@@ -169,6 +170,7 @@ union BuiltinOptions {
   TopKV2Options,
   SplitOptions,
   LogSoftmaxOptions,
+  MaximumOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -372,6 +374,9 @@ table StridedSliceOptions {
 }
 
 table LogSoftmaxOptions {
+}
+
+table MaximumOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
