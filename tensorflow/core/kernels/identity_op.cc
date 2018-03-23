@@ -129,6 +129,12 @@ REGISTER_GPU_KERNEL(Variant);
                               .HostMemory("output")           \
                               .TypeConstraint<type>("T"),     \
                           IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("StopGradient")                \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")      \
                               .Device(DEVICE_GPU)             \
                               .HostMemory("input")            \
