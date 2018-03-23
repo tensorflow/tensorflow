@@ -963,6 +963,30 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   return tensorflow::Status::OK();
 }
 
+StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
+    const HloModuleProto& module_proto,
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
+  VLOG(1) << Printf(
+      "BuildExecutable on service %p with serialized module proto: %s", this,
+      module_proto.name().c_str());
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(module_proto, *module_config));
+
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+
+  TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor,
+                                                device_allocator));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      backend->compiler()->RunBackend(
+                          std::move(module), executor, device_allocator));
+
+  return std::move(executable);
+}
+
 tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
                                          ExecuteResponse* result) {
   VLOG(1) << "running execute-graph request";
@@ -979,24 +1003,17 @@ tensorflow::Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
       ResolveAndValidateArguments(arg->arguments(), replicas));
 
-  TF_ASSIGN_OR_RETURN(const auto& config,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                       CreateModuleConfig(arg->computation().program_shape(),
                                          replicated_arguments.front(),
                                          arg->execution_options()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(arg->computation(), *config));
-  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
-
-  TF_ASSIGN_OR_RETURN(module, execute_backend_->compiler()->RunHloPasses(
-                                  std::move(module),
-                                  execute_backend_->default_stream_executor(),
-                                  /*device_allocator=*/nullptr));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      execute_backend_->compiler()->RunBackend(
-          std::move(module), execute_backend_->default_stream_executor(),
-          /*device_allocator=*/nullptr));
+      BuildExecutable(arg->computation(), std::move(module_config),
+                      execute_backend_.get(),
+                      execute_backend_->default_stream_executor(),
+                      /*device_allocator=*/nullptr));
 
   TF_ASSIGN_OR_RETURN(
       *result->mutable_output(),

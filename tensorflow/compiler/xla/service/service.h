@@ -115,6 +115,8 @@ class Service : public ServiceInterface {
   // Executes a computation with the provided global data passed as
   // immutable arguments. The request contains the whole computation graph.
   // Returns global data output and execution timing.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
                                   ExecuteResponse* result) override;
 
@@ -295,6 +297,15 @@ class Service : public ServiceInterface {
   // given here need not match the allocator used when running the executable.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator = nullptr);
+
+  // Builds an Executable for the given HLO module proto.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Executable>> BuildExecutable(
+      const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       perftools::gputools::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator = nullptr);
