@@ -346,6 +346,12 @@ class Service : public ServiceInterface {
       const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
           adder);
 
+  // Executes a single computation which has more than one target device.
+  // The N devices are expected to all return an empty tuple, but one, which
+  // will be the result of this computation.
+  tensorflow::Status ExecuteOneToN(const ExecuteRequest* arg,
+                                   ExecuteResponse* result);
+
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.

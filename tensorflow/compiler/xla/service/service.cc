@@ -861,6 +861,33 @@ tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteOneToN(const ExecuteRequest* arg,
+                                          ExecuteResponse* result) {
+  ExecuteParallelRequest parallel_arg;
+  *parallel_arg.add_requests() = *arg;
+  ExecuteParallelResponse parallel_result;
+  TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
+  // The "result device" selection is a bit hacky, but better than assuming it
+  // is device 0. We have b/76035356 for restructuring the client API to clean
+  // up the current asymmetries and support more functionalities.
+  for (int64 i = 0; i < parallel_result.responses_size(); ++i) {
+    TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
+                        allocation_tracker_.ResolveForReplica(
+                            parallel_result.responses(i).output(), 0));
+    const Shape& shape = buffer->on_host_shape();
+    if (!ShapeUtil::IsEmptyTuple(shape)) {
+      *result = parallel_result.responses(i);
+      VLOG(3) << "Fetching result from device " << i << ": "
+              << ShapeUtil::HumanString(shape);
+      return Status::OK();
+    }
+  }
+  TF_RET_CHECK(parallel_result.responses_size() > 0);
+  *result = parallel_result.responses(0);
+  VLOG(1) << "Defaulting to device 0 result";
+  return Status::OK();
+}
+
 tensorflow::Status Service::Execute(const ExecuteRequest* arg,
                                     ExecuteResponse* result) {
   VLOG(1) << "running execute request: " << arg->ShortDebugString();
@@ -877,13 +904,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
 
   // If we received multiple device handles, we must partition the module.
   if (arg->execution_options().device_handles_size() > 1) {
-    ExecuteParallelRequest parallel_arg;
-    *parallel_arg.add_requests() = *arg;
-    ExecuteParallelResponse parallel_result;
-    TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
-    TF_RET_CHECK(parallel_result.responses_size() > 0);
-    *result = parallel_result.responses(0);
-    return Status::OK();
+    return ExecuteOneToN(arg, result);
   }
 
   TF_ASSIGN_OR_RETURN(
