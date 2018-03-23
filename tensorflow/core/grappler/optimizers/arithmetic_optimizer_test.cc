@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -157,6 +158,8 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   // Run the optimizer twice to make sure the rewrite is idempotent.
@@ -172,6 +175,10 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, new_div.input_size());
   EXPECT_EQ("c1", new_div.input(0));
   EXPECT_EQ("c1", new_div.input(1));
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorNear<double>(tensors_expected[0], tensors[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
