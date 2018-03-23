@@ -17,6 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import numpy as np
+
 from tensorflow.contrib.py2tf.utils import multiple_dispatch
 from tensorflow.python.client.session import Session
 from tensorflow.python.framework.constant_op import constant
@@ -24,6 +27,33 @@ from tensorflow.python.platform import test
 
 
 class MultipleDispatchTest(test.TestCase):
+
+  def test_dynamic_is_python(self):
+    a = np.eye(3)
+    also_a = a
+    not_actually_a = np.eye(3)
+    should_be_true1 = multiple_dispatch.dynamic_is(a, also_a)
+    should_be_false1 = multiple_dispatch.dynamic_is_not(a, also_a)
+    should_be_true2 = multiple_dispatch.dynamic_is_not(a, not_actually_a)
+    should_be_false2 = multiple_dispatch.dynamic_is(a, not_actually_a)
+    self.assertTrue(should_be_true1)
+    self.assertTrue(should_be_true2)
+    self.assertFalse(should_be_false1)
+    self.assertFalse(should_be_false2)
+
+  def test_dynamic_is_tf(self):
+    with Session().as_default():
+      a = constant([2.0])
+      also_a = a
+      not_actually_a = constant([2.0])
+      should_be_true1 = multiple_dispatch.dynamic_is(a, also_a)
+      should_be_false1 = multiple_dispatch.dynamic_is_not(a, also_a)
+      should_be_true2 = multiple_dispatch.dynamic_is_not(a, not_actually_a)
+      should_be_false2 = multiple_dispatch.dynamic_is(a, not_actually_a)
+      self.assertTrue(should_be_true1)
+      self.assertTrue(should_be_true2)
+      self.assertFalse(should_be_false1)
+      self.assertFalse(should_be_false2)
 
   def test_run_cond_python(self):
     true_fn = lambda: 2.0

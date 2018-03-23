@@ -96,8 +96,12 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _train_ops(self, features):
     """Add training ops to the graph."""
     mode = estimator_lib.ModeKeys.TRAIN
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope(
+        "model",
+        # Use ResourceVariables to avoid race conditions.
+        use_resource=True):
       model_outputs = self.create_loss(features, mode)
+
     train_op = optimizers.optimize_loss(
         model_outputs.loss,
         global_step=training_util.get_global_step(),
@@ -112,7 +116,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
     mode = estimator_lib.ModeKeys.EVAL
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope("model", use_resource=True):
       model_outputs = self.create_loss(features, mode)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
@@ -132,7 +136,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope("model", use_resource=True):
       prediction = self.model.predict(features=features)
     prediction[feature_keys.PredictionResults.TIMES] = features[
         feature_keys.PredictionFeatures.TIMES]
@@ -141,11 +145,17 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope("model", use_resource=True):
       prediction_outputs = self.model.predict(features=features)
     with variable_scope.variable_scope("model", reuse=True):
       filtering_outputs = self.create_loss(
           features, estimator_lib.ModeKeys.EVAL)
+    with variable_scope.variable_scope("model", reuse=True):
+      no_state_features = {
+          k: v for k, v in features.items()
+          if not k.startswith(feature_keys.State.STATE_PREFIX)}
+      cold_filtering_outputs = self.create_loss(
+          no_state_features, estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
@@ -153,7 +163,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(prediction_outputs),
             feature_keys.SavedModelLabels.FILTER:
                 export_lib.PredictOutput(
-                    state_to_dictionary(filtering_outputs.end_state))
+                    state_to_dictionary(filtering_outputs.end_state)),
+            feature_keys.SavedModelLabels.COLD_START_FILTER:
+                export_lib.PredictOutput(
+                    state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
         # the Estimator's error checking.

@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
@@ -340,6 +341,14 @@ message ExecuteRequest {
 
   // Options that affect how XLA compiles and runs code to service this request.
   ExecutionOptions execution_options = 5;
+}
+
+message ExecuteGraphRequest {
+  HloModuleProto computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 3;
 }
 
 message ExecuteParallelRequest {

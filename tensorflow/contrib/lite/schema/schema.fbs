@@ -75,7 +75,7 @@ enum BuiltinOperator : byte {
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
   // DEPTH_TO_SPACE = 5,
-  // DEQUANTIZE = 6,
+  DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   // FLOOR = 8,
   FULLY_CONNECTED = 9,
@@ -129,7 +129,9 @@ enum BuiltinOperator : byte {
   // WARNING: Experimental interface, subject to change
   DELEGATE = 51,
   BIDIRECTIONAL_SEQUENCE_LSTM = 52,
-  MAXIMUM = 53,
+  CAST = 53,
+  PRELU = 54,
+  MAXIMUM = 55,
 }
 
 // Options for the builtin operators.
@@ -170,6 +172,8 @@ union BuiltinOptions {
   TopKV2Options,
   SplitOptions,
   LogSoftmaxOptions,
+  CastOptions,
+  DequantizeOptions,
   MaximumOptions,
 }
 
@@ -374,6 +378,12 @@ table StridedSliceOptions {
 }
 
 table LogSoftmaxOptions {
+}
+
+table CastOptions {
+}
+
+table DequantizeOptions {
 }
 
 table MaximumOptions {

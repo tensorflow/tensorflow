@@ -83,7 +83,6 @@ static GItem TF_NewItem(
   tensorflow::grappler::ItemConfig cfg;
   cfg.ignore_user_placement = ignore_user_placement;
   cfg.ignore_colocation = ignore_colocation;
-  cfg.inline_functions = true;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("item", meta_graph, cfg);
   if (!item) {

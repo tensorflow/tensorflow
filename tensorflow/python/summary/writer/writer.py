@@ -343,7 +343,7 @@ class FileWriter(SummaryToEventTransformer):
     summaries under eager execution, use `tf.contrib.summary` instead.
     @end_compatbility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "tf.summary.FileWriter is not compatible with eager execution. "
           "Use tf.contrib.summary instead.")

@@ -41,65 +41,65 @@ config_setting(
 
 alias(
     name = "cuda_headers",
-    actual = "%{remote_cuda_repo}cuda:cuda_headers",
+    actual = "%{remote_cuda_repo}/cuda:cuda_headers",
 )
 
 alias(
     name = "cudart_static",
-    actual = "%{remote_cuda_repo}cuda:cudart_static",
+    actual = "%{remote_cuda_repo}/cuda:cudart_static",
 )
 
 alias(
     name = "cuda_driver",
-    actual = "%{remote_cuda_repo}cuda:cuda_driver",
+    actual = "%{remote_cuda_repo}/cuda:cuda_driver",
 )
 
 alias(
     name = "cudart",
-    actual = "%{remote_cuda_repo}cuda:cudart",
+    actual = "%{remote_cuda_repo}/cuda:cudart",
 )
 
 alias(
     name = "cublas",
-    actual = "%{remote_cuda_repo}cuda:cublas",
+    actual = "%{remote_cuda_repo}/cuda:cublas",
 )
 
 alias(
     name = "cusolver",
-    actual = "%{remote_cuda_repo}cuda:cusolver",
+    actual = "%{remote_cuda_repo}/cuda:cusolver",
 )
 
 alias(
     name = "cudnn",
-    actual = "%{remote_cuda_repo}cuda:cudnn",
+    actual = "%{remote_cuda_repo}/cuda:cudnn",
 )
 
 alias(
     name = "cufft",
-    actual = "%{remote_cuda_repo}cuda:cufft",
+    actual = "%{remote_cuda_repo}/cuda:cufft",
 )
 
 alias(
     name = "curand",
-    actual = "%{remote_cuda_repo}cuda:curand",
+    actual = "%{remote_cuda_repo}/cuda:curand",
 )
 
 alias(
     name = "cuda",
-    actual = "%{remote_cuda_repo}cuda:cuda",
+    actual = "%{remote_cuda_repo}/cuda:cuda",
 )
 
 alias(
     name = "cupti_headers",
-    actual = "%{remote_cuda_repo}cuda:cupti_headers",
+    actual = "%{remote_cuda_repo}/cuda:cupti_headers",
 )
 
 alias(
     name = "cupti_dsos",
-    actual = "%{remote_cuda_repo}cuda:cupti_dsos",
+    actual = "%{remote_cuda_repo}/cuda:cupti_dsos",
 )
 
 alias(
     name = "libdevice_root",
-    actual = "%{remote_cuda_repo}cuda:libdevice_root",
+    actual = "%{remote_cuda_repo}/cuda:libdevice_root",
 )

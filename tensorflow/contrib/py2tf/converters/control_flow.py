@@ -171,6 +171,14 @@ class ControlFlowTransformer(transformer.Base):
     all_referenced = body_scope.referenced
 
     state = list(body_closure)
+    if not state:
+      # TODO(mdan): Implement this properly.
+      # To complete this statement, we need to check whether any variable
+      # created inside the body scope is used before being modified outside the
+      # scope. This should be done during activity analysis, and in general
+      # should cover the case where variables may not be initialized.
+      raise ValueError('cannot convert while loop: no outputs')
+
     state_ssf = [
         self.context.namer.new_symbol(s.ssf(), all_referenced) for s in state
     ]

@@ -25,6 +25,9 @@ from __future__ import print_function
 
 import threading
 
+# Used by py_util.cc to get tracebacks.
+import traceback  # pylint: disable=unused-import
+
 import numpy as np
 import six
 
@@ -33,6 +36,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -51,6 +55,16 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
 
+  def _convert(self, value, dtype):
+    if isinstance(value, resource_variable_ops.ResourceVariable):
+      raise RuntimeError(
+          "Attempting to return a variable from an eagerly executed py_func. "
+          "Only numeric data structures like Tensors or NumPy arrays should "
+          "be returned; to return the value of a variable, make sure to obtain "
+          "the Tensor backing it by calling `.read_value()` on the variable in "
+          "question: %s" % value)
+    return ops.convert_to_tensor(value, dtype=dtype)
+
   def __call__(self, on_gpu, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
     with context.eager_mode():
@@ -58,14 +72,13 @@ class EagerFunc(object):
       maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
       if isinstance(ret, (tuple, list)):
         return [
-            maybe_copy_to_gpu(ops.convert_to_tensor(x, dtype=dtype))
+            maybe_copy_to_gpu(self._convert(x, dtype=dtype))
             for (x, dtype) in zip(ret, self._out_dtypes)
         ]
       elif ret is None:
         return ret
       else:
-        return maybe_copy_to_gpu(
-            ops.convert_to_tensor(ret, dtype=self._out_dtypes[0]))
+        return maybe_copy_to_gpu(self._convert(ret, dtype=self._out_dtypes[0]))
 
 
 class FuncRegistry(object):
@@ -219,18 +232,16 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   graph._cleanup_py_funcs_used_in_graph.append(cleanup)
   # pylint: enable=protected-access
 
-  # pylint: disable=protected-access
   if eager:
-    result = gen_script_ops._eager_py_func(
+    result = gen_script_ops.eager_py_func(
         input=inp, token=token, Tout=Tout, name=name)
   else:
     if stateful:
-      result = gen_script_ops._py_func(
+      result = gen_script_ops.py_func(
           input=inp, token=token, Tout=Tout, name=name)
     else:
-      result = gen_script_ops._py_func_stateless(
+      result = gen_script_ops.py_func_stateless(
           input=inp, token=token, Tout=Tout, name=name)
-  # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
 
@@ -319,7 +330,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     result = func(*[x.numpy() for x in inp])
     result = nest.flatten(result)
 

@@ -38,6 +38,11 @@ __all__ = [
 ]
 
 
+# The graph editor sometimes need to create placeholders, they are named
+# "geph_*". "geph" stands for Graph-Editor PlaceHolder.
+_DEFAULT_PLACEHOLDER_PREFIX = "geph"
+
+
 def concatenate_unique(la, lb):
   """Add all the elements of `lb` to `la` if they are not there already.
 
@@ -405,7 +410,7 @@ def scope_basename(scope):
   return scope[slash + 1:]
 
 
-def placeholder_name(t=None, scope=None):
+def placeholder_name(t=None, scope=None, prefix=_DEFAULT_PLACEHOLDER_PREFIX):
   """Create placeholder name for the graph editor.
 
   Args:
@@ -413,6 +418,7 @@ def placeholder_name(t=None, scope=None):
       on
     scope: absolute scope with which to prefix the placeholder's name. None
       means that the scope of t is preserved. "" means the root scope.
+    prefix: placeholder name prefix.
   Returns:
     A new placeholder name prefixed by "geph". Note that "geph" stands for
       Graph Editor PlaceHolder. This convention allows to quickly identify the
@@ -430,19 +436,20 @@ def placeholder_name(t=None, scope=None):
     if scope is None:
       scope = op_dirname
 
-    if op_basename.startswith("geph__"):
+    if op_basename.startswith("{}__".format(prefix)):
       ph_name = op_basename
     else:
-      ph_name = "geph__{}_{}".format(op_basename, t.value_index)
+      ph_name = "{}__{}_{}".format(prefix, op_basename, t.value_index)
 
     return scope + ph_name
   else:
     if scope is None:
       scope = ""
-    return scope + "geph"
+    return "{}{}".format(scope, prefix)
 
 
-def make_placeholder_from_tensor(t, scope=None):
+def make_placeholder_from_tensor(t, scope=None,
+                                 prefix=_DEFAULT_PLACEHOLDER_PREFIX):
   """Create a `tf.placeholder` for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
@@ -452,17 +459,19 @@ def make_placeholder_from_tensor(t, scope=None):
       (see function placeholder_name).
     scope: absolute scope within which to create the placeholder. None
       means that the scope of `t` is preserved. `""` means the root scope.
+    prefix: placeholder name prefix.
   Returns:
     A newly created `tf.placeholder`.
   Raises:
     TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
   return tf_array_ops.placeholder(
-      dtype=t.dtype, shape=t.get_shape(), name=placeholder_name(
-          t, scope=scope))
+      dtype=t.dtype, shape=t.get_shape(),
+      name=placeholder_name(t, scope=scope, prefix=prefix))
 
 
-def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
+def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None,
+                                          prefix=_DEFAULT_PLACEHOLDER_PREFIX):
   """Create a tf.placeholder for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
@@ -474,11 +483,13 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
     shape: the tensor shape (optional).
     scope: absolute scope within which to create the placeholder. None
       means that the scope of t is preserved. "" means the root scope.
+    prefix: placeholder name prefix.
   Returns:
     A newly created tf.placeholder.
   """
   return tf_array_ops.placeholder(
-      dtype=dtype, shape=shape, name=placeholder_name(scope=scope))
+      dtype=dtype, shape=shape,
+      name=placeholder_name(scope=scope, prefix=prefix))
 
 
 _INTERNAL_VARIABLE_RE = re.compile(r"^__\w+__$")

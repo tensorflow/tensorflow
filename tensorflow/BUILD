@@ -241,6 +241,13 @@ config_setting(
 )
 
 config_setting(
+    name = "with_kafka_support_windows_override",
+    define_values = {"with_kafka_support": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_gcp_support_android_override",
     define_values = {"with_gcp_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
@@ -415,6 +422,17 @@ py_library(
     deps = ["//tensorflow/python"],
 )
 
+py_library(
+    name = "experimental_tensorflow_py",
+    srcs = ["experimental_api.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/tools/api/tests:__subpackages__"],
+    deps = [
+        "//tensorflow/python",
+        "//tensorflow/tools/api/generator:python_api",
+    ],
+)
+
 filegroup(
     name = "all_opensource_files",
     data = [
@@ -441,6 +459,7 @@ filegroup(
         "//tensorflow/compiler/xla:all_files",
         "//tensorflow/compiler/xla/client:all_files",
         "//tensorflow/compiler/xla/client/lib:all_files",
+        "//tensorflow/compiler/xla/client/xla_client:all_files",
         "//tensorflow/compiler/xla/legacy_flags:all_files",
         "//tensorflow/compiler/xla/python:all_files",
         "//tensorflow/compiler/xla/service:all_files",
@@ -598,6 +617,7 @@ filegroup(
         "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/api_def:all_files",
+        "//tensorflow/core/common_runtime/eager:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
@@ -787,6 +807,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",

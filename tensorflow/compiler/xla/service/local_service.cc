@@ -119,9 +119,23 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
 
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  if (build_options.hlo_profile().has_value()) {
+    execution_options.mutable_debug_options()->set_xla_hlo_profile(
+        *build_options.hlo_profile());
+  }
   if (build_options.generate_hlo_graph().has_value()) {
     execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
         build_options.generate_hlo_graph().value());
+  }
+  if (build_options.dump_optimized_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_optimized_hlo_proto_to(
+            build_options.dump_optimized_hlo_proto_to().value());
+  }
+  if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_per_pass_hlo_proto_to(
+            build_options.dump_per_pass_hlo_proto_to().value());
   }
   if (build_options.result_layout() != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =

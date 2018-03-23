@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 
 // This little structure holds the offset and the size for a dynamic memory
-// allocation in the memory arena. When the arena is commited and the
+// allocation in the memory arena. When the arena is committed and the
 // underlying buffer is set, the alloc can be resolved into an actual memory
 // pointer.
 struct ArenaAlloc {
@@ -43,7 +43,7 @@ struct ArenaAlloc {
 class SimpleMemoryArena {
  public:
   explicit SimpleMemoryArena(size_t arena_alignment)
-      : commited_(false),
+      : committed_(false),
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
@@ -73,7 +73,7 @@ class SimpleMemoryArena {
   }
 
  private:
-  bool commited_;
+  bool committed_;
   size_t arena_alignment_;
   size_t high_water_mark_;
   std::unique_ptr<char[]> underlying_buffer_;

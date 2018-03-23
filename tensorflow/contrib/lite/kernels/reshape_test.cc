@@ -60,7 +60,7 @@ TEST(ReshapeOpTest, TooManyDimensions) {
 
 TEST(ReshapeOpTest, TooManySpecialDimensions) {
   EXPECT_DEATH(ReshapeOpModel({1, 2, 4, 1}, {-1, -1, 2, 4}),
-               "strech_dim != -1");
+               "stretch_dim != -1");
 }
 
 TEST(ReshapeOpTest, SimpleTest) {

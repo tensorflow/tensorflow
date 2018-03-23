@@ -47,10 +47,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Sub and Div don't support broadcasting.
-    {R"(^\/diva.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(^\/suba.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-
     // Add only supports float32. (and "constant" tests use Add)
     {R"(^\/adda.*int32)", "68808744"},
     {R"(^\/constant.*int32)", "68808744"},
@@ -93,8 +89,8 @@ std::map<string, string> kBrokenTests = {
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 
-    // Lstm kernel gets different results on tsan, asan, msan.
-    {R"(^\/lstmdtype=tf.float32.*)", "73830845"},
+    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
+    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -238,41 +234,42 @@ TEST_P(OpsTest, RunStuff) {
 
 INSTANTIATE_TESTS(add)
 INSTANTIATE_TESTS(avg_pool)
-INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
 INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)
 INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)
+INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(exp)
 INSTANTIATE_TESTS(fully_connected)
 INSTANTIATE_TESTS(fused_batch_norm)
 INSTANTIATE_TESTS(gather)
 INSTANTIATE_TESTS(global_batch_norm)
-INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(l2_pool)
+INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(local_response_norm)
 INSTANTIATE_TESTS(log_softmax)
 INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(max_pool)
+INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
+INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
+INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(space_to_depth)
-INSTANTIATE_TESTS(sub)
 INSTANTIATE_TESTS(split)
-INSTANTIATE_TESTS(div)
-INSTANTIATE_TESTS(transpose)
-INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(squeeze)
 INSTANTIATE_TESTS(strided_slice)
+INSTANTIATE_TESTS(sub)
+INSTANTIATE_TESTS(transpose)
 
 }  // namespace testing
 }  // namespace tflite

@@ -147,8 +147,6 @@ tensorflow/contrib/crf
 tensorflow/contrib/crf/python
 tensorflow/contrib/crf/python/ops
 tensorflow/contrib/cudnn_rnn
-tensorflow/contrib/cudnn_rnn/kernels
-tensorflow/contrib/cudnn_rnn/ops
 tensorflow/contrib/cudnn_rnn/python
 tensorflow/contrib/cudnn_rnn/python/layers
 tensorflow/contrib/cudnn_rnn/python/ops
@@ -165,6 +163,7 @@ tensorflow/contrib/distributions/python
 tensorflow/contrib/distributions/python/ops
 tensorflow/contrib/distributions/python/ops/bijectors
 tensorflow/contrib/eager
+tensorflow/contrib/eager/proto
 tensorflow/contrib/eager/python
 tensorflow/contrib/estimator
 tensorflow/contrib/estimator/python

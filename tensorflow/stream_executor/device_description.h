@@ -140,6 +140,11 @@ class DeviceDescription {
   // Returns the device memory size in bytes.
   uint64 device_memory_size() const { return device_memory_size_; }
 
+  // Returns the device's memory bandwidth in bytes/sec.  (This is for
+  // reads/writes to/from the device's own memory, not for transfers between the
+  // host and device.)
+  uint64 memory_bandwidth() const { return memory_bandwidth_; }
+
   // Returns the device's core clock rate in GHz.
   float clock_rate_ghz() const { return clock_rate_ghz_; }
 
@@ -212,6 +217,7 @@ class DeviceDescription {
 
   uint64 device_address_bits_;
   uint64 device_memory_size_;
+  uint64 memory_bandwidth_;
 
   // Shared memory limits on a given device.
   uint64 shared_memory_per_core_;
@@ -304,6 +310,9 @@ class DeviceDescriptionBuilder {
   }
   void set_device_memory_size(uint64 value) {
     device_description_->device_memory_size_ = value;
+  }
+  void set_memory_bandwidth(uint64 value) {
+    device_description_->memory_bandwidth_ = value;
   }
 
   void set_shared_memory_per_core(int64 value) {

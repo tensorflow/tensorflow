@@ -18,23 +18,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.impl import api
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.utils import py_func
 from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+
+tf = utils.fake_tf()
 
 
 class ApiTest(test.TestCase):
 
   def setUp(self):
-    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     config.COMPILED_IMPORT_STATEMENTS = (
-        'from tensorflow.python.framework '
-        'import ops as tf',
+        'from __future__ import print_function',
         'from tensorflow.contrib.py2tf import utils as '
-        'py2tf_utils')
+        'py2tf_utils',
+        'tf = py2tf_utils.fake_tf()'
+    )
 
   def test_decorator_recurses(self):
 
@@ -47,7 +53,7 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
+        while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
@@ -63,11 +69,11 @@ class ApiTest(test.TestCase):
     class TestClass(object):
 
       def called_member(self, a):
-        return math_ops.negative(a)
+        return tf.negative(a)
 
       @api.convert(recursive=False)
       def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
+        while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
@@ -78,18 +84,44 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
-  def test_decorator_calls_converted(self):
+  def test_decorator_calls_unconverted_graph(self):
 
     class TestClass(object):
 
-      @api.graph_ready
+      @api.do_not_convert(api.RunMode.GRAPH)
       def called_member(self, a):
-        return math_ops.negative(a)
+        return tf.negative(a)
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
+        while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_decorator_calls_unconverted_py_func(self):
+
+    class TestClass(object):
+
+      @api.do_not_convert(
+          api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
+      def called_member(self, a):
+        return np.negative(a)
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while tf.reduce_sum(x) > s:
+          y = self.called_member(a)
+          # set_shape works around while_loop's limitations.
+          # TODO(mdan): Allow specifying shapes (or ShapeLike) instead.
+          y.set_shape(a.shape)
+          x //= y
         return x
 
     tc = TestClass()
@@ -111,7 +143,7 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
+        while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
@@ -133,28 +165,9 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
-          x //= api.convert_inline(self.called_member, a)
-        return x
-
-    tc = TestClass()
-    with self.test_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
-
-  def test_graph_ready_call_site_decorator(self):
-
-    class TestClass(object):
-
-      def called_member(self, a):
-        return math_ops.negative(a)
-
-      @api.convert(recursive=True)
-      def test_method(self, x, s, a):
-        while math_ops.reduce_sum(x) > s:
-          x //= api.graph_ready(self.called_member(a))
+        while tf.reduce_sum(x) > s:
+          x //= api.converted_call(self.called_member, False, False, {}, self,
+                                   a)
         return x
 
     tc = TestClass()
@@ -165,8 +178,9 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
   def test_to_graph_basic(self):
+
     def test_fn(x, s):
-      while math_ops.reduce_sum(x) > s:
+      while tf.reduce_sum(x) > s:
         x //= 2
       return x
 
@@ -177,8 +191,9 @@ class ApiTest(test.TestCase):
       self.assertListEqual([1, 2], sess.run(x).tolist())
 
   def test_to_code_basic(self):
+
     def test_fn(x, s):
-      while math_ops.reduce_sum(x) > s:
+      while tf.reduce_sum(x) > s:
         x /= 2
       return x
 

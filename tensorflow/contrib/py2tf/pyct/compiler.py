@@ -31,7 +31,7 @@ import astor
 import gast
 
 
-def ast_to_source(node, indentation):
+def ast_to_source(node, indentation='  '):
   """Return the source code of given AST."""
   if isinstance(node, gast.AST):
     node = gast.gast_to_ast(node)
@@ -39,7 +39,10 @@ def ast_to_source(node, indentation):
                                             astor.string_repr.pretty_string)
   generator.visit(node)
   generator.result.append('\n')
-  return astor.source_repr.pretty_source(generator.result).lstrip()
+  # In some versions of Python, literals may appear as actual values. This
+  # ensures everything is string.
+  code = map(str, generator.result)
+  return astor.source_repr.pretty_source(code).lstrip()
 
 
 def ast_to_object(

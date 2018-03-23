@@ -24,14 +24,14 @@ extern "C" {
 #endif  // __cplusplus
 
 // The enum for builtin operators.
-// Note: CUSTOM and DELEGATE are 2 special ops which are not real biultin
-// ops.
+// Note: CUSTOM and DELEGATE are 2 special ops which are not real built-in ops.
 typedef enum {
   kTfLiteBuiltinAdd = 0,
   kTfLiteBuiltinAveragePool2d = 1,
   kTfLiteBuiltinConcatenation = 2,
   kTfLiteBuiltinConv2d = 3,
   kTfLiteBuiltinDepthwiseConv2d = 4,
+  kTfLiteBuiltinDequantize = 6,
   kTfLiteBuiltinEmbeddingLookup = 7,
   kTfLiteBuiltinFullyConnected = 9,
   kTfLiteBuiltinHashtableLookup = 10,
@@ -77,6 +77,8 @@ typedef enum {
   kTfLiteBuiltinLogSoftmax = 50,
   kTfLiteBuiltinDelegate = 51,
   kTfLiteBuiltinBidirectionalSequenceLstm = 52,
+  kTfLiteBuiltinCast = 53,
+  kTfLiteBuiltinPrelu = 54,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <deque>
 
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
@@ -35,27 +36,31 @@ using FunctionBufferCallback = std::function<void(const BufferElement&)>;
 class FunctionBufferingResource : public ResourceBase {
  public:
   FunctionBufferingResource(FunctionLibraryRuntime* lib,
+                            std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                             const NameAttrList& func, int64 buffer_size,
                             const string& source_device,
                             const string& target_device,
                             const std::vector<Tensor>& func_args,
                             int64 thread_pool_size)
       : lib_(lib),
+        pflr_(std::move(pflr)),
         func_(func),
         buffer_size_(buffer_size),
         source_device_(source_device),
         target_device_(target_device),
         func_args_(func_args),
-        thread_pool_(new thread::ThreadPool(Env::Default(), ThreadOptions(),
-                                            "buffer_resource", thread_pool_size,
-                                            false /* low_latency_hint */)),
         handle_(kInvalidHandle),
         is_buffering_(false),
         end_of_sequence_(false),
         cancelled_(false) {
-    runner_ = [this](std::function<void()> c) {
-      thread_pool_->Schedule(std::move(c));
-    };
+    if (thread_pool_size > 0) {
+      thread_pool_ = new thread::ThreadPool(Env::Default(), ThreadOptions(),
+                                            "buffer_resource", thread_pool_size,
+                                            false /* low_latency_hint */);
+      runner_ = [this](std::function<void()> c) {
+        thread_pool_->Schedule(std::move(c));
+      };
+    }
   }
 
   ~FunctionBufferingResource() override {
@@ -66,7 +71,9 @@ class FunctionBufferingResource : public ResourceBase {
         cond_var_.wait(l);
       }
     }
-    delete thread_pool_;
+    if (thread_pool_ != nullptr) {
+      delete thread_pool_;
+    }
   }
 
   string DebugString() override {
@@ -172,7 +179,9 @@ class FunctionBufferingResource : public ResourceBase {
     FunctionLibraryRuntime::Options opts;
     // Copied from CapturedFunction::generate_step_id();
     opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-    opts.runner = &runner_;
+    if (runner_ != nullptr) {
+      opts.runner = &runner_;
+    }
     opts.source_device = source_device_;
     AllocatorAttributes arg_alloc_attr;
     arg_alloc_attr.set_on_host(true);
@@ -222,12 +231,13 @@ class FunctionBufferingResource : public ResourceBase {
 
   mutex mu_;
   FunctionLibraryRuntime* lib_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   NameAttrList func_;
   const int64 buffer_size_;
   const string source_device_;
   const string target_device_;
   const std::vector<Tensor> func_args_;
-  thread::ThreadPool* thread_pool_;
+  thread::ThreadPool* thread_pool_ = nullptr;
   FunctionLibraryRuntime::Handle handle_ GUARDED_BY(mu_);
   std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
   std::deque<FunctionBufferCallback> requests_ GUARDED_BY(mu_);
@@ -241,12 +251,23 @@ class FunctionBufferingResource : public ResourceBase {
 class FunctionBufferResourceHandleOp : public OpKernel {
  public:
   explicit FunctionBufferResourceHandleOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
+      : OpKernel(ctx), flib_def_(nullptr) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("buffer_size", &buffer_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("thread_pool_size", &thread_pool_size_));
+  }
+
+  ~FunctionBufferResourceHandleOp() override {
+    if (cinfo_.resource_is_private_to_kernel()) {
+      if (!cinfo_.resource_manager()
+               ->Delete<FunctionBufferingResource>(cinfo_.container(),
+                                                   cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
+      }
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -267,28 +288,39 @@ class FunctionBufferResourceHandleOp : public OpKernel {
 
     const string& source_device = ctx->device()->name();
 
-    ContainerInfo cinfo;
-    OP_REQUIRES_OK(ctx, cinfo.Init(ctx->resource_manager(), def()));
-    // Create the resource.
-    FunctionBufferingResource* buffer;
-    OP_REQUIRES_OK(
-        ctx, ctx->resource_manager()->LookupOrCreate<FunctionBufferingResource>(
-                 cinfo.container(), cinfo.name(), &buffer,
-                 [lib, &source_device, &target_device, func_args,
-                  this](FunctionBufferingResource** ptr) {
-                   *ptr = new FunctionBufferingResource(
-                       lib, func_, buffer_size_, source_device, target_device,
-                       func_args, thread_pool_size_);
-                   return Status::OK();
-                 }));
-    OP_REQUIRES_OK(ctx, buffer->Instantiate());
+    mutex_lock l(mu_);
+    if (!initialized_) {
+      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def()));
+      FunctionLibraryRuntime* clone_lib;
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr;
+      OP_REQUIRES_OK(ctx, lib->Clone(&flib_def_, &pflr, &clone_lib));
+      // Create the resource.
+      FunctionBufferingResource* buffer;
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->resource_manager()->LookupOrCreate<FunctionBufferingResource>(
+              cinfo_.container(), cinfo_.name(), &buffer,
+              [clone_lib, &pflr, &source_device, &target_device, func_args,
+               this](FunctionBufferingResource** ptr) {
+                *ptr = new FunctionBufferingResource(
+                    clone_lib, std::move(pflr), func_, buffer_size_,
+                    source_device, target_device, func_args, thread_pool_size_);
+                return Status::OK();
+              }));
+      OP_REQUIRES_OK(ctx, buffer->Instantiate());
+      initialized_ = true;
+    }
 
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
-                            ctx, 0, cinfo.container(), cinfo.name(),
+                            ctx, 0, cinfo_.container(), cinfo_.name(),
                             MakeTypeIndex<FunctionBufferingResource>()));
   }
 
  private:
+  mutex mu_;
+  ContainerInfo cinfo_ GUARDED_BY(mu_);
+  bool initialized_ GUARDED_BY(mu_) = false;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   NameAttrList func_;
   int64 buffer_size_;
   string container_;

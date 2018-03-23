@@ -56,6 +56,9 @@ class ShapeInference {
   static StatusOr<Shape> InferBinaryOpShape(
       BinaryOperation operation, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+  static StatusOr<Shape> InferBinaryOpShape(
+      HloOpcode opcode, const Shape& lhs, const Shape& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   static StatusOr<Shape> InferBinaryOpShape(HloOpcode opcode,
                                             const HloInstruction* lhs,
                                             const HloInstruction* rhs);
