@@ -120,6 +120,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "maximum.cc",
         "mean.cc",
         "mul.cc",
         "pad.cc",
@@ -347,6 +348,18 @@ tf_cc_test(
     name = "exp_test",
     size = "small",
     srcs = ["exp_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "maximum_test",
+    size = "small",
+    srcs = ["maximum_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

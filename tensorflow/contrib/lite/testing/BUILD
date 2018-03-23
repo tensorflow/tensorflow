@@ -36,6 +36,7 @@ gen_zipped_test_files(
         "log_softmax.zip",
         "lstm.zip",
         "max_pool.zip",
+        "maximum.zip",
         "mean.zip",
         "mul.zip",
         "pad.zip",
