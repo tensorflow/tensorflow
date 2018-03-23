@@ -92,6 +92,7 @@ from tensorflow.contrib.summary import summary
 from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg", globals(),
                     "tensorflow.contrib.ffmpeg")
+del os
 del LazyLoader
 
 del absolute_import

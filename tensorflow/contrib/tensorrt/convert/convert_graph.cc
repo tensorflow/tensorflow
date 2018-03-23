@@ -55,6 +55,7 @@ bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
   //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
       "Identity",
+      "Snapshot",
       "Const",
       "Conv2D",
       "MaxPool",

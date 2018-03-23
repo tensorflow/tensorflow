@@ -270,7 +270,11 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
     ],
-    tags = ["notsan"],
+    tags = [
+        "notsan",
+        "no_oss",  # b/74395663
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 filegroup(
