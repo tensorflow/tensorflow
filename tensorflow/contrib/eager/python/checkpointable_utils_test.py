@@ -378,7 +378,11 @@ class CheckpointingTests(test.TestCase):
     if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(0.001)
+    on_create_optimizer = adam.AdamOptimizer(
+        0.001,
+        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # test that they've been restored correctly.
+        beta1=1.0, beta2=1.0)
     on_create_root = checkpointable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -395,8 +399,8 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
     self.assertAllEqual(optimizer_variables[2:],
                         self.evaluate(on_create_optimizer.variables()))
-    on_create_optimizer._create_slots(
-        [resource_variable_ops.ResourceVariable([1.])])
+    dummy_var = resource_variable_ops.ResourceVariable([1.])
+    on_create_optimizer.minimize(loss=dummy_var.read_value)
     status.assert_consumed()
     beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
     self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
