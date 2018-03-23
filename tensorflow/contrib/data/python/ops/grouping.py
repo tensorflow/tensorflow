@@ -140,9 +140,9 @@ def bucket_by_sequence_length(element_length_func,
 
     batch_sizes = constant_op.constant(bucket_batch_sizes, dtype=dtypes.int64)
 
-    def element_to_bucket_id(element):
+    def element_to_bucket_id(*args):
       """Return int64 id of the length bucket for this element."""
-      seq_length = element_length_func(element)
+      seq_length = element_length_func(*args)
 
       boundaries = list(bucket_boundaries)
       buckets_min = [np.iinfo(np.int32).min] + boundaries
