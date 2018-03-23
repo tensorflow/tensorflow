@@ -145,8 +145,9 @@ struct GlimpseExtractionOp {
 
       if (partial_overlap) {
         if (noise_ == "zero") {
-           // Initialize the glimpse with zero noise.
-          output.template chip<3>(i).setZero();
+          // Initialize the glimpse with zero noise.
+          output.template chip<3>(i).device(device) =
+              output.template chip<3>(i).constant(0);
         } else if (noise_ == "uniform") {
            // Initialize the glimpse with uniform noise.
           typedef typename internal::remove_const<
