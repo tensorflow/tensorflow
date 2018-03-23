@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <utility>
 
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
@@ -1755,7 +1757,76 @@ class MklDnnData {
   }
 };
 
-#endif  // INTEL_MKL_ML
+/// Base class for operations with reuse of DNN primitives
+///
+class DnnOp {
+ public:
+  virtual ~DnnOp() {}
+  virtual void Setup() {return;}
+  virtual void Execute() {return;}
+
+  // dummy data
+  unsigned char DummyData[256];
+};
+
+const mkldnn::memory::dims NONE_DIMS = {};
+// This constant is used to declare dummy buffer (size), for MKL primitives
+template <typename T>
+class DnnOpFactory {
+ public:
+  DnnOpFactory() {}
+  ~DnnOpFactory() {}
+
+  DnnOp* GetOp(std::string key) {
+    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+    if (stream_iter == DnnOpFactory<T>::GetHashMap().end()) {
+      return nullptr;
+    } else {
+      return stream_iter->second;
+    }
+  }
+
+  void SetOp(std::string key, DnnOp* op) {
+    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+
+    CHECK(stream_iter == DnnOpFactory<T>::GetHashMap().end());
+
+    DnnOpFactory<T>::GetHashMap()[key] = op;
+  }
+
+ private:
+  static inline std::unordered_map<std::string, DnnOp*> &GetHashMap() {
+    static thread_local std::unordered_map<std::string, DnnOp*> map_;
+    return map_;
+  }
+};
+
+// utility functions which convert int, double, bool or dims to string
+static inline std::string IntToString(int value) {
+  return "I" + std::to_string(value) + "_";
+}
+
+static inline std::string DoubleToString(double value) {
+  return "D" + std::to_string(value) + "_";
+}
+
+static inline std::string FloatToString(float value) {
+  return "F" + std::to_string(value) + "_";
+}
+
+static inline std::string BoolToString(bool value) {
+  return "B" + std::to_string(value) + "_";
+}
+
+static inline std::string DimsToString(mkldnn::memory::dims dims) {
+  std::string strDims = "DIMS:";
+  for (unsigned int i = 0; i < dims.size(); i++)
+    strDims += std::to_string(dims[i]) + ",";
+  strDims += ";";
+  return strDims;
+}
+
+#endif  // INTEL_MKL_DNN
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
