@@ -164,6 +164,65 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       self.assertTrue('FakeQuantWithMinMaxVars' in
                       [i.op.type for i in bypass_tensor.op.inputs])
 
+  def testOverlappingPostActivationBypassQuantized(self):
+    self._RunTestOverParameters(
+        self._TestOverlappingPostActivationBypassQuantized)
+
+  def _TestOverlappingPostActivationBypassQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      conv_input = array_ops.zeros((batch_size, height, width, depth))
+      conv1 = conv2d(
+          conv_input,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=array_ops.identity,
+          scope='test/test1')
+
+      # The bypass of this conv is the post activation bypass of the previous
+      # conv.
+      conv2 = conv2d(
+          conv_input,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test/test2')
+
+      bypass_tensor = math_ops.add(conv1, conv2, name='test/add')
+      _ = array_ops.identity(bypass_tensor, name='test/output')
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that the bypass node is preceded and followed by
+      # FakeQuantWithMinMaxVars operations.
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [c.type for c in bypass_tensor.consumers()])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [i.op.type for i in bypass_tensor.op.inputs])
+
+      # Ensure that all the convs and activations are quantized.
+      op_names = [op.name for op in graph.get_operations()]
+      self.assertTrue(
+          'test/test1/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue(
+          'test/test2/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue(
+          'test/test1/act_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertTrue('test/act_quant/FakeQuantWithMinMaxVars' in op_names)
+      self.assertEqual(
+          'Identity',
+          graph.get_operation_by_name(
+              'test/test1/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
+      self.assertEqual(
+          'Identity',
+          graph.get_operation_by_name(
+              'test/act_quant/FakeQuantWithMinMaxVars').inputs[0].op.type)
+
   def testWithNameScope(self):
     self._RunTestOverParameters(self._TestWithNameScope)
 

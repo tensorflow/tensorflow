@@ -892,7 +892,6 @@ class Layer(checkpointable.CheckpointableBase):
         mode.
         ValueError: If the index provided does not match any node.
     """
-    assert not context.executing_eagerly()
     if not self._inbound_nodes:
       raise RuntimeError('The layer has never been called '
                          'and thus has no defined ' + attr_name + '.')
@@ -922,9 +921,6 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          'Layer.get_input_shape_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'input_shapes',
                                              'input shape')
 
@@ -985,8 +981,6 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.get_output_at not supported in Eager mode.')
     return self._get_node_attribute_at_index(node_index, 'output_tensors',
                                              'output')
 
@@ -1008,8 +1002,6 @@ class Layer(checkpointable.CheckpointableBase):
       RuntimeError: If called in Eager mode.
       AttributeError: If no inbound nodes are found.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.input not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name +
                            ' is not connected, no input to return.')
@@ -1030,8 +1022,6 @@ class Layer(checkpointable.CheckpointableBase):
         layers.
       RuntimeError: if called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.output not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name + ' has no inbound nodes.')
     return self._get_node_attribute_at_index(0, 'output_tensors', 'output')
@@ -1052,8 +1042,6 @@ class Layer(checkpointable.CheckpointableBase):
         AttributeError: if the layer has no defined input_shape.
         RuntimeError: if called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.input_shape not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined input shape.')
@@ -1113,8 +1101,6 @@ class Layer(checkpointable.CheckpointableBase):
         AttributeError: if the layer has no defined output shape.
         RuntimeError: if called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.output_shape not supported in Eager mode.')
     if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined output shape.')

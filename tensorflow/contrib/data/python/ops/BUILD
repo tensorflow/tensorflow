@@ -173,6 +173,10 @@ py_library(
     srcs = ["prefetching_ops.py"],
     deps = [
         ":contrib_op_loader",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 

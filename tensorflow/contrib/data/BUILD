@@ -21,6 +21,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
