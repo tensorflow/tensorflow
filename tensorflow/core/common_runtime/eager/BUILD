@@ -33,6 +33,28 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "context",
+    srcs = [
+        "context.cc",
+    ],
+    hdrs = [
+        "context.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":eager_executor",
+        ":kernel_and_device",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
     name = "kernel_and_device",
     srcs = [
         "kernel_and_device.cc",

@@ -23,6 +23,7 @@ import imp
 import gast
 
 from tensorflow.contrib.py2tf.pyct import compiler
+from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.python.platform import test
 
@@ -95,6 +96,50 @@ class TemplatesTest(test.TestCase):
 
     with self.assertRaises(ValueError):
       templates.replace(template, foo=1)
+
+  def test_replace_call_keyword(self):
+    template = """
+      def test_fn():
+        def f(a, d, f):
+          return a + d + f
+        return f(1, kws=None)
+    """
+
+    source = parser.parse_expression('f(d=3, f=5)')
+    node = templates.replace(template, kws=source.keywords)[0]
+    result, _ = compiler.ast_to_object(node)
+    self.assertEquals(9, result.test_fn())
+
+    with self.assertRaises(ValueError):
+      templates.replace(template, kws=[])
+      templates.replace(template, kws=1)
+
+  def test_replace_name_with_call(self):
+    template = """
+      def test_fn():
+        b = 5
+        def g(a):
+          return 3 * a
+        def f():
+          return g
+        return foo
+    """
+
+    source = parser.parse_expression('f()(b)')
+    node = templates.replace(template, foo=source)[0]
+    result, _ = compiler.ast_to_object(node)
+    self.assertEquals(15, result.test_fn())
+
+  def test_replace_name_with_dict(self):
+    template = """
+      def test_fn():
+        return foo['bar']
+    """
+
+    source = parser.parse_expression('{\'bar\': 3}')
+    node = templates.replace(template, foo=source)[0]
+    result, _ = compiler.ast_to_object(node)
+    self.assertEquals(3, result.test_fn())
 
   def replace_as_expression(self):
     template = """

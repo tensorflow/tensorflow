@@ -36,6 +36,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,6 +55,16 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
 
+  def _convert(self, value, dtype):
+    if isinstance(value, resource_variable_ops.ResourceVariable):
+      raise RuntimeError(
+          "Attempting to return a variable from an eagerly executed py_func. "
+          "Only numeric data structures like Tensors or NumPy arrays should "
+          "be returned; to return the value of a variable, make sure to obtain "
+          "the Tensor backing it by calling `.read_value()` on the variable in "
+          "question: %s" % value)
+    return ops.convert_to_tensor(value, dtype=dtype)
+
   def __call__(self, on_gpu, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
     with context.eager_mode():
@@ -61,14 +72,13 @@ class EagerFunc(object):
       maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
       if isinstance(ret, (tuple, list)):
         return [
-            maybe_copy_to_gpu(ops.convert_to_tensor(x, dtype=dtype))
+            maybe_copy_to_gpu(self._convert(x, dtype=dtype))
             for (x, dtype) in zip(ret, self._out_dtypes)
         ]
       elif ret is None:
         return ret
       else:
-        return maybe_copy_to_gpu(
-            ops.convert_to_tensor(ret, dtype=self._out_dtypes[0]))
+        return maybe_copy_to_gpu(self._convert(ret, dtype=self._out_dtypes[0]))
 
 
 class FuncRegistry(object):

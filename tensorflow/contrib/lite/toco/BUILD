@@ -193,6 +193,7 @@ cc_library(
         "graph_transformations/identify_lstm.cc",
         "graph_transformations/identify_lstm_merge_inputs.cc",
         "graph_transformations/identify_lstm_split_inputs.cc",
+        "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
