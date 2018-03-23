@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Platform specific build config
@@ -422,7 +423,7 @@ cc_library(
     ]),
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
