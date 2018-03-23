@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "ResourceScatterAdd"
+  graph_op_name: "ResourceScatterMax"
   in_arg {
     name: "resource"
     description: <<END
@@ -18,21 +18,21 @@ END
 A tensor of updated values to add to `ref`.
 END
   }
-  summary: "Adds sparse updates to the variable referenced by `resource`."
+  summary: "Reduces sparse updates into the variable referenced by `resource` using the `max` operation."
   description: <<END
 This operation computes
 
     # Scalar indices
-    ref[indices, ...] += updates[...]
+    ref[indices, ...] = max(ref[indices, ...], updates[...])
 
     # Vector indices (for each i)
-    ref[indices[i], ...] += updates[i, ...]
+    ref[indices[i], ...] = max(ref[indices[i], ...], updates[i, ...])
 
     # High rank indices (for each i, ..., j)
-    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+    ref[indices[i, ..., j], ...] = max(ref[indices[i, ..., j], ...], updates[i, ..., j, ...])
 
 Duplicate entries are handled correctly: if multiple `indices` reference
-the same location, their contributions add.
+the same location, their contributions are combined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
 

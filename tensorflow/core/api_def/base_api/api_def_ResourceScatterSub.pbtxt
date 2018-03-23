@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "ResourceScatterAdd"
+  graph_op_name: "ResourceScatterSub"
   in_arg {
     name: "resource"
     description: <<END
@@ -18,18 +18,18 @@ END
 A tensor of updated values to add to `ref`.
 END
   }
-  summary: "Adds sparse updates to the variable referenced by `resource`."
+  summary: "Subtracts sparse updates from the variable referenced by `resource`."
   description: <<END
 This operation computes
 
     # Scalar indices
-    ref[indices, ...] += updates[...]
+    ref[indices, ...] -= updates[...]
 
     # Vector indices (for each i)
-    ref[indices[i], ...] += updates[i, ...]
+    ref[indices[i], ...] -= updates[i, ...]
 
     # High rank indices (for each i, ..., j)
-    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]
 
 Duplicate entries are handled correctly: if multiple `indices` reference
 the same location, their contributions add.
