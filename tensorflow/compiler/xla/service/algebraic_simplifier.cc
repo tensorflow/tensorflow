@@ -302,7 +302,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Disable dot strength reduction on platforms where it causes a slowdown.
   bool enable_dot_strength_reduction_;
 
-  // Disable convolution simplication on platforms where it causes a slowdown.
+  // Disable convolution simplification on platforms where it causes a slowdown.
   bool enable_conv_simplification_;
 };
 
