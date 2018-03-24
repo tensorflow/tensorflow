@@ -325,9 +325,9 @@ class XentBenchmark(test.Benchmark):
       with ops.Graph().as_default():
         with ops.device(device):
           labels = constant_op.constant([[1.], [-1.], [0.]],
-              dtype=dtypes.float32)
+                                        dtype=dtypes.float32)
           logits = constant_op.constant([[-1.], [0.], [1.]],
-              dtype=dtypes.float32)
+                                        dtype=dtypes.float32)
           op = nn_ops.softmax_cross_entropy_with_logits(
               labels=labels, logits=logits)
         with session.Session() as sess:
