@@ -258,6 +258,7 @@ tensorflow/core/kernels/requantize.cc
 tensorflow/core/kernels/remote_fused_graph_execute_op.cc
 tensorflow/core/kernels/remote_fused_graph_execute_utils.cc
 tensorflow/core/kernels/batch_matmul_op_real.cc
+tensorflow/core/kernels/random_op.cc
 tensorflow/core/ops/training_ops.cc
 tensorflow/core/ops/string_ops.cc
 tensorflow/core/ops/state_ops.cc
