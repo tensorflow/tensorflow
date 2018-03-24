@@ -22,8 +22,10 @@ import six
 
 from tensorflow.contrib.py2tf.utils import py_func
 from tensorflow.contrib.py2tf.utils import type_check
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
@@ -54,7 +56,6 @@ def dynamic_len(list_or_tensor):
       raise ValueError(
           'len requires non-zero rank for tensor "%s"' % list_or_tensor)
     return array_ops.shape(list_or_tensor)[0]
-
   return len(list_or_tensor)
 
 
@@ -97,3 +98,69 @@ def dynamic_print(*values):
   if all(map(is_tf_print_compatible, values)):
     return logging_ops.Print(1, values)
   return py_func.wrap_py_func(print, None, values, use_dummy_return=True)
+
+
+def dynamic_dataset(iterated):
+  """Implementartion of smart tf.data.Dataset epoch wrapping.
+
+  The function checks if the input is a tf.data.Dataset and if so then wraps it
+  so that for each element it returns it also returns the current epoch the
+  dataset iteration is in, for two epochs.  If the input is not a
+  tf.data.Dataset then it just returns the input.
+
+  Args:
+    iterated: The iterable or tf.data.Dataset that is being iterated over.
+  Returns:
+    Either just the untouched input, or in the case of input being a
+    tf.data.Dataset then it returns a wrapped  tf.data.Dataset where for each
+    element it returns it also returns the current epoch the dataset iteration
+    is in.
+  """
+  if not isinstance(iterated, dataset_ops.Dataset):
+    return iterated
+
+  def epoch_dataset_number_helper(i):
+    return dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.from_tensors(i).repeat(), iterated))
+
+  epoch_numbers = dataset_ops.Dataset.range(2)
+  return epoch_numbers.flat_map(epoch_dataset_number_helper)
+
+
+def dynamic_for_cond(iteration, iterated):
+  """Implementartion of smart while-loop condition using dynamic dispatch.
+
+  The function checks if it is iterating over a tf.data.Dataset or not, and in
+  the case it is not then it simply returns if we are still in range of the
+  iterated and the next element.  If it is iterating over a dataset then it only
+  iterates for a single epoch.
+
+  Args:
+    iteration: The current iteration of the loop.
+    iterated: The iterable or tf.data.Dataset that is being iterated over.
+  Returns:
+    A tuple of a bool that indicates whether the loop should continue, and the
+    next element in iterated.
+  """
+  # TODO(znado): Clean up.
+  # TODO(znado): This won't work for unpacked iterates. Fix.
+  if isinstance(iterated, dataset_ops.Dataset):
+    curr_epoch, next_elem = iterated.make_one_shot_iterator().get_next()
+    return math_ops.less(curr_epoch, 1), next_elem
+  elif tensor_util.is_tensor(iterated):
+    if iterated.shape.ndims > 1:
+      elem_shape = array_ops.shape(iterated)[1:]
+    else:
+      elem_shape = ()
+    if iterated.shape.ndims == 0 or iterated.shape[0] == 0:
+      return False, array_ops.zeros(elem_shape, iterated.dtype)
+    return control_flow_ops.cond(
+        math_ops.less(iteration, dynamic_len(iterated)),
+        lambda: (True, iterated[iteration]),
+        lambda: (False, array_ops.zeros(elem_shape, iterated.dtype)))
+  elif hasattr(iterated, '__len__'):
+    if iteration < len(iterated):
+      return True, iterated[iteration]
+    return False, None
+  else:
+    raise NotImplementedError('Python iterators not yet supported.')
