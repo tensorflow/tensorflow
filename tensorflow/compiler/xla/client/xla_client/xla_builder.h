@@ -52,10 +52,11 @@ class XlaBuilder;
 // TODO(b/74197823): Replace xla::ComputationDataHandle with this one.
 class XlaOp {
  public:
+  XlaOp() : handle_(0), builder_(nullptr) {}
+
   StatusOr<Shape> GetShape() const;
 
  private:
-  XlaOp() : handle_(0), builder_(nullptr) {}
   XlaOp(int64 handle, XlaBuilder* builder)
       : handle_(handle), builder_(builder) {}
 

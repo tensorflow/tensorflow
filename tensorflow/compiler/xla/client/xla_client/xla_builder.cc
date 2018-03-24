@@ -401,12 +401,26 @@ XlaOp XlaBuilder::Pad(const XlaOp& operand, const XlaOp& padding_value,
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
                           tensorflow::gtl::ArraySlice<int64> dimensions,
                           tensorflow::gtl::ArraySlice<int64> new_sizes) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(const Shape& shape,
+                        ShapeInference::InferReshapeShape(
+                            operand_shape, dimensions, new_sizes));
+    XlaOp transposed = IsIdentityPermutation(dimensions)
+                           ? operand
+                           : Transpose(operand, dimensions);
+    return Reshape(shape, transposed);
+  }());
 }
 
 XlaOp XlaBuilder::Reshape(const XlaOp& operand,
                           tensorflow::gtl::ArraySlice<int64> new_sizes) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, operand.GetShape());
+    std::vector<int64> dimensions(shape.dimensions_size());
+    std::iota(dimensions.begin(), dimensions.end(), 0);
+    return Reshape(operand, dimensions, new_sizes);
+  }());
 }
 
 XlaOp XlaBuilder::Collapse(const XlaOp& operand,
@@ -636,7 +650,17 @@ XlaOp XlaBuilder::IsFinite(const XlaOp& operand) { return UnimplementedOp(); }
 
 XlaOp XlaBuilder::Transpose(const XlaOp& operand,
                             tensorflow::gtl::ArraySlice<int64> permutation) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferTransposeShape(operand_shape, permutation));
+    for (int64 dim : permutation) {
+      instr.add_dimensions(dim);
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kTranspose, {operand});
+  }());
 }
 
 XlaOp XlaBuilder::Rev(const XlaOp& operand,

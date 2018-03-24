@@ -190,5 +190,32 @@ TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
               HasSubstr("Do not add XlaOp from builder b1 to builder main"));
 }
 
+TEST_F(XlaBuilderTest, ReshapeDefaultOrder) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
+  b.Reshape(x, /*new_sizes=*/{6, 35});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reshape(op::Parameter()));
+}
+
+TEST_F(XlaBuilderTest, ReshapeHasTranspose) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {2, 3, 5, 7}), "x");
+  b.Reshape(x, /*dimensions=*/{3, 2, 1, 0}, /*new_sizes=*/{6, 35});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reshape(op::Transpose(op::Parameter())));
+}
+
+TEST_F(XlaBuilderTest, Transpose) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  b.Transpose(x, /*permutation=*/{1, 0});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Transpose(op::Parameter()));
+}
+
 }  // namespace
 }  // namespace xla
