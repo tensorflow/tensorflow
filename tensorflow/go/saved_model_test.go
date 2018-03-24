@@ -19,7 +19,7 @@ package tensorflow
 import "testing"
 
 func TestSavedModel(t *testing.T) {
-	bundle, err := LoadSavedModel("../cc/saved_model/testdata/half_plus_two/00000123", []string{"serve"}, nil)
+	bundle, err := LoadSavedModel("../cc/saved_model/testdata/half_plus_two/00000123", []string{"serve"}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LoadSavedModel(): %v", err)
 	}
