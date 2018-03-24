@@ -179,5 +179,16 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
                             op::Broadcast(op::Reshape(op::Parameter(1)))));
 }
 
+TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
+  XlaBuilder b1("b1");
+  auto p0 = b1.Parameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  XlaBuilder builder("main");
+  builder.Add(p0, p0);
+  auto statusor = builder.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Do not add XlaOp from builder b1 to builder main"));
+}
+
 }  // namespace
 }  // namespace xla

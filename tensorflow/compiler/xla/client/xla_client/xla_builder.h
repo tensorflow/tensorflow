@@ -706,8 +706,9 @@ class XlaBuilder {
   StatusOr<ProgramShape> GetProgramShape();
 
  private:
-  XlaOp AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                       tensorflow::gtl::ArraySlice<XlaOp> operands = {});
+  StatusOr<XlaOp> AddInstruction(
+      HloInstructionProto&& instr, HloOpcode opcode,
+      tensorflow::gtl::ArraySlice<XlaOp> operands = {});
 
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error

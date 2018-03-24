@@ -284,10 +284,12 @@ XlaOp XlaBuilder::Mul(const XlaOp& lhs, const XlaOp& rhs,
 }
 
 XlaOp XlaBuilder::ConstantLiteral(const Literal& literal) {
-  HloInstructionProto instr;
-  *instr.mutable_shape() = literal.shape();
-  *instr.mutable_literal() = literal.ToProto();
-  return AddInstruction(std::move(instr), HloOpcode::kConstant);
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = literal.shape();
+    *instr.mutable_literal() = literal.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kConstant);
+  }());
 }
 
 XlaOp XlaBuilder::Call(const XlaComputation& computation,
@@ -794,8 +796,9 @@ XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return UnimplementedOp();
 }
 
-XlaOp XlaBuilder::AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                                 tensorflow::gtl::ArraySlice<XlaOp> operands) {
+StatusOr<XlaOp> XlaBuilder::AddInstruction(
+    HloInstructionProto&& instr, HloOpcode opcode,
+    tensorflow::gtl::ArraySlice<XlaOp> operands) {
   const int64 handle = instructions_.size();
   instr.set_id(handle);
   instr.set_opcode(HloOpcodeString(opcode));
@@ -806,6 +809,10 @@ XlaOp XlaBuilder::AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
     instr.set_name(StrCat(instr.name(), ".", handle));
   }
   for (const auto& operand : operands) {
+    TF_RET_CHECK(operand.builder_ != nullptr);
+    TF_RET_CHECK(operand.builder_ == this)
+        << "Do not add XlaOp from builder " << operand.builder_->name()
+        << " to builder " << this->name();
     instr.add_operand_ids(operand.handle());
     // TODO(b/74197823): Set metadata and sharding.
   }
