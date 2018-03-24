@@ -837,7 +837,7 @@ const tensorflow::FunctionDef* OpToFunction(
   }
   VLOG(1) << "Fixed Output names and all types: " << fdef.DebugString();
 
-  ctx->context.AddFunctionDef(fdef);
+  status->status = ctx->context.AddFunctionDef(fdef);
   if (!status->status.ok()) return nullptr;
   const auto ret = ctx->context.FindFunctionDef(signature->name());
   DCHECK(ret != nullptr);
@@ -885,7 +885,7 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   // Since input param reordering may have occurred between `op` and `launch_op`
   // via `op_input_to_func_input`, adjust the actual inputs accordingly.
   launch_op->inputs = op->inputs;
-  for (TFE_TensorHandle* h : launch_op->inputs) {
+  for (tensorflow::TensorHandle* h : launch_op->inputs) {
     h->Ref();
   }
   if (!op_input_to_func_input.empty()) {
