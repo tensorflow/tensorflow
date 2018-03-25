@@ -235,7 +235,7 @@ def _wals_factorization_model_function(features, labels, mode, params):
         num_items: An integer, the total number of items of this axis.
         update_fn: A function that takes one argument (`sp_input`), and that
         returns a tuple of
-          * new_factors: A flot Tensor of the factor values after update.
+          * new_factors: A float Tensor of the factor values after update.
           * update_op: a TensorFlow op which updates the factors.
           * loss: A float Tensor, the unregularized loss.
           * reg_loss: A float Tensor, the regularization loss.
