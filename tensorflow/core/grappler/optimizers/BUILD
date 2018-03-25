@@ -500,6 +500,7 @@ cc_library(
         ":constant_folding",
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",
+        ":debug_stripper",
         ":dependency_optimizer",
         ":function_optimizer",
         ":graph_optimizer",
@@ -616,5 +617,36 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "debug_stripper",
+    srcs = ["debug_stripper.cc"],
+    hdrs = [
+        "debug_stripper.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:graph_optimizer",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "debug_stripper_test",
+    size = "small",
+    srcs = ["debug_stripper_test.cc"],
+    deps = [
+        ":debug_stripper",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )
