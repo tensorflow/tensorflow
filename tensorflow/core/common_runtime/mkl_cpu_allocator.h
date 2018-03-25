@@ -20,9 +20,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_MKL_CPU_ALLOCATOR_H_
 
 #ifdef INTEL_MKL
-#ifndef _WIN32
-#include <unistd.h>
-#endif
+
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
