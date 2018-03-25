@@ -35,7 +35,7 @@ option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
 # SIMD, MKL and MKLDNN options
-option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
 option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
 option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
 
@@ -306,6 +306,8 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
       ${MKL_HOME_PLATFORM}/redist/intel64/mkl
       ${MKL_HOME_PLATFORM}/redist/intel64/tbb/vc_mt
       ${MKL_HOME_PLATFORM}/redist/intel64/compiler)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES
+      mkl_intel_lp64_dll mkl_sequential_dll mkl_core_dll mkl_rt mkl_cdll_intel64)
   endif()
   if (UNIX)
     # Fix me: complete the path on linux
@@ -318,8 +320,6 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
   endif()
   include_directories(${MKL_INCLUDE_DIRS})
   link_directories(${MKL_LINK_DIRS})
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES
-    mkl_intel_lp64_dll mkl_sequential_dll mkl_core_dll mkl_rt mkl_cdll_intel64)
   if (tensorflow_ENABLE_MKLDNN_SUPPORT)
     include(mkldnn)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
