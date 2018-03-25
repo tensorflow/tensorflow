@@ -329,6 +329,7 @@ class BasicRNNCell(_LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
+    inputs_shape = tensor_shape.TensorShape(inputs_shape)
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
@@ -398,6 +399,7 @@ class GRUCell(_LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
+    inputs_shape = tensor_shape.TensorShape(inputs_shape)
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
@@ -534,6 +536,7 @@ class BasicLSTMCell(_LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
+    inputs_shape = tensor_shape.TensorShape(inputs_shape)
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
@@ -707,6 +710,7 @@ class LSTMCell(_LayerRNNCell):
     return self._output_size
 
   def build(self, inputs_shape):
+    inputs_shape = tensor_shape.TensorShape(inputs_shape)
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
