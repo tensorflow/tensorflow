@@ -119,10 +119,11 @@ void InputIndexer::MoveToOutputIndex(tensorflow::int64 output_index) {
 
   // rasterize the input index
   for (auto r = rank_ - 1; r >= 0; --r) {
-    if (r != adjustable_dimension_)
+    if (r != adjustable_dimension_) {
       input_indices_[r] = output_indices_[r] / dimension_ceiling_[r];
-    else
+    } else {
       RecomputeInputAdjustableDimensionIndex();
+    }
   }
   for (auto r = rank_ - 1; r >= 0; --r) {
     linear_input_index_ += index_factors_[r] * input_indices_[r];
@@ -181,8 +182,8 @@ std::vector<tensorflow::int64> InputIndexer::ComputeDimensionCeiling(
     const std::vector<tensorflow::int64>& input_dimensions) {
   std::vector<tensorflow::int64> dimension_ceiling(input_dimensions.size());
   for (size_t i = 0; i < input_dimensions.size(); ++i) {
-    dimension_ceiling[i] = tensorflow::int64(
-        std::ceil(float(output_dimensions[i]) / float(input_dimensions[i])));
+    dimension_ceiling[i] = (output_dimensions[i] + input_dimensions[i] - 1) /
+        input_dimensions[i];
   }
   return dimension_ceiling;
 }
@@ -191,11 +192,12 @@ std::vector<tensorflow::int64> InputIndexer::ComputeCumulativeDimensions() {
   std::vector<tensorflow::int64> cumulative_dimensions(rank_);
   int count = 0;
   for (int i = 0; i < rank_; ++i) {
-    if (count == 0)
+    if (count == 0) {
       cumulative_dimensions[count] = 1;
-    else
+    } else {
       cumulative_dimensions[count] =
           cumulative_dimensions[count - 1] * dimension_ceiling_[count - 1];
+    }
     ++count;
   }
   return cumulative_dimensions;
@@ -245,85 +247,37 @@ void process_desired_shape(tensorflow::OpKernelContext* context,
   *output_size = new_sliced_size * (*target_dimensions)[*adjustable_dimension];
 }
 
-// Heuristic number based on measurements on development machine.
-const tensorflow::int64 costPerFillIndex = 75;
+// Heuristic number based on measurements on
+// Intel(R) Core(TM) i7-4930K CPU @ 3.40GHz
+const tensorflow::int64 costPerFillIndex = 35;
 
-template <class InputDataT,
-          class IndexVecT>  // both types are needed here b/c IndexVecT and
-// InputDataT are not related
+enum class Mode {
+  kForward,
+  kGradient
+};
+
+// Computes either periodic_resample operation output or gradients for it,
+// depending on |mode|.
+// |original_shape| is always shape of input to periodic_resample operation.
+// |source_tensor| is either source for periodic_resample (for forward mode)
+//     or gradients tensor.
+// |desired_shape| is always shape, provided by user, to which forward
+//     propagation attempts resample input tensor.
+template <class InputDataT, Mode mode>
 void
-fill_periodic_tensor(tensorflow::OpKernelContext* context,
-                     const IndexVecT& desired_shape,
-                     const tensorflow::Tensor& input_tensor) {
-  // input is a strided array (last index is fastest, C-ordered)
-  auto input = input_tensor.flat<InputDataT>();
-  const int rank = input_tensor.dims();
-  std::vector<tensorflow::int64> target_dimensions(rank);
-  // index of adjustable dimension
-  int adjustable_dimension = 0;
-  tensorflow::int64 new_size = 0;
-  tensorflow::TensorShape output_shape;
+do_periodic_resample_op(tensorflow::OpKernelContext* context,
+                        const tensorflow::TensorShape& original_shape,
+                        const tensorflow::PartialTensorShape& desired_shape,
+                        const tensorflow::Tensor& source_tensor) {
+  const int rank = source_tensor.dims();
 
-  // requires that the rank of the input tensor and length of the desired shape
-  // are equal
-  OP_REQUIRES(context, rank == desired_shape.size(),
-              tensorflow::errors::InvalidArgument(
-                  "periodic_resample expects the rank of the input tensor, ",
-                  rank, ", to be the same as the length of the desired shape, ",
-                  desired_shape.size(), "."));
-
-  process_desired_shape(context, input_tensor.shape(), desired_shape,
-                        &adjustable_dimension, &target_dimensions, &new_size);
-
-  // ensure that the new dimension is greater than zero
-  OP_REQUIRES(context, target_dimensions[adjustable_dimension] > 0,
-              tensorflow::errors::InvalidArgument(
-                  "periodic_resample found that the "
-                  "adjustable dimension, ",
-                  adjustable_dimension, ", isn't greater than zero, ",
-                  target_dimensions[adjustable_dimension], "."));
-  for (int i = 0; i < rank; ++i) {
-    output_shape.AddDim(target_dimensions[i]);
-  }
-
-  // Create an output tensor and attach it to the current context
-  tensorflow::Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(0, output_shape, &output_tensor));
-  auto output = output_tensor->flat<InputDataT>();
-
-  // Fill output tensor with periodically resampled input tensor values
-  InputIndexer input_indexer(target_dimensions, input_tensor.shape(),
-                             adjustable_dimension);
-
-  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-  auto fill_output_tensor = [&input_indexer, &output, &input](
-      tensorflow::int64 start, tensorflow::int64 limit) {
-    InputIndexer local_indexer(input_indexer);
-    local_indexer.MoveToOutputIndex(start);
-    for (tensorflow::int64 output_index = start; output_index < limit;
-         ++output_index) {
-      output(output_index) = input(local_indexer.linear_input_index());
-      local_indexer.IncrementOutputIndex();
-    }
-  };
-  ::tensorflow::Shard(worker_threads.num_threads, worker_threads.workers,
-                      new_size, costPerFillIndex, fill_output_tensor);
-}
-
-template <class InputDataT>
-void fill_grad_tensor(tensorflow::OpKernelContext* context,
-                      const tensorflow::TensorShape& original_shape,
-                      const tensorflow::PartialTensorShape& desired_shape,
-                      const tensorflow::Tensor& grad_tensor) {
-  const int rank = grad_tensor.dims();
   // requires that the rank of the input tensor and length of the desired shape
   // are equal
   OP_REQUIRES(context, rank == desired_shape.dims(),
               tensorflow::errors::InvalidArgument(
-                  "periodic_resample gradient expects the rank of the ",
-                  "gradient tensor, ", rank, ", to be the same as the length",
-                  " of the desired shape, ", desired_shape.dims(), "."));
+                  "periodic_resample expects the rank of the input tensor, ",
+                  rank, ", to be the same as the length of the desired shape, ",
+                  desired_shape.dims(), "."));
 
   std::vector<tensorflow::int64> target_dimensions(rank);
   tensorflow::int64 new_size = 0;
@@ -335,32 +289,44 @@ void fill_grad_tensor(tensorflow::OpKernelContext* context,
   // ensure that the new dimension is greater than zero
   OP_REQUIRES(context, target_dimensions[adjustable_dimension] > 0,
               tensorflow::errors::InvalidArgument(
-                  "periodic_resample gradient found that the "
+                  "periodic_resample found that the "
                   "adjustable dimension, ",
                   adjustable_dimension, ", isn't greater than zero, ",
                   target_dimensions[adjustable_dimension], "."));
+  tensorflow::TensorShape output_shape;
+  if (mode == Mode::kForward) {
+    for (int i = 0; i < rank; ++i) {
+      output_shape.AddDim(target_dimensions[i]);
+    }
+  } else {
+    output_shape = original_shape;
+  }
 
   // Create an output tensor and attach it to the current context
   tensorflow::Tensor* output_tensor = nullptr;
   OP_REQUIRES_OK(context,
-                 context->allocate_output(0, original_shape, &output_tensor));
+                 context->allocate_output(0, output_shape, &output_tensor));
   auto output = output_tensor->flat<InputDataT>();
 
-  // Fill output tensor with periodically resampled input tensor values
   // input is a strided array (last index is fastest, C-ordered)
-  auto input_grad_data = grad_tensor.flat<InputDataT>();
+  auto input = source_tensor.flat<InputDataT>();
+
+  // Fill output tensor with periodically resampled input tensor values
   InputIndexer input_indexer(target_dimensions, original_shape,
                              adjustable_dimension);
 
   auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-  auto fill_output_tensor = [&input_indexer, &output, &input_grad_data](
+  auto fill_output_tensor = [&input_indexer, &output, &input](
       tensorflow::int64 start, tensorflow::int64 limit) {
     InputIndexer local_indexer(input_indexer);
     local_indexer.MoveToOutputIndex(start);
-    for (tensorflow::int64 input_grad_index = start; input_grad_index < limit;
-         ++input_grad_index) {
-      output(local_indexer.linear_input_index()) =
-          input_grad_data(input_grad_index);
+    for (tensorflow::int64 output_index = start; output_index < limit;
+         ++output_index) {
+      if (mode == Mode::kForward) {
+        output(output_index) = input(local_indexer.linear_input_index());
+      } else {
+        output(local_indexer.linear_input_index()) = input(output_index);
+      }
       local_indexer.IncrementOutputIndex();
     }
   };
@@ -368,32 +334,32 @@ void fill_grad_tensor(tensorflow::OpKernelContext* context,
                       new_size, costPerFillIndex, fill_output_tensor);
 }
 
+#define DATA_TYPE_SWITCH(data_type, context, CASE)                            \
+  switch (data_type) {                                                        \
+    CASE(float)                                                               \
+    CASE(double)                                                              \
+    CASE(tensorflow::int32)                                                   \
+    CASE(tensorflow::int64)                                                   \
+    default:                                                                  \
+      context->CtxFailure(__FILE__, __LINE__,                                 \
+          tensorflow::errors::InvalidArgument(                                \
+              "Unsuppored tensor elements type"));                            \
+      break;                                                                  \
+  }
+
 void create_output_tensor(
     tensorflow::OpKernelContext* context,
     const tensorflow::Tensor& input_tensor,
     const tensorflow::DataType& input_tensor_type,
-    const tensorflow::PartialTensorShape& desired_shape_tensor) {
-  auto desired_shape = desired_shape_tensor.dim_sizes();
+    const tensorflow::PartialTensorShape& desired_shape) {
+#define CASE(type)                                                            \
+    case tensorflow::DataTypeToEnum<type>::value:                             \
+      do_periodic_resample_op<type, Mode::kForward>(                          \
+          context, input_tensor.shape(), desired_shape, input_tensor);        \
+      break;
 
-  // obligatory type switch
-  switch (input_tensor_type) {
-    case tensorflow::DataTypeToEnum<float>::value:
-      fill_periodic_tensor<float>(context, desired_shape, input_tensor);
-      break;
-    case tensorflow::DataTypeToEnum<double>::value:
-      fill_periodic_tensor<double>(context, desired_shape, input_tensor);
-      break;
-    case tensorflow::DataTypeToEnum<tensorflow::int32>::value:
-      fill_periodic_tensor<tensorflow::int32>(context, desired_shape,
-                                              input_tensor);
-      break;
-    case tensorflow::DataTypeToEnum<tensorflow::int64>::value:
-      fill_periodic_tensor<tensorflow::int64>(context, desired_shape,
-                                              input_tensor);
-      break;
-    default:
-      ;
-  }
+  DATA_TYPE_SWITCH(input_tensor_type, context, CASE);
+#undef CASE
 }
 
 void create_grad_tensor(tensorflow::OpKernelContext* context,
@@ -401,27 +367,14 @@ void create_grad_tensor(tensorflow::OpKernelContext* context,
                         const tensorflow::DataType& grad_tensor_type,
                         const tensorflow::TensorShape& original_shape,
                         const tensorflow::PartialTensorShape& desired_shape) {
-  // obligatory type switch
-  switch (grad_tensor_type) {
-    case tensorflow::DataTypeToEnum<float>::value:
-      fill_grad_tensor<float>(context, original_shape, desired_shape,
-                              grad_tensor);
+#define CASE(type)                                                            \
+    case tensorflow::DataTypeToEnum<type>::value:                             \
+      do_periodic_resample_op<type, Mode::kGradient>(                         \
+          context, original_shape, desired_shape, grad_tensor);               \
       break;
-    case tensorflow::DataTypeToEnum<double>::value:
-      fill_grad_tensor<double>(context, original_shape, desired_shape,
-                               grad_tensor);
-      break;
-    case tensorflow::DataTypeToEnum<tensorflow::int32>::value:
-      fill_grad_tensor<tensorflow::int32>(context, original_shape,
-                                          desired_shape, grad_tensor);
-      break;
-    case tensorflow::DataTypeToEnum<tensorflow::int64>::value:
-      fill_grad_tensor<tensorflow::int64>(context, original_shape,
-                                          desired_shape, grad_tensor);
-      break;
-    default:
-      ;
-  }
+
+  DATA_TYPE_SWITCH(grad_tensor_type, context, CASE);
+#undef CASE
 }
 
 }  // namespace

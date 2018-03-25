@@ -96,7 +96,6 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
   def testPeriodicResampleErrors(self):
     input_tensor = numpy.zeros(shape=[1, 2, 2, 4])
     with self.test_session():
-      variables.global_variables_initializer().run()
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Dimension 3 input tensor has size 4, desired shape has size 1'):
@@ -111,7 +110,6 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
     result_shape = (4, 4, 1)
     input_shape = (2, 2, 4)
     with self.test_session() as sess:
-      variables.global_variables_initializer().run()
       x = array_ops.placeholder(dtypes.float32, shape=input_shape)
       output = periodic_resample(x, desired_shape)
       error = gradient_checker.compute_gradient_error(
