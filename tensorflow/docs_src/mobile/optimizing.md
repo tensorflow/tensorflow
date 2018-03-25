@@ -233,6 +233,8 @@ order by how long they took. From left to right, the columns are:
 - The cumulative total time of this and the previous ops in the table. This is
   handy for understanding what the distribution of work is across the layers, to
   see if just a few of the nodes are taking up most of the time.
+  
+- How much memory the outputs of this op type took up.
 
 - Name of the node.
 
