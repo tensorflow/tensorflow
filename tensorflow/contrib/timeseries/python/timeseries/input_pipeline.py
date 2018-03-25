@@ -492,12 +492,46 @@ class CSVReader(ReaderBaseTimeSeriesParser):
       features_lists.setdefault(column_name, []).append(value)
     features = {}
     for column_name, values in features_lists.items():
-      if (len(values) == 1 and
-          column_name != feature_keys.TrainEvalFeatures.VALUES):
+      if column_name == feature_keys.TrainEvalFeatures.TIMES:
         features[column_name] = values[0]
       else:
         features[column_name] = array_ops.stack(values, axis=1)
     return features
+
+
+class TFExampleReader(ReaderBaseTimeSeriesParser):
+  """Reads and parses `tf.Example`s from a TFRecords file."""
+
+  def __init__(self,
+               filenames,
+               features):
+    """Configure `tf.Example` parsing.
+
+    Args:
+      filenames: A filename or list of filenames to read the time series
+          from. Each line must have columns corresponding to `column_names`.
+      features: A dictionary mapping from feature keys to `tf.FixedLenFeature`
+          objects. Must include `TrainEvalFeatures.TIMES` (scalar integer) and
+          `TrainEvalFeatures.VALUES` (floating point vector) features.
+    Raises:
+      ValueError: If required times/values features are not present.
+    """
+    if feature_keys.TrainEvalFeatures.TIMES not in features:
+      raise ValueError("'{}' is a required column.".format(
+          feature_keys.TrainEvalFeatures.TIMES))
+    if feature_keys.TrainEvalFeatures.VALUES not in features:
+      raise ValueError("'{}' is a required column.".format(
+          feature_keys.TrainEvalFeatures.VALUES))
+    self._features = features
+    super(TFExampleReader, self).__init__(filenames=filenames)
+
+  def _get_reader(self):
+    return io_ops.TFRecordReader()
+
+  def _process_records(self, examples):
+    """Parse `tf.Example`s into `Tensors`."""
+    return parsing_ops.parse_example(
+        serialized=examples, features=self._features)
 
 
 class TimeSeriesInputFn(object):

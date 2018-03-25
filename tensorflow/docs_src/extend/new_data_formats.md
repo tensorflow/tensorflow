@@ -167,7 +167,7 @@ REGISTER_KERNEL_BUILDER(Name("TextLineReader").Device(DEVICE_CPU),
 ```
 
 The last step is to add the Python wrapper.  You can either do this by
-@{$adding_an_op#building_the_op_library$compiling a dynamic library}
+@{$adding_an_op#build_the_op_library$compiling a dynamic library}
 or, if you are building TensorFlow from source, adding to `user_ops.py`.
 For the latter, you will import `tensorflow.python.ops.io_ops` in
 [`tensorflow/python/user_ops/user_ops.py`](https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py)

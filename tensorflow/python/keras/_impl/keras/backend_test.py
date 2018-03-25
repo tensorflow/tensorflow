@@ -128,6 +128,22 @@ class BackendUtilsTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
+  def test_learning_phase_scope(self):
+    with self.test_session():
+      initial_learning_phase = keras.backend.learning_phase()
+      with keras.backend.learning_phase_scope(1) as lp:
+        self.assertEqual(lp, 1)
+        self.assertEqual(keras.backend.learning_phase(), 1)
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+      with keras.backend.learning_phase_scope(0) as lp:
+        self.assertEqual(lp, 0)
+        self.assertEqual(keras.backend.learning_phase(), 0)
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+      with self.assertRaises(ValueError):
+        with keras.backend.learning_phase_scope(None):
+          pass
+      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+
   def test_int_shape(self):
     x = keras.backend.placeholder(shape=(3, 4))
     self.assertEqual(keras.backend.int_shape(x), (3, 4))

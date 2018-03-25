@@ -110,7 +110,7 @@ HloRunner::HloRunner(se::Platform* platform) {
 
 HloRunner::~HloRunner() {}
 
-StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
+StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     const tensorflow::gtl::ArraySlice<Literal*> arguments,
     bool run_hlo_passes) {
@@ -158,8 +158,8 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable->ExecuteOnStream(&service_run_options, argument_buffer_ptrs,
-                                  /*hlo_execution_profile=*/nullptr));
+      executable->ExecuteOnStreamWrapper(
+          &service_run_options, /*profile=*/nullptr, argument_buffer_ptrs));
 
   // Create a ScopedShapedBuffer of the result to manage deallocation. This will
   // deallocate all the device memory when it goes out of scope.

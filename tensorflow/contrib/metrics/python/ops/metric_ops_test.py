@@ -2128,6 +2128,205 @@ class StreamingDynamicAUCTest(test.TestCase):
       self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-5)
 
 
+class AucWithConfidenceIntervalsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def _testResultsEqual(self, expected_dict, gotten_result):
+    """Tests that 2 results (dicts) represent the same data.
+
+    Args:
+      expected_dict: A dictionary with keys that are the names of properties
+        of PrecisionRecallData and whose values are lists of floats.
+      gotten_result: A AucWithConfidenceIntervalData object.
+    """
+    gotten_dict = {k: t.eval() for k, t in gotten_result._asdict().items()}
+    self.assertItemsEqual(
+        list(expected_dict.keys()), list(gotten_dict.keys()))
+
+    for key, expected_values in expected_dict.items():
+      self.assertAllClose(expected_values, gotten_dict[key])
+
+  def _testCase(self, predictions, labels, expected_result, weights=None):
+    """Performs a test given a certain scenario of labels, predictions, weights.
+
+    Args:
+      predictions: The predictions tensor. Of type float32.
+      labels: The labels tensor. Of type bool.
+      expected_result: The expected result (dict) that maps to tensors.
+      weights: Optional weights tensor.
+    """
+    with self.test_session() as sess:
+      predictions_tensor = constant_op.constant(
+          predictions, dtype=dtypes_lib.float32)
+      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.int64)
+      weights_tensor = None
+      if weights:
+        weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
+      gotten_result, update_op = (
+          metric_ops.auc_with_confidence_intervals(
+              labels=labels_tensor,
+              predictions=predictions_tensor,
+              weights=weights_tensor))
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+
+      self._testResultsEqual(expected_result, gotten_result)
+
+  def testAucAllCorrect(self):
+    self._testCase(
+        predictions=[0., 0.2, 0.3, 0.3, 0.4, 0.5, 0.6, 0.6, 0.8, 1.0],
+        labels=[0, 0, 1, 0, 0, 1, 0, 1, 1, 0],
+        expected_result={
+            'auc': 0.66666667,
+            'lower': 0.27826795,
+            'upper': 0.91208512,
+        })
+
+  def testAucUnorderedInput(self):
+    self._testCase(
+        predictions=[1.0, 0.6, 0., 0.3, 0.4, 0.2, 0.5, 0.3, 0.6, 0.8],
+        labels=[0, 1, 0, 1, 0, 0, 1, 0, 0, 1],
+        expected_result={
+            'auc': 0.66666667,
+            'lower': 0.27826795,
+            'upper': 0.91208512,
+        })
+
+  def testAucWithWeights(self):
+    self._testCase(
+        predictions=[0., 0.2, 0.3, 0.3, 0.4, 0.5, 0.6, 0.6, 0.8, 1.0],
+        labels=[0, 0, 1, 0, 0, 1, 0, 1, 1, 0],
+        weights=[0.5, 0.6, 1.2, 1.5, 2.0, 2.0, 1.5, 1.2, 0.6, 0.5],
+        expected_result={
+            'auc': 0.65151515,
+            'lower': 0.28918604,
+            'upper': 0.89573906,
+        })
+
+  def testAucEqualOne(self):
+    self._testCase(
+        predictions=[0, 0.2, 0.3, 0.3, 0.4, 0.5, 0.6, 0.6, 0.8, 1.0],
+        labels=[0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+        expected_result={
+            'auc': 1.0,
+            'lower': 1.0,
+            'upper': 1.0,
+        })
+
+  def testAucEqualZero(self):
+    self._testCase(
+        predictions=[0, 0.2, 0.3, 0.3, 0.4, 0.5, 0.6, 0.6, 0.8, 1.0],
+        labels=[1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+        expected_result={
+            'auc': 0.0,
+            'lower': 0.0,
+            'upper': 0.0,
+        })
+
+  def testNonZeroOnePredictions(self):
+    self._testCase(
+        predictions=[2.5, -2.5, .5, -.5, 1],
+        labels=[1, 0, 1, 0, 0],
+        expected_result={
+            'auc': 0.83333333,
+            'lower': 0.15229267,
+            'upper': 0.99286517,
+        })
+
+  def testAllLabelsOnes(self):
+    self._testCase(
+        predictions=[1., 1., 1., 1., 1.],
+        labels=[1, 1, 1, 1, 1],
+        expected_result={
+            'auc': 0.,
+            'lower': 0.,
+            'upper': 0.,
+        })
+
+  def testAllLabelsZeros(self):
+    self._testCase(
+        predictions=[0., 0., 0., 0., 0.],
+        labels=[0, 0, 0, 0, 0],
+        expected_result={
+            'auc': 0.,
+            'lower': 0.,
+            'upper': 0.,
+        })
+
+  def testWeightSumLessThanOneAll(self):
+    self._testCase(
+        predictions=[1., 1., 0., 1., 0., 0.],
+        labels=[1, 1, 1, 0, 0, 0],
+        weights=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+        expected_result={
+            'auc': 0.,
+            'lower': 0.,
+            'upper': 0.,
+        })
+
+  def testWithMultipleUpdates(self):
+    batch_size = 50
+    num_batches = 100
+    labels = np.array([])
+    predictions = np.array([])
+    tf_labels = variables.Variable(array_ops.ones(batch_size, dtypes_lib.int32),
+                                   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+                                   dtype=dtypes_lib.int32)
+    tf_predictions = variables.Variable(
+        array_ops.ones(batch_size),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.float32)
+    auc, update_op = metrics.auc_with_confidence_intervals(tf_labels,
+                                                           tf_predictions)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      for _ in xrange(num_batches):
+        new_labels = np.random.randint(0, 2, size=batch_size)
+        noise = np.random.normal(0.0, scale=0.2, size=batch_size)
+        new_predictions = 0.4 + 0.2 * new_labels + noise
+        labels = np.concatenate([labels, new_labels])
+        predictions = np.concatenate([predictions, new_predictions])
+        sess.run(tf_labels.assign(new_labels))
+        sess.run(tf_predictions.assign(new_predictions))
+        sess.run(update_op)
+        expected_auc = _np_auc(predictions, labels)
+        self.assertAllClose(expected_auc, auc.auc.eval())
+
+  def testExceptionOnFloatLabels(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0.5, 0, 1, 0], dtypes_lib.float32)
+      labels = constant_op.constant([0.7, 0, 1, 0, 1])
+      _, update_op = metrics.auc_with_confidence_intervals(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      self.assertRaises(TypeError, sess.run(update_op))
+
+  def testExceptionOnGreaterThanOneLabel(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0.5, 0, 1, 0], dtypes_lib.float32)
+      labels = constant_op.constant([2, 1, 0, 1, 0])
+      _, update_op = metrics.auc_with_confidence_intervals(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          '.*labels must be 0 or 1, at least one is >1.*'):
+        sess.run(update_op)
+
+  def testExceptionOnNegativeLabel(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0.5, 0, 1, 0], dtypes_lib.float32)
+      labels = constant_op.constant([1, 0, -1, 1, 0])
+      _, update_op = metrics.auc_with_confidence_intervals(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          '.*labels must be 0 or 1, at least one is <0.*'):
+        sess.run(update_op)
+
+
 class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
 
   def setUp(self):

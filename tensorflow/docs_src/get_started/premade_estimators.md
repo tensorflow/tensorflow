@@ -98,6 +98,7 @@ classifies Iris flowers into three different species based on the size of their
   alt="Petal geometry compared for three iris species: Iris setosa, Iris virginica, and Iris versicolor"
   src="../images/iris_three_species.jpg">
 </div>
+
 **From left to right,
 [*Iris setosa*](https://commons.wikimedia.org/w/index.php?curid=170298) (by
 [Radomil](https://commons.wikimedia.org/wiki/User:Radomil), CC BY-SA 3.0),
@@ -396,9 +397,9 @@ predictions and their probabilities:
 
 
 ``` python
-for pred_dict, expec in zip(predictions, expected):
-    template = ('\nPrediction is "{}" ({:.1f}%), expected "{}"')
+template = ('\nPrediction is "{}" ({:.1f}%), expected "{}"')
 
+for pred_dict, expec in zip(predictions, expected):
     class_id = pred_dict['class_ids'][0]
     probability = pred_dict['probabilities'][class_id]
 

@@ -41,6 +41,17 @@ limitations under the License.
 
 namespace tflite {
 
+// Abstract interface that verifies whether a given model is legit.
+// It facilitates the use-case to verify and build a model without loading it
+// twice.
+class TfLiteVerifier {
+ public:
+  // Returns true if the model is legit.
+  virtual bool Verify(const char* data, int length,
+                      ErrorReporter* reporter) = 0;
+  virtual ~TfLiteVerifier() {}
+};
+
 // An RAII object that represents a read-only tflite model, copied from disk,
 // or mmapped. This uses flatbuffers as the serialization format.
 class FlatBufferModel {
@@ -48,6 +59,12 @@ class FlatBufferModel {
   // Builds a model based on a file. Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromFile(
       const char* filename,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  // Verifies whether the content of the file is legit, then builds a model
+  // based on the file. Returns a nullptr in case of failure.
+  static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromFile(
+      const char* filename, TfLiteVerifier* verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Builds a model based on a pre-loaded flatbuffer. The caller retains
@@ -64,7 +81,7 @@ class FlatBufferModel {
       const tflite::Model* model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  // Releases memory or unmaps mmaped meory.
+  // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
@@ -82,23 +99,9 @@ class FlatBufferModel {
   bool CheckModelIdentifier() const;
 
  private:
-  // Loads a model from `filename`. If `mmap_file` is true then use mmap,
-  // otherwise make a copy of the model in a buffer.
-  //
-  // Note, if `error_reporter` is null, then a DefaultErrorReporter() will be
-  // used.
-  explicit FlatBufferModel(
-      const char* filename, bool mmap_file = true,
-      ErrorReporter* error_reporter = DefaultErrorReporter(),
-      bool use_nnapi = false);
-
-  // Loads a model from `ptr` and `num_bytes` of the model file. The `ptr` has
-  // to remain alive and unchanged until the end of this flatbuffermodel's
-  // lifetime.
-  //
-  // Note, if `error_reporter` is null, then a DefaultErrorReporter() will be
-  // used.
-  FlatBufferModel(const char* ptr, size_t num_bytes,
+  // Loads a model from a given allocation. FlatBufferModel will take over the
+  // ownership of `allocation`, and delete it in desctructor.
+  FlatBufferModel(Allocation* allocation,
                   ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Loads a model from Model flatbuffer. The `model` has to remain alive and
@@ -151,6 +154,8 @@ class InterpreterBuilder {
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);
+  TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter,
+                          int num_threads);
 
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();

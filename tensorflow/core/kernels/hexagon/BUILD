@@ -45,6 +45,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",

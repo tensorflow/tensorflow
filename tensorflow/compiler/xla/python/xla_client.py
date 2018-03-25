@@ -30,9 +30,9 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 
 
-# Most functions are snake_case for consistency with other modules,
-# whereas method names of ComputationBuilder and LocalComputation are
-# CamelCase for consistency with XLA.
+# Most functions are snake_case for consistency with other modules, whereas
+# method names of ComputationBuilder and LocalComputation are CamelCase for
+# consistency with XLA.
 # pylint: disable=invalid-name
 
 
@@ -123,24 +123,34 @@ _BINARY_OPS = [
     'Pow',
 ]
 
+
 XLA_ELEMENT_TYPE_TO_DTYPE = {
-    xla_data_pb2.F32: np.dtype(np.float32),
-    xla_data_pb2.F64: np.dtype(np.float64),
-    xla_data_pb2.S32: np.dtype(np.int32),
-    xla_data_pb2.S64: np.dtype(np.int64),
-    xla_data_pb2.U32: np.dtype(np.uint32),
-    xla_data_pb2.U64: np.dtype(np.uint64),
-    xla_data_pb2.PRED: np.dtype(np.bool),
+    xla_data_pb2.PRED: np.dtype('bool'),
+    xla_data_pb2.S8: np.dtype('int8'),
+    xla_data_pb2.S16: np.dtype('int16'),
+    xla_data_pb2.S32: np.dtype('int32'),
+    xla_data_pb2.S64: np.dtype('int64'),
+    xla_data_pb2.U8: np.dtype('uint8'),
+    xla_data_pb2.U16: np.dtype('uint16'),
+    xla_data_pb2.U32: np.dtype('uint32'),
+    xla_data_pb2.U64: np.dtype('uint64'),
+    xla_data_pb2.F16: np.dtype('float16'),
+    xla_data_pb2.F32: np.dtype('float32'),
+    xla_data_pb2.F64: np.dtype('float64'),
+    xla_data_pb2.C64: np.dtype('complex64'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
 # doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
 # when keying by dtype in this dict, we use the string form of dtypes.
-DTYPE_TO_XLA_ELEMENT_TYPE = {
-    str(v): k
-    for k, v in XLA_ELEMENT_TYPE_TO_DTYPE.items()
-}
+DTYPE_TO_XLA_ELEMENT_TYPE = {str(dt): et
+                             for et, dt in XLA_ELEMENT_TYPE_TO_DTYPE.items()}
+
+
+def dtype_to_etype(dtype):
+  """Convenience function for reading DTYPE_TO_XLA_ELEMENT_TYPE."""
+  return DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
 
 
 class LocalBuffer(object):
@@ -194,6 +204,12 @@ class Shape(object):
     self._dimensions = dimensions
     self._minor_to_major = minor_to_major
     self._check_minor_to_major()
+
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (self.np_dtype == other.np_dtype and
+            self._dimensions == other._dimensions and
+            self._minor_to_major == other._minor_to_major)
 
   def __repr__(self):
     return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
@@ -304,6 +320,9 @@ class CompileOptions(object):
 
   def __init__(self):
     self.generate_hlo_graph = None
+    self.dump_optimized_hlo_proto_to = None
+    self.dump_per_pass_hlo_proto_to = None
+    self.hlo_profile = False
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -354,17 +373,44 @@ class LocalComputation(object):
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
+      assert isinstance(c_local_computation, c_api.CompiledLocalComputation)
       self._delete = c_api.DeleteCompiledLocalComputation
     else:
+      assert isinstance(c_local_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
+    """Compiles an un-compiled local computation.
+
+    Local computations are the result of a "LocalComputationBuild'ing" process
+    -- they start in uncompiled form, and via a call to Compile() turn into a
+    compiled local computation.
+
+    Raises:
+      ValueError: if this is already a compiled local computation.
+
+    Arguments:
+      argument_shapes: parameter shapes -- they are first laid out by layout_fn
+        if layout_fn is provided. Otherwise, the default layout for those shapes
+        will be used.
+      compile_options: options to use for compilation, includes an optional
+        laid out result shape for the computation.
+      layout_fn: lambda that is used to lay out the argument/result shapes.
+
+    Returns:
+      A newly *compiled* local computation instance.
+    """
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
+      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+      result_shape = result_shape.map_leaves(layout_fn)
+      compile_options = compile_options or CompileOptions()
+      compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
@@ -606,6 +652,9 @@ class ComputationBuilder(object):
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(_unwrap_data_handle(operand)))
 
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._client.GetReturnValueShape())
+
   def GetComputationStats(self):
     raise NotImplementedError()
 
@@ -620,7 +669,7 @@ class ComputationBuilder(object):
         representing the configuration of the padding operation.
 
     Returns:
-      A ComputationDataHandle representing the added pad op.
+      A ComputationDataHandle representing the added Pad op.
     """
     if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
       padding_config = GetPaddingConfigFromTriples(padding_config)
@@ -630,7 +679,20 @@ class ComputationBuilder(object):
                          padding_config))
 
   def Reshape(self, operand, dimensions, new_sizes):
-    """Reshape op."""
+    """Enqueues a reshape op onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to be reshaped.
+      dimensions: sequence of integers encoding the order in which dimensions
+        are collapsed or None, in which case dimensions are flattened in order.
+      new_sizes: sequence of integers encoding the new dimension sizes (shape).
+
+    Returns:
+      A ComputationDataHandle representing the added Reshape op.
+    """
+    if dimensions is None:
+      ndim = len(self.GetShape(operand).dimensions())
+      dimensions = tuple(range(ndim))
     return _wrap_data_handle(
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
@@ -736,10 +798,26 @@ class ComputationBuilder(object):
       strides = [1] * len(start_indices)
     return _wrap_data_handle(
         self._client.Slice(
-            _unwrap_data_handle(operand),
-            start_indices,
-            limit_indices,
+            _unwrap_data_handle(operand), start_indices, limit_indices,
             strides))
+
+  def SliceInDim(self, operand, start_index, limit_index, stride, dimno):
+    """Enqueues a slice-in-dimension operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle for the N dimensional array to be sliced.
+      start_index: an integer containing the start index of the slice.
+      limit_index: an integer containing the end index of the slice.
+      stride: an integer containing the stride size for the slice.
+      dimno: an integer indicating the dimension along which to slice.
+
+    Returns:
+      A ComputationDataHandle representing the added Slice op.
+    """
+    return _wrap_data_handle(
+        self._client.SliceInDim(
+            _unwrap_data_handle(operand), start_index, limit_index, stride,
+            dimno))
 
   def DynamicSlice(self, operand, start_indices, slice_sizes):
     """Enqueues a slice op with dynamic start indices onto the computation.

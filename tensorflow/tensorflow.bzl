@@ -22,6 +22,7 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "if_mkl_lnx_x64"
 )
 
 def register_extension_info(**kwargs):
@@ -34,7 +35,7 @@ def src_to_test_name(src):
   return src.replace("/", "_").split(".")[0]
 
 def full_path(relative_paths):
-  return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+  return [native.package_name() + "/" + relative for relative in relative_paths]
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -202,7 +203,8 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
           "-ftemplate-depth=900"])
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
-      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
+      + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + if_ios_x86_64(["-msse4.1"])
@@ -265,7 +267,7 @@ def _rpath_linkopts(name):
   # deployed. Other shared object dependencies (e.g. shared between contrib/
   # ops) are picked up as long as they are in either the same or a parent
   # directory in the tensorflow/ tree.
-  levels_to_root = PACKAGE_NAME.count("/") + name.count("/")
+  levels_to_root = native.package_name().count("/") + name.count("/")
   return select({
       clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
@@ -498,6 +500,9 @@ def tf_gen_op_wrappers_cc(name,
 #     is invalid to specify both "hidden" and "op_whitelist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
+#   gen_locally: if True, the genrule to generate the Python library will be run
+#     without sandboxing. This would help when the genrule depends on symlinks
+#     which may not be supported in the sandbox.
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -508,7 +513,8 @@ def tf_gen_op_wrapper_py(name,
                          generated_target_name=None,
                          op_whitelist=[],
                          cc_linkopts=[],
-                         api_def_srcs=[]):
+                         api_def_srcs=[],
+                         gen_locally=False):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -563,6 +569,7 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs + [hidden_file],
         tools=[tool_name] + tf_binary_additional_srcs(),
+        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str +
              " @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
@@ -572,6 +579,7 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs,
         tools=[tool_name] + tf_binary_additional_srcs(),
+        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str + " " +
              op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
@@ -612,7 +620,7 @@ def tf_cc_test(name,
       srcs=srcs + tf_binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-pie",
           ],
         clean_dep("//tensorflow:windows"): [],
@@ -899,6 +907,14 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  if 'linkstatic' not in kwargs or kwargs['linkstatic'] != 1:
+    enable_text_relocation_linkopt = select({
+          clean_dep("//tensorflow:darwin"): [],
+          "//conditions:default": ['-Wl,-z,notext'],})
+    if 'linkopts' in kwargs:
+      kwargs['linkopts'] += enable_text_relocation_linkopt
+    else:
+      kwargs['linkopts'] = enable_text_relocation_linkopt
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1152,22 +1168,6 @@ def transitive_hdrs(name, deps=[], **kwargs):
 # the libraries in deps.
 def cc_header_only_library(name, deps=[], includes=[], **kwargs):
   _transitive_hdrs(name=name + "_gather", deps=deps)
-
-  # We could generalize the following, but rather than complicate things
-  # here, we'll do the minimal use case for now, and hope bazel comes up
-  # with a better solution before too long.  We'd expect it to compute
-  # the right include path by itself, but it doesn't, possibly because
-  # _transitive_hdrs lost some information about the include path.
-  if "@nsync//:nsync_headers" in deps:
-    # Buiding tensorflow from @org_tensorflow finds this two up.
-    nsynch = "../../external/nsync/public"
-    # Building tensorflow from elsewhere finds it four up.
-    # Note that native.repository_name() is not yet available in TF's Kokoro.
-    if REPOSITORY_NAME != "@":
-      nsynch = "../../" + nsynch
-    includes = includes[:]
-    includes.append(nsynch)
-
   native.cc_library(name=name,
                     hdrs=[":" + name + "_gather"],
                     includes=includes,
@@ -1176,7 +1176,6 @@ def cc_header_only_library(name, deps=[], includes=[], **kwargs):
 def tf_custom_op_library_additional_deps():
   return [
       "@protobuf_archive//:protobuf_headers",
-      "@nsync//:nsync_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
   ]
@@ -1306,6 +1305,46 @@ def tf_extension_linkopts():
 def tf_extension_copts():
   return []  # No extension c opts
 
+# In tf_py_wrap_cc generated libraries
+# module init functions are not exported unless
+# they contain one of the keywords in the version file
+# this prevents custom python modules.
+# This function attempts to append init_module_name to list of
+# exported functions in version script
+def _append_init_to_versionscript_impl(ctx):
+  mod_name = ctx.attr.module_name
+  if ctx.attr.is_version_script:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "global:":"global:\n     init_%s;\n     PyInit_*;"%(mod_name),
+      },
+      is_executable=False,
+    )
+  else:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "*tensorflow*":"*tensorflow*\ninit_%s\nPyInit_*\n"%(mod_name),
+      },
+      is_executable=False,
+    )
+
+
+_append_init_to_versionscript= rule(
+  implementation=_append_init_to_versionscript_impl,
+  attrs={
+    "module_name":attr.string(mandatory=True),
+    "template_file":attr.label(allow_files=True,single_file=True,mandatory=True),
+    "is_version_script":attr.bool(default=True,
+      doc='whether target is a ld version script or exported symbol list',
+      mandatory=False),
+  },
+  outputs={"versionscript":"%{name}.lds"},
+)
+
 def tf_py_wrap_cc(name,
                              srcs,
                              swig_includes=[],
@@ -1327,26 +1366,39 @@ def tf_py_wrap_cc(name,
       toolchain_deps=["//tools/defaults:crosstool"],
       module_name=module_name,
       py_module_name=name)
+  vscriptname=name+"_versionscript"
+  _append_init_to_versionscript(
+      name=vscriptname,
+      module_name=module_name,
+      is_version_script=select({
+          "@local_config_cuda//cuda:darwin":False,
+          "//conditions:default":True,
+          }),
+      template_file=select({
+          "@local_config_cuda//cuda:darwin":clean_dep("//tensorflow:tf_exported_symbols.lds"),
+          "//conditions:default":clean_dep("//tensorflow:tf_version_script.lds")
+      })
+  )
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          clean_dep("//tensorflow:tf_exported_symbols.lds")
+          "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          clean_dep("//tensorflow:tf_version_script.lds")
+          "%s.lds"%vscriptname,
       ]
   })
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
-          clean_dep("//tensorflow:tf_exported_symbols.lds")
+          "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
-          clean_dep("//tensorflow:tf_version_script.lds")
+          "%s.lds"%vscriptname,
       ]
   })
 

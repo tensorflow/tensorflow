@@ -42,6 +42,7 @@ import six as _six
 
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('compat.as_bytes', 'compat.as_str')
@@ -112,6 +113,7 @@ def as_str_any(value):
     return str(value)
 
 
+@tf_export('compat.path_to_str')
 def path_to_str(path):
   """Returns the file system path representation of a `PathLike` object, else as it is.
 

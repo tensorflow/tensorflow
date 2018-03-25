@@ -55,11 +55,13 @@ class LiveValueResolver(transformer.Base):
       if not symbol_is_local and not symbol_is_param:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
-          # TODO(mdan): Could live values have FQNs? i.e. 'a'.join()
         elif node.id in self.context.namespace:
           obj = self.context.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
-          anno.setanno(node, 'fqn', (obj.__name__,))
+          if hasattr(obj, '__name__'):
+            # If the symbol value is for example a primitive, then it will not
+            # have a name.
+            anno.setanno(node, 'fqn', (obj.__name__,))
         else:
           pass
           # TODO(mdan): Should we raise an error here?
@@ -86,6 +88,7 @@ class LiveValueResolver(transformer.Base):
       if not hasattr(parent_object, node.attr):
         raise AttributeError('%s has no attribute %s' % (parent_object,
                                                          node.attr))
+      anno.setanno(node, 'parent_type', type(parent_object))
       anno.setanno(node, 'live_val', getattr(parent_object, node.attr))
       anno.setanno(node, 'fqn', anno.getanno(node.value, 'fqn') + (node.attr,))
     # TODO(mdan): Investigate the role built-in annotations can play here.
@@ -96,6 +99,7 @@ class LiveValueResolver(transformer.Base):
         # This would not hold for dynamic members like function attributes.
         # For the dynamic case, we simply leave the node without an annotation,
         # and let downstream consumers figure out what to do.
+        anno.setanno(node, 'parent_type', parent_type)
         anno.setanno(node, 'live_val', getattr(parent_type, node.attr))
         anno.setanno(node, 'fqn',
                      anno.getanno(node.value, 'type_fqn') + (node.attr,))

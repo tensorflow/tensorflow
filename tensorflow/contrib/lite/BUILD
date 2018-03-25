@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 
 exports_files(glob([
     "testdata/*.bin",
+    "testdata/*.pb",
     "models/testdata/*",
 ]))
 
@@ -131,6 +132,7 @@ cc_library(
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
+        ":util",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -168,6 +170,9 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels:kernel_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -229,22 +234,43 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        ":context",
+    ],
+)
+
+cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":context",
+        ":util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Test the serialization of a model with optional tensors.
 
 # Model tests
 
-cc_library(
-    name = "models_test_utils",
-    testonly = 1,
-    hdrs = ["models/test_utils.h"],
-    deps = select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "@com_google_absl//absl/strings",
-            "//tensorflow/core:test",
-        ],
-    }),
-)
+#cc_library(
+#    name = "models_test_utils",
+#    testonly = 1,
+#    hdrs = ["models/test_utils.h"],
+#    deps = select({
+#        "//tensorflow:android": [],
+#        "//conditions:default": [
+#            "@com_google_absl//absl/strings",
+#            "//tensorflow/core:test",
+#        ],
+#    }),
+#)
 
 filegroup(
     name = "all_files",

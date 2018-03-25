@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 
+#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -29,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class XlaContext;
+
 // The XlaCompiler class is responsible for compilation of a self-contained
 // subgraph of a TensorFlow computation using the XLA linear algebra runtime.
 // It does a symbolic execution of the graph starting from specific input
@@ -213,6 +217,10 @@ class XlaCompiler {
     // containing both constant and non-constant results.
     std::vector<OutputDescription> outputs;
 
+    // TensorFlow shapes and types of sends/recvs from HostCompute Ops to their
+    // matching RecvAtHost/SendFromHost Ops in the outer graph.
+    tf2xla::HostComputeMetadata host_compute_metadata;
+
     // Resources whose values were updated by the computation, ordered
     // by return value position. Resource updates follow the non-constant
     // results in the outputs of XLA computation.
@@ -238,6 +246,12 @@ class XlaCompiler {
     // If 'allow_cpu_custom_calls' is true, kernels may make use of CustomCall()
     // for CPU.
     bool allow_cpu_custom_calls = false;
+
+    // If set, the XLA representation of variables represented to XLA as the
+    // shape given by this shape function. Variables are reshaped to this shape
+    // on write, and reshaped to their original shape on read.
+    std::function<TensorShape(const TensorShape&, DataType)>
+        variable_representation_shape_fn;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
@@ -275,10 +289,18 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
+  // Compiles a single Op, given by an OpKernelContext, into an
+  // xla::Computation. Similar to CompileFunction but takes a single Op as
+  // input.
+  Status CompileSingleOp(const CompileOptions& options, string const& name,
+                         OpKernelContext* ctx,
+                         const std::vector<Argument>& args,
+                         CompilationResult* result);
+
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  static Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
+  Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -286,6 +308,22 @@ class XlaCompiler {
   // computations. Computations that communicate should be compiled with the
   // same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
+
+  // Sets the shapes and types for the device to host transfer associated with
+  // 'key'.
+  Status SetDeviceToHostMetadata(const string& key,
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
+
+  // Gets the shapes the device to host transfer associated with 'key'.
+  Status GetDeviceToHostShapes(const string& key,
+                               std::vector<TensorShape>* shapes) const;
+
+  // Sets the shapes and types for the host to device transfer associated with
+  // 'key'.
+  Status SetHostToDeviceMetadata(const string& key,
+                                 gtl::ArraySlice<DataType> types,
+                                 gtl::ArraySlice<TensorShape> shapes);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
@@ -298,6 +336,17 @@ class XlaCompiler {
 
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
+
+  // Builds XLA computations for each of the arguments to the computation.
+  // `args` are the arguments to the computation.
+  Status BuildArguments(const Graph& graph,
+                        const std::vector<XlaCompiler::Argument>& args,
+                        bool use_tuple_arg, xla::ComputationBuilder* builder,
+                        XlaContext* context, std::vector<int>* arg_cores,
+                        std::vector<XlaExpression>* arg_expressions,
+                        std::vector<int>* input_mapping,
+                        std::vector<xla::Shape>* input_shapes,
+                        bool is_entry_computation);
 
   // Graph compiler needs to know how to get an optimized graph from a function
   // body.
@@ -338,6 +387,9 @@ class XlaCompiler {
       cache_;
 
   std::unordered_map<string, xla::ChannelHandle> channels_;
+
+  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_sends_;
+  std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_recvs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

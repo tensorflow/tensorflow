@@ -1308,11 +1308,12 @@ class DenseToSparseTest(test.TestCase):
     expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
     tensor = constant_op.constant(expected_constant)
     sparse = _layers.dense_to_sparse(tensor)
-    dense = sparse_ops.sparse_to_dense(
-        sparse.indices, sparse.dense_shape, sparse.values)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape,
+                                       sparse.values)
     with self.test_session() as sess:
       constant = sess.run(dense)
       self.assertAllEqual(expected_constant, constant)
+
 
 class DropoutTest(test.TestCase):
 
@@ -4132,6 +4133,32 @@ class LegacyFullyConnectedTest(test.TestCase):
                                    'rank of x must be at least 2 not: 1'):
         x = constant_op.constant([[]], shape=[0])
         _layers.legacy_fully_connected(x, 2, activation_fn=nn_ops.softmax)
+
+
+class MaxOutTest(test.TestCase):
+
+  def test_simple(self):
+    inputs = random_ops.random_uniform((64, 10, 36), seed=1)
+    graph = _layers.maxout(inputs, num_units=3)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10, 3])
+
+  def test_fully_connected(self):
+    inputs = random_ops.random_uniform((64, 50), seed=1)
+    graph = _layers.fully_connected(inputs, 50)
+    graph = _layers.maxout(graph, num_units=10)
+    self.assertEqual(graph.get_shape().as_list(), [64, 10])
+
+  def test_nchw(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 10, 3, padding='SAME')
+    graph = _layers.maxout(graph, num_units=1)
+    self.assertEqual(graph.get_shape().as_list(), [10, 100, 100, 1])
+
+  def test_invalid_shape(self):
+    inputs = random_ops.random_uniform((10, 100, 100, 3), seed=1)
+    graph = _layers.conv2d(inputs, 3, 10)
+    with self.assertRaisesRegexp(ValueError, 'number of features'):
+      graph = _layers.maxout(graph, num_units=2)
 
 
 if __name__ == '__main__':

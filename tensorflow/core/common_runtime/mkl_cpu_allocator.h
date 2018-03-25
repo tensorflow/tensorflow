@@ -24,7 +24,7 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
@@ -49,15 +49,15 @@ class MklSubAllocator : public SubAllocator {
 
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
-class MklCPUAllocator : public Allocator {
+class MklCPUAllocator : public VisitableAllocator {
  public:
   // Constructor and other standard functions
 
   /// Environment variable that user can set to upper bound on memory allocation
-  static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
+  static inline constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// Default upper limit on allocator size - 64GB
-  static const size_t kDefaultMaxLimit = 64LL << 30;
+  static constexpr size_t kDefaultMaxLimit = 64LL << 30;
 
   MklCPUAllocator() { TF_CHECK_OK(Initialize()); }
 
@@ -122,6 +122,14 @@ class MklCPUAllocator : public Allocator {
 
   void ClearStats() override { allocator_->ClearStats(); }
 
+  void AddAllocVisitor(Visitor visitor) override {
+    allocator_->AddAllocVisitor(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    allocator_->AddFreeVisitor(visitor);
+  }
+
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
 
@@ -154,9 +162,9 @@ class MklCPUAllocator : public Allocator {
   static constexpr const char* kName = "mklcpu";
 
   /// The alignment that we need for the allocations
-  static const size_t kAlignment = 64;
+  static constexpr const size_t kAlignment = 64;
 
-  Allocator* allocator_;  // owned by this class
+  VisitableAllocator* allocator_;  // owned by this class
 };
 
 }  // namespace tensorflow

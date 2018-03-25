@@ -259,6 +259,7 @@ cc_library(
     hdrs = ["grpc_serialization_traits.h"],
     deps = [
         "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
 )
 
@@ -381,6 +382,7 @@ tf_cuda_library(
     data = [
         ":grpc_testlib_server",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":grpc_session",
         ":grpc_testlib_ops",

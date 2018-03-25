@@ -49,8 +49,10 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // The inputs and the output must
   // 1) be matrices with no padding and a non-zero number of elements,
   // 2) have an allowed element type.
-  bool type_is_allowed = (output_shape.element_type() == F32 ||
-                          output_shape.element_type() == F64);
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  bool type_is_allowed =
+      (output_primitive_type == F16 || output_primitive_type == F32 ||
+       output_primitive_type == F64);
   return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
          IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape) &&
@@ -85,6 +87,19 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
       hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
       hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
     return true;
+  }
+
+  if (hlo.opcode() == HloOpcode::kFusion &&
+      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+    // Try to find the dot inside the output fusion node.
+    const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
+    if (dot->opcode() != HloOpcode::kDot) {
+      dot = hlo.fused_expression_root()->operand(1);
+    }
+    if (dot->opcode() == HloOpcode::kDot) {
+      return ImplementedAsGemm(*dot);
+    }
   }
 
   return false;

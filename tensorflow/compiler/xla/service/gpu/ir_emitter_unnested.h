@@ -67,6 +67,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleGather(HloInstruction* gather) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
@@ -93,14 +94,10 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildThunk(const HloInstruction* hlo);
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
+  // This kernel takes as arguments pointers to the given buffer allocations.
   llvm::Function* BuildKernelPrototype(
       const HloInstruction& inst,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> escaped_hlos);
-
-  // Emits the base pointers for `hlo` and its operands. `io_hlos` will store
-  // all input/output HLOs among `hlo` and its operands.
-  llvm::Function* EmitBasePointersForHloAndItsOperands(
-      const HloInstruction& hlo, std::vector<const HloInstruction*>* io_hlos);
+      tensorflow::gtl::ArraySlice<const BufferAllocation*> args);
 
   // EmitColumnReduction and EmitRowReduction emit code for column and row
   // reduction of a matrix and/or 3D tensor. Row and column reduction have
@@ -151,13 +148,10 @@ class IrEmitterUnnested : public IrEmitter {
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
       HloComputation* reducer);
 
-  // Emits code to initialize buffer of `inst` in given `thunk`.
-  Status EmitInitializer(const HloInstruction* inst, KernelThunk* thunk);
-
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object.
-  std::unique_ptr<Thunk> BuildKernelThunk(const HloInstruction* inst);
+  std::unique_ptr<KernelThunk> BuildKernelThunk(const HloInstruction* inst);
 
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
@@ -165,6 +159,11 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
+
+  // Returns a thunk that, given a reduce or select-and-scatter op, initializes
+  // its memory to the appropriate initial value.
+  StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
+      const HloInstruction* hlo);
 
   // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
   std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);

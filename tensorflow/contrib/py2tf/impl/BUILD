@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/contrib/py2tf/converters",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
         "@six_archive//:six",
     ],
@@ -39,7 +40,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":impl",
+        "//tensorflow/contrib/py2tf/utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 

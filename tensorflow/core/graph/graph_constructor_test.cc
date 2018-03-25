@@ -160,9 +160,7 @@ class GraphConstructorTest : public ::testing::Test {
   }
 
   string GraphDebugString() const {
-    GraphDef def;
-    graph_.ToGraphDef(&def);
-    return def.DebugString();
+    return graph_.ToGraphDefDebug().DebugString();
   }
 
   Graph graph_;
@@ -1836,7 +1834,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_2:0");
 
-  // Import with an already-used prefix
+  // Import with an already-used prefix and uniquify_prefix = true
   opts.prefix = "A";
   opts.uniquify_prefix = true;
   results = ImportGraphDefResults();
@@ -1848,8 +1846,26 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_3/A");
 
   // Create B_3 node to keep the A/B numbering in sync
-  opts = ImportGraphDefOptions();
   ExpectOK("node { name: 'B_3' op: 'TestInput' }");
+
+  // Import with an already-used prefix and uniquify_prefix = false
+  opts.uniquify_prefix = false;
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A/A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A/B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A/A");
+
+  // Repeat the same import
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A/A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A/B_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A/A_1:0");
 
   // Import with existing de-duped node names
   opts = ImportGraphDefOptions();

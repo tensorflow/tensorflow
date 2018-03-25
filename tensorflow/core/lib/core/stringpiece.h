@@ -35,8 +35,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct StringPieceHasher;
-
 class StringPiece {
  public:
   typedef size_t size_type;
@@ -90,11 +88,13 @@ class StringPiece {
 
   size_t find(char c, size_t pos = 0) const;
   size_t rfind(char c, size_t pos = npos) const;
+  // DEPRECATED: Use tensorflow::str_util::StrContains instead.
   bool contains(StringPiece s) const;
 
   // Checks whether StringPiece starts with x and if so advances the beginning
   // of it to past the match.  It's basically a shortcut for starts_with
   // followed by remove_prefix.
+  // DEPRECATED: Use tensorflow::str_util::ConsumePrefix instead.
   bool Consume(StringPiece x) {
     if (starts_with(x)) {
       remove_prefix(x.size_);
@@ -115,10 +115,12 @@ class StringPiece {
   int compare(StringPiece b) const;
 
   // Return true iff "x" is a prefix of "*this"
+  // DEPRECATED: Use tensorflow::str_util::StartsWith instead.
   bool starts_with(StringPiece x) const {
     return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
   }
   // Return true iff "x" is a suffix of "*this"
+  // DEPRECATED: Use tensorflow::str_util::EndsWith instead.
   bool ends_with(StringPiece x) const {
     return ((size_ >= x.size_) &&
             (memcmp(data_ + (size_ - x.size_), x.data_, x.size_) == 0));
@@ -129,10 +131,6 @@ class StringPiece {
   size_t size_;
 
   // Intentionally copyable
-};
-
-struct StringPieceHasher {
-  size_t operator()(StringPiece s) const;
 };
 
 inline bool operator==(StringPiece x, StringPiece y) {

@@ -103,6 +103,7 @@ def tf_library(name, graph, config,
 
     # Now run freeze_graph to convert variables into constants.
     freeze_args = (" --input_graph=$(location " + graph + ")" +
+                   " --checkpoint_version=1" +
                    " --input_binary=" + str(not graph.endswith(".pbtxt")) +
                    " --input_checkpoint=$(location " + freeze_checkpoint + ")" +
                    " --output_graph=$(location " + freeze_file + ")" +
@@ -131,7 +132,7 @@ def tf_library(name, graph, config,
   header_file = name + ".h"
   metadata_object_file = name + "_tfcompile_metadata.o"
   function_object_file = name + "_tfcompile_function.o"
-  ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
+  ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
   if type(tfcompile_flags) == type(""):
     flags = tfcompile_flags
   else:
@@ -223,9 +224,6 @@ def tf_library(name, graph, config,
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
           "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
           "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
           "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",

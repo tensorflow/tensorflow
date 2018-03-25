@@ -216,7 +216,7 @@ def _partitioned_variable_assign(partitioned_var, new_value):
   """Assign op for partitioned variables.
 
   Args:
-    partitioned_var: A partitioned tensotflow variable
+    partitioned_var: A partitioned tensorflow variable
     new_value: Value to be assigned to the variable var
 
   Returns:
@@ -523,7 +523,8 @@ class Pruning(object):
     """Performs block-granular masking of the weights.
 
     Block pruning occurs only if the block_height or block_width is > 1 and
-    if the weight tensor has ndims = 2. Otherwise, elementwise pruning occurs.
+    if the weight tensor, when squeezed, has ndims = 2. Otherwise, elementwise
+    pruning occurs.
     Args:
       weights: The weight tensor that needs to be masked.
       threshold: The current threshold value. The function will compute a new
@@ -540,7 +541,8 @@ class Pruning(object):
     Raises:
       ValueError: if block pooling function is not AVG or MAX
     """
-    if weights.get_shape().ndims != 2 or self._block_dim == [1, 1]:
+    squeezed_weights = array_ops.squeeze(weights)
+    if squeezed_weights.get_shape().ndims != 2 or self._block_dim == [1, 1]:
       return self._update_mask(weights, threshold)
 
     if self._block_pooling_function not in ['AVG', 'MAX']:
@@ -549,9 +551,11 @@ class Pruning(object):
 
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(
-          array_ops.reshape(
-              weights, [1, weights.get_shape()[0],
-                        weights.get_shape()[1], 1]))
+          array_ops.reshape(weights, [
+              1,
+              squeezed_weights.get_shape()[0],
+              squeezed_weights.get_shape()[1], 1
+          ]))
       pool_window = [self._block_dim[0], self._block_dim[1]]
       pooled_weights = nn_ops.pool(
           abs_weights,
@@ -572,9 +576,10 @@ class Pruning(object):
                                         array_ops.ones(self._block_dim))
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
-          [weights.get_shape()[0],
-           weights.get_shape()[1]])
-    return smoothed_threshold, sliced_mask
+          [squeezed_weights.get_shape()[0],
+           squeezed_weights.get_shape()[1]])
+    return smoothed_threshold, array_ops.reshape(sliced_mask,
+                                                 array_ops.shape(weights))
 
   def _get_mask_assign_ops(self):
     # Make sure the assignment ops have not already been added to the list

@@ -29,7 +29,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
@@ -58,12 +58,6 @@ _NUMPY_NUMERIC_TYPES = {
 
 
 class TargetTest(test_util.TensorFlowTestCase):
-
-  def testInvalidDirectory(self):
-    logdir = '/tmp/apath/that/doesnt/exist'
-    self.assertFalse(gfile.Exists(logdir))
-    with self.assertRaises(errors.NotFoundError):
-      summary_ops.create_file_writer(logdir, max_queue=0, name='t0')
 
   def testShouldRecordSummary(self):
     self.assertFalse(summary_ops.should_record_summaries())
@@ -113,6 +107,20 @@ class TargetTest(test_util.TensorFlowTestCase):
       events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
+
+  def testSummaryNameScope(self):
+    training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_file_writer(
+        logdir, max_queue=0,
+        name='t2').as_default(), summary_ops.always_record_summaries():
+
+      with ops.name_scope('scope'):
+        summary_ops.scalar('scalar', 2.0)
+
+      events = summary_test_util.events_from_logdir(logdir)
+      self.assertEqual(len(events), 2)
+      self.assertEqual(events[1].summary.value[0].tag, 'scope/scalar')
 
   def testSummaryGlobalStep(self):
     step = training_util.get_or_create_global_step()

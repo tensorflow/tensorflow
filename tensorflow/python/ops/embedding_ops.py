@@ -396,8 +396,8 @@ def embedding_lookup_sparse(params,
     with `combiner`="mean", then the output will be a 3x20 matrix where
 
       output[0, :] = (params[1, :] * 2.0 + params[3, :] * 0.5) / (2.0 + 0.5)
-      output[1, :] = params[0, :] * 1.0
-      output[2, :] = params[1, :] * 3.0
+      output[1, :] = (params[0, :] * 1.0) / 1.0
+      output[2, :] = (params[1, :] * 3.0) / 3.0
 
   Raises:
     TypeError: If sp_ids is not a SparseTensor, or if sp_weights is neither

@@ -738,7 +738,7 @@ def train(train_op,
   if summary_writer is not None:
     train_step_kwargs['summary_writer'] = sv.summary_writer
 
-  total_loss = 0
+  total_loss = None
   should_retry = True
   while should_retry:
     try:
@@ -771,10 +771,10 @@ def train(train_op,
               logging.info('Stopping Training.')
               sv.request_stop()
               break
-        except errors.OutOfRangeError:
+        except errors.OutOfRangeError as e:
           # OutOfRangeError is thrown when epoch limit per
           # tf.train.limit_epochs is reached.
-          logging.info('Caught OutOfRangeError. Stopping Training.')
+          logging.info('Caught OutOfRangeError. Stopping Training. %s', e)
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)

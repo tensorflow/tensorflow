@@ -60,7 +60,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
-from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -99,6 +99,10 @@ from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
 
+# Import cudnn rnn ops to make sure their ops are registered.
+from tensorflow.python.ops import gen_cudnn_rnn_ops as _
+
+
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
 
@@ -116,6 +120,7 @@ from tensorflow.python.platform import test
 
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util.tf_export import tf_export
 
 # Import modules whose docstrings contribute, for use by remove_undocumented
 # below.
@@ -137,6 +142,10 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
+
+# Eager execution
+from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.framework.ops import enable_eager_execution
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -167,18 +176,39 @@ _allowed_symbols = [
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
+# Export protos
+# pylint: disable=undefined-variable
+tf_export('AttrValue')(AttrValue)
+tf_export('ConfigProto')(ConfigProto)
+tf_export('Event', 'summary.Event')(Event)
+tf_export('GPUOptions')(GPUOptions)
+tf_export('GraphDef')(GraphDef)
+tf_export('GraphOptions')(GraphOptions)
+tf_export('HistogramProto')(HistogramProto)
+tf_export('LogMessage')(LogMessage)
+tf_export('MetaGraphDef')(MetaGraphDef)
+tf_export('NameAttrList')(NameAttrList)
+tf_export('NodeDef')(NodeDef)
+tf_export('OptimizerOptions')(OptimizerOptions)
+tf_export('RunMetadata')(RunMetadata)
+tf_export('RunOptions')(RunOptions)
+tf_export('SessionLog', 'summary.SessionLog')(SessionLog)
+tf_export('Summary', 'summary.Summary')(Summary)
+tf_export('summary.SummaryDescription')(SummaryDescription)
+tf_export('SummaryMetadata')(SummaryMetadata)
+tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
+tf_export('TensorInfo')(TensorInfo)
+# pylint: enable=undefined-variable
+
+
 # The following symbols are kept for compatibility. It is our plan
 # to remove them in the future.
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'mul',  # use tf.multiply instead.
-    'neg',  # use tf.negative instead.
-    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
-    'list_diff',  # Use tf.listdiff instead.
     'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
@@ -266,6 +296,12 @@ _allowed_symbols.extend([
     'COMPILER_VERSION',
     'CXX11_ABI_FLAG',
     'MONOLITHIC_BUILD',
+])
+
+# Eager execution
+_allowed_symbols.extend([
+    'enable_eager_execution',
+    'executing_eagerly',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly

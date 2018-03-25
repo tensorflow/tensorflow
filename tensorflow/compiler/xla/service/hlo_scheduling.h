@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -33,28 +34,48 @@ StatusOr<int64> MinimumMemoryForSequence(
     const SequentialHloOrdering::HloModuleSequence& module_sequence,
     const LogicalBuffer::SizeFunction& size_function);
 
-enum class SchedulerAlgorithm {
-  kListSchedule,
-  kDfsSchedule,
+// A memory scheduler computes an execution sequence for the HLO instructions in
+// 'computation' that minimizes peak memory, given a points-to analysis result
+// that describes buffer aliasing, together with a target-specific size function
+// that maps a tensor's logical size to its padded size.
+typedef std::function<StatusOr<std::vector<const HloInstruction*>>(
+    const HloComputation&, const TuplePointsToAnalysis&,
+    const LogicalBuffer::SizeFunction&)>
+    MemorySchedulerAlgorithm;
 
-  // Selects the available scheduler algorithm that had the minimum memory in
-  // the resulting sequence (a la MinimumMemoryForSequence).
-  kAuto,
-};
+// List scheduler
+StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function);
+
+// DFS-order scheduler
+StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function);
+
+// The default scheduling algorithm. Runs both the list scheduler
+// and the DFS scheduler, and chooses whichever returns a lower min-memory,
+// not accounting for fragmentation.
+StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function);
 
 // Returns an HloModuleSequence which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
 StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm = SchedulerAlgorithm::kAuto);
+CreateMemoryMinimizingSequence(const HloModule& module,
+                               const LogicalBuffer::SizeFunction& size_function,
+                               const MemorySchedulerAlgorithm& algorithm = {});
 
 // Overload of above that computes the sequence for a single computation.
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm = SchedulerAlgorithm::kAuto);
+    const MemorySchedulerAlgorithm& algorithm = {});
 
 }  // namespace xla
 

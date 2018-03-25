@@ -27,6 +27,7 @@ pkg_tar(
         ":cheaders",
         ":clib",
         ":clicenses",
+        ":eager_cheaders",
     ],
 )
 
@@ -57,9 +58,22 @@ pkg_tar(
     name = "cheaders",
     files = [
         "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
     ],
     package_dir = "include/tensorflow/c",
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "eager_cheaders",
+    files = [
+        "//tensorflow/c/eager:headers",
+    ],
+    package_dir = "include/tensorflow/c/eager",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -124,7 +138,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
@@ -151,6 +164,7 @@ genrule(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -161,7 +175,6 @@ genrule(
         "@zlib_archive//:zlib.h",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-        "@mkl//:LICENSE",
     ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",

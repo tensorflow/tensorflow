@@ -539,7 +539,7 @@ class NetworkTest(test.TestCase):
         # No issue here since the name is unique within its scope.
         name_conflict3 = MyNetwork(name="name_conflict")
       net2 = MyNetwork()  # name=outside_scope/my_network_2 to avoid the
-                          # variable_scope my_network_1 below.
+      # variable_scope my_network_1 below.
       vs_name_conflict = MyNetwork(name="vs_name_conflict")  # conflict below
     with variable_scope.variable_scope("intervening_scope"):
       with variable_scope.variable_scope(captured_scope):

@@ -301,10 +301,6 @@ bool IsComparisonOp(const NodeDef& node) {
   return is_compare;
 }
 
-bool IsLogicalOp(const NodeDef& node) {
-  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
-}
-
 bool IsReduceOp(const NodeDef& node) {
   return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
          IsMin(node) || IsAll(node) || IsAny(node);
@@ -355,7 +351,7 @@ std::vector<int> DataInputPos(const NodeDef& node) {
   if (IsBetainc(node) || IsSelect(node)) {
     return {0, 1, 2};
   }
-  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node)) {
+  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node) || IsMerge(node)) {
     return NonControlInputs(node);
   }
   if (IsConcat(node)) {
@@ -1160,9 +1156,11 @@ class AgnosticNodeProcessor : public NodeProcessor {
     std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     std::deque<NodeDef*> queue;
     auto data_node_pos = DataInputPos(node);
+    std::unordered_set<string> visited;
     for (const auto& pos : data_node_pos) {
       auto input_node = node_map_->GetNode(node.input(pos));
       queue.push_back(input_node);
+      visited.insert(input_node->name());
     }
     // The code will exit this while loop in one iteration in most cases, as the
     // graph is already topologically sorted.
@@ -1181,7 +1179,10 @@ class AgnosticNodeProcessor : public NodeProcessor {
         auto current_node_pos = DataInputPos(*current_node);
         for (const auto& pos : current_node_pos) {
           auto input_node = node_map_->GetNode(current_node->input(pos));
-          queue.push_back(input_node);
+          if (visited.find(input_node->name()) == visited.end()) {
+            queue.push_back(input_node);
+            visited.insert(input_node->name());
+          }
         }
       }
     }
@@ -1400,7 +1401,24 @@ class HistogramSummaryProcessor : public AgnosticNodeProcessor {
 class IdentityNProcessor : public AgnosticNodeProcessor {
  public:
   explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+      : AgnosticNodeProcessor(opt_cxt) {
+    std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
+    for (int i = 0; i < node_->input_size(); i++) {
+      auto input = node_map_->GetNode(node_->input(i));
+      int port;
+      ParseNodeName(node_->input(i), &port);
+      // Skip control input.
+      if (port != -1) {
+        bool is_agnostic =
+            ops_format_agnostic.find(input->op()) != ops_format_agnostic.end();
+        if (IsPortDimsFour(*input, port) &&
+            ((IsNodeAfterNCHWToNHWC(*input) && is_agnostic) ||
+             IsTransposeNCHWToNHWC(input->name()))) {
+          input_pos_.push_back(i);
+        }
+      }
+    }
+  }
 
  protected:
   bool ShouldProcess() const override {
@@ -1408,31 +1426,18 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
            IsOnGPU();
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    for (int i = 0; i < node_->input_size(); i++) {
-      auto input = node_map_->GetNode(node_->input(i));
-      int port;
-      ParseNodeName(node_->input(i), &port);
-      // Skip control input.
-      if (port != -1) {
-        if (IsPortDimsFour(*input, port) &&
-            (IsNodeAfterNCHWToNHWC(*input) ||
-             IsTransposeNCHWToNHWC(input->name()))) {
-          input_pos.push_back(i);
-        }
-      }
-    }
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return input_pos_; }
 
   std::set<int> GetOutputPos() const override {
     std::set<int> output_pos{};
-    for (const auto& input_pos : GetInputPos()) {
+    for (const auto& input_pos : input_pos_) {
       output_pos.insert(input_pos);
     }
     return output_pos;
   }
+
+ private:
+  std::vector<int> input_pos_;
 };
 
 class ShapeProcessor : public IdentityNProcessor {
@@ -1471,10 +1476,16 @@ class MergeProcessor : public AgnosticNodeProcessor {
 
  private:
   bool IsEveryInputAfterNCHWToNHWC() const {
+    std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     for (const auto& input : node_->input()) {
       auto input_node = node_map_->GetNode(input);
-      if (IsNodeAfterNCHWToNHWC(*input_node) ||
-          IsTransposeNCHWToNHWC(input_node->name())) {
+      int port;
+      ParseNodeName(input, &port);
+      bool is_agnostic = ops_format_agnostic.find(input_node->op()) !=
+                         ops_format_agnostic.end();
+      if (IsPortDimsFour(*input_node, port) &&
+          ((IsNodeAfterNCHWToNHWC(*input_node) && is_agnostic) ||
+           IsTransposeNCHWToNHWC(input_node->name()))) {
         continue;
       }
       return false;
@@ -1561,6 +1572,16 @@ class SelectProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
+  bool ShouldProcess() const override {
+    auto input0 = node_map_->GetNode(node_->input(0));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    bool is_input0_scalar_vector_4d = IsPortDimsN(*input0, input0_port, 0) ||
+                                      IsPortDimsN(*input0, input0_port, 1) ||
+                                      IsPortDimsN(*input0, input0_port, 4);
+    return AgnosticNodeProcessor::ShouldProcess() && is_input0_scalar_vector_4d;
+  }
+
   std::vector<int> GetInputPos() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
     int input0_port;
@@ -1697,13 +1718,28 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsPortZeroDimsN(*node_, 2) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW() &&
-           IsOnGPU();
+    bool is_dims_supported = (IsPortZeroDimsN(*node_, 2) && IsAlongHW()) ||
+                             (IsPortZeroDimsN(*node_, 1) && IsAlongNHW());
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsInputConvertible() && is_dims_supported && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
+  Status CustomizedProcessing() override {
+    TF_RETURN_IF_ERROR(HasAttribute(*node_, "squeeze_dims"));
+    auto list = node_->mutable_attr()->at("squeeze_dims").mutable_list();
+    if (list->i_size() == 2) {
+      list->set_i(0, 2);
+      list->set_i(1, 3);
+    } else if (list->i_size() == 3) {
+      list->set_i(1, 2);
+      list->set_i(2, 3);
+    }
+    return Status::OK();
+  }
+
+ private:
   bool IsInputConvertible() const {
     int input_port;
     auto input = node_map_->GetNode(node_->input(0));
@@ -1716,33 +1752,31 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
       if (shape.dim(1).size() == 1 && shape.dim(2).size() == 1) {
         return true;
       }
-    }
-    return false;
-  }
-
-  bool IsAlongDimHW() const {
-    if (node_->attr().find("squeeze_dims") != node_->attr().end()) {
-      auto list = node_->attr().at("squeeze_dims").list();
-      // If list is empty, Squeeze op will squeeze all dimensions of size 1.
-      if (list.i_size() == 0) return true;
-      if (list.i_size() == 2) {
-        if (list.i(0) == 1 && list.i(1) == 2) {
-          return true;
-        }
+      if (shape.dim(0).size() == 1 && shape.dim(1).size() == 1 &&
+          shape.dim(2).size() == 1) {
+        return true;
       }
     }
     return false;
   }
 
-  Status CustomizedProcessing() override {
-    TF_RETURN_IF_ERROR(HasAttribute(*node_, "squeeze_dims"));
-    auto list = node_->mutable_attr()->at("squeeze_dims").mutable_list();
-    if (list->i_size() == 2) {
-      list->set_i(0, 2);
-      list->set_i(1, 3);
+  bool IsAlongAxis(const std::vector<int>& axis) const {
+    if (node_->attr().find("squeeze_dims") != node_->attr().end()) {
+      auto list = node_->attr().at("squeeze_dims").list();
+      // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+      if (list.i_size() == 0) return true;
+      if (list.i_size() == axis.size()) {
+        bool along_axis = true;
+        for (int i = 0; i < axis.size(); i++) {
+          along_axis = along_axis && (list.i(i) == axis[i]);
+        }
+        if (along_axis) return true;
+      }
     }
-    return Status::OK();
+    return false;
   }
+  bool IsAlongHW() const { return IsAlongAxis({1, 2}); }
+  bool IsAlongNHW() const { return IsAlongAxis({0, 1, 2}); }
 };
 
 class ReduceProcessor : public AgnosticNodeProcessor {
@@ -1761,7 +1795,7 @@ class ReduceProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    if (IsAlongNHW() || IsAlongHW() || IsAlongC()) {
+    if (IsReduceAxisSupported()) {
       DataType dtype = node_->attr().at("Tidx").type();
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype));
@@ -1769,12 +1803,18 @@ class ReduceProcessor : public AgnosticNodeProcessor {
     return Status::OK();
   }
 
-  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+  Status AddLayoutTransposeToOutputs() override {
+    if (KeepDims()) {
+      return AddTransformToOutputs("Transpose");
+    }
+    return Status::OK();
+  }
 
  private:
   bool IsReduceAxisSupported() const {
-    return IsAlongAllFourDims() || IsAlongHWC() ||
-           ((IsAlongNHW() || IsAlongHW() || IsAlongC()) && !KeepDims());
+    return KeepDims() || ((IsAlongAllFourDims() || IsAlongHWC() ||
+                           IsAlongNHW() || IsAlongHW() || IsAlongC()) &&
+                          !KeepDims());
   }
 
   bool IsAlongAxis(const std::vector<int>& axis) const {

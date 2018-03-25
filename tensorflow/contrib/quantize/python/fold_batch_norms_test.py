@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.layers.python.layers import layers
-from tensorflow.contrib.quantize.python import copy_graph
 from tensorflow.contrib.quantize.python import fold_batch_norms
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -34,6 +33,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import saver as saver_lib
 
 batch_norm = layers.batch_norm
 conv2d = layers.conv2d
@@ -128,6 +128,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
 
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def testFoldConv2d(self):
     self._RunTestOverParameters(self._TestFoldConv2d)
 
@@ -196,6 +199,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
 
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def testFoldConv2dUnknownShape(self):
     self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
@@ -259,6 +265,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     ])
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
+
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
     self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
@@ -337,6 +346,9 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     output_op_names = ['test/Add' if with_bypass else 'test/' + relu_op_name]
     self._AssertOutputGoesToOps(folded_add, g, output_op_names)
 
+    for op in g.get_operations():
+      self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
+
   def testFoldDepthwiseConv2d(self):
     self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
@@ -379,7 +391,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       if with_bypass:
         node = math_ops.add(inputs, node, name='test/Add')
       relu_node = relu(node, name='test/' + relu_op_name)
-    folded_g = copy_graph.CopyGraph(unfolded_g)
+    folded_g = self._CopyGraph(unfolded_g)
     with folded_g.as_default():
       fold_batch_norms.FoldBatchNorms(
           folded_g,
@@ -461,6 +473,16 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     for out_op_name in out_op_names:
       out_op = graph.get_operation_by_name(out_op_name)
       self.assertIn(op.outputs[0].name, [str(t.name) for t in out_op.inputs])
+
+  def _CopyGraph(self, graph):
+    """Return a copy of graph."""
+    meta_graph = saver_lib.export_meta_graph(
+        graph=graph, collection_list=graph.get_all_collection_keys())
+    graph_copy = ops.Graph()
+    with graph_copy.as_default():
+      _ = saver_lib.import_meta_graph(meta_graph)
+    return graph_copy
+
 
 if __name__ == '__main__':
   googletest.main()

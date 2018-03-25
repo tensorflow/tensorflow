@@ -150,7 +150,7 @@ def _MaybeDevice(device):
     yield
 
 
-def _ProcessGraphDefParam(graph_def):
+def _ProcessGraphDefParam(graph_def, op_dict):
   """Type-checks and possibly canonicalizes `graph_def`."""
   if not isinstance(graph_def, graph_pb2.GraphDef):
     # `graph_def` could be a dynamically-created message, so try a duck-typed
@@ -161,6 +161,22 @@ def _ProcessGraphDefParam(graph_def):
       graph_def.MergeFrom(old_graph_def)
     except TypeError:
       raise TypeError('graph_def must be a GraphDef proto.')
+  else:
+    # If we're using the graph_def provided by the caller, modify graph_def
+    # in-place to add attr defaults to the NodeDefs (this is visible to the
+    # caller).
+    # NOTE(skyewm): this is undocumented behavior that at least meta_graph.py
+    # depends on. It might make sense to move this to meta_graph.py and have
+    # import_graph_def not modify the graph_def argument (we'd have to make sure
+    # this doesn't break anything else.)
+    for node in graph_def.node:
+      if node.op not in op_dict:
+        # Assume unrecognized ops are functions for now. TF_ImportGraphDef will
+        # report an error if the op is actually missing.
+        continue
+      op_def = op_dict[node.op]
+      _SetDefaultAttrValues(node, op_def)
+
   return graph_def
 
 
@@ -254,7 +270,6 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
-  c_api.TF_ImportGraphDefOptionsSetUniquifyPrefix(options, True)
 
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
@@ -286,14 +301,17 @@ def _ProcessNewOps(graph):
   colocation_pairs = {}
 
   for new_op in graph._add_new_tf_operations(compute_devices=False):  # pylint: disable=protected-access
+    original_device = new_op.device
+    new_op._set_device('')  # pylint: disable=protected-access
     colocation_names = _GetColocationNames(new_op)
     if colocation_names:
       colocation_pairs[new_op] = colocation_names
-      # Don't apply this op's device function, since colocation constraints
-      # override device functions. Note that this op's device may still be set
-      # by the loop below.
+      # Don't set a device for this op, since colocation constraints override
+      # device functions and the original device. Note that this op's device may
+      # still be set by the loop below.
+      # TODO(skyewm): why does it override the original device?
     else:
-      with _MaybeDevice(new_op.device):
+      with _MaybeDevice(original_device):
         graph._apply_device_functions(new_op)  # pylint: disable=protected-access
 
   # The following loop populates the device field of ops that are colocated
@@ -369,6 +387,17 @@ def _GatherReturnElements(requested_return_elements, graph, results):
   return combined_return_elements
 
 
+def _SetDefaultAttrValues(node_def, op_def):
+  """Set any default attr values in `node_def` that aren't present."""
+  assert node_def.op == op_def.name
+  for attr_def in op_def.attr:
+    key = attr_def.name
+    if attr_def.HasField('default_value'):
+      value = node_def.attr[key]
+      if value is None or value.WhichOneof('value') is None:
+        node_def.attr[key].CopyFrom(attr_def.default_value)
+
+
 @tf_export('import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
@@ -420,11 +449,11 @@ def import_graph_def(graph_def,
       do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
       it refers to an unknown tensor).
   """
-  graph_def = _ProcessGraphDefParam(graph_def)
+  op_dict = op_def_registry.get_registered_ops()
+
+  graph_def = _ProcessGraphDefParam(graph_def, op_dict)
   input_map = _ProcessInputMapParam(input_map)
   return_elements = _ProcessReturnElementsParam(return_elements)
-
-  op_dict = op_def_registry.get_registered_ops()
 
   if producer_op_list is not None:
     # TODO(skyewm): make a copy of graph_def so we're not mutating the argument?
@@ -449,32 +478,39 @@ def import_graph_def(graph_def,
     _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                      return_elements)
 
-    with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          results = c_api.TF_GraphImportGraphDefWithResults(
-              graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
-      except errors.InvalidArgumentError as e:
-        # Convert to ValueError for backwards compatibility.
-        raise ValueError(str(e))
+    # _ProcessNewOps mutates the new operations. _lock ensures a Session.run
+    # call cannot occur between creating the TF_Operations in the
+    # TF_GraphImportGraphDefWithResults call and mutating the them in
+    # _ProcessNewOps.
+    with graph._lock:  # pylint: disable=protected-access
+      with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
+        try:
+          with errors.raise_exception_on_not_ok_status() as status:
+            results = c_api.TF_GraphImportGraphDefWithResults(
+                graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+        except errors.InvalidArgumentError as e:
+          # Convert to ValueError for backwards compatibility.
+          raise ValueError(str(e))
 
-    _ProcessNewOps(graph)
+      # Create _DefinedFunctions for any imported functions.
+      #
+      # We do this by creating _DefinedFunctions directly from `graph_def`, and
+      # adding them to `graph`. Adding an existing function to a TF_Graph is a
+      # no-op, so this only has the effect of updating the Python state (usually
+      # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
+      #
+      # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
+      # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
+      # TODO(b/74620627): move this after _ProcessNewOps outside the lock once
+      # _USE_C_SHAPES is removed.
+      if graph_def.library and graph_def.library.function:
+        # pylint: disable=protected-access
+        functions = function._from_library(graph_def.library)
+        for f in functions:
+          f.add_to_graph(graph)
+        # pylint: enable=protected-access
 
-    # Create _DefinedFunctions for any imported functions.
-    #
-    # We do this by creating _DefinedFunctions directly from `graph_def`, and
-    # adding them to `graph`. Adding an existing function to a TF_Graph is a
-    # no-op, so this only has the effect of updating the Python state (usually
-    # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
-    #
-    # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
-    # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
-    if graph_def.library and graph_def.library.function:
-      # pylint: disable=protected-access
-      functions = function._from_library(graph_def.library)
-      for f in functions:
-        f.add_to_graph(graph)
-      # pylint: enable=protected-access
+      _ProcessNewOps(graph)
 
     # Treat input mappings that don't appear in the graph as an error, because
     # they are likely to be due to a typo.
@@ -535,16 +571,9 @@ def import_graph_def(graph_def,
         # Check to see if this op's name matches a previously seen op
         if node.name in name_to_op:
           raise ValueError('Duplicate name \'%s\' in GraphDef.' % node.name)
-        # Set any default attr values that aren't present.
         if node.op not in op_dict:
           raise ValueError('No op named %s in defined operations.' % node.op)
         op_def = op_dict[node.op]
-        for attr_def in op_def.attr:
-          key = attr_def.name
-          if attr_def.HasField('default_value'):
-            value = node.attr[key]
-            if value is None or value.WhichOneof('value') is None:
-              node.attr[key].CopyFrom(attr_def.default_value)
 
         output_types = _OutputTypes(node, op_dict)
         name_to_op[node.name] = g.create_op(

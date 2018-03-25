@@ -31,7 +31,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
 from tensorflow.python.keras._impl.keras.layers import BatchNormalization
@@ -45,6 +45,7 @@ from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.layers import ZeroPadding2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
 DENSENET121_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.8/densenet121_weights_tf_dim_ordering_tf_kernels.h5'
@@ -298,6 +299,8 @@ def DenseNet(blocks,
   return model
 
 
+@tf_export('keras.applications.DenseNet121',
+           'keras.applications.densenet.DenseNet121')
 def DenseNet121(include_top=True,
                 weights='imagenet',
                 input_tensor=None,
@@ -308,6 +311,8 @@ def DenseNet121(include_top=True,
                   input_shape, pooling, classes)
 
 
+@tf_export('keras.applications.DenseNet169',
+           'keras.applications.densenet.DenseNet169')
 def DenseNet169(include_top=True,
                 weights='imagenet',
                 input_tensor=None,
@@ -318,6 +323,8 @@ def DenseNet169(include_top=True,
                   input_shape, pooling, classes)
 
 
+@tf_export('keras.applications.DenseNet201',
+           'keras.applications.densenet.DenseNet201')
 def DenseNet201(include_top=True,
                 weights='imagenet',
                 input_tensor=None,
@@ -328,6 +335,7 @@ def DenseNet201(include_top=True,
                   input_shape, pooling, classes)
 
 
+@tf_export('keras.applications.densenet.preprocess_input')
 def preprocess_input(x, data_format=None):
   """Preprocesses a numpy array encoding a batch of images.
 

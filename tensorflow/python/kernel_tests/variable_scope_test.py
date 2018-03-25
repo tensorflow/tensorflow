@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import threading
 
 import numpy
 
@@ -166,12 +167,10 @@ class VariableScopeTest(test.TestCase):
     self.evaluate(variables_lib.variables_initializer([w]))
     self.assertAllClose(self.evaluate(w.value()), [1, 2, 3])
 
-    if context.in_graph_mode():
-      with self.assertRaises(TypeError):
-        variable_scope.get_variable("x4", initializer={})
-    else:
-      with self.assertRaises(ValueError):
-        variable_scope.get_variable("x4", initializer={})
+    # A quirk to be revisited?
+    error = ValueError if context.executing_eagerly() else TypeError
+    with self.assertRaises(error):
+      variable_scope.get_variable("x4", initializer={})
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonInitializer(self):
@@ -267,7 +266,7 @@ class VariableScopeTest(test.TestCase):
         self.assertAllClose(self.evaluate(losses[2]), 0.5)
       with variable_scope.variable_scope("foo", reuse=True):
         # reuse=True is for now only supported when eager execution is disabled.
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           v = variable_scope.get_variable("v",
                                           [])  # "v" is alredy there, reused
           losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
@@ -374,7 +373,7 @@ class VariableScopeTest(test.TestCase):
       v = variable_scope.get_variable("v", [])
       self.evaluate(variables_lib.variables_initializer([v]))
       self.assertAllClose(self.evaluate(v.value()), 0.3)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         # Check that we can set reuse.
         variable_scope.get_variable_scope().reuse_variables()
         with self.assertRaises(ValueError):  # Fail, w does not exist yet.
@@ -408,7 +407,7 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("tower") as tower:
         with ops.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "testVarScopeNameScope1/tower/scope2/")
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with variable_scope.variable_scope(
             tower):  # Re-entering acts like another "tower".
           with ops.name_scope("scope2") as sc2:
@@ -422,7 +421,7 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("tower"):
         with ops.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "testVarScopeNameScope2/tower/scope2/")
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with variable_scope.variable_scope(tower):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "testVarScopeNameScope2/tower_1/scope2/")
@@ -903,17 +902,15 @@ class VariableScopeTest(test.TestCase):
             "w", [], collections=["foo"])
         self.assertEqual(local_var.name, "outer/w:0")
 
-    # Since variable is local, it should be in the local variable collection
-    # but not the trainable collection.
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
+      # Since variable is local, it should be in the local variable collection
+      # but not the trainable collection.
       self.assertIn(local_var,
                     ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
       self.assertIn(local_var, ops.get_collection("foo"))
       self.assertNotIn(local_var,
                        ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
-    # Check that local variable respects `reuse`.
-    if context.in_graph_mode():
+      # Check that local variable respects `reuse`.
       with variable_scope.variable_scope(outer, "default", reuse=True):
         self.assertEqual(
             variable_scope.get_local_variable("w", []).name, "outer/w:0")
@@ -1351,6 +1348,92 @@ class PartitionInfoTest(test.TestCase):
     partition_info = variable_scope._PartitionInfo(
         full_shape=[9, 3], var_offset=[4, 0])
     self.assertEqual(0, partition_info.single_slice_dim([2, 3]))
+
+
+class VariableScopeMultithreadedTest(test.TestCase):
+
+  def testTwoThreadsDisjointScopeEntry(self):
+
+    def thread_fn(i, graph):
+      with graph.as_default():
+        with variable_scope.variable_scope("foo"):
+          if i == 0:
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("foo/v:0", v.name)
+          else:
+            # Any thread after the first one should fail to create variable
+            # with the same name.
+            with self.assertRaises(ValueError):
+              variable_scope.get_variable("v", [])
+
+    graph = ops.get_default_graph()
+    threads = [
+        threading.Thread(target=thread_fn, args=(i, graph,)) for i in range(2)]
+
+    threads[0].start()
+    # Allow thread 0 to finish before starting thread 1.
+    threads[0].join()
+    threads[1].start()
+    threads[1].join()
+
+  def testTwoThreadsNestedScopeEntry(self):
+
+    def thread_fn(i, graph, run_event, pause_event):
+      with graph.as_default():
+        with variable_scope.variable_scope("foo"):
+          if i == 0:
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("foo/v:0", v.name)
+          else:
+            # Any thread after the first one should fail to create variable
+            # with the same name.
+            with self.assertRaises(ValueError):
+              variable_scope.get_variable("v", [])
+          pause_event.set()
+          run_event.wait()
+
+    graph = ops.get_default_graph()
+    run_events = [threading.Event() for _ in range(2)]
+    pause_events = [threading.Event() for _ in range(2)]
+    threads = [
+        threading.Thread(
+            target=thread_fn, args=(i, graph, run_events[i], pause_events[i]))
+        for i in range(2)
+    ]
+
+    # Start first thread.
+    threads[0].start()
+    pause_events[0].wait()
+    # Start next thread once the first thread has paused.
+    threads[1].start()
+    pause_events[1].wait()
+    # Resume both threads.
+    run_events[0].set()
+    run_events[1].set()
+    threads[0].join()
+    threads[1].join()
+
+  def testReenterMainScope(self):
+
+    def thread_fn(graph, main_thread_scope):
+      with graph.as_default():
+        # Variable created with main scope will have prefix "main".
+        with variable_scope.variable_scope(main_thread_scope):
+          with variable_scope.variable_scope("foo"):
+            v = variable_scope.get_variable("v", [])
+            self.assertEquals("main/foo/v:0", v.name)
+
+        # Variable created outside main scope will not have prefix "main".
+        with variable_scope.variable_scope("bar"):
+          v = variable_scope.get_variable("v", [])
+          self.assertEquals("bar/v:0", v.name)
+
+    graph = ops.get_default_graph()
+    with variable_scope.variable_scope("main") as main_thread_scope:
+      thread = threading.Thread(
+          target=thread_fn, args=(graph, main_thread_scope))
+      thread.start()
+      thread.join()
 
 
 if __name__ == "__main__":

@@ -154,6 +154,25 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b3.name, "A_3/B")
       self.assertEqual(list(b3.inputs), [a3.outputs[0]])
 
+      # Import with an already-used name but with a '/' to indicate an
+      # "absolute" name scope (see the Graph.name_scope docstring).
+      a_a, a_b = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a.name, "A/A")
+      self.assertEqual(a_b.name, "A/B")
+      self.assertEqual(list(a_b.inputs), [a_a.outputs[0]])
+
+      # Repeat the same import.
+      a_a1, a_b1 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a1.name, "A/A_1")
+      self.assertEqual(a_b1.name, "A/B_1")
+      self.assertEqual(list(a_b1.inputs), [a_a1.outputs[0]])
+
       # Import with existing de-duped node names
       a1_1, b1_1 = importer.import_graph_def(
           self._MakeGraphDef("""
@@ -660,6 +679,49 @@ class ImportGraphDefTest(test.TestCase):
       self.assertProtoEquals(
           "list { s: 'loc:@imported_graph/A' }",
           b.node_def.attr["_class"])
+
+  def testColocationAndDevice(self):
+    # A and B are colocated, device set on A.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      self.assertEqual(a.device, "/device:CPU:0")
+      self.assertEqual(b.device, "/device:CPU:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
+
+    # A and B are colocated, device set on B.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      # TODO(skyewm): this behavior seems inconsistent with the above. Why is
+      # B's device ignored?
+      self.assertEqual(a.device, "")
+      self.assertEqual(b.device, "")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
 
   def testColocationWithDeviceFn(self):
     original_graph_def = self._MakeGraphDef("""

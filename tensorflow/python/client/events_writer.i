@@ -23,6 +23,9 @@ limitations under the License.
 
 %nodefaultctor EventsWriter;
 
+%ignore tensorflow::Status::operator=;
+%include "tensorflow/core/lib/core/status.h"
+
 %ignoreall
 %unignore tensorflow;
 %unignore tensorflow::EventsWriter;

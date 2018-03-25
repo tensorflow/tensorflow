@@ -85,6 +85,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "GradientTape"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Graph"
     mtype: "<type \'type\'>"
   }
@@ -597,6 +601,10 @@ tf_module {
     argspec: "args=[\'name\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "add_to_collections"
+    argspec: "args=[\'names\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "all_variables"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -893,6 +901,10 @@ tf_module {
     argspec: "args=[\'x\', \'axis\', \'exclusive\', \'reverse\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "custom_gradient"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "decode_base64"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -965,6 +977,10 @@ tf_module {
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "enable_eager_execution"
+    argspec: "args=[\'config\', \'device_policy\', \'execution_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "encode_base64"
     argspec: "args=[\'input\', \'pad\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -979,6 +995,10 @@ tf_module {
   member_method {
     name: "erfc"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "executing_eagerly"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "exp"
@@ -1094,7 +1114,7 @@ tf_module {
   }
   member_method {
     name: "get_local_variable"
-    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_seed"
@@ -1601,6 +1621,10 @@ tf_module {
     argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "regex_replace"
+    argspec: "args=[\'input\', \'pattern\', \'rewrite\', \'replace_global\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
     name: "register_tensor_conversion_function"
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
   }
@@ -1989,8 +2013,20 @@ tf_module {
     argspec: "args=[\'input\', \'multiples\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "timestamp"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "to_bfloat16"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToBFloat16\'], "
+  }
+  member_method {
+    name: "to_complex128"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex128\'], "
+  }
+  member_method {
+    name: "to_complex64"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex64\'], "
   }
   member_method {
     name: "to_double"
@@ -2054,6 +2090,10 @@ tf_module {
   }
   member_method {
     name: "unsorted_segment_max"
+    argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unsorted_segment_mean"
     argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

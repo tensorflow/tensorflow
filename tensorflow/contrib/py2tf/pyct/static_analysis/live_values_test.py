@@ -46,6 +46,7 @@ class LiveValuesResolverTest(test.TestCase):
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
+        owner_type=None,
         recursive=True)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
@@ -56,12 +57,25 @@ class LiveValuesResolverTest(test.TestCase):
 
   def test_literals(self):
 
-    def test_fn():
-      return Foo  # pylint: disable=undefined-variable
+    a = None
 
-    node = self._parse_and_analyze(test_fn, {}, {'Foo': 'bar'})
+    def test_fn():
+      return a
+
+    node = self._parse_and_analyze(test_fn, {}, literals={'a': 'bar'})
     retval_node = node.body[0].body[0].value
     self.assertEquals('bar', anno.getanno(retval_node, 'live_val'))
+
+  def test_primitive_values(self):
+
+    a = None
+
+    def test_fn():
+      return a
+
+    node = self._parse_and_analyze(test_fn, {'a': True})
+    retval_node = node.body[0].body[0].value
+    self.assertFalse(anno.hasanno(retval_node, 'fqn'))
 
   def test_namespace(self):
 
@@ -102,6 +116,7 @@ class LiveValuesResolverTest(test.TestCase):
         arg_types={'self': (TestClass.__name__, TestClass)})
     func_node = node.body[0].body[0].value.func
     self.assertEquals(TestClass.member, anno.getanno(func_node, 'live_val'))
+    self.assertEquals(TestClass, anno.getanno(func_node, 'parent_type'))
     self.assertEquals(('TestClass', 'member'), anno.getanno(func_node, 'fqn'))
 
 

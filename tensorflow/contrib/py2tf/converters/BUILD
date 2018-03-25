@@ -18,15 +18,20 @@ py_library(
     name = "converters",
     srcs = [
         "asserts.py",
-        "break_canonicalization.py",
+        "break_statements.py",
         "builtin_functions.py",
         "call_trees.py",
-        "continue_canonicalization.py",
+        "continue_statements.py",
         "control_flow.py",
         "decorators.py",
-        "for_canonicalization.py",
+        "for_loops.py",
+        "ifexp.py",
+        "list_comprehension.py",
+        "lists.py",
         "logical_expressions.py",
+        "name_scopes.py",
         "side_effect_guards.py",
+        "single_return.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -44,9 +49,11 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":converters",
+        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
+        "@six_archive//:six",
     ],
 )
 
@@ -56,62 +63,16 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
 
 py_test(
-    name = "break_canonicalization_test",
-    srcs = ["break_canonicalization_test.py"],
+    name = "break_statements_test",
+    srcs = ["break_statements_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "call_trees_test",
-    srcs = ["call_trees_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "continue_canonicalization_test",
-    srcs = ["continue_canonicalization_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "control_flow_test",
-    srcs = ["control_flow_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -122,18 +83,87 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "call_trees_test",
+    srcs = ["call_trees_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/impl",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "continue_statements_test",
+    srcs = ["continue_statements_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "control_flow_test",
+    srcs = ["control_flow_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "decorators_test",
+    srcs = ["decorators_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "for_loops_test",
+    srcs = ["for_loops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "name_scopes_test",
+    srcs = ["name_scopes_test.py"],
+    deps = [
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
 
 py_test(
-    name = "for_canonicalization_test",
-    srcs = ["for_canonicalization_test.py"],
+    name = "list_comprehension_test",
+    srcs = ["list_comprehension_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "lists_test",
+    srcs = ["lists_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -144,7 +174,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -152,6 +181,32 @@ py_test(
 py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        # TODO(mdan): Fix.
+        "flaky",
+        "notap",
+    ],
+    deps = [
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "single_return_test",
+    srcs = ["single_return_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "ifexp_test",
+    srcs = ["ifexp_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
