@@ -35,34 +35,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _gather(params, ids, name=None):
-  """Helper function for _embedding_lookup_and_transform.
-
-  This function gathers embeddings from a single tensor. The gather deals with
-  resource variables specially.
-
-  Args:
-    params: A `Tensor` of embeddings.
-    ids: A `Tensor` indexing the embeddings to be retrieved from `params`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` with the same type as `params`.
-  """
-  if isinstance(params, resource_variable_ops.ResourceVariable):
-    return params.sparse_read(ids, name=name)
-  else:
-    return array_ops.gather(params, ids, name=name)
-
-
 def _clip(params, ids, max_norm):
   """Helper function for _embedding_lookup_and_transform.
 
   This function optionally clips embeddings to an l2-norm of max_norm.
 
   Args:
-    params: A `Tensor` of embeddings retrieved by `_gather`.
-    ids: The `ids` argument that was passed to `_gather`.
+    params: A `Tensor` of embeddings retrieved by `gather`.
+    ids: The `ids` argument that was passed to `gather`.
     max_norm: If provided, the embeddings are l2-normalized to the value of
       max_norm.
 
@@ -148,7 +128,8 @@ def _embedding_lookup_and_transform(params,
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
       with ops.colocate_with(params[0]):
-        result = _clip(_gather(params[0], ids, name=name), ids, max_norm)
+        result = _clip(array_ops.gather(params[0], ids, name=name),
+                       ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
         return result
@@ -212,7 +193,7 @@ def _embedding_lookup_and_transform(params,
       for p in xrange(np):
         pids = gather_ids[p]
         with ops.colocate_with(params[p]):
-          result = _gather(params[p], pids)
+          result = array_ops.gather(params[p], pids)
           if transform_fn:
             # If transform_fn is provided, the clip_by_norm precedes
             # the transform and hence must be co-located. See below
