@@ -46,6 +46,8 @@ message RewriterConfig {
   Toggle loop_optimization = 9;
   // Function optimizations (default is ON).
   Toggle function_optimization = 10;
+  // Strips debug-related nodes from the graph (off by default).
+  Toggle debug_stripper = 11;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
 

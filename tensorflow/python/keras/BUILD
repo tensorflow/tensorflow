@@ -402,11 +402,10 @@ py_test(
 
 py_test(
     name = "convolutional_recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_recurrent_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

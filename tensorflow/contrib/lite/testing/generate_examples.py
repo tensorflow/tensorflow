@@ -754,7 +754,7 @@ def make_mean_tests(zip_path):
           [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
       ],
       "const_axis": [True, False],
-      "keep_dims": [True, False],
+      "keepdims": [True, False],
   }, {
       "input_dtype": [tf.float32, tf.int32, tf.int64],
       "input_shape": [[1, 224, 224, 3]],
@@ -765,7 +765,7 @@ def make_mean_tests(zip_path):
           [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
       ],
       "const_axis": [True, False],
-      "keep_dims": [True, False],
+      "keepdims": [True, False],
   }]
 
   def build_graph(parameters):
@@ -788,7 +788,7 @@ def make_mean_tests(zip_path):
       input_tensors = [input_tensor, axis]
 
     out = tf.reduce_mean(
-        input_tensor, axis=axis, keep_dims=parameters["keep_dims"])
+        input_tensor, axis=axis, keepdims=parameters["keepdims"])
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

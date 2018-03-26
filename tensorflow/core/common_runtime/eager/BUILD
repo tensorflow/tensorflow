@@ -55,6 +55,49 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "tensor_handle",
+    srcs = [
+        "tensor_handle.cc",
+    ],
+    hdrs = [
+        "tensor_handle.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        ":kernel_and_device",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
+    name = "copy_to_device_node",
+    hdrs = [
+        "copy_to_device_node.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+        ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
+)
+
+tf_cuda_library(
     name = "kernel_and_device",
     srcs = [
         "kernel_and_device.cc",

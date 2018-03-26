@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.utils.builtins import dynamic_builtin
+from tensorflow.contrib.py2tf.utils.builtins import dynamic_dataset
+from tensorflow.contrib.py2tf.utils.builtins import dynamic_for_cond
 from tensorflow.contrib.py2tf.utils.builtins import dynamic_print
 from tensorflow.contrib.py2tf.utils.builtins import dynamic_range
 from tensorflow.contrib.py2tf.utils.context_managers import control_dependency_on_returns

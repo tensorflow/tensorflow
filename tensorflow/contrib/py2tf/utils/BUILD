@@ -35,6 +35,7 @@ py_library(
     deps = [
         "//tensorflow/python:list_ops",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
         "@six_archive//:six",
     ],
 )

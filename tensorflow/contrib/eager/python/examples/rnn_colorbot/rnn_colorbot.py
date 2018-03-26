@@ -73,6 +73,8 @@ try:
 except ImportError:
   HAS_MATPLOTLIB = False
 
+layers = tf.keras.layers
+
 
 def parse(line):
   """Parse a line from the colors dataset."""
@@ -152,7 +154,7 @@ class RNNColorbot(tf.keras.Model):
 
     self.cells = self._add_cells(
         [tf.nn.rnn_cell.BasicLSTMCell(size) for size in rnn_cell_sizes])
-    self.relu = tf.layers.Dense(
+    self.relu = layers.Dense(
         label_dimension, activation=tf.nn.relu, name="relu")
 
   def call(self, inputs, training=False):
@@ -204,7 +206,7 @@ class RNNColorbot(tf.keras.Model):
 
   def _add_cells(self, cells):
     # "Magic" required for keras.Model classes to track all the variables in
-    # a list of tf.layers.Layer objects.
+    # a list of layers.Layer objects.
     # TODO(ashankar): Figure out API so user code doesn't have to do this.
     for i, c in enumerate(cells):
       setattr(self, "cell-%d" % i, c)

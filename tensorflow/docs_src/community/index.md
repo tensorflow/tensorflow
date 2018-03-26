@@ -13,3 +13,6 @@ This section contains the following documents:
     conventions that TensorFlow developers and users should follow.
   * @{$community/benchmarks$Benchmarks}, Benchmarks, a guide for defining and
     running a TensorFlow benchmark.
+  * @{$security$Using TensorFlow Securely}, which explains TensorFlow's security
+    model, a list of recent security reports, and information on how you can
+    report a security vulnerability to the TensorFlow team.

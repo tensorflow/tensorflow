@@ -593,7 +593,7 @@ class Distribution(_BaseDistribution):
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._batch_shape()
+    return tensor_shape.as_shape(self._batch_shape())
 
   def _event_shape_tensor(self):
     raise NotImplementedError("event_shape_tensor is not implemented")
@@ -626,7 +626,7 @@ class Distribution(_BaseDistribution):
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._event_shape()
+    return tensor_shape.as_shape(self._event_shape())
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
@@ -1104,6 +1104,34 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return self._kl_divergence(other)
+
+  def __str__(self):
+    return ("tf.distributions.{type_name}("
+            "\"{self_name}\""
+            "{maybe_batch_shape}"
+            "{maybe_event_shape}"
+            ", dtype={dtype})".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                maybe_batch_shape=(", batch_shape={}".format(self.batch_shape)
+                                   if self.batch_shape.ndims is not None
+                                   else ""),
+                maybe_event_shape=(", event_shape={}".format(self.event_shape)
+                                   if self.event_shape.ndims is not None
+                                   else ""),
+                dtype=self.dtype.name))
+
+  def __repr__(self):
+    return ("<tf.distributions.{type_name} "
+            "'{self_name}'"
+            " batch_shape={batch_shape}"
+            " event_shape={event_shape}"
+            " dtype={dtype}>".format(
+                type_name=type(self).__name__,
+                self_name=self.name,
+                batch_shape=self.batch_shape,
+                event_shape=self.event_shape,
+                dtype=self.dtype.name))
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):

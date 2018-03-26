@@ -5863,6 +5863,9 @@ def strip_name_scope(name, export_scope):
     is None.
   """
   if export_scope:
+    if export_scope[-1] == "/":
+      export_scope = export_scope[:-1]
+
     try:
       # Strips export_scope/, export_scope///,
       # ^export_scope/, loc:@export_scope/.
@@ -5888,6 +5891,9 @@ def prepend_name_scope(name, import_scope):
     is None.
   """
   if import_scope:
+    if import_scope[-1] == "/":
+      import_scope = import_scope[:-1]
+
     try:
       str_to_replace = r"([\^]|loc:@|^)(.*)"
       return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",

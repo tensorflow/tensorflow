@@ -63,6 +63,8 @@
 @@scatter_nd_update
 @@scatter_sub
 @@scatter_update
+@@scatter_min
+@@scatter_max
 @@sparse_mask
 @@tables_initializer
 @@trainable_variables

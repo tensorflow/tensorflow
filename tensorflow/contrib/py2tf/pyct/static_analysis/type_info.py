@@ -168,6 +168,15 @@ class TypeInfoResolver(transformer.Base):
                      anno.getanno(definition, 'element_type'))
     return node
 
+  def _process_tuple_assignment(self, source, t):
+    for i, e in enumerate(t.elts):
+      if isinstance(e, gast.Tuple):
+        self._process_tuple_assignment(source, e)
+      else:
+        self.scope.setval(
+            anno.getanno(e, anno.Basic.QN),
+            gast.Subscript(source, gast.Index(i), ctx=gast.Store()))
+
   def _process_variable_assignment(self, source, targets):
     if isinstance(source, gast.Call):
       func = source.func
@@ -183,10 +192,9 @@ class TypeInfoResolver(transformer.Base):
 
     for t in targets:
       if isinstance(t, gast.Tuple):
-        for i, e in enumerate(t.elts):
-          self.scope.setval(
-              anno.getanno(e, anno.Basic.QN),
-              gast.Subscript(source, gast.Index(i), ctx=gast.Store()))
+        # need to recurse on the case of assigning nested tuples,
+        # ex. a, (b, c) = f()
+        self._process_tuple_assignment(source, t)
       elif isinstance(t, (gast.Name, gast.Attribute)):
         self.scope.setval(anno.getanno(t, anno.Basic.QN), source)
       else:

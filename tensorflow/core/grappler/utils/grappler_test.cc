@@ -36,6 +36,7 @@ GrapplerTest::GrapplerTest() {
   cfg->set_loop_optimization(RewriterConfig::OFF);
   cfg->set_function_optimization(RewriterConfig::OFF);
   cfg->set_layout_optimizer(RewriterConfig::OFF);
+  cfg->set_debug_stripper(RewriterConfig::OFF);
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(

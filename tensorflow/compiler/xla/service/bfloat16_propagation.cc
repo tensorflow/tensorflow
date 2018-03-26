@@ -606,8 +606,10 @@ Status BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
         continue;
       }
       if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
-        TF_ASSIGN_OR_RETURN(auto converted_literal,
-                            hlo->literal().ConvertToShape(hlo->shape()));
+        TF_ASSIGN_OR_RETURN(
+            auto converted_literal,
+            hlo->literal().ConvertToShape(hlo->shape(),
+                                          /*round_f32_to_bf16=*/true));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
