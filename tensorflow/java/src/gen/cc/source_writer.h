@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <stack>
-#include <vector>
+#include <list>
 #include <set>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -128,7 +128,7 @@ class SourceWriter {
   // If not null, all types found in the 'dependencies' list will be imported
   // before declaring the new type.
   SourceWriter& BeginType(const Type& clazz,
-      const std::vector<Type>* dependencies, int modifiers = 0);
+      const std::list<Type>* dependencies, int modifiers = 0);
 
   // Begins to write a new inner type.
   //
@@ -149,7 +149,7 @@ class SourceWriter {
   // This method must be called within the definition of a type (see BeginType()
   // or BeginInnerType()). Additional modifiers can also be passed in parameter
   // to define the accesses and the scope of those fields.
-  SourceWriter& WriteFields(const std::vector<Variable>& fields,
+  SourceWriter& WriteFields(const std::list<Variable>& fields,
       int modifiers = 0);
 
  protected:
@@ -172,14 +172,14 @@ class SourceWriter {
     GenericNamespace() = default;
     explicit GenericNamespace(const GenericNamespace* parent)
       : generic_names_(parent->generic_names_) {}
-    std::vector<const Type*> declared_types() {
+    std::list<const Type*> declared_types() {
       return declared_types_;
     }
    protected:
     virtual void DoVisit(const Type& type);
 
    private:
-    std::vector<const Type*> declared_types_;
+    std::list<const Type*> declared_types_;
     std::set<string> generic_names_;
   };
 
@@ -208,9 +208,9 @@ class SourceWriter {
   SourceWriter& WriteModifiers(int modifiers);
   SourceWriter& WriteDoc(const string& description,
     const string& return_description = "",
-    const std::vector<Variable>* parameters = nullptr);
-  SourceWriter& WriteAnnotations(const std::vector<Annotation>& annotations);
-  SourceWriter& WriteGenerics(const std::vector<const Type*>& generics);
+    const std::list<Variable>* parameters = nullptr);
+  SourceWriter& WriteAnnotations(const std::list<Annotation>& annotations);
+  SourceWriter& WriteGenerics(const std::list<const Type*>& generics);
   GenericNamespace* PushGenericNamespace(int modifiers);
   void PopGenericNamespace();
 };

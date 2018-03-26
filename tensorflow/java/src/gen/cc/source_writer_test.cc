@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <list>
+
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
@@ -289,7 +291,7 @@ TEST(WriteType, SimpleClass) {
 TEST(WriteType, SimpleClassWithDependencies) {
   SourceBufferWriter writer;
   Type clazz = Type::Class("Test", "org.tensorflow");
-  std::vector<Type> deps;
+  std::list<Type> deps;
   deps.push_back(Type::Class("TypeA", "org.test.sub"));
   deps.push_back(Type::Class("TypeA", "org.test.sub"));  // a second time
   deps.push_back(Type::Class("TypeB", "org.other"));
@@ -368,9 +370,9 @@ TEST(WriteType, ParameterizedClassFields) {
   Type clazz = Type::Class("Test", "org.tensorflow");
   Type type_t = Type::Generic("T").add_supertype(Type::Class("Number"));
   clazz.add_parameter(type_t);
-  std::vector<Variable> static_fields;
+  std::list<Variable> static_fields;
   static_fields.push_back(Variable::Create("field1", Type::Class("String")));
-  std::vector<Variable> member_fields;
+  std::list<Variable> member_fields;
   member_fields.push_back(Variable::Create("field2", Type::Class("String")));
   member_fields.push_back(Variable::Create("field3", type_t));
 

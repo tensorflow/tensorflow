@@ -17,8 +17,7 @@ limitations under the License.
 #define TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 
 #include <string>
-#include <vector>
-#include <deque>
+#include <list>
 
 namespace tensorflow {
 namespace java {
@@ -102,17 +101,17 @@ class Type {
     description_ = description;
     return *this;
   }
-  const std::vector<Type>& parameters() const { return parameters_; }
+  const std::list<Type>& parameters() const { return parameters_; }
   Type& add_parameter(const Type& parameter) {
     parameters_.push_back(parameter);
     return *this;
   }
-  const std::vector<Annotation>& annotations() const { return annotations_; }
+  const std::list<Annotation>& annotations() const { return annotations_; }
   Type& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
   }
-  const std::deque<Type>& supertypes() const { return supertypes_; }
+  const std::list<Type>& supertypes() const { return supertypes_; }
   Type& add_supertype(const Type& type) {
     if (type.kind_ == CLASS) {
       supertypes_.push_front(type);  // keep superclass at the front of the list
@@ -139,9 +138,9 @@ class Type {
   string name_;
   string package_;
   string description_;
-  std::vector<Type> parameters_;
-  std::vector<Annotation> annotations_;
-  std::deque<Type> supertypes_;
+  std::list<Type> parameters_;
+  std::list<Annotation> annotations_;
+  std::list<Type> supertypes_;
 };
 
 // Definition of a Java annotation
@@ -221,16 +220,12 @@ class Method {
     return_description_ = description;
     return *this;
   }
-  const std::vector<Variable>& arguments() const { return arguments_; }
-  Method& add_arguments(const std::vector<Variable>& args) {
-    arguments_.insert(arguments_.cend(), args.cbegin(), args.cend());
-    return *this;
-  }
+  const std::list<Variable>& arguments() const { return arguments_; }
   Method& add_argument(const Variable& var) {
     arguments_.push_back(var);
     return *this;
   }
-  const std::vector<Annotation>& annotations() const { return annotations_; }
+  const std::list<Annotation>& annotations() const { return annotations_; }
   Method& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
@@ -242,8 +237,8 @@ class Method {
   bool constructor_;
   string description_;
   string return_description_;
-  std::vector<Variable> arguments_;
-  std::vector<Annotation> annotations_;
+  std::list<Variable> arguments_;
+  std::list<Annotation> annotations_;
 
   Method(const string& name, const Type& return_type, bool constructor)
     : name_(name), return_type_(return_type), constructor_(constructor) {}

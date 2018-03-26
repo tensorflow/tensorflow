@@ -136,7 +136,7 @@ SourceWriter& SourceWriter::EndMethod() {
 }
 
 SourceWriter& SourceWriter::BeginType(const Type& type,
-    const std::vector<Type>* dependencies, int modifiers) {
+    const std::list<Type>* dependencies, int modifiers) {
   if (!type.package().empty()) {
     Append("package ").Append(type.package()).Append(";").EndLine();
   }
@@ -169,7 +169,7 @@ SourceWriter& SourceWriter::BeginInnerType(const Type& type, int modifiers) {
   }
   if (!type.supertypes().empty()) {
     bool first_interface = true;
-    for (Type t : type.supertypes()) {
+    for (const Type& t : type.supertypes()) {
       if (t.kind() == Type::CLASS) {  // superclass is always first in list
         Append(" extends ");
       } else if (first_interface) {
@@ -190,7 +190,7 @@ SourceWriter& SourceWriter::EndType() {
   return *this;
 }
 
-SourceWriter& SourceWriter::WriteFields(const std::vector<Variable>& fields,
+SourceWriter& SourceWriter::WriteFields(const std::list<Variable>& fields,
     int modifiers) {
   EndLine();
   for (const Variable& v : fields) {
@@ -219,7 +219,7 @@ SourceWriter& SourceWriter::WriteModifiers(int modifiers) {
 }
 
 SourceWriter& SourceWriter::WriteDoc(const string& description,
-    const string& return_description, const std::vector<Variable>* parameters) {
+    const string& return_description, const std::list<Variable>* parameters) {
   if (description.empty() && return_description.empty()
       && (parameters == nullptr || parameters->empty())) {
     return *this;  // no doc to write
@@ -254,7 +254,7 @@ SourceWriter& SourceWriter::WriteDoc(const string& description,
 }
 
 SourceWriter& SourceWriter::WriteAnnotations(
-    const std::vector<Annotation>& annotations) {
+    const std::list<Annotation>& annotations) {
   for (const Annotation& a : annotations) {
     Append("@" + a.name());
     if (!a.attributes().empty()) {
@@ -266,7 +266,7 @@ SourceWriter& SourceWriter::WriteAnnotations(
 }
 
 SourceWriter& SourceWriter::WriteGenerics(
-    const std::vector<const Type*>& generics) {
+    const std::list<const Type*>& generics) {
   Append("<");
   for (const Type* pt : generics) {
     if (pt != generics.front()) {
@@ -303,7 +303,7 @@ void SourceWriter::TypeVisitor::Visit(const Type& type) {
   for (const Type& t : type.parameters()) {
     DoVisit(t);
   }
-  for (const Type& t : type.annotations()) {
+  for (const Annotation& t : type.annotations()) {
     DoVisit(t);
   }
   for (const Type& t : type.supertypes()) {
