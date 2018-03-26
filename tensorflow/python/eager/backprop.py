@@ -86,6 +86,14 @@ class _MockOp(object):
         return make_attr(typ, self.attrs[i + 1])
     raise KeyError(attr)
 
+  def _get_control_flow_context(self):
+    raise NotImplementedError(
+        "tf.GradientTape.gradients() does not support graph control flow "
+        "operations like tf.cond or tf.while at this time. Use tf.gradients() "
+        "instead. If you need this feature, please file a feature request at "
+        "https://github.com/tensorflow/tensorflow/issues/new"
+    )
+
 
 def _magic_gradient_function(op_name, attr_tuple, num_inputs,
                              inputs, outputs, out_grads):
