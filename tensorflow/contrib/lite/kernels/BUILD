@@ -156,6 +156,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "maximum.cc",
         "mean.cc",
         "mfcc.cc",
         "mul.cc",
@@ -528,6 +529,18 @@ tf_cc_test(
         "tflite_not_portable_ios_arm64",
         "tflite_not_portable_ios_x86_64",
     ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "maximum_test",
+    size = "small",
+    srcs = ["maximum_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
