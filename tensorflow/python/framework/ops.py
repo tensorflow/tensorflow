@@ -2477,8 +2477,9 @@ def _set_shapes_for_outputs_c_api(op):
     serialized = c_api.ResourceHandleShapeAndType(op._graph._c_graph,
                                                   output._as_tf_output())
     if serialized:
-      output._handle_data = (cpp_shape_inference_pb2.CppShapeInferenceResult
-                             .HandleData.FromString(serialized.encode()))
+      output._handle_data = (
+          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
+              compat.as_bytes(serialized)))
     else:
       output._handle_data = None
 
