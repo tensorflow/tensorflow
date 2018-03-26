@@ -887,11 +887,12 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   Raises:
     ValueError: If `thresholds` contains a value outside of `(0, 1)`.
     ValueError: If `loss_reduction` is invalid.
+    TypeError: if `label_vocabulary` has invalid type.
   """
   thresholds = tuple(thresholds) if thresholds else tuple()
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
-    raise ValueError(
+    raise TypeError(
         'label_vocabulary should be a list or tuple. Given type: {}'.format(
             type(label_vocabulary)))
 

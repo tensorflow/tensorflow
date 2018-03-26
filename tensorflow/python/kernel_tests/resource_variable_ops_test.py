@@ -103,6 +103,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")
       self.assertAllEqual(bool(v), False)
 
+  def testFetchHandle(self):
+    with self.test_session():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      self.assertGreater(len(handle.eval()), 0)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -179,6 +185,204 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterSub(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[1]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_sub(handle, [0],
+                                                     constant_op.constant(
+                                                         [[2]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[-1]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMul(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[1]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_mul(handle, [0],
+                                                     constant_op.constant(
+                                                         [[5]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[5]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterDiv(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_div(handle, [0],
+                                                     constant_op.constant(
+                                                         [[3]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[2]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMin(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_min(handle, [0],
+                                                     constant_op.constant(
+                                                         [[3]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMax(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_max(handle, [0],
+                                                     constant_op.constant(
+                                                         [[3]],
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[6]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterAddScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[1]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_add(handle, [0],
+                                                     constant_op.constant(
+                                                         2,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterSubScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[1]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_sub(handle, [0],
+                                                     constant_op.constant(
+                                                         2,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[-1]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMulScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[1]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_mul(handle, [0],
+                                                     constant_op.constant(
+                                                         5,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[5]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterDivScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_div(handle, [0],
+                                                     constant_op.constant(
+                                                         3,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[2]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMinScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_min(handle, [0],
+                                                     constant_op.constant(
+                                                         3,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterMaxScalar(self):
+    with ops.device("cpu:0"):
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      self.evaluate(
+          resource_variable_ops.assign_variable_op(handle,
+                                                   constant_op.constant(
+                                                       [[6]],
+                                                       dtype=dtypes.int32)))
+      self.evaluate(
+          resource_variable_ops.resource_scatter_max(handle, [0],
+                                                     constant_op.constant(
+                                                         3,
+                                                         dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[6]])
+
   def testScatterUpdateString(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.string, shape=[1, 1])
@@ -189,6 +393,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.string)
     self.assertEqual(compat.as_bytes(self.evaluate(read)[0][0]),
                      compat.as_bytes("b"))
+
+  def testScatterUpdateStringScalar(self):
+    handle = resource_variable_ops.var_handle_op(
+        dtype=dtypes.string, shape=[1, 1])
+    self.evaluate(
+        resource_variable_ops.assign_variable_op(handle,
+                                                 constant_op.constant(
+                                                     [["a"]],
+                                                     dtype=dtypes.string)))
+    self.evaluate(
+        resource_variable_ops.resource_scatter_update(handle, [0],
+                                                      constant_op.constant(
+                                                          "b",
+                                                          dtype=dtypes.string)))
+    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.string)
+    self.assertEqual(
+        compat.as_bytes(self.evaluate(read)[0][0]), compat.as_bytes("b"))
 
   # TODO(alive): get this to work in Eager mode.
   def testGPU(self):

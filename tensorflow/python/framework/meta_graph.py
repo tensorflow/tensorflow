@@ -737,7 +737,9 @@ def import_scoped_meta_graph(meta_graph_or_file,
         import_scope or "", mark_as_used=False)
 
     importer.import_graph_def(
-        input_graph_def, name=(import_scope or ""), input_map=input_map,
+        input_graph_def,
+        name=(import_scope or scope_to_prepend_to_names),
+        input_map=input_map,
         producer_op_list=producer_op_list)
 
     # Restores all the other collections.

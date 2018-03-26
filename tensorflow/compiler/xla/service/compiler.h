@@ -127,7 +127,7 @@ class Compiler {
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
-  // prior to calling this method because the some HLO passes are required for
+  // prior to calling this method because some HLO passes are required for
   // correctness. Takes ownership of the HLO module and is free to transform it.
   //
   // The compiler may optionally specialize to the individual device

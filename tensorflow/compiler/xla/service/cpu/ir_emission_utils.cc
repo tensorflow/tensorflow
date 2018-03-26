@@ -34,14 +34,16 @@ bool PotentiallyImplementedAsEigenConvolution(
   //
   // To be sufficient, certain layout constraints need to be satisfied as well.
   const Shape& input_shape = convolution.operand(0)->shape();
-  const Shape& kernel_shape = convolution.operand(0)->shape();
+  const Shape& kernel_shape = convolution.operand(1)->shape();
   if (ShapeUtil::HasZeroElements(input_shape) ||
       ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
   }
+  // Make sure input and kernel has the same data type.
+  CHECK(
+      ShapeUtil::SameElementTypeIgnoringFpPrecision(input_shape, kernel_shape));
   // TODO(b/65408531): Explore using Eigen dot for complex64 type.
-  if (ShapeUtil::ElementIsComplex(input_shape) ||
-      ShapeUtil::ElementIsComplex(kernel_shape)) {
+  if (ShapeUtil::ElementIsComplex(input_shape)) {
     return false;
   }
   if (window_util::HasWindowReversal(convolution.window())) {

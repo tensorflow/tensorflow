@@ -1922,6 +1922,8 @@ TEST_F(ConstantFoldingTest, PartialFolding_Concat) {
   item.fetch = {"concat0", "concat1", "concat2", "concat3", "concat4",
                 "concat5", "concat6", "concat7", "concat8", "concat9"};
 
+  auto tensors_expected = EvaluateNodes(item.graph, {"concat0"});
+  EXPECT_EQ(1, tensors_expected.size());
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -1971,9 +1973,7 @@ TEST_F(ConstantFoldingTest, PartialFolding_Concat) {
     }
   }
 
-  auto tensors_expected = EvaluateNodes(item.graph, {"concat0"});
   auto tensors = EvaluateNodes(output, {"concat0"});
-  EXPECT_EQ(1, tensors_expected.size());
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }

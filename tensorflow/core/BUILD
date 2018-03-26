@@ -354,6 +354,7 @@ cc_library(
         "platform/mutex.h",
         "platform/net.h",
         "platform/notification.h",
+        "platform/null_file_system.h",
         "platform/prefetch.h",
         "platform/profile_utils/clock_cycle_profiler.h",
         "platform/profile_utils/cpu_utils.h",

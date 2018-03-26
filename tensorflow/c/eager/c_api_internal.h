@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -67,84 +68,18 @@ struct TFE_Context {
   tensorflow::EagerContext context;
 };
 
-struct TFE_TensorHandle : public tensorflow::core::RefCounted {
- public:
+struct TFE_TensorHandle {
   TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
                    tensorflow::Device* op_device)
-      : dtype(t.dtype()),
-        node_id(0),
-        tensor_(t),
-        device_(d),
-        op_device_(op_device),
-        ctx_(nullptr) {}
+      : handle(new tensorflow::TensorHandle(t, d, op_device)) {}
 
   TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
-                   TFE_Context* ctx)
-      : dtype(dtype),
-        node_id(node_id),
-        tensor_(dtype),
-        device_(nullptr),
-        op_device_(nullptr),
-        ctx_(ctx) {
-    DCHECK_GT(node_id, 0);
-  }
+                   tensorflow::EagerContext* ctx)
+      : handle(new tensorflow::TensorHandle(node_id, dtype, ctx)) {}
 
-  ~TFE_TensorHandle() override {}
+  TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
-  tensorflow::Status Tensor(const tensorflow::Tensor** t);
-
-  tensorflow::Status Device(tensorflow::Device** d);
-
-  tensorflow::Status OpDevice(tensorflow::Device** d);
-
-  tensorflow::Status TensorAndDevice(const tensorflow::Tensor** tensor,
-                                     tensorflow::Device** device,
-                                     tensorflow::Device** op_device);
-
-  // Note that this can be called at most once, and only on non-ready handles,
-  // and makes them ready.
-  void SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                          tensorflow::Device* device,
-                          tensorflow::Device* op_device);
-
-  // dtype for the handle. It must be the same as t.dtype() once the handle is
-  // ready.
-  const tensorflow::DataType dtype;
-
- private:
-  // If the contents of the Tensor pointed to by this handle is yet to be
-  // computed by a EagerNode, this function will block till that compuatation is
-  // done and the handle is "ready".
-  tensorflow::Status WaitReady();
-
-  bool IsReady();
-
-  // Id for the EagerNode that will compute the value pointed to by this handle.
-  // If the value is 0, the handle is already ready, but not vice-versa.
-  const tensorflow::uint64 node_id;
-
-  tensorflow::Tensor tensor_;
-
-  // TODO(ashankar): device_ == nullptr iff local CPU
-  // This was expedient, but perhaps worth revisiting ('device_' should always
-  // be a valid pointer?)
-  // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
-  // provided with the appropriate TFE_Context.
-  //
-  // TODO(ashankar): Reference count TFE_Context to ensure that 'device_' of a
-  // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* device_;
-
-  // Device in which the op producing this tensor was executed. Equals to
-  // device_ for constant tensors.
-  tensorflow::Device* op_device_;
-
-  tensorflow::mutex ctx_mutex_;
-
-  // `ctx` is only guaranteed to be set if the handle is not "ready". This is
-  // typically true when the handle was produced during async execution.
-  // `ctx` object is not owned and should outlive this handle.
-  TFE_Context* ctx_ GUARDED_BY(ctx_mutex_);
+  tensorflow::TensorHandle* handle;
 };
 
 struct TFE_Op {
@@ -161,7 +96,7 @@ struct TFE_Op {
   const tensorflow::string name;
   tensorflow::AttrBuilder attrs;
   const tensorflow::AttrTypeMap* attr_types;
-  tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4> inputs;
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs;
   tensorflow::Device* device;
   bool use_xla = false;
 };
