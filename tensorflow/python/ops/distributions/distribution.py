@@ -593,7 +593,7 @@ class Distribution(_BaseDistribution):
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._batch_shape()
+    return tensor_shape.as_shape(self._batch_shape())
 
   def _event_shape_tensor(self):
     raise NotImplementedError("event_shape_tensor is not implemented")
@@ -626,7 +626,7 @@ class Distribution(_BaseDistribution):
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._event_shape()
+    return tensor_shape.as_shape(self._event_shape())
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
