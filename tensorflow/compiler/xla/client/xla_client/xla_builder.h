@@ -730,6 +730,9 @@ class XlaBuilder {
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
 
+  // Internal helper method that does the building for an arbitrary unary op.
+  XlaOp UnaryOp(HloOpcode unop, const XlaOp& operand);
+
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks.
