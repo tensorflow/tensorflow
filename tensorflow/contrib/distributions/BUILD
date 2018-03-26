@@ -490,6 +490,7 @@ cuda_py_test(
         "manual",
         "noasan",
         "noguitar",
+        "optonly",
     ],
 )
 
