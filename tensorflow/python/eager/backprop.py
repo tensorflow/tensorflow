@@ -171,8 +171,8 @@ def implicit_val_and_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the value and the gradient of f when called with
-  the same arguments. The gradient is with respect to all TFE variables which
-  are either trainable or have `variable.watch()` called on them by f.
+  the same arguments. The gradient is with respect to all trainable TFE
+  variables accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
@@ -249,8 +249,8 @@ def implicit_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the gradient of f when called with the same
-  arguments. The gradient is with respect to all TFE variables which are
-  either trainable or have `variable.watch()` called on them by f.
+  arguments. The gradient is with respect to all trainable TFE variables
+  accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
