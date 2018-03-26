@@ -233,6 +233,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_pip",  # b/64527635
         "no_pip_gpu",  # b/63391119
     ],
