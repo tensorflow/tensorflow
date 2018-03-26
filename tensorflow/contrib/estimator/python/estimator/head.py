@@ -304,7 +304,7 @@ def multi_label_head(n_classes,
                      weight_column=None,
                      thresholds=None,
                      label_vocabulary=None,
-                     loss_reduction=losses.Reduction.SUM,
+                     loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                      loss_fn=None,
                      name=None):
   """Creates a `_Head` for multi-label classification.
@@ -355,7 +355,8 @@ def multi_label_head(n_classes,
       string type and have any value in `label_vocabulary`. Also there will be
       errors if vocabulary is not provided and labels are string.
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
-      reduce training loss over batch. Defaults to `SUM`.
+      reduce training loss over batch. Defaults to `SUM_OVER_BATCH_SIZE`, namely
+      weighted sum of losses divided by batch size. See `tf.losses.Reduction`.
     loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
@@ -404,7 +405,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                weight_column=None,
                thresholds=None,
                label_vocabulary=None,
-               loss_reduction=losses.Reduction.SUM,
+               loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                loss_fn=None,
                name=None):
     self._n_classes = n_classes

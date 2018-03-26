@@ -115,6 +115,8 @@ class Service : public ServiceInterface {
   // Executes a computation with the provided global data passed as
   // immutable arguments. The request contains the whole computation graph.
   // Returns global data output and execution timing.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* arg,
                                   ExecuteResponse* result) override;
 
@@ -258,7 +260,7 @@ class Service : public ServiceInterface {
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutionOptions& execution_options,
-      const UserComputation& user_computation);
+      const UserComputation* user_computation = nullptr);
 
  protected:
   friend class LocalExecutable;
@@ -286,7 +288,7 @@ class Service : public ServiceInterface {
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
       const ExecutionOptions* execution_options,
-      const UserComputation& user_computation);
+      const UserComputation* user_computation = nullptr);
 
   // Builds an Executable for the given parameters.
   //
@@ -295,6 +297,15 @@ class Service : public ServiceInterface {
   // given here need not match the allocator used when running the executable.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator = nullptr);
+
+  // Builds an Executable for the given HLO module proto.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Executable>> BuildExecutable(
+      const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       perftools::gputools::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator = nullptr);
@@ -345,6 +356,12 @@ class Service : public ServiceInterface {
       const RequestT* arg, ResponseT* result,
       const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
           adder);
+
+  // Executes a single computation which has more than one target device.
+  // The N devices are expected to all return an empty tuple, but one, which
+  // will be the result of this computation.
+  tensorflow::Status ExecuteOneToN(const ExecuteRequest* arg,
+                                   ExecuteResponse* result);
 
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the

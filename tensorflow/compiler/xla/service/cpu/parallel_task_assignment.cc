@@ -128,6 +128,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   // one of the following properties:
   // *) Internal threading (library calls to kConv, kDot, kFft, kCustomCall).
   // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
+  // *) Operations that are not thread safe (like infeed and rng).
   // *) Tuple-shaped.
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
@@ -135,7 +136,8 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       opcode == HloOpcode::kCall || opcode == HloOpcode::kCustomCall ||
       opcode == HloOpcode::kDot || opcode == HloOpcode::kSelectAndScatter ||
       opcode == HloOpcode::kGetTupleElement || opcode == HloOpcode::kBitcast ||
-      opcode == HloOpcode::kFft ||
+      opcode == HloOpcode::kFft || opcode == HloOpcode::kInfeed ||
+      opcode == HloOpcode::kOutfeed || opcode == HloOpcode::kRng ||
       (opcode == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction)) ||
       PotentiallyImplementedAsEigenDot(*instruction) ||

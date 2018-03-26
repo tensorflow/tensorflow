@@ -931,8 +931,7 @@ class _InputPipeline(object):
       # In the model-parallel case, both the host-side and device-side
       # computations must agree on the core on which infeed takes place. We
       # choose to perform infeed on logical core 0 of each replica.
-      with ops.device(tpu.core(0)):
-        values = self._infeed_queue.generate_dequeue_op()
+      values = self._infeed_queue.generate_dequeue_op(tpu_device=0)
       # The unflatten process uses the structure information recorded above.
       return self._inputs_structure_recorder.unflatten_features_and_labels(
           values)

@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Platform specific build config
@@ -286,6 +287,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -422,7 +424,7 @@ cc_library(
     ]),
 )
 
-tf_cuda_cc_test(
+tf_cuda_only_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
@@ -498,6 +500,7 @@ cc_library(
         ":constant_folding",
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",
+        ":debug_stripper",
         ":dependency_optimizer",
         ":function_optimizer",
         ":graph_optimizer",
@@ -614,5 +617,36 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "debug_stripper",
+    srcs = ["debug_stripper.cc"],
+    hdrs = [
+        "debug_stripper.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:graph_optimizer",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "debug_stripper_test",
+    size = "small",
+    srcs = ["debug_stripper_test.cc"],
+    deps = [
+        ":debug_stripper",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )

@@ -124,6 +124,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -164,6 +165,41 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "toco_saved_model",
+    srcs = [
+        "toco_saved_model.cc",
+    ],
+    hdrs = [
+        "toco_saved_model.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        ":toco_flags_proto_cc",
+        ":types_proto_cc",
+        "//tensorflow/cc/tools:freeze_saved_model",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "toco_saved_model_test",
+    srcs = ["toco_saved_model_test.cc"],
+    deps = [
+        ":model_cmdline_flags",
+        ":toco_cmdline_flags",
+        ":toco_saved_model",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -363,6 +399,7 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
+        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",
