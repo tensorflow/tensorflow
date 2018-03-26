@@ -16,7 +16,7 @@ r"""TensorFlow Lite flatbuffer generation from saved_models.
 
 Example:
 
-bazel run third_party/tensorflow/contrib/lite/python:convert_savedmodel -- \
+bazel run third_party/tensorflow/contrib/lite/python:convert_saved_model -- \
   --saved_model_dir=/tmp/test_saved_model/1519865537 \
   --output_tflite=/tmp/test.lite
 
@@ -68,16 +68,16 @@ def log_tensor_details(tensor_info):
       dims = [str(dim.size) for dim in val.tensor_shape.dim]
       shape = "({})".format(", ".join(dims))
 
-    logging.info("Tensor's key in savedmodel's tensor_map: %s", key)
+    logging.info("Tensor's key in saved_model's tensor_map: %s", key)
     logging.info(" tensor name: %s, shape: %s, type: %s", val.name, shape,
                  dtype)
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):
-  """Validate savedmodel and extract MetaGraphDef.
+  """Validate saved_model and extract MetaGraphDef.
 
   Args:
-    saved_model_dir: Savedmodel path to convert.
+    saved_model_dir: saved_model path to convert.
     tag_set: Set of tag(s) of the MetaGraphDef to load.
 
   Returns:
@@ -94,7 +94,8 @@ def get_meta_graph_def(saved_model_dir, tag_set):
     tag_sets.append(meta_graph_tag_set)
     if meta_graph_tag_set == tag_set:
       result_meta_graph_def = meta_graph_def
-  logging.info("The given SavedModel contains the following tags: %s", tag_sets)
+  logging.info("The given saved_model contains the following tags: %s",
+               tag_sets)
   if result_meta_graph_def is not None:
     return result_meta_graph_def
   else:
@@ -118,7 +119,7 @@ def get_signature_def(meta_graph, signature_key):
   signature_def_map = meta_graph.signature_def
   signature_def_keys = set(signature_def_map.keys())
   logging.info(
-      "The given SavedModel MetaGraphDef contains SignatureDefs with the "
+      "The given saved_model MetaGraphDef contains SignatureDefs with the "
       "following keys: %s", signature_def_keys)
   if signature_key not in signature_def_keys:
     raise ValueError("No '{}' in the saved_model\'s SignatureDefs. Possible "
@@ -159,7 +160,7 @@ def convert(saved_model_dir,
             tag_set=None,
             signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
             batch_size=1):
-  """Convert a savedmodel to tflite flatbuffer.
+  """Convert a saved_model to tflite flatbuffer.
 
   Args:
     saved_model_dir: Saved model directory to convert.

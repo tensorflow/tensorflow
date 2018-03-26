@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from tensorflow.contrib.lite.python import convert_savedmodel
+from tensorflow.contrib.lite.python import convert_saved_model
 from tensorflow.python import estimator
 from tensorflow.python import keras
 from tensorflow.python import layers
@@ -60,13 +60,13 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
     # Create a simple savedmodel
     saved_model_dir = self._createSimpleSavedModel(shape=[1, 16, 16, 3])
     # Convert to tflite
-    result = convert_savedmodel.convert(saved_model_dir=saved_model_dir)
+    result = convert_saved_model.convert(saved_model_dir=saved_model_dir)
     self.assertTrue(result)
 
   def testSimpleSavedModelWithNoneBatchSizeInShape(self):
     """Test a simple savedmodel, with None in input tensor's shape."""
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, 16, 3])
-    result = convert_savedmodel.convert(saved_model_dir=saved_model_dir)
+    result = convert_saved_model.convert(saved_model_dir=saved_model_dir)
     self.assertTrue(result)
 
   def testSimpleSavedModelWithMoreNoneInShape(self):
@@ -74,7 +74,7 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
     saved_model_dir = self._createSimpleSavedModel(shape=[None, 16, None, 3])
     # Convert to tflite: this should raise ValueError, as 3rd dim is None.
     with self.assertRaises(ValueError):
-      convert_savedmodel.convert(saved_model_dir=saved_model_dir)
+      convert_saved_model.convert(saved_model_dir=saved_model_dir)
 
   def testSimpleSavedModelWithWrongSignatureKey(self):
     """Test a simple savedmodel, fail as given signature is invalid."""
@@ -82,7 +82,7 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
     # Convert to tflite: this should raise ValueError, as
     # signature_key does not exit in the saved_model.
     with self.assertRaises(ValueError):
-      convert_savedmodel.convert(
+      convert_saved_model.convert(
           saved_model_dir=saved_model_dir, signature_key="wrong-key")
 
   def testSimpleSavedModelWithWrongOutputArray(self):
@@ -92,7 +92,7 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
     # Convert to tflite: this should raise ValueError, as
     # output_arrays is not valid for the saved_model.
     with self.assertRaises(ValueError):
-      convert_savedmodel.convert(
+      convert_saved_model.convert(
           saved_model_dir=saved_model_dir, output_arrays="wrong-output")
 
   def testMultipleMetaGraphDef(self):
@@ -124,7 +124,7 @@ class ConvertSavedModelTestBasicGraph(test_util.TensorFlowTestCase):
       builder.save(True)
 
     # Convert to tflite
-    convert_savedmodel.convert(
+    convert_saved_model.convert(
         saved_model_dir=saved_model_dir,
         tag_set=set([saved_model.tag_constants.SERVING, "additional_test_tag"]))
 
@@ -264,7 +264,7 @@ class ConvertSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
                                  saved_model_final_dir + ".lite")
     # TODO(zhixianyan): no need to limit output_arrays to `Softmax'
     # once b/74205001 fixed and argmax implemented in tflite.
-    result = convert_savedmodel.convert(
+    result = convert_saved_model.convert(
         saved_model_dir=saved_model_final_dir,
         output_arrays="Softmax",
         output_tflite=output_tflite)
