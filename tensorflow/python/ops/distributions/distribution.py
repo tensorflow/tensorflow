@@ -338,6 +338,27 @@ class Distribution(_BaseDistribution):
   cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
   ```
 
+  #### Shapes
+
+  There are three important concepts associated with TensorFlow Distributions
+  shapes:
+  - Event shape describes the shape of a single draw from the distribution;
+    it may be dependent across dimensions. For scalar distributions, the event
+    shape is `[]`. For a 5-dimensional MultivariateNormal, the event shape is
+    `[5]`.
+  - Batch shape describes independent, not identically distributed draws, aka a
+    "collection" or "bunch" of distributions.
+  - Sample shape describes independent, identically distributed draws of batches
+    from the distribution family.
+
+  The event shape and the batch shape are properties of a Distribution object,
+  whereas the sample shape is associated with a specific call to `sample` or
+  `log_prob`.
+
+  For detailed usage examples of TensorFlow Distributions shapes, see
+  [this tutorial](
+  https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding%20TensorFlow%20Distributions%20Shapes.ipynb)
+
   #### Parameter values leading to undefined statistics or distributions.
 
   Some distributions do not have well-defined statistics for all initialization
