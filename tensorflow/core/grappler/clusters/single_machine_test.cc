@@ -196,8 +196,8 @@ TEST_F(SingleMachineTest, GraphOptimizations) {
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
   std::set<string> cost_nodes;
   for (const auto& node : metadata.cost_graph().node()) {
-    // Skip the special nodes inserted by TF: these are prefixed with an
-    // underscore.
+    // Skip the special nodes inserted by TF (and MKL): these are either 
+    // prefixed with an underscore or contain "/_".
     if (node.name()[0] == '_' || node.name().find("/_") != string::npos) {
       continue;
     }
