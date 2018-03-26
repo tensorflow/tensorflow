@@ -480,6 +480,7 @@ py_test(
     tags = [
         "manual",
         "no_oss",
+        "notap",
     ],
     deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
