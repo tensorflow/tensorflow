@@ -404,6 +404,7 @@ inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
           const int in_d =
               out_d + ((out_h % block_size) * block_size + out_w % block_size) *
                           output_depth;
+
           const int in_w = out_w / block_size;
           const int in_h = out_h / block_size;
           const int in_b = out_b;
@@ -3338,6 +3339,30 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
           int offset = Offset(input1_dims, c, x, y, b);
           output_data[offset] =
               input1_data[offset] < max_value ? max_value : input1_data[offset];
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       T* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          auto out_idx = Offset(output_dims, c, x, y, b);
+          auto in1_idx = SubscriptToIndex(desc1, c, x, y, b);
+          auto in2_idx = SubscriptToIndex(desc2, c, x, y, b);
+          auto in1_val = input1_data[in1_idx];
+          auto in2_val = input2_data[in2_idx];
+          output_data[out_idx] = in1_val > in2_val ? in1_val : in2_val;
         }
       }
     }

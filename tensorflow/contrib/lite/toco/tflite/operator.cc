@@ -863,6 +863,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
   ops.emplace_back(new SimpleOperator<LogSoftmaxOperator>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
+  ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
+      "MAXIMUM", OperatorType::kTensorFlowMaximum));
 
   return ops;
 }
