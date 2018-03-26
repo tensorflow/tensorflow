@@ -400,11 +400,17 @@ writing TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see
-@{$get_started/premade_estimators$Getting Started with TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see
 [Common installation problems](#common_installation_problems).
+
+If you are new to machine learning, we recommend the following:
+
+*  [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course)
+*  @{$get_started/get_started_for_beginners$Getting Started for ML Beginners}
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/premade_estimators$Getting Started with TensorFlow}.
+
 
 ## Common installation problems
 

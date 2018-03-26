@@ -185,6 +185,7 @@ class DeviceBase {
   virtual Allocator* GetScopedAllocator(AllocatorAttributes attr,
                                         int64 step_id) {
     LOG(FATAL) << "Device does not implement GetScopedAllocator()";
+    return nullptr;
   }
 
   virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }

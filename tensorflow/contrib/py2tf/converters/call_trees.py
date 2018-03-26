@@ -118,6 +118,12 @@ class CallTreeTransformer(transformer.Base):
 
   def _should_compile(self, node, fqn):
     """Determines whether an entity should be compiled in the context."""
+    # TODO(mdan): Needs cleanup. We should remove the use of fqn altogether.
+    module_name = fqn[0]
+    for mod in self.uncompiled_modules:
+      if module_name.startswith(mod[0] + '.'):
+        return False
+
     for i in range(1, len(fqn)):
       if fqn[:i] in self.uncompiled_modules:
         return False

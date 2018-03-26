@@ -13,20 +13,23 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
+        include = ["**/*"],
+        exclude = ["**/OWNERS"],
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
 py_library(
     name = "init_py",
-    srcs = [
-        "__init__.py",
-    ],
+    srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "custom_export_strategy",
+        ":custom_loss_head",
+        ":estimator",
+        ":model",
+        ":trainer_hooks",
+    ],
 )
 
 py_library(

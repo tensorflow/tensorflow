@@ -468,6 +468,31 @@ class BucketBySequenceLength(test.TestCase):
     self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
     self.assertEqual(sorted(boundaries), sorted(lengths_val))
 
+  def testTupleElements(self):
+
+    def elements_gen():
+      text = [[1, 2, 3], [3, 4, 5, 6, 7], [1, 2], [8, 9, 0, 2, 3]]
+      label = [1, 2, 1, 2]
+      for x, y in zip(text, label):
+        yield (x, y)
+
+    def element_length_fn(x, y):
+      del y
+      return array_ops.shape(x)[0]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator=elements_gen,
+        output_shapes=(tensor_shape.TensorShape([None]),
+                       tensor_shape.TensorShape([])),
+        output_types=(dtypes.int32, dtypes.int32))
+    dataset = dataset.apply(grouping.bucket_by_sequence_length(
+        element_length_func=element_length_fn,
+        bucket_batch_sizes=[2, 2, 2],
+        bucket_boundaries=[0, 8]))
+    shapes = dataset.output_shapes
+    self.assertEqual([None, None], shapes[0].as_list())
+    self.assertEqual([None], shapes[1].as_list())
+
 
 if __name__ == "__main__":
   test.main()

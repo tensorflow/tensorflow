@@ -38,19 +38,19 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
     self.generic_visit(node)
     body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     i_var = self.context.namer.new_symbol('i', body_scope.referenced)
-    n_var = self.context.namer.new_symbol('n', body_scope.referenced)
-    iterated_var = self.context.namer.new_symbol('iterated',
-                                                 body_scope.referenced)
+    smart_loop_iter_var = self.context.namer.new_symbol('smart_loop_iter',
+                                                        body_scope.referenced)
+    cont_var = self.context.namer.new_symbol('cont', body_scope.referenced)
     # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
     if anno.hasanno(node, 'extra_cond'):
       template = """
         i = 0
-        iterated = loop_iter
-        n = len(iterated)
-        while i < n and extra_cond:
-          target = iterated[i]
+        smart_loop_iter = py2tf_utils.dynamic_dataset(loop_iter)
+        cont, target = py2tf_utils.dynamic_for_cond(i, smart_loop_iter)
+        while cont and extra_cond:
           body
           i += 1
+          cont, target = py2tf_utils.dynamic_for_cond(i, smart_loop_iter)
       """
       return templates.replace(
           template,
@@ -58,18 +58,18 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
           target=node.target,
           body=node.body,
           i=i_var,
-          n=n_var,
-          iterated=iterated_var,
+          smart_loop_iter=smart_loop_iter_var,
+          cont=cont_var,
           extra_cond=anno.getanno(node, 'extra_cond'))
     else:
       template = """
         i = 0
-        iterated = loop_iter
-        n = len(iterated)
-        while i < n:
-          target = iterated[i]
+        smart_loop_iter = py2tf_utils.dynamic_dataset(loop_iter)
+        cont, target = py2tf_utils.dynamic_for_cond(i, smart_loop_iter)
+        while cont:
           body
           i += 1
+          cont, target = py2tf_utils.dynamic_for_cond(i, smart_loop_iter)
       """
       repl = templates.replace(
           template,
@@ -77,8 +77,8 @@ class ForLoopCanonicalizationTransformer(transformer.Base):
           target=node.target,
           body=node.body,
           i=i_var,
-          n=n_var,
-          iterated=iterated_var)
+          smart_loop_iter=smart_loop_iter_var,
+          cont=cont_var)
       return repl
 
   def visit_Continue(self, node):
