@@ -68,8 +68,8 @@ TEST(CAPI_EXPERIMENTAL, ImagenetIteratorGetNext) {
       tensorflow::testing::TensorFlowSrcRoot(), "c/testdata/tf_record");
   VLOG(1) << "data file path is " << file_path;
   const int batch_size = 64;
-  TF_Operation* get_next = TF_MakeImagenetIteratorGetNextWithDatasets(
-      graph, file_path.c_str(), batch_size, s);
+  TF_Operation* get_next = TF_MakeFileBasedIteratorGetNextWithDatasets(
+      graph, file_path.c_str(), batch_size, /*is_mnist*/ false, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   CSession csession(graph, s);

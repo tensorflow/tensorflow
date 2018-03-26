@@ -96,13 +96,16 @@ TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
     TF_Graph* graph, TF_Status* status);
 
 // Similar to the above API, except that the returned iterator reads the
-// TFRecord files from `file_path`.
+// file based dataset from `file_path`.
+// If `is_mnist` is 0, the dataset corresponds to ImageNet.
 // The iterators outputs 2 tensors:
-// - A float tensor of shape `batch_size` X 224 X 224 X 3
+// - A float tensor of shape `batch_size` X 784 when `is_mnist` is non-zero, or
+// `batch_size` X 224 X 224 X 3 otherwise.
 // - An int32 tensor of shape `batch_size`
 // TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeImagenetIteratorGetNextWithDatasets(
-    TF_Graph* graph, const char* file_path, int batch_size, TF_Status* status);
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
+    TF_Graph* graph, const char* file_path, int batch_size,
+    unsigned char is_mnist, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */
