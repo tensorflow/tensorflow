@@ -65,12 +65,6 @@ class FunctionBufferingResource : public ResourceBase {
 
   ~FunctionBufferingResource() override {
     Cancel();
-    {
-      mutex_lock l(mu_);
-      while (is_buffering_) {
-        cond_var_.wait(l);
-      }
-    }
     if (thread_pool_ != nullptr) {
       delete thread_pool_;
     }
@@ -107,6 +101,20 @@ class FunctionBufferingResource : public ResourceBase {
   void Cancel() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     cancelled_ = true;
+    while (is_buffering_) {
+      cond_var_.wait(l);
+    }
+  }
+
+  // Cancels all pending operations and then clears out the state.
+  void Reset() LOCKS_EXCLUDED(mu_) {
+    Cancel();
+    mutex_lock l(mu_);
+    buffer_.clear();
+    requests_.clear();
+    is_buffering_ = false;
+    end_of_sequence_ = false;
+    cancelled_ = false;
   }
 
   // If the buffer has anything, runs `callback` on the first element in the
@@ -200,13 +208,12 @@ class FunctionBufferingResource : public ResourceBase {
                   mutex_lock l(mu_);
                   BufferElement buffer_element;
                   buffer_element.status = status;
-                  if (!status.ok()) {
+                  if (status.ok()) {
+                    buffer_element.value.swap(*rets);
+                  } else {
                     end_of_sequence_ = true;
                     is_buffering_ = false;
-                    buffer_.push_back(std::move(buffer_element));
-                    return;
                   }
-                  buffer_element.value.swap(*rets);
                   buffer_.push_back(std::move(buffer_element));
                   if (!requests_.empty()) {
                     buffer_front = std::move(buffer_.front());
@@ -214,7 +221,7 @@ class FunctionBufferingResource : public ResourceBase {
                     callback = std::move(requests_.front());
                     requests_.pop_front();
                   }
-                  if (buffer_.size() < buffer_size_) {
+                  if (buffer_.size() < buffer_size_ && !end_of_sequence_) {
                     restart_buffering = true;
                   } else {
                     is_buffering_ = false;
@@ -404,6 +411,43 @@ REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
                             .Device(DEVICE_SYCL)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
+#endif  // TENSORFLOW_USE_SYCL
+
+// Resets the FunctionBufferingResource, cancelling all pending requests and
+// clearing out the buffer.
+class FunctionBufferingResourceResetOp : public OpKernel {
+ public:
+  explicit FunctionBufferingResourceResetOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  ~FunctionBufferingResourceResetOp() override {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx,
+                   HandleFromInput(ctx, "function_buffer_resource", &handle));
+    FunctionBufferingResource* buffer = nullptr;
+    OP_REQUIRES_OK(
+        ctx, LookupResource<FunctionBufferingResource>(ctx, handle, &buffer));
+    core::ScopedUnref s(buffer);
+
+    buffer->Reset();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
 #endif  // TENSORFLOW_USE_SYCL
 
 class IteratorGetDeviceOp : public OpKernel {
