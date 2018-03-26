@@ -5959,6 +5959,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -5979,6 +5980,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -6010,6 +6012,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
         "//third_party/mkl:intel_binary_blob",
         "@mkl_dnn",
     ],
@@ -6029,6 +6032,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_aggregate_ops",
     deps = MATH_DEPS + [
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
@@ -6046,6 +6050,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_reshape_op",
     deps = ARRAY_DEPS + [
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn",
     ],
 )
 
