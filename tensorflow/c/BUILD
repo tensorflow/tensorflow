@@ -34,6 +34,8 @@ filegroup(
         exclude = [
             "c_api_experimental.cc",
             "c_api_experimental.h",
+            "python_api.cc",
+            "python_api.h",
             "*test*",
         ],
     ),
