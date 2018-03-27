@@ -315,6 +315,20 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
             self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
+  # This test covers the axis validation in the shape function
+  # (no eval())
+  def testInvalidAxis(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [-30])
+    with self.assertRaisesRegexp(ValueError,
+                                 "is out of valid range"):
+      array_ops.reverse_v2(x_np, [2])
+    with self.assertRaisesRegexp(ValueError,
+                                 "axis 0 specified more than once"):
+      array_ops.reverse_v2(x_np, [0, -2])
+
   # This is the version of reverse that uses axis indices rather than
   # bool tensors
   # TODO(b/32254538): Change this test to use array_ops.reverse
