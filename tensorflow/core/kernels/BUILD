@@ -2528,13 +2528,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_op",
     prefix = "self_adjoint_eig_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"],
 )
 
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + ["//tensorflow/core:lib_internal"] + if_cuda([
         ":cast_op",
         ":cwise_op",
     ]),

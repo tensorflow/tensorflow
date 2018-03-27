@@ -190,6 +190,7 @@ sh_binary(
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/eager:eager_pip",
+            "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
             "//tensorflow/python:test_ops",
