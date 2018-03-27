@@ -2914,6 +2914,7 @@ py_library(
         ":variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -2940,6 +2941,18 @@ py_test(
     deps = [
         ":checkpointable",
         ":client_testlib",
+    ],
+)
+
+py_test(
+    name = "distribute_test",
+    size = "small",
+    srcs = ["training/distribute_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":training",
+        ":variable_scope",
     ],
 )
 
