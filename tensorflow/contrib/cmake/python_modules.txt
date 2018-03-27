@@ -82,6 +82,7 @@ tensorflow/python/kernel_tests
 tensorflow/python/kernel_tests/distributions
 tensorflow/python/kernel_tests/linalg
 tensorflow/python/kernel_tests/random
+tensorflow/python/kernel_tests/testdata
 tensorflow/python/layers
 tensorflow/python/lib
 tensorflow/python/lib/core

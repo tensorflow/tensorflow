@@ -304,12 +304,17 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const HloInstruction* operand) {
+  return InferUnaryOpShape(opcode, operand->shape());
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
+    HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
   if (opcode == HloOpcode::kCopy) {
-    return operand->shape();
+    return shape;
   }
 
-  return InferUnaryOpShape(OpcodeToUnaryOperation(opcode), operand->shape());
+  return InferUnaryOpShape(OpcodeToUnaryOperation(opcode), shape);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
@@ -1033,8 +1038,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs,
     const HloInstruction* ehs) {
-  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs->shape(),
-                             rhs->shape(), ehs->shape());
+  return InferTernaryOpShape(opcode, lhs->shape(), rhs->shape(), ehs->shape());
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
+    HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
+  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs, rhs, ehs);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
