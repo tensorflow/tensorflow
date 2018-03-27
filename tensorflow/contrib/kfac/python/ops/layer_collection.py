@@ -390,7 +390,7 @@ class LayerCollection(object):
       if name in self._loss_dict:
         raise KeyError(
             "Loss function named {} already exists. Set reuse=True to append "
-            "another minibatch/tower.".format(name))
+            "another tower.".format(name))
 
       loss_list = []
       self._loss_dict[name] = loss_list
@@ -596,7 +596,7 @@ class LayerCollection(object):
     vocab_size = int(params.shape[0])
     block = self.register_block(
         params, block_type(self, vocab_size), reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -637,7 +637,7 @@ class LayerCollection(object):
     has_bias = isinstance(params, (tuple, list))
     block = self.register_block(params, block_type(self, has_bias=has_bias),
                                 reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -716,7 +716,7 @@ class LayerCollection(object):
     else:
       raise NotImplementedError(approx)
 
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -774,7 +774,7 @@ class LayerCollection(object):
             dilation_rate=dilation_rate,
             data_format=data_format),
         reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -830,7 +830,7 @@ class LayerCollection(object):
             rate=rate,
             data_format=data_format),
         reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -913,7 +913,7 @@ class LayerCollection(object):
 
     Args:
       params: Tensor or tuple of Tensors corresponding to the parameters.
-      batch_size: 0-D Tensor. Size of the minibatch.
+      batch_size: 0-D Tensor. Size of the minibatch (for this tower).
       approx: str or None. It not None, must be one of "full" or "diagonal".
         The Fisher approximation to use. If None the default value is used.
         (Default: None)
@@ -932,7 +932,7 @@ class LayerCollection(object):
         _GENERIC_APPROX_TO_BLOCK_TYPES)
 
     block = self.register_block(params, block_type(self, params), reuse=reuse)
-    block.register_additional_minibatch(batch_size)
+    block.register_additional_tower(batch_size)
 
     self._add_uses(params, float("inf"))
 
@@ -952,14 +952,14 @@ class LayerCollection(object):
       inputs: A list of Tensors, each of shape [batch_size, input_size]. Inputs
         to layer. The list indexes each use in the graph (which might
         correspond to a "time-step" in an RNN). OR, can be single Tensor, of
-        shape [batch_size * num_uses, input_size], which is a reshaped version
-        of a Tensor of shape [batch_size, num_uses, input_size].
+        shape [num_uses * batch_size , input_size], which is a reshaped version
+        of a Tensor of shape [num_uses, batch_size, input_size].
       outputs: A list of Tensors, the same length as 'inputs', each of shape
         [batch_size, output_size]. Outputs produced by layer. The list indexes
         each use in the graph (which might correspond to a "time-step" in an
         RNN). Needs to correspond with the order used in 'inputs'.  OR, can be
-        a single Tensor of shape [batch_size * num_uses, output_size], which is
-        a reshaped version of a Tensor of shape [batch_size, num_uses,
+        a single Tensor of shape [num_uses * batch_size, output_size], which is
+        a reshaped version of a Tensor of shape [num_uses, batch_size,
         output_size].
       num_uses: int or None. The number uses/time-steps in the graph where the
         layer appears. Only needed if both inputs and outputs are given in the
@@ -989,7 +989,7 @@ class LayerCollection(object):
     block = self.register_block(params, block_type(self, has_bias=has_bias,
                                                    num_uses=num_uses),
                                 reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     assert len(inputs) == len(outputs)
     self._add_uses(params, len(inputs))
@@ -1017,16 +1017,16 @@ class LayerCollection(object):
       inputs: A list of Tensors, each of shape [batch_size, height, width,
         in_channels]. Inputs to layer. The list indexes each use in the graph
         (which might correspond to a "time-step" in an RNN). OR, can be single
-        Tensor, of shape [batch_size * num_uses, height, width, in_channels],
-        which is a reshaped version of a Tensor of shape [batch_size, num_uses,
+        Tensor, of shape [num_uses * batch_size, height, width, in_channels],
+        which is a reshaped version of a Tensor of shape [num_uses, batch_size,
         height, width, in_channels].
       outputs: A list of Tensors, each of shape [batch_size, height, width,
         out_channels]. Output produced by layer. The list indexes each use
         in the graph (which might correspond to a "time-step" in an RNN).
         Needs to correspond with the order used in 'inputs'.  OR, can be a
-        single Tensor, of shape [batch_size*num_uses, height, width,
+        single Tensor, of shape [num_uses * batch_size, height, width,
         out_channels], which is a reshaped version of a Tensor of shape
-        [batch_size, num_uses, height, width, out_channels].
+        [num_uses, batch_size, height, width, out_channels].
       num_uses: int or None. The number uses/time-steps in the graph where the
         layer appears. Only needed if both inputs and outputs are given in the
         single Tensor format. (Default: None)
@@ -1065,7 +1065,7 @@ class LayerCollection(object):
             num_uses=num_uses),
         reuse=reuse)
 
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     assert len(inputs) == len(outputs)
     self._add_uses(params, len(inputs))
@@ -1088,15 +1088,15 @@ class LayerCollection(object):
       inputs: A list of Tensors, each of shape [batch_size, input_size] and
         dtype int32. Indices into embedding matrix. The list indexes each use
         in the graph (which might correspond to a "time-step" in an RNN).
-        OR, can be single Tensor, of shape [batch_size * num_uses, input_size],
-        which is a reshaped version of a Tensor of shape [batch_size, num_uses,
+        OR, can be single Tensor, of shape [num_uses, batch_size, input_size],
+        which is a reshaped version of a Tensor of shape [num_uses, batch_size,
         input_size].
       outputs: A list of Tensors, each of shape [batch_size, embedding_size].
         Outputs produced by layer. The list indexes each use in the graph
         (which might correspond to a "time-step" in an RNN). Needs to
         correspond with the order used in 'inputs'. OR, can be a
-        single Tensor, of shape [batch_size*num_uses, embedding_size], which
-        is a reshaped version of a Tensor of shape [batch_size, num_uses,
+        single Tensor, of shape [num_uses * batch_size, embedding_size], which
+        is a reshaped version of a Tensor of shape [num_uses, batch_size,
         embedding_size].
       num_uses: int or None. The number uses/time-steps in the graph where the
         layer appears. Only needed if both inputs and outputs are given in the
@@ -1127,7 +1127,7 @@ class LayerCollection(object):
 
     block = self.register_block(
         params, block_type(self, vocab_size, num_uses=num_uses), reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, len(inputs))
 
