@@ -244,7 +244,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
   std::unique_ptr<GlobalData> rhs_data =
       client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
 
-  auto add = b.Add(lhs_param, rhs_param);
+  b.Add(lhs_param, rhs_param);
 
   std::vector<uint64> expected(lhs.size());
   for (int64 i = 0; i < lhs.size(); ++i) {
@@ -1914,101 +1914,98 @@ XLA_TEST_F(ArrayElementwiseOpTest, RemTwoConstantS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NonNanClampF32) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto minimum = builder.ConstantR1<float>({1.0f, -6.5f, 1.0f, 2.25f, 0.0f});
   auto argument = builder.ConstantR1<float>({2.0f, 10.0f, -5.0f, 1.0f, 10.0f});
   auto maximum = builder.ConstantR1<float>({3.0f, 0.5f, 25.5f, 5.0f, 123.0});
-  auto clamp = builder.Clamp(minimum, argument, maximum);
+  builder.Clamp(minimum, argument, maximum);
 
   ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, 2.25f, 10.0f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampF32Scalar) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto minimum = builder.ConstantR0<float>(0.0f);
   auto argument = builder.ConstantR1<float>({2.0f, 10.0f, -5.0f, 1.0f, 4.0f});
   auto maximum = builder.ConstantR0<float>(5.0f);
-  auto clamp = builder.Clamp(minimum, argument, maximum);
+  builder.Clamp(minimum, argument, maximum);
 
   ComputeAndCompareR1<float>(&builder, {2.0f, 5.0f, 0.0f, 1.0f, 4.0f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampF32ScalarVector) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min_scalar = builder.ConstantR0<float>(0.0f);
   auto min_vector = builder.ConstantR1<float>({1.0f, -6.5f, 1.0f, 2.25f, 0.0f});
   auto arg_vector = builder.ConstantR1<float>({2.0f, 10.0f, -5.0f, 1.0f, 4.0f});
   auto max_scalar = builder.ConstantR0<float>(3.0f);
   auto max_vector = builder.ConstantR1<float>({3.0f, 0.5f, 25.5f, 5.0f, 123.0});
   // Perform clamp with broadcasted scalar and vector.
-  auto clamp = builder.Add(
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
-                  builder.Clamp(min_scalar, arg_vector, max_vector)),
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
-                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
+  builder.Add(builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
+                          builder.Clamp(min_scalar, arg_vector, max_vector)),
+              builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                          builder.Clamp(min_scalar, arg_vector, max_scalar)));
 
   ComputeAndCompareR1<float>(&builder, {8.0f, 7.0f, 2.0f, 6.5f, 14.0f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampS32Vector) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min_vector = builder.ConstantR1<int32>({1, -6, 1, 2, 0, -5});
   auto arg_vector = builder.ConstantR1<int32>({2, 10, -5, 1, 4, 10});
   auto max_vector = builder.ConstantR1<int32>({3, 0, 25, 5, 123, -1});
-  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+  builder.Clamp(min_vector, arg_vector, max_vector);
 
   ComputeAndCompareR1<int32>(&builder, {2, 0, 1, 2, 4, -1}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampS32ScalarVector) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min_scalar = builder.ConstantR0<int32>(0);
   auto min_vector = builder.ConstantR1<int32>({1, -6, 1, 2, 0});
   auto arg_vector = builder.ConstantR1<int32>({2, 10, -5, 1, 4});
   auto max_scalar = builder.ConstantR0<int32>(3);
   auto max_vector = builder.ConstantR1<int32>({3, 1, 25, 5, 123});
   // Perform clamp with broadcasted scalar and vector.
-  auto clamp = builder.Add(
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
-                  builder.Clamp(min_scalar, arg_vector, max_vector)),
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
-                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
+  builder.Add(builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
+                          builder.Clamp(min_scalar, arg_vector, max_vector)),
+              builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                          builder.Clamp(min_scalar, arg_vector, max_scalar)));
 
   ComputeAndCompareR1<int32>(&builder, {8, 8, 2, 6, 14}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampU32Vector) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min_vector = builder.ConstantR1<uint32>({1, 2, 1, 2, 0, ~0u - 4});
   auto arg_vector = builder.ConstantR1<uint32>({2, 10, 5, 1, 4, 10});
   auto max_vector = builder.ConstantR1<uint32>({3, 5, 25, 5, 123, ~0u});
-  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+  builder.Clamp(min_vector, arg_vector, max_vector);
 
   ComputeAndCompareR1<uint32>(&builder, {2, 5, 5, 2, 4, ~0u - 4}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampU32ScalarVector) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto min_scalar = builder.ConstantR0<uint32>(0);
   auto min_vector = builder.ConstantR1<uint32>({1, 0, 1, 2, 0});
   auto arg_vector = builder.ConstantR1<uint32>({2, 10, 0, 1, 4});
   auto max_scalar = builder.ConstantR0<uint32>(3);
   auto max_vector = builder.ConstantR1<uint32>({3, 1, 25, 5, 123});
   // Perform clamp with broadcasted scalar and vector.
-  auto clamp = builder.Add(
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
-                  builder.Clamp(min_scalar, arg_vector, max_vector)),
-      builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
-                  builder.Clamp(min_scalar, arg_vector, max_scalar)));
+  builder.Add(builder.Add(builder.Clamp(min_vector, arg_vector, max_scalar),
+                          builder.Clamp(min_scalar, arg_vector, max_vector)),
+              builder.Add(builder.Clamp(min_vector, arg_vector, max_vector),
+                          builder.Clamp(min_scalar, arg_vector, max_scalar)));
 
   ComputeAndCompareR1<uint32>(&builder, {8, 8, 2, 6, 14}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
@@ -2022,7 +2019,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
 
   auto p0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto p1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto add = builder.Add(p0, p1);
+  builder.Add(p0, p1);
 
   ComputeAndCompareR1<float>(&builder, {8.3f, 4.5f, 6.7f, 11.1f},
                              {param0_data.get(), param1_data.get()},
@@ -2030,7 +2027,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
@@ -2044,7 +2041,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
 
   auto p0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto p1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto add = builder.Add(p0, p1);
+  builder.Add(p0, p1);
 
   Array3D<float> expected(0, 7, 0);
   ComputeAndCompareR3<float>(
@@ -2052,7 +2049,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
@@ -2061,35 +2058,35 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
   auto a = builder.ConstantR1<float>({1.1f, 2.2f, 3.3f, 4.4f});
   auto p = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto add = builder.Add(a, p);
+  builder.Add(a, p);
 
   ComputeAndCompareR1<float>(&builder, {2.2f, 4.4f, 6.6f, 9.9f},
                              {param0_data.get()}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<float>({3.14159f, 0.0f, 1.570796f, -0.78539f});
-  auto result = builder.Cos(a);
+  builder.Cos(a);
 
   ComputeAndCompareR1<float>(&builder, {-1.0f, 1.0f, 0.0f, 0.707107f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<float>({3.14159f, 0.0f, 1.570796f, -0.78539f});
-  auto result = builder.Sin(a);
+  builder.Sin(a);
 
   ComputeAndCompareR1<float>(&builder, {0.0f, 0.0f, 1.0f, -0.707107f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<float>({0.0f, 5.0f, 0.0f, -3.0f, 2.0f, -8.0f});
   auto b = builder.ConstantR1<float>({6.0f, 0.0f, -4.0f, 0.0f, 2.0f, 8.0f});
-  auto atan = builder.Atan2(a, b);
+  builder.Atan2(a, b);
 
   ComputeAndCompareR1<float>(
       &builder,
@@ -2098,9 +2095,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<float>({-2.5f, 3.14f, 2.25f});
-  auto result = builder.Tanh(a);
+  builder.Tanh(a);
 
   ComputeAndCompareR1<float>(&builder, {-0.986614f, 0.996260f, 0.978026}, {},
                              error_spec_);
@@ -2110,7 +2107,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // This is like the test ArrayElementwiseOpTest.TanhF32s above, except that
   // the input tensor is large enough to exercise the vectorized tanh
   // implementation on XLA CPU.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateR1<float>(
       {1.02,  -0.32, 0.85,  0.90,  1.23,  -0.91, -0.49, 0.80,  -0.67, 0.16,
        -0.07, 0.39,  -0.41, 0.04,  1.36,  1.25,  0.41,  0.65,  -1.08, 0.32,
@@ -2149,7 +2146,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
 XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
   // The input tensor is large enough to exercise the vectorized exp
   // implementation on XLA CPU.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   // Just to help make sense of the scales here -- exp(89) saturates float32 and
   // exp(-10) is smaller than our error spec.
@@ -2185,7 +2182,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
 XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
   // The input tensor is large enough to exercise the vectorized exp
   // implementation on XLA CPU.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
       {-1.29,    -1.41,    -1.25,    -13.5,    -11.7,    -17.9,    -198,
@@ -2225,14 +2222,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {
   //         /               /
   // b -----/               /
   // c---------------------/
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto a = builder.ConstantR1<float>({1.1f, 2.2f, 3.3f, 4.4f});
   auto b = builder.ConstantR1<float>({2.1f, 3.2f, 4.3f, 5.4f});
   auto c = builder.ConstantR1<float>({-3.3f, -15.5f, -7.7f, -29.9f});
 
   auto add = builder.Add(a, b);
-  auto add2 = builder.Add(add, c);
+  builder.Add(add, c);
 
   ComputeAndCompareR1<float>(&builder, {-0.1f, -10.1f, -0.1f, -20.1f}, {},
                              error_spec_);
@@ -2243,14 +2240,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldRight) {
   //         /               /
   // c -----/               /
   // a---------------------/
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto a = builder.ConstantR1<float>({91.1f, 2.2f, 3.3f, 4.4f});
   auto b = builder.ConstantR1<float>({2.1f, 3.2f, 4.3f, 5.4f});
   auto c = builder.ConstantR1<float>({-3.3f, -15.5f, -7.7f, -29.9f});
 
   auto add = builder.Add(b, c);
-  auto add2 = builder.Add(a, add);
+  builder.Add(a, add);
 
   ComputeAndCompareR1<float>(&builder, {89.9f, -10.1f, -0.1f, -20.1f}, {},
                              error_spec_);
@@ -2260,14 +2257,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddWithNeg) {
   // a ----- (neg) ----- (add)
   //                    /
   // b ----- (neg) ----/
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto a = builder.ConstantR1<float>({91.1f, 2.2f, 3.3f, 4.4f});
   auto b = builder.ConstantR1<float>({2.1f, 3.2f, 4.3f, 5.4f});
 
   auto neg_a = builder.Neg(a);
   auto neg_b = builder.Neg(b);
-  auto result = builder.Add(neg_a, neg_b);
+  builder.Add(neg_a, neg_b);
 
   ComputeAndCompareR1<float>(&builder, {-93.2f, -5.4f, -7.6f, -9.8f}, {},
                              error_spec_);
@@ -2281,7 +2278,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddChainTwoSide) {
   // c ------ (add) ------------/
   //         /
   // d -----/
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto a = builder.ConstantR1<float>({91.1f, 2.2f, 3.3f, 4.4f});
   auto b = builder.ConstantR1<float>({2.1f, 3.2f, 4.3f, 5.4f});
@@ -2290,19 +2287,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddChainTwoSide) {
 
   auto add_ab = builder.Add(a, b);
   auto add_cd = builder.Add(c, d);
-  auto add_all = builder.Add(add_ab, add_cd);
+  builder.Add(add_ab, add_cd);
 
   ComputeAndCompareR1<float>(&builder, {70.9f, -0.1f, -40.1f, 0.1f}, {},
                              error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, 2DBinaryOpF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto b =
       builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
-  auto add = builder.Add(a, b);
+  builder.Add(a, b);
 
   Array2D<float> expected_array(
       {{-4.0f, 11.28f, 43.0f}, {1.25f, -14.0f, 8.88f}});
@@ -2311,11 +2308,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, 2DBinaryOpF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ScalarPlus2DF32) {
   // Add a scalar + matrix.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto scalar = builder.ConstantR0<float>(3.0f);
-  auto add = builder.Add(scalar, a);
+  builder.Add(scalar, a);
 
   Array2D<float> expected_array({{0.5f, 6.14f, 4.0f}, {5.25f, -7.0f, 6.33f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
@@ -2323,11 +2320,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, ScalarPlus2DF32) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, 2DPlusScalarF32) {
   // Add a matrix + scalar.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto scalar = builder.ConstantR0<float>(3.0f);
-  auto add = builder.Add(a, scalar);
+  builder.Add(a, scalar);
 
   Array2D<float> expected_array({{0.5f, 6.14f, 4.0f}, {5.25f, -7.0f, 6.33f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
@@ -2336,14 +2333,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, 2DPlusScalarF32) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo2DF32) {
   // Test simple broadcasting of a R1F32 over R2F32. The vector's size matches
   // only dim 0 of the matrix.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<float>({20.0f, 40.0f, 60.0f});
   // clang-format off
   auto m = builder.ConstantR2<float>({
     {-2.5f, 3.14f, 1.0f},
     {2.25f, -10.0f, 3.33f}});
   // clang-format on
-  auto add = builder.Add(v, m, /*broadcast_dimensions=*/{1});
+  builder.Add(v, m, /*broadcast_dimensions=*/{1});
   Array2D<float> expected_array(
       {{17.5f, 43.14f, 61.0f}, {22.25f, 30.0f, 63.33f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
@@ -2369,10 +2366,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   // Test broadcasting in Ne comparison.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({42, 73});
   auto m = builder.ConstantR2<int32>({{42, 73}, {42, 52}});
-  auto cmp = builder.Ne(v, m, /*broadcast_dimensions=*/{1});
+  builder.Ne(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,2] {
   { 00 },
@@ -2383,10 +2380,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   // Test broadcasting in Ge comparison.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({1, 2, 3, 4});
   auto m = builder.ConstantR2<int32>({{1, 0, 5, 6}, {42, 52, 10, 4}});
-  auto cmp = builder.Ge(v, m, /*broadcast_dimensions=*/{1});
+  builder.Ge(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
   { 1100 },
@@ -2397,10 +2394,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   // Test broadcasting in Gt comparison.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({1, 2, 3, 4});
   auto m = builder.ConstantR2<int32>({{1, 0, 5, 6}, {42, 52, 10, 4}});
-  auto cmp = builder.Gt(v, m, /*broadcast_dimensions=*/{1});
+  builder.Gt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
   { 0100 },
@@ -2411,10 +2408,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   // Test broadcasting in Le comparison.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({1, 2, 3, 4});
   auto m = builder.ConstantR2<int32>({{1, 0, 5, 6}, {42, 52, 10, 4}});
-  auto cmp = builder.Le(v, m, /*broadcast_dimensions=*/{1});
+  builder.Le(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
   { 1011 },
@@ -2425,10 +2422,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   // Test broadcasting in Lt comparison.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({1, 2, 3, 4});
   auto m = builder.ConstantR2<int32>({{1, 0, 5, 6}, {42, 52, 10, 4}});
-  auto cmp = builder.Lt(v, m, /*broadcast_dimensions=*/{1});
+  builder.Lt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
   { 0011 },
@@ -2440,24 +2437,24 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
 XLA_TEST_F(ArrayElementwiseOpTest, Mul2Dby1DF32) {
   // Test simple broadcasting of a R1F32 over R2F32 when the order of binary op
   // arguments is reversed.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto m = builder.ConstantR2<float>({{1.5f, 2.5f, 3.5f}, {4.5f, 5.5f, 6.5f}});
   auto v = builder.ConstantR1<float>({2.0f, 4.0f, 6.0f});
-  auto add = builder.Mul(m, v, /*broadcast_dimensions=*/{1});
+  builder.Mul(m, v, /*broadcast_dimensions=*/{1});
   Array2D<float> expected_array({{3.0f, 10.0f, 21.0f}, {9.0f, 22.0f, 39.0f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo2DWithDegenerateDim1) {
   // Tests broadcasting for arrays with degenerate (size == 1) dimensions.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // m's shape in XLA notation is {3, 2}
   // md's shape in XLA notation is {3, 1}
   // The result has shape {3, 2}, where md is broadcast over m
   auto m =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto md = builder.ConstantR2<float>({{10.0f, 20.0f, 30.0f}});
-  auto add = builder.Add(m, md);
+  builder.Add(m, md);
   Array2D<float> expected_array(
       {{7.5f, 23.14f, 31.0f}, {12.25f, 10.0f, 33.33f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
@@ -2465,14 +2462,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo2DWithDegenerateDim1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo2DWithDegenerateDim0) {
   // Tests broadcasting for arrays with degenerate (size == 1) dimensions.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // m's shape in XLA notation is {3, 2}
   // md's shape in XLA notation is {1, 2}
   // The result has shape {3, 2}, where md is broadcast over m
   auto m =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto md = builder.ConstantR2<float>({{10.0f}, {20.0f}});
-  auto add = builder.Add(m, md);
+  builder.Add(m, md);
   Array2D<float> expected_array(
       {{7.5f, 13.14f, 11.0f}, {22.25f, 10.0f, 23.33f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
@@ -2483,13 +2480,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DsWithDegenerateDimsOuterProduct) {
   // effectively creates an "outer product" operation.
   // This is taken from the Numpy docs example at:
   // http://docs.scipy.org/doc/numpy-1.10.1/user/basics.broadcasting.html
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // a's shape in XLA notation is {1, 4}
   // b's shape in XLA notation is {3, 1}
   // The result has shape {3, 4}.
   auto a = builder.ConstantR2<float>({{0.0f}, {10.0f}, {20.0f}, {30.0f}});
   auto b = builder.ConstantR2<float>({{1.0f, 2.0f, 3.0f}});
-  auto add = builder.Add(a, b);
+  builder.Add(a, b);
   Array2D<float> expected_array({{1.0f, 2.0f, 3.0f},
                                  {11.0f, 12.0f, 13.0f},
                                  {21.0f, 22.0f, 23.0f},
@@ -2500,10 +2497,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DsWithDegenerateDimsOuterProduct) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo2DF32TwoWaysOver1) {
   // Add together a (2,2) array and a (2) array, using dimension 0 for
   // broadcasting (though there are two ways to broadcast these shapes).
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<float>({20.0f, 40.0f});
   auto m = builder.ConstantR2<float>({{10.0f, 50.0f}, {77.0f, 88.0f}});
-  auto add = builder.Add(v, m, /*broadcast_dimensions=*/{1});
+  builder.Add(v, m, /*broadcast_dimensions=*/{1});
   Array2D<float> expected_array({{30.0f, 90.0f}, {97.0f, 128.0f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
 }
@@ -2511,17 +2508,17 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo2DF32TwoWaysOver1) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo2DF32TwoWaysOver0) {
   // Add together a (2,2) array and a (2) array, using dimension 1 for
   // broadcasting (though there are two ways to broadcast these shapes).
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<float>({20.0f, 40.0f});
   auto m = builder.ConstantR2<float>({{10.0f, 50.0f}, {77.0f, 88.0f}});
-  auto add = builder.Add(v, m, /*broadcast_dimensions=*/{0});
+  builder.Add(v, m, /*broadcast_dimensions=*/{0});
   Array2D<float> expected_array({{30.0f, 70.0f}, {117.0f, 128.0f}});
   ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, 3DBinaryOpF32s) {
   // Binary add of two R3s together
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Array3D<float> a_3d({{{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
                        {{7.0f, 8.0f}, {9.0f, 10.0f}, {11.0f, 12.0f}}});
   auto a = builder.ConstantR3FromArray3D<float>(a_3d);
@@ -2529,7 +2526,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, 3DBinaryOpF32s) {
   Array3D<float> b_3d({{{2.0f, 4.0f}, {6.0f, 8.0f}, {10.0f, 12.0f}},
                        {{14.0f, 16.0f}, {18.0f, 20.0f}, {22.0f, 24.0f}}});
   auto b = builder.ConstantR3FromArray3D<float>(b_3d);
-  auto add = builder.Add(a, b);
+  builder.Add(a, b);
 
   Array3D<float> expected_3d(
       {{{3.0f, 6.0f}, {9.0f, 12.0f}, {15.0f, 18.0f}},
@@ -2540,7 +2537,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, 3DBinaryOpF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver2) {
   // Add together a (2, 3, 2) array with a (2) array, using dimension 0 for
   // broadcasting (though there are two ways to broadcast these shapes).
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // clang-format off
   Array3D<float> a_3d({
     {{1.0f, 2.0f},
@@ -2553,7 +2550,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver2) {
   // clang-format on
   auto a = builder.ConstantR3FromArray3D<float>(a_3d);
   auto v = builder.ConstantR1<float>({10.0f, 20.0f});
-  auto add = builder.Add(a, v, /*broadcast_dimensions=*/{2});
+  builder.Add(a, v, /*broadcast_dimensions=*/{2});
 
   Array3D<float> expected_3d(
       {{{11.0f, 22.0f}, {13.0f, 24.0f}, {15.0f, 26.0f}},
@@ -2564,7 +2561,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver2) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver0) {
   // Add together a (2, 3, 2) array with a (2) array, using dimension 2 for
   // broadcasting (though there are two ways to broadcast these shapes).
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // clang-format off
   Array3D<float> a_3d({
     {{1.0f, 2.0f},
@@ -2577,7 +2574,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver0) {
   // clang-format on
   auto a = builder.ConstantR3FromArray3D<float>(a_3d);
   auto v = builder.ConstantR1<float>({10.0f, 20.0f});
-  auto add = builder.Add(a, v, /*broadcast_dimensions=*/{0});
+  builder.Add(a, v, /*broadcast_dimensions=*/{0});
 
   // clang-format off
   Array3D<float> expected_3d({
@@ -2595,7 +2592,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver0) {
 XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo3D) {
   // Add together a (2, 3, 2) array with a (3, 2) array, using dimensions {1,2}
   // for broadcasting.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   // clang-format off
   Array3D<float> a_3d({
     {{1.0f, 2.0f},
@@ -2610,7 +2607,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo3D) {
     {10.0f, 20.0f, 30.0f},
     {40.0f, 50.0f, 60.0f},
   });
-  auto add = builder.Add(a, m, /*broadcast_dimensions=*/{0, 1});
+  builder.Add(a, m, /*broadcast_dimensions=*/{0, 1});
 
   Array3D<float> expected_3d({
     {{11.0f, 12.0f},
@@ -2627,7 +2624,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo3D) {
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   // Comparison between two 3D arrays of compatible shapes:
   // (2, 3, 2) and (2, 3, 1): expected to produce a (2, 3, 2) shape of PREDs.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Array3D<float> a_3d({{{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
                        {{7.0f, 8.0f}, {9.0f, 10.0f}, {11.0f, 12.0f}}});
   auto a = builder.ConstantR3FromArray3D<float>(a_3d);
@@ -2651,7 +2648,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, 4DBinaryOpF32s) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Array4D<float>> operand_a_4d(new Array4D<float>(2, 3, 4, 5));
   std::unique_ptr<Array4D<float>> operand_b_4d(new Array4D<float>(2, 3, 4, 5));
@@ -2672,13 +2669,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, 4DBinaryOpF32s) {
 
   auto a = builder.ConstantR4FromArray4D<float>(*operand_a_4d);
   auto b = builder.ConstantR4FromArray4D<float>(*operand_b_4d);
-  auto add = builder.Add(a, b);
+  builder.Add(a, b);
 
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::unique_ptr<Array4D<float>> operand_a_4d(new Array4D<float>(2, 3, 4, 5));
   std::unique_ptr<Array4D<float>> expected_4d(new Array4D<float>(2, 3, 4, 5));
@@ -2700,7 +2697,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
 
   auto a = builder.ConstantR4FromArray4D<float>(*operand_a_4d);
   auto b = builder.ConstantR1<float>(operand_b_1d);
-  auto add = builder.Add(a, b, {1});
+  builder.Add(a, b, {1});
 
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
 }
@@ -2715,7 +2712,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   std::vector<float> r1(d1);
   std::iota(r1.begin(), r1.end(), 1.0);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   std::unique_ptr<Literal> a_literal = Literal::CreateR4FromArray4DWithLayout(
       r4, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   auto a = builder.ConstantLiteral(*a_literal);
@@ -2736,11 +2733,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
 
 // Show that we can't add two opaques.
 XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto shape = ShapeUtil::MakeOpaqueShape();
   auto x = builder.Parameter(0, shape, "x");
-  auto concatenated = builder.Add(x, x);
-  StatusOr<Computation> computation_status = builder.Build();
+  builder.Add(x, x);
+  auto computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::ContainsRegex(
@@ -2748,12 +2745,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto b =
       builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
-  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{0, 1});
+  builder.Add(a, b, /*broadcast_dimensions=*/{0, 1});
 
   Array2D<float> expected_array(
       {{-4.0f, 11.28f, 43.0f}, {1.25f, -14.0f, 8.88f}});
@@ -2761,14 +2758,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto a =
       builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
   auto b =
       builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
-  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{1, 0});
+  builder.Add(a, b, /*broadcast_dimensions=*/{1, 0});
 
-  StatusOr<Computation> computation_status = builder.Build();
+  auto computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().error_message(),
               ::testing::ContainsRegex("must.*be the identity"));

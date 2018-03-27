@@ -124,6 +124,8 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // Run a computation and return its value as a string. If an error
   // occurs, then instead return the error as a string.
+  string ExecuteToString(XlaBuilder* builder,
+                         tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   string ExecuteToString(ComputationBuilder* builder,
                          tensorflow::gtl::ArraySlice<GlobalData*> arguments);
 

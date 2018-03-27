@@ -1038,8 +1038,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs,
     const HloInstruction* ehs) {
-  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs->shape(),
-                             rhs->shape(), ehs->shape());
+  return InferTernaryOpShape(opcode, lhs->shape(), rhs->shape(), ehs->shape());
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
+    HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
+  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs, rhs, ehs);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(

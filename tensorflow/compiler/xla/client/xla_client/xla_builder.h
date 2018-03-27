@@ -762,6 +762,10 @@ class XlaBuilder {
   XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
                  tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Internal helper method that does the building for an arbitrary ternary op.
+  XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
+                  const XlaOp& ehs);
+
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, const XlaOp& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);

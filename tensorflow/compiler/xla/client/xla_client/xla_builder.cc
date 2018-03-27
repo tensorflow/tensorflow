@@ -288,6 +288,44 @@ XlaOp XlaBuilder::BinaryOp(
   }());
 }
 
+XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
+                            const XlaOp& ehs) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, lhs.GetShape());
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, rhs.GetShape());
+    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, ehs.GetShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferTernaryOpShape(
+                            triop, lhs_shape, rhs_shape, ehs_shape));
+    XlaOp updated_lhs = lhs;
+    XlaOp updated_rhs = rhs;
+    XlaOp updated_ehs = ehs;
+    if (!ShapeUtil::IsTuple(instr.shape())) {
+      if (!ShapeUtil::IsTuple(lhs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), lhs_shape)) {
+        // lhs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_lhs,
+                            AddBroadcastSequence(instr.shape(), lhs));
+      }
+      if (!ShapeUtil::IsTuple(rhs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), rhs_shape)) {
+        // rhs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_rhs,
+                            AddBroadcastSequence(instr.shape(), rhs));
+      }
+      if (!ShapeUtil::IsTuple(ehs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), ehs_shape)) {
+        // ehs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_ehs,
+                            AddBroadcastSequence(instr.shape(), ehs));
+      }
+    }
+    return AddInstruction(std::move(instr), triop,
+                          {updated_lhs, updated_rhs, updated_ehs});
+  }());
+}
+
 XlaOp XlaBuilder::Add(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kAdd, lhs, rhs, broadcast_dimensions);
@@ -449,7 +487,7 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
 
 XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
                          const XlaOp& on_false) {
-  return UnimplementedOp();
+  return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
 }
 
 XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
@@ -755,7 +793,7 @@ XlaOp XlaBuilder::Neg(const XlaOp& operand) {
 
 XlaOp XlaBuilder::Clamp(const XlaOp& min, const XlaOp& operand,
                         const XlaOp& max) {
-  return UnimplementedOp();
+  return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
 
 XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,

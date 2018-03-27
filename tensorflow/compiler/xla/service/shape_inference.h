@@ -70,6 +70,9 @@ class ShapeInference {
   static StatusOr<Shape> InferTernaryOpShape(TernaryOperation operation,
                                              const Shape& lhs, const Shape& rhs,
                                              const Shape& ehs);
+  static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode, const Shape& lhs,
+                                             const Shape& rhs,
+                                             const Shape& ehs);
   static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode,
                                              const HloInstruction* lhs,
                                              const HloInstruction* rhs,
