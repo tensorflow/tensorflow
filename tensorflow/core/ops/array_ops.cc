@@ -766,9 +766,12 @@ REGISTER_OP("ReverseV2")
           axis_value = AsInt64<int64>(axis_tensor, axis_tensor->NumElements());
         }
         for (int i = 0; i < axis_value.size(); i++) {
-          int64 canonical_axis = axis_value[i] < 0 ? rank + axis_value[i] : axis_value[i];
+          int64 canonical_axis =
+              axis_value[i] < 0 ? rank + axis_value[i] : axis_value[i];
           if (canonical_axis < 0 || canonical_axis >= rank) {
-            return errors::InvalidArgument("'axis'[", i, "] = ", axis_value[i], " is out of valid range [", 0, ", ", rank - 1);
+            return errors::InvalidArgument("'axis'[", i, "] = ", axis_value[i],
+                                           " is out of valid range [", 0, ", ",
+                                           rank - 1);
           }
         }
       }
