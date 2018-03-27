@@ -56,7 +56,7 @@ minimum-norm solution to the under-determined linear system, i.e.
 \\(X = \mathrm{argmin}_{Z \in \mathbb{C}^{n \times k} } ||Z||_F^2 \\),
 subject to \\(A Z = B\\). Notice that the fast path is only numerically stable
 when \\(A\\) is numerically full rank and has a condition number
-\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or\\(\lambda\\) is
+\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or \\(\lambda\\) is
 sufficiently large.
 
 If `fast` is `False` an algorithm based on the numerically robust complete
