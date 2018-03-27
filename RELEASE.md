@@ -1,3 +1,10 @@
+# Release 1.4.2
+
+## Bug Fixes and Other Changes
+* Fixes a potential security vulnerability where on-the-fly changes to the dtype
+  of a tensor reference may lead to undefined behavior.
+* Fix an incompatibility with new Bazel versions.
+
 # Release 1.4.1
 
 ## Bug Fixes and Other Changes
