@@ -326,7 +326,7 @@ class ConvTest(test.TestCase):
     self.assertEqual(conv3d.bias_constraint, b_constraint)
 
   def testConv3DChannelsFirst(self):
-    # Test case for GitHub 15655
+    # Test case for GitHub issue 15655
     images = array_ops.placeholder(
         dtype=dtypes.float32, shape=[None, 1, 32, 32, 32])
     conv_layers.conv3d(images, 32, 9, data_format='channels_first')
