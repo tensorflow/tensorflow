@@ -85,6 +85,29 @@ class XlaBuilder {
   // Returns the computation name.
   const string& name() const { return name_; }
 
+  // Sets OpMetadata that will be added to all instructions until cleared.
+  //
+  // OpMetadata is often applied to a series of XLA HLO instructions. As a
+  // result, OpMetadata is set on the Computation Builder. All subsequent
+  // instructions generated via this Computation Builder will have the same
+  // OpMetadata attached until a call to ClearOpMetadata.
+  void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
+
+  // Clears the HloMetadata state.
+  void ClearOpMetadata() { metadata_.Clear(); }
+
+  // Sets an OpSharding that will be attached to all instructions until cleared.
+  void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
+
+  // Clears the sharding. Ops will be sharded according to the default placement
+  // policy.
+  void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
+
+  // Returns the OpSharding that will be attached to all instructions.
+  const tensorflow::gtl::optional<OpSharding>& sharding() const {
+    return sharding_;
+  }
+
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
   // called (which is the default).
@@ -775,6 +798,15 @@ class XlaBuilder {
 
   // The unique parameter numbers.
   tensorflow::gtl::FlatSet<int64> parameter_numbers_;
+
+  // The metadata to attach to each op. This is structured as a "modal"-like
+  // operation, in order to simplify client code (and not sprinkle this metadata
+  // throughout the TensorFlow op kernel implementations).
+  OpMetadata metadata_;
+
+  // Sharding for this operator. This is structured as a "model"-like operation,
+  // in order to simplify client code, similar to metadata_.
+  tensorflow::gtl::optional<OpSharding> sharding_;
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;

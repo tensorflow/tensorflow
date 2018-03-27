@@ -896,8 +896,13 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
         << "Do not add XlaOp from builder " << operand.builder_->name()
         << " to builder " << this->name();
     instr.add_operand_ids(operand.handle());
-    // TODO(b/74197823): Set metadata and sharding.
   }
+
+  *instr.mutable_metadata() = metadata_;
+  if (sharding_) {
+    *instr.mutable_sharding() = *sharding_;
+  }
+
   instructions_.push_back(instr);
 
   XlaOp op(handle, this);
