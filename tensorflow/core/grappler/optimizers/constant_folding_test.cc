@@ -614,7 +614,8 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   GrapplerItem item;
   item.fetch.push_back("e");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -641,6 +642,9 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
     }
   }
   EXPECT_EQ(1, found);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, ControlDependenciesEmptyFetch) {
