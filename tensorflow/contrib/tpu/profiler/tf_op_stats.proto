@@ -199,10 +199,22 @@ message HostOpsPerTpuStep {
   map<int32, int32> step_diffs = 5;
 }
 
+message HostOpsDetailsPerCore {
+  // Map from core id to HostOpsPerTpuStep.
+  map<int32, HostOpsPerTpuStep> core_map = 1;
+}
+
+message HostOpsDetailsPerHost {
+  // Map from hostname to a map from core id to HostOpsPerTpuStep.
+  map<string, HostOpsDetailsPerCore> host_map = 1;
+}
+
 // Result proto for the host ops for all TPU steps.
 message HostOpsResult {
-  // A sequence of HostOpsPerTpuStep (one for each TPU step)
-  repeated HostOpsPerTpuStep host_op_sequence = 1;
+  reserved 1;  // (was repeated HostOpsPerTpuStep host_op_sequence)
+  // A sequence of records with one for each TPU step. Each record
+  // is a map from hostname to a map from core id to HostOpsPerTpuStep.
+  repeated HostOpsDetailsPerHost hostops_details = 2;
 }
 
 // Result proto for TfStatsHelper.
