@@ -765,6 +765,7 @@ REGISTER_OP("ReverseV2")
         } else {
           axis_value = AsInt64<int64>(axis_tensor, axis_tensor->NumElements());
         }
+        std::vector<bool> axes_dense(c->Rank(input), false);
         for (int i = 0; i < axis_value.size(); i++) {
           int64 canonical_axis =
               axis_value[i] < 0 ? rank + axis_value[i] : axis_value[i];
@@ -773,6 +774,11 @@ REGISTER_OP("ReverseV2")
                                            " is out of valid range [", 0, ", ",
                                            rank - 1);
           }
+          if (axes_dense[canonical_axis]) {
+            return errors::InvalidArgument("axis ", canonical_axis,
+                                            " specified more than once.");
+          }
+          axes_dense[canonical_axis] = true;
         }
       }
       c->set_output(0, input);
