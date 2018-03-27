@@ -1049,6 +1049,7 @@ def _compute_sampled_logits(weights,
     # true_logits is a float tensor, ones_like(true_logits) is a float tensor
     # of ones. We then divide by num_true to ensure the per-example labels sum
     # to 1.0, i.e. form a proper probability distribution.
+    num_true = math_ops.cast(num_true, dtypes.float32)
     out_labels = array_ops.concat([
         array_ops.ones_like(true_logits) / num_true,
         array_ops.zeros_like(sampled_logits)

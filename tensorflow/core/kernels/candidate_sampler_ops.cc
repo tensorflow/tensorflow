@@ -34,7 +34,6 @@ class BaseCandidateSamplerOp : public OpKernel {
   explicit BaseCandidateSamplerOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &num_sampled_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_true", &num_true_));
     OP_REQUIRES_OK(context, context->GetAttr("unique", &unique_));
     OP_REQUIRES_OK(context, generator_.Init(context));
   }
@@ -44,9 +43,15 @@ class BaseCandidateSamplerOp : public OpKernel {
     OP_REQUIRES(context, true_classes.dims() == 2,
                 errors::InvalidArgument("true_classes must be a matrix"));
     const int32 batch_size = true_classes.dim_size(0);
-    OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
-                errors::InvalidArgument("true_classes must have "
-                                        "num_true columns"));
+
+    const Tensor& num_true = context->input(1);
+    const int32 num_true_ = num_true.scalar<int32>()();
+
+    OP_REQUIRES(
+        context, true_classes.dim_size(1) == num_true_,
+        errors::InvalidArgument("true_classes must have "
+                                "num_true columns, expected: ",
+                                true_classes.dim_size(1), " was: ", num_true_));
     CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
 
     if (unique_) {
@@ -100,7 +105,6 @@ class BaseCandidateSamplerOp : public OpKernel {
   void set_sampler(RangeSampler* sampler) { sampler_.reset(sampler); }
 
  private:
-  int32 num_true_;
   int32 num_sampled_;
   bool unique_;
   std::unique_ptr<RangeSampler> sampler_;
@@ -189,12 +193,15 @@ class ComputeAccidentalHitsOp : public OpKernel {
  public:
   explicit ComputeAccidentalHitsOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_true", &num_true_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& in_true_candidates = context->input(0);
     const TensorShape& in_true_candidates_shape = in_true_candidates.shape();
+    const Tensor& num_true = context->input(2);
+    const int32 num_true_ = num_true.scalar<int32>()();
+
+
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
                              in_true_candidates_shape.dim_size(1) == num_true_,
                 errors::InvalidArgument(
@@ -252,12 +259,10 @@ class ComputeAccidentalHitsOp : public OpKernel {
       out_weights->vec<float>()(i) = weights[i];
     }
   }
-
- private:
-  int64 num_true_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ComputeAccidentalHits").Device(DEVICE_CPU),
                         ComputeAccidentalHitsOp);
 
 }  // namespace tensorflow
+

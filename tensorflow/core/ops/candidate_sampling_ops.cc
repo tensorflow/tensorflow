@@ -27,12 +27,13 @@ namespace {
 Status CandidateSamplerShapeFn(InferenceContext* c) {
   int64 num_sampled;
   TF_RETURN_IF_ERROR(c->GetAttr("num_sampled", &num_sampled));
-  int64 num_true;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
 
   ShapeHandle true_classes_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &true_classes_shape));
   DimensionHandle batch_size = c->Dim(true_classes_shape, 0);
+
+  DimensionHandle num_true;
+  TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_true));
 
   ShapeHandle num_sampled_v = c->Vector(num_sampled);
   c->set_output(0, num_sampled_v);
@@ -45,10 +46,10 @@ Status CandidateSamplerShapeFn(InferenceContext* c) {
 
 REGISTER_OP("UniformCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("range_max: int >= 1")
@@ -71,6 +72,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -80,7 +82,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -94,10 +95,10 @@ seed2: An second seed to avoid seed collision.
 
 REGISTER_OP("LogUniformCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("range_max: int >= 1")
@@ -121,6 +122,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -130,7 +132,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -144,10 +145,10 @@ seed2: An second seed to avoid seed collision.
 
 REGISTER_OP("LearnedUnigramCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("range_max: int >= 1")
@@ -170,6 +171,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -179,7 +181,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -193,10 +194,10 @@ seed2: An second seed to avoid seed collision.
 
 REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("range_max: int >= 1")
@@ -219,6 +220,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -228,7 +230,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -242,10 +243,10 @@ seed2: An second seed to avoid seed collision.
 
 REGISTER_OP("FixedUnigramCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("range_max: int >= 1")
@@ -279,6 +280,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -288,7 +290,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -325,10 +326,10 @@ seed2: An second seed to avoid seed collision.
 
 REGISTER_OP("AllCandidateSampler")
     .Input("true_classes: int64")
+    .Input("num_true: int32")
     .Output("sampled_candidates: int64")
     .Output("true_expected_count: float")
     .Output("sampled_expected_count: float")
-    .Attr("num_true: int >= 1")
     .Attr("num_sampled: int >= 1")
     .Attr("unique: bool")
     .Attr("seed: int = 0")
@@ -350,6 +351,7 @@ true labels.
 
 true_classes: A batch_size * num_true matrix, in which each row contains the
   IDs of the num_true target_classes in the corresponding original label.
+num_true: Number of true labels per context.
 sampled_candidates: A vector of length num_sampled, in which each element is
   the ID of a sampled candidate.
 true_expected_count: A batch_size * num_true matrix, representing
@@ -359,7 +361,6 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   candidate representing the number of times the candidate is expected
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
-num_true: Number of true labels per context.
 num_sampled: Number of candidates to produce.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
@@ -373,22 +374,22 @@ seed2: An second seed to avoid seed collision.
 REGISTER_OP("ComputeAccidentalHits")
     .Input("true_classes: int64")
     .Input("sampled_candidates: int64")
+    .Input("num_true: int32")
     .Output("indices: int32")
     .Output("ids: int64")
     .Output("weights: float")
-    .Attr("num_true: int")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
-      int64 num_true;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
+      DimensionHandle num_true;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_true));
 
       // Validate true_classes.
       ShapeHandle true_classes;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &true_classes));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
-          c->WithValue(c->Dim(true_classes, 1), num_true, &unused));
+          c->WithValue(c->Dim(true_classes, 1), c->Value(num_true), &unused));
 
       // All three outputs are the same shape.
       ShapeHandle v = c->Vector(InferenceContext::kUnknownDim);
@@ -407,12 +408,12 @@ making the classifier sure that they are sampled labels.
 
 true_classes: The true_classes output of UnpackSparseLabels.
 sampled_candidates: The sampled_candidates output of CandidateSampler.
+num_true: Number of true labels per context.
 indices: A vector of indices corresponding to rows of true_candidates.
 ids: A vector of IDs of positions in sampled_candidates that match a true_label
   for the row with the corresponding index in indices.
 weights: A vector of the same length as indices and ids, in which each element
   is -FLOAT_MAX.
-num_true: Number of true labels per context.
 seed: If either seed or seed2 are set to be non-zero, the random number
   generator is seeded by the given seed.  Otherwise, it is seeded by a
   random seed.
@@ -420,3 +421,4 @@ seed2: An second seed to avoid seed collision.
 )doc");
 
 }  // namespace tensorflow
+
