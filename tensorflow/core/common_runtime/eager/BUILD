@@ -149,3 +149,18 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+cc_library(
+    name = "execute",
+    srcs = ["execute.cc"],
+    hdrs = ["execute.h"],
+    deps = [
+        ":context",
+        ":kernel_and_device",
+        ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
