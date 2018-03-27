@@ -890,7 +890,7 @@ class StridedSliceAssignChecker(object):
         var = resource_variable_ops.ResourceVariable(self.x)
       else:
         var = variables.Variable(self.x)
-      sess.run(variables.initialize_variables([var]))
+      sess.run(variables.variables_initializer([var]))
       val = sess.run(var[index].assign(value))
       # val_copy is used to check that tf.assign works equivalently to the
       # assign method above.
