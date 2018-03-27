@@ -19,8 +19,8 @@
 #   parameterized_docker_build.sh
 #
 # The script obeys the following environment variables:
-#   TF_DOCKER_BUILD_TYPE: (CPU | GPU)
-#     CPU or GPU image
+#   TF_DOCKER_BUILD_TYPE: (CPU | GPU | MKL)
+#     CPU, GPU, or MKL image
 #
 #   TF_DOCKER_BUILD_IS_DEVEL: (NO | YES)
 #     Is this developer image
@@ -87,6 +87,10 @@
 #   TF_DOCKER_BUILD_OPTIONS
 #     (Optional)
 #     Specifies the desired build options. Defaults to OPT.
+#
+#   TF_BAZEL_BUILD_OPTIONS
+#     (Optional)
+#     Specifies the desired build options passed to bazel.
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -149,6 +153,16 @@ fi
 
 if [[ ${TF_DOCKER_BUILD_TYPE} == "cpu" ]]; then
   DOCKER_BINARY="docker"
+elif [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]]; then
+  DOCKER_BINARY="docker"
+
+  FINAL_TAG="${FINAL_TAG}-mkl"
+  if [[ ${ORIG_DOCKERFILE} == *"."* ]]; then
+    # There is already a dot in the tag, use "-"
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}-mkl"
+  else
+    ORIG_DOCKERFILE="${ORIG_DOCKERFILE}.mkl"
+  fi
 elif   [[ ${TF_DOCKER_BUILD_TYPE} == "gpu" ]]; then
   DOCKER_BINARY="nvidia-docker"
 
@@ -202,6 +216,10 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
     export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
     export TF_BUILD_IS_PIP="PIP"
+
+    if [[ "${TF_DOCKER_BUILD_TYPE}" == "mkl" ]]; then
+      die "FAIL: Non-development MKL builds require a pre-built pip whl."
+    fi
 
     if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
       export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
@@ -299,6 +317,26 @@ else
   sed "s/^RUN git clone --branch=.* --depth=1/RUN git clone --branch=${TF_DOCKER_BUILD_DEVEL_BRANCH} --depth=1/" \
       "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
 
+  # Modify the devel Dockerfile to specify the MKL bazel build parameters
+  if [[ "${TF_DOCKER_BUILD_TYPE}" == "mkl" ]]; then
+    if sed -i -e 's/bazel build -c opt /bazel build -c opt --config=mkl /g' "${DOCKERFILE}"
+    then
+      echo "Modified Dockerfile to add MKL support."
+    else
+      die "FAILED to add MKL support to ${DOCKERFILE}."
+    fi
+  fi
+
+  # Modify the devel Dockerfile with bazel build options
+  if [[ ! -z ${TF_BAZEL_BUILD_OPTIONS} ]]; then
+    if sed -i -e "s/--cxxopt=\"-D_GLIBCXX_USE_CXX11_ABI=0\" /--cxxopt=\"-D_GLIBCXX_USE_CXX11_ABI=0\" ${TF_BAZEL_BUILD_OPTIONS} /g" "${DOCKERFILE}"
+    then
+      echo "Modified Dockerfile to add bazel build options."
+    else
+      die "FAILED to add bazel build options to ${DOCKERFILE}."
+    fi
+  fi
+
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
     if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
@@ -319,8 +357,7 @@ fi
 # Intermediate image name with tag
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
-
-"${DOCKER_BINARY}" build --no-cache --pull -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+"${DOCKER_BINARY}" build ${CI_DOCKER_EXTRA_BUILD_PARAMS} --no-cache --pull -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
   echo "${DOCKER_BINARY} build of ${IMG} succeeded"
 else

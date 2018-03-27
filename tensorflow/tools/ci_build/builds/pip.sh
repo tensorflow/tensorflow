@@ -128,7 +128,8 @@ echo "Using Bazel flags: ${BAZEL_FLAGS}"
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
-   [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
+   [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "mkl" ]]; then
   bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
