@@ -785,26 +785,31 @@ class AttentionWrapperTest(test.TestCase):
         wrapper.BahdanauAttention, wrapper.LuongAttention)
 
     expected_final_output = BasicDecoderOutput(
-        rnn_output=ResultSummary(
-            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11798714846372604),
-        sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=7.933333333333334))
+        rnn_output=ResultSummary(shape=(5, 3, 20),
+                                 dtype=dtype('float32'),
+                                 mean=0.11723966),
+        sample_id=ResultSummary(shape=(5, 3),
+                                dtype=dtype('int32'),
+                                mean=9.2666666666666675))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
-            c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0036486709),
-            h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018835809)),
-        attention=ResultSummary(
-            shape=(5, 20), dtype=dtype('float32'), mean=0.11798714846372604),
+            c=ResultSummary(shape=(5, 9),
+                            dtype=dtype('float32'),
+                            mean=-0.003545674),
+            h=ResultSummary(shape=(5, 9),
+                            dtype=dtype('float32'),
+                            mean=-0.0018327223)),
+        attention=ResultSummary(shape=(5, 20),
+                                dtype=dtype('float32'),
+                                mean=0.11728073),
         time=3,
         alignments=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignment_history=(),
         attention_state=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
-        alignment_history=())
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
     expected_final_alignment_history = (
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))

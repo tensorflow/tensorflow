@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 class MockFisherBlock(object):
   """A fake FisherBlock."""
 
-  num_registered_minibatches = 2
+  num_registered_towers = 2
 
   def __init__(self, name='MockFisherBlock'):
     self.name = name
@@ -468,13 +468,13 @@ class LayerCollectionTest(test.TestCase):
       b = variable_scope.get_variable('b', [3])
       lc = layer_collection.LayerCollection()
       lc.register_fully_connected(w, inputs, outputs)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 1)
       with self.assertRaises(KeyError):
         lc.register_fully_connected((w, b), inputs, outputs, reuse=True)
       self.assertNotIn((w, b), lc.fisher_blocks)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 1)
       lc.register_fully_connected(w, inputs, outputs, reuse=True)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 2)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 2)
 
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():

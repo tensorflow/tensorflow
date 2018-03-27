@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import contextlib
 
 import numpy as np
 import six
@@ -35,6 +36,8 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util import nest
+
 
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
@@ -52,16 +55,25 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 # matrix powers. Must be nonnegative.
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
 
+# TOWER_STRATEGY can be one of "concat" or "separate".  If "concat", the data
+# passed to the factors from the blocks will be concatenated across towers
+# (lazilly via PartitionedTensor objects).  Otherwise a tuple of tensors over
+# towers will be passed in, and the factors will iterate over this and do the
+# cov computations separately for each one, averaging the results together.
+TOWER_STRATEGY = "concat"
+
 
 def set_global_constants(init_covariances_at_zero=None,
                          zero_debias=None,
                          eigenvalue_decomposition_threshold=None,
-                         eigenvalue_clipping_threshold=None):
+                         eigenvalue_clipping_threshold=None,
+                         tower_strategy=None):
   """Sets various global constants used by the classes in this module."""
   global INIT_COVARIANCES_AT_ZERO
   global ZERO_DEBIAS
   global EIGENVALUE_DECOMPOSITION_THRESHOLD
   global EIGENVALUE_CLIPPING_THRESHOLD
+  global TOWER_STRATEGY
 
   if init_covariances_at_zero is not None:
     INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
@@ -71,6 +83,8 @@ def set_global_constants(init_covariances_at_zero=None,
     EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
   if eigenvalue_clipping_threshold is not None:
     EIGENVALUE_CLIPPING_THRESHOLD = eigenvalue_clipping_threshold
+  if tower_strategy is not None:
+    TOWER_STRATEGY = tower_strategy
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
@@ -87,6 +101,15 @@ def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: di
   if INIT_COVARIANCES_AT_ZERO:
     return array_ops.zeros(shape, dtype)
   return array_ops.ones(shape, dtype)
+
+
+@contextlib.contextmanager
+def place_on_device(device):
+  if device is not None and len(device):
+    with tf_ops.device(device):
+      yield
+  else:
+    yield
 
 
 def compute_cov(tensor, tensor_right=None, normalizer=None):
@@ -256,6 +279,10 @@ class FisherFactor(object):
     pass
 
   @abc.abstractproperty
+  def _num_towers(self):
+    pass
+
+  @abc.abstractproperty
   def _dtype(self):
     """dtype for variable backing this factor."""
     pass
@@ -277,12 +304,14 @@ class FisherFactor(object):
           dtype=self._dtype)
 
   @abc.abstractmethod
-  def _compute_new_cov(self, idx=0):
+  def _compute_new_cov(self, source, tower):
     """Computes minibatch-estimated covariance for a single source.
 
     Args:
-      idx: int in [0, self._num_sources). Which source to use when estimating
-        covariance.
+      source: int in [0, self._num_sources). Which source to use when computing
+        the cov update.
+      tower: int in [0, self._num_towers). Which tower to use when computing
+        the cov update.
 
     Returns:
       Tensor of same shape as self.get_cov_var().
@@ -297,14 +326,28 @@ class FisherFactor(object):
     Returns:
       An Op for updating the covariance Variable referenced by _cov.
     """
-    new_cov_contribs = tuple(self._compute_new_cov(idx)
-                             for idx in range(self._num_sources))
-    new_cov = math_ops.add_n(new_cov_contribs)
+    new_cov_contribs = []
+    for source in range(self._num_sources):
+      for tower in range(self._num_towers):
+        device = (self._get_data_device(tower)
+                  if TOWER_STRATEGY == "separate" else None)
+        with place_on_device(device):
+          new_cov_contribs.append(self._compute_new_cov(source, tower))
+
+    new_cov = math_ops.add_n(new_cov_contribs) / float(self._num_towers)
+
+    # I have no idea if the TPU code below is still correct since I don't know
+    # what it actually does.  Also, this code is not present in some of the
+    # other versions of make_covariance_update_op.  Does it matter?
     # Synchronize value across all TPU cores.
     if utils.on_tpu():
       new_cov = utils.cross_replica_mean(new_cov)
     return moving_averages.assign_moving_average(
         self._cov, new_cov, ema_decay, zero_debias=ZERO_DEBIAS)
+
+  @abc.abstractmethod
+  def _get_data_device(self, tower):
+    pass
 
   @abc.abstractmethod
   def instantiate_inv_variables(self):
@@ -597,15 +640,24 @@ class FullFactor(InverseProvidingFactor):
     return len(self._params_grads)
 
   @property
+  def _num_towers(self):
+    return 1
+
+  @property
   def _dtype(self):
     return self._params_grads[0][0].dtype
 
-  def _compute_new_cov(self, idx=0):
+  def _compute_new_cov(self, source, tower):
+    assert tower == 0
+
     # This will be a very basic rank 1 estimate
-    params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
+    params_grads_flat = utils.tensors_to_column(self._params_grads[source])
     return ((params_grads_flat * array_ops.transpose(
         params_grads_flat)) / math_ops.cast(self._batch_size,
                                             params_grads_flat.dtype))
+
+  def _get_data_device(self, tower):
+    return None
 
 
 class DiagonalFactor(FisherFactor):
@@ -692,13 +744,22 @@ class NaiveDiagonalFactor(DiagonalFactor):
     return len(self._params_grads)
 
   @property
+  def _num_towers(self):
+    return 1
+
+  @property
   def _dtype(self):
     return self._params_grads[0][0].dtype
 
-  def _compute_new_cov(self, idx=0):
-    params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
+  def _compute_new_cov(self, source, tower):
+    assert tower == 0
+
+    params_grads_flat = utils.tensors_to_column(self._params_grads[source])
     return (math_ops.square(params_grads_flat) / math_ops.cast(
         self._batch_size, params_grads_flat.dtype))
+
+  def _get_data_device(self, tower):
+    return None
 
 
 class EmbeddingInputKroneckerFactor(DiagonalFactor):
@@ -719,8 +780,8 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
     """Instantiate EmbeddingInputKroneckerFactor.
 
     Args:
-      input_ids: Tensor of shape [batch_size, input_size] and dtype int32.
-        Indices into embedding matrix.
+      input_ids: List of Tensors of shape [batch_size, input_size] and dtype
+        int32. Indices into embedding matrix. List index is tower.
       vocab_size: int or 0-D Tensor. Maximum value for entries in 'input_ids'.
       dtype: dtype for covariance statistics. Must be a floating point type.
         Defaults to float32.
@@ -744,14 +805,17 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
     return 1
 
   @property
+  def _num_towers(self):
+    return len(self._input_ids)
+
+  @property
   def _dtype(self):
     return self._cov_dtype
 
-  def _compute_new_cov(self, idx=0):
-    if idx != 0:
-      raise ValueError("EmbeddingInputKroneckerFactor only supports idx = 0")
+  def _compute_new_cov(self, source, tower):
+    assert source == 0
 
-    input_ids = self._input_ids
+    input_ids = self._input_ids[tower]
 
     if len(input_ids.shape) > 2:
       raise ValueError(
@@ -781,6 +845,9 @@ class EmbeddingInputKroneckerFactor(DiagonalFactor):
 
     return new_cov
 
+  def _get_data_device(self, tower):
+    return self._input_ids[tower].device
+
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
   r"""FisherFactor for a diagonal approx of a fully-connected layer's Fisher.
@@ -800,10 +867,11 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     """Instantiate FullyConnectedDiagonalFactor.
 
     Args:
-      inputs: Tensor of shape [batch_size, input_size]. Inputs to this layer.
+      inputs: List of Tensors of shape [batch_size, input_size]. Inputs to this
+        layer.  List index is towers.
       outputs_grads: List of Tensors, each of shape [batch_size, output_size],
         which are the gradients of the loss with respect to the layer's
-        outputs. One Tensor for each "source".
+        outputs. First index is source, second is tower.
 
       has_bias: bool. If True, append '1' to each input.
     """
@@ -817,12 +885,12 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
   @property
   def _var_scope(self):
     return "ff_diagfc_" + scope_string_from_params(
-        (self._inputs,) + tuple(self._outputs_grads))
+        tuple(self._inputs) + tuple(nest.flatten(self._outputs_grads)))
 
   @property
   def _cov_shape(self):
-    input_size = self._inputs.shape[1] + self._has_bias
-    output_size = self._outputs_grads[0].shape[1]
+    input_size = self._inputs[0].shape[1] + self._has_bias
+    output_size = self._outputs_grads[0][0].shape[1]
     return [input_size, output_size]
 
   @property
@@ -830,33 +898,44 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   @property
+  def _num_towers(self):
+    return len(self._inputs)
+
+  @property
   def _dtype(self):
-    return self._outputs_grads[0].dtype
+    return self._outputs_grads[0][0].dtype
 
   def make_covariance_update_op(self, ema_decay):
-    inputs = self._inputs
 
-    if self._has_bias:
-      inputs = append_homog(inputs)
-    self._squared_inputs = math_ops.square(inputs)
+    self._squared_inputs = []
+    for tower in range(self._num_towers):
+      inputs = self._inputs[tower]
+
+      with place_on_device(self._get_data_device(tower)):
+        if self._has_bias:
+          inputs = append_homog(inputs)
+        self._squared_inputs.append(math_ops.square(inputs))
 
     return super(FullyConnectedDiagonalFactor, self).make_covariance_update_op(
         ema_decay)
 
-  def _compute_new_cov(self, idx=0):
-    batch_size = array_ops.shape(self._squared_inputs)[0]
-    outputs_grad = self._outputs_grads[idx]
+  def _compute_new_cov(self, source, tower):
+    batch_size = array_ops.shape(self._squared_inputs[tower])[0]
+    outputs_grad = self._outputs_grads[source][tower]
 
     # The well-known special formula that uses the fact that the entry-wise
     # square of an outer product is the outer-product of the entry-wise squares.
     # The gradient is the outer product of the input and the output gradients,
     # so we just square both and then take their outer-product.
     new_cov = math_ops.matmul(
-        self._squared_inputs,
+        self._squared_inputs[tower],
         math_ops.square(outputs_grad),
         transpose_a=True)
     new_cov /= math_ops.cast(batch_size, new_cov.dtype)
     return new_cov
+
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
 
 
 class ConvDiagonalFactor(DiagonalFactor):
@@ -874,11 +953,12 @@ class ConvDiagonalFactor(DiagonalFactor):
     """Creates a ConvDiagonalFactor object.
 
     Args:
-      inputs: Tensor of shape [batch_size, height, width, in_channels].
-        Input activations to this layer.
+      inputs: List of Tensors of shape [batch_size, height, width, in_channels].
+        Input activations to this layer.  List index is towers.
       outputs_grads: List of Tensors, each of shape [batch_size,
         height, width, out_channels], which are the gradients of the loss
-        with respect to the layer's outputs. One Tensor for each "source".
+        with respect to the layer's outputs.  First index is source, second
+        index is tower.
       filter_shape: Tuple of 4 ints: (kernel_height, kernel_width, in_channels,
         out_channels). Represents shape of kernel used in this layer.
       strides: The stride size in this layer (1-D Tensor of length 4).
@@ -896,14 +976,15 @@ class ConvDiagonalFactor(DiagonalFactor):
     """
     if not utils.is_data_format_channel_last(data_format):
       raise ValueError("Channel must be last.")
-    if inputs.shape.ndims != 4:
-      raise ValueError("inputs must be 4-D Tensor.")
-    if inputs.shape.as_list()[-1] != filter_shape[-2]:
+    if any(input_.shape.ndims != 4 for input_ in inputs):
+      raise ValueError("inputs must be a list of 4-D Tensors.")
+    if any(input_.shape.as_list()[-1] != filter_shape[-2] for input_ in inputs):
       raise ValueError("inputs and filter_shape must agree on in_channels.")
     for i, outputs_grad in enumerate(outputs_grads):
-      if outputs_grad.shape.ndims != 4:
+      if any(output_grad.shape.ndims != 4 for output_grad in outputs_grad):
         raise ValueError("outputs[%d] must be 4-D Tensor." % i)
-      if outputs_grad.shape.as_list()[-1] != filter_shape[-1]:
+      if any(output_grad.shape.as_list()[-1] != filter_shape[-1]
+             for output_grad in outputs_grad):
         raise ValueError(
             "outputs[%d] and filter_shape must agree on out_channels." % i)
     if len(strides) != 4:
@@ -926,7 +1007,7 @@ class ConvDiagonalFactor(DiagonalFactor):
   @property
   def _var_scope(self):
     return "ff_convdiag_" + scope_string_from_params(
-        (self._inputs,) + tuple(self._outputs_grads))
+        tuple(self._inputs) + tuple(nest.flatten(self._outputs_grads)))
 
   @property
   def _cov_shape(self):
@@ -941,8 +1022,12 @@ class ConvDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   @property
+  def _num_towers(self):
+    return len(self._inputs)
+
+  @property
   def _dtype(self):
-    return self._outputs_grads[0].dtype
+    return self._inputs[0].dtype
 
   def make_covariance_update_op(self, ema_decay):
     filter_height, filter_width, _, _ = self._filter_shape
@@ -953,25 +1038,30 @@ class ConvDiagonalFactor(DiagonalFactor):
       rates = (1, 1, 1, 1)
     else:
       rates = tuple(self._dilations)
-    patches = array_ops.extract_image_patches(
-        self._inputs,
-        ksizes=[1, filter_height, filter_width, 1],
-        strides=self._strides,
-        rates=rates,
-        padding=self._padding)
 
-    if self._has_bias:
-      patches = append_homog(patches)
+    self._patches = []
+    for tower in range(self._num_towers):
+      with place_on_device(self._get_data_device(tower)):
+        patches = array_ops.extract_image_patches(
+            self._inputs[tower],
+            ksizes=[1, filter_height, filter_width, 1],
+            strides=self._strides,
+            rates=rates,
+            padding=self._padding)
 
-    self._patches = patches
+        if self._has_bias:
+          patches = append_homog(patches)
+
+        self._patches.append(patches)
 
     return super(ConvDiagonalFactor, self).make_covariance_update_op(ema_decay)
 
-  def _compute_new_cov(self, idx=0):
-    batch_size = array_ops.shape(self._patches)[0]
-    outputs_grad = self._outputs_grads[idx]
+  def _compute_new_cov(self, source, tower):
+    patches = self._patches[tower]
+    batch_size = array_ops.shape(patches)[0]
+    outputs_grad = self._outputs_grads[source][tower]
 
-    new_cov = self._convdiag_sum_of_squares(self._patches, outputs_grad)
+    new_cov = self._convdiag_sum_of_squares(patches, outputs_grad)
     new_cov /= math_ops.cast(batch_size, new_cov.dtype)
 
     return new_cov
@@ -984,6 +1074,9 @@ class ConvDiagonalFactor(DiagonalFactor):
                                                   outputs_grad)
     return math_ops.reduce_sum(math_ops.square(case_wise_gradients), axis=0)
 
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
+
 
 class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   """Kronecker factor for the input or output side of a fully-connected layer.
@@ -995,9 +1088,9 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     """Instantiate FullyConnectedKroneckerFactor.
 
     Args:
-      tensors: List of Tensors, each of shape [batch_size, n], one for each
-      source.  The Tensors are typically either a layer's inputs or its
-      output's gradients.
+      tensors: List of list of Tensors, each of shape [batch_size, n]. The
+        Tensors are typically either a layer's inputs or its output's gradients.
+        The first list index is source, the second is tower.
       has_bias: bool. If True, append '1' to each row.
     """
     # The tensor argument is either a tensor of input activations or a tensor of
@@ -1009,11 +1102,11 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   @property
   def _var_scope(self):
     return "ff_fckron_" + scope_string_from_params(
-        tuple(self._tensors) + (self._has_bias,))
+        tuple(nest.flatten(self._tensors)) + (self._has_bias,))
 
   @property
   def _cov_shape(self):
-    size = self._tensors[0].shape[1] + self._has_bias
+    size = self._tensors[0][0].shape[1] + self._has_bias
     return [size, size]
 
   @property
@@ -1021,14 +1114,21 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     return len(self._tensors)
 
   @property
-  def _dtype(self):
-    return self._tensors[0].dtype
+  def _num_towers(self):
+    return len(self._tensors[0])
 
-  def _compute_new_cov(self, idx=0):
-    tensor = self._tensors[idx]
+  @property
+  def _dtype(self):
+    return self._tensors[0][0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    tensor = self._tensors[source][tower]
     if self._has_bias:
       tensor = append_homog(tensor)
     return compute_cov(tensor)
+
+  def _get_data_device(self, tower):
+    return self._tensors[0][tower].device
 
 
 class ConvInputKroneckerFactor(InverseProvidingFactor):
@@ -1053,8 +1153,8 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     """Initializes ConvInputKroneckerFactor.
 
     Args:
-      inputs: Tensor of shape [batch_size, ..spatial_input_size.., in_channels].
-        Inputs to layer.
+      inputs: List of Tensors of shape [batch_size, ..spatial_input_size..,
+        in_channels]. Inputs to layer. List index is tower.
       filter_shape: List of ints. Contains [..spatial_filter_size..,
         in_channels, out_channels]. Shape of convolution kernel.
       padding: str. Padding method for layer. "SAME" or "VALID".
@@ -1083,10 +1183,10 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
 
   @property
   def _var_scope(self):
-    return "ff_convinkron_" + scope_string_from_params([
-        self._inputs, self._filter_shape, self._strides, self._padding,
-        self._dilation_rate, self._data_format, self._has_bias
-    ])
+    return "ff_convinkron_" + scope_string_from_params(
+        tuple(self._inputs) +
+        tuple((self._filter_shape, self._strides, self._padding,
+               self._dilation_rate, self._data_format, self._has_bias)))
 
   @property
   def _cov_shape(self):
@@ -1100,18 +1200,23 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     return 1
 
   @property
-  def _dtype(self):
-    return self._inputs.dtype
+  def _num_towers(self):
+    return len(self._inputs)
 
-  def _compute_new_cov(self, idx=0):
-    if idx != 0:
-      raise ValueError("ConvInputKroneckerFactor only supports idx = 0")
+  @property
+  def _dtype(self):
+    return self._inputs[0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    assert source == 0
+
+    inputs = self._inputs[tower]
 
     # TODO(b/64144716): there is potential here for a big savings in terms of
     # memory use.
     if self._extract_patches_fn in [None, "extract_convolution_patches"]:
       patches = utils.extract_convolution_patches(
-          self._inputs,
+          inputs,
           self._filter_shape,
           padding=self._padding,
           strides=self._strides,
@@ -1119,7 +1224,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
           data_format=self._data_format)
 
     elif self._extract_patches_fn == "extract_image_patches":
-      assert self._inputs.shape.ndims == 4
+      assert inputs.shape.ndims == 4
       assert len(self._filter_shape) == 4
       assert len(self._strides) == 4, self._strides
       if self._dilation_rate is None:
@@ -1129,7 +1234,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
         assert len(rates) == 4
         assert rates[0] == rates[-1] == 1
       patches = array_ops.extract_image_patches(
-          self._inputs,
+          inputs,
           ksizes=[1] + list(self._filter_shape[0:-2]) + [1],
           strides=self._strides,
           rates=rates,
@@ -1139,7 +1244,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
       assert self._strides in [None, [1, 1, 1, 1], (1, 1, 1, 1)]
       assert self._filter_shape[0] == self._filter_shape[1] == 1
       patches = utils.extract_pointwise_conv2d_patches(
-          self._inputs, self._filter_shape, data_format=None)
+          inputs, self._filter_shape, data_format=None)
 
     else:
       raise NotImplementedError(self._extract_patches_fn)
@@ -1164,6 +1269,9 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     # (Tilde omitted over A for clarity.)
     return compute_cov(patches_flat)
 
+  def _get_data_device(self, tower):
+    return self._inputs[tower].device
+
 
 class ConvOutputKroneckerFactor(InverseProvidingFactor):
   r"""Kronecker factor for the output side of a convolutional layer.
@@ -1180,9 +1288,9 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     """Initializes ConvOutputKroneckerFactor.
 
     Args:
-      outputs_grads: list of Tensors. Each Tensor is of shape
-          [batch_size, ..spatial_input_size.., out_channels]. One Tensor per
-          source.
+      outputs_grads: List of list of Tensors. Each Tensor is of shape
+          [batch_size, ..spatial_input_size.., out_channels].  First list index
+          is source, the second is tower.
       data_format: None or str. Format of outputs_grads.
 
     Raises:
@@ -1190,13 +1298,14 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     """
     if not utils.is_data_format_channel_last(data_format):
       raise ValueError("Channel must be last.")
-    self._out_channels = outputs_grads[0].shape.as_list()[-1]
+    self._out_channels = outputs_grads[0][0].shape.as_list()[-1]
     self._outputs_grads = outputs_grads
     super(ConvOutputKroneckerFactor, self).__init__()
 
   @property
   def _var_scope(self):
-    return "ff_convoutkron_" + scope_string_from_params(self._outputs_grads)
+    return "ff_convoutkron_" + scope_string_from_params(
+        nest.flatten(self._outputs_grads))
 
   @property
   def _cov_shape(self):
@@ -1208,11 +1317,15 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     return len(self._outputs_grads)
 
   @property
-  def _dtype(self):
-    return self._outputs_grads[0].dtype
+  def _num_towers(self):
+    return len(self._outputs_grads[0])
 
-  def _compute_new_cov(self, idx=0):
-    outputs_grad = self._outputs_grads[idx]
+  @property
+  def _dtype(self):
+    return self._outputs_grads[0][0].dtype
+
+  def _compute_new_cov(self, source, tower):
+    outputs_grad = self._outputs_grads[source][tower]
 
     # reshaped_tensor below is the matrix DS_l defined in the KFC paper
     # (tilde omitted over S for clarity). It has shape M|T| x I, where
@@ -1225,6 +1338,9 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     # (Tilde omitted over S for clarity.)
     return compute_cov(reshaped_tensor)
 
+  def _get_data_device(self, tower):
+    return self._outputs_grads[0][tower].device
+
 
 class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
   """Kronecker factor for a fully connected layer used multiple times."""
@@ -1236,9 +1352,11 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
     """Constructs a new `FullyConnectedMultiKF`.
 
     Args:
-      tensors: List of Tensors of shape, each of shape [batch_size, n]. Each of
-        these tensors is usually a layer's inputs or its output's gradients.
-        The list is over sources.
+      tensors: List of list of Tensors of shape, each of shape
+        [num_uses * batch_size, n], and is a reshape version of a Tensor of
+        shape [num_uses, batch_size, n]. Each of these tensors is usually a
+        layer's inputs or its output's gradients. The first list index is
+        sources, the second is towers.
       num_uses: int. The number of time-steps / uses.
       has_bias: bool. If True, '1' is appended to each row.
     """
@@ -1262,16 +1380,24 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
   @property
   def _var_scope(self):
     return "ff_fc_multi_" + scope_string_from_params(
-        tuple(self._tensors) + (self._num_timesteps, self._has_bias,))
+        tuple(nest.flatten(self._tensors))
+        + (self._num_timesteps, self._has_bias,))
 
   def make_covariance_update_op(self, ema_decay):
 
     op = super(FullyConnectedMultiKF, self).make_covariance_update_op(ema_decay)
 
     if self._cov_dt1 is not None:
-      new_cov_dt1_contribs = tuple(self._compute_new_cov_dt1(idx)
-                                   for idx in range(self._num_sources))
-      new_cov_dt1 = math_ops.add_n(new_cov_dt1_contribs)
+      new_cov_dt1_contribs = []
+      for source in range(self._num_sources):
+        for tower in range(self._num_towers):
+          with place_on_device(self._get_data_device(tower)):
+            new_cov_dt1_contribs.append(self._compute_new_cov_dt1(source,
+                                                                  tower))
+
+      new_cov_dt1 = (math_ops.add_n(new_cov_dt1_contribs)
+                     / float(self._num_towers))
+
       op2 = moving_averages.assign_moving_average(
           self._cov_dt1, new_cov_dt1, ema_decay, zero_debias=ZERO_DEBIAS)
 
@@ -1284,8 +1410,8 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
 
     return op
 
-  def _compute_new_cov_dt1(self, idx=0):  # pylint: disable=missing-docstring
-    tensor = self._tensors[idx]
+  def _compute_new_cov_dt1(self, source, tower):  # pylint: disable=missing-docstring
+    tensor = self._tensors[source][tower]
     if self._has_bias:
       # This appending is technically done twice (the other time is for
       # _compute_new_cov())
@@ -1303,9 +1429,12 @@ class FullyConnectedMultiKF(FullyConnectedKroneckerFactor):
     return compute_cov(
         tensor_future, tensor_right=tensor_present, normalizer=total_len)
 
+  def _get_data_device(self, tower):
+    return self._tensors[0][tower].device
+
   @property
   def _vec_shape(self):
-    size = self._tensors[0].shape[1] + self._has_bias
+    size = self._tensors[0][0].shape[1] + self._has_bias
     return [size]
 
   def get_option1quants(self, damping_func):

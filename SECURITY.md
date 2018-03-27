@@ -244,7 +244,7 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 
 ### Known vulnerabilities
 
-| Type               | Versions affected |        Reported by | Additional Information      |
-|--------------------|:-----------------:|--------------------|-----------------------------|
-| Out Of Bounds Read |             <=1.4 | TenCent Blade Team | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
+| Type               | Versions affected | Reported by           | Additional Information      |
+|--------------------|:-----------------:|-----------------------|-----------------------------|
+| Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
 

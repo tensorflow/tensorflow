@@ -957,8 +957,18 @@ template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone, "");
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
 
   const int flat_size = RequiredBufferSizeForDims(output_dims);
   TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
@@ -979,7 +989,10 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     F0 scaled_input =
         F0::FromRaw(gemmlowp::RoundingDivideByPOT(shift_input[i], input_shift));
     F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
-    output_data[i] = result.raw();
+    const int16 raw_output = result.raw();
+    const int16 clamped_output = std::min(
+        output_activation_max, std::max(output_activation_min, raw_output));
+    output_data[i] = clamped_output;
   }
 }
 

@@ -62,6 +62,11 @@ def function_buffering_resource_get_next(function_buffer_resource,
       name=name)
 
 
+def function_buffering_resource_reset(function_buffer_resource, name=None):
+  return gen_dataset_ops.function_buffering_resource_reset(
+      function_buffer_resource=function_buffer_resource, name=name)
+
+
 # pylint: disable=protected-access
 class _PrefetchToDeviceIterator(object):
   """A replacement for @{tf.data.Iterator} that prefetches to another device."""

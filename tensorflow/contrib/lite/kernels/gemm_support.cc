@@ -61,5 +61,11 @@ gemmlowp::GemmContext* GetFromContext(TfLiteContext* context) {
   return ptr->gemm_context_;
 }
 
+void SetNumThreads(TfLiteContext* context, int num_threads) {
+  IncrementUsageCounter(context);
+  GetFromContext(context)->set_max_num_threads(num_threads);
+  DecrementUsageCounter(context);
+}
+
 }  // namespace gemm_support
 }  // namespace tflite

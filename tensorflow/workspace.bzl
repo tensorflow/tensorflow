@@ -601,7 +601,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       jar_urls = [
           "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
           "http://repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
-          "http://maven.ibiblio.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
       ],
       licenses = ["notice"],  # New BSD License
       testonly_ = True,

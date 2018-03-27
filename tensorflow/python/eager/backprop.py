@@ -86,6 +86,14 @@ class _MockOp(object):
         return make_attr(typ, self.attrs[i + 1])
     raise KeyError(attr)
 
+  def _get_control_flow_context(self):
+    raise NotImplementedError(
+        "tf.GradientTape.gradients() does not support graph control flow "
+        "operations like tf.cond or tf.while at this time. Use tf.gradients() "
+        "instead. If you need this feature, please file a feature request at "
+        "https://github.com/tensorflow/tensorflow/issues/new"
+    )
+
 
 def _magic_gradient_function(op_name, attr_tuple, num_inputs,
                              inputs, outputs, out_grads):
@@ -163,8 +171,8 @@ def implicit_val_and_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the value and the gradient of f when called with
-  the same arguments. The gradient is with respect to all TFE variables which
-  have `variable.watch()` called on them by f.
+  the same arguments. The gradient is with respect to all trainable TFE
+  variables accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
@@ -241,8 +249,8 @@ def implicit_grad(f):
   """Returns a function which differentiates f with respect to variables.
 
   The wrapped function returns the gradient of f when called with the same
-  arguments. The gradient is with respect to all TFE variables which have
-  `variable.watch()` called on them by f.
+  arguments. The gradient is with respect to all trainable TFE variables
+  accessed by `f`.
 
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
@@ -645,10 +653,10 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Variables (created by `tf.contrib.eager.Variable` or @{tf.get_variable})
-  are automatically watched. Tensors can be manually watched by invoking the
-  `watch`
-  method on this context manager.
+  Trainable variables (created by `tf.contrib.eager.Variable` or
+  @{tf.get_variable}, trainable=True is default in both cases) are automatically
+  watched. Tensors can be manually watched by invoking the `watch` method on
+  this context manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
   be computed as:
