@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import threading
 
 from tensorflow.contrib.data.python.ops import prefetching_ops
@@ -39,25 +38,29 @@ class StagingAreaOpsTest(test.TestCase):
   def setUp(self):
     self._event = threading.Event()
 
-  def _prefetch_fn_helper(self, buffer_name, device0, device1):
-    worker_config = config_pb2.ConfigProto()
-    worker_config.device_count["CPU"] = 2
+  def _create_ds_and_iterator(self, device0, initializable=False):
 
     def gen():
-      for i in itertools.count(start=1, step=1):
-        yield [i + 0.0]
+      for i in range(1, 10):
+        yield [float(i)]
         if i == 6:
           self._event.set()
 
     with ops.device(device0):
-      dataset_3 = dataset_ops.Dataset.from_generator(gen, (dtypes.float32))
-      iterator_3 = dataset_3.make_one_shot_iterator()
-      iterator_3_handle = iterator_3.string_handle()
+      ds = dataset_ops.Dataset.from_generator(gen, (dtypes.float32))
+      if initializable:
+        ds_iterator = ds.make_initializable_iterator()
+      else:
+        ds_iterator = ds.make_one_shot_iterator()
+      return (ds, ds_iterator)
+
+  def _create_ops(self, ds, ds_iterator, buffer_name, device0, device1):
+    ds_iterator_handle = ds_iterator.string_handle()
 
     @function.Defun(dtypes.string)
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          h, dataset_3.output_types, dataset_3.output_shapes)
+          h, ds.output_types, ds.output_shapes)
       return remote_iterator.get_next()
 
     target = constant_op.constant(device0)
@@ -65,7 +68,7 @@ class StagingAreaOpsTest(test.TestCase):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
           f=_remote_fn,
           target_device=target,
-          string_arg=iterator_3_handle,
+          string_arg=ds_iterator_handle,
           buffer_size=3,
           thread_pool_size=2,
           shared_name=buffer_name)
@@ -74,6 +77,20 @@ class StagingAreaOpsTest(test.TestCase):
       prefetch_op = prefetching_ops.function_buffering_resource_get_next(
           function_buffer_resource=buffer_resource_handle,
           output_types=[dtypes.float32])
+      reset_op = prefetching_ops.function_buffering_resource_reset(
+          function_buffer_resource=buffer_resource_handle)
+      destroy_op = resource_variable_ops.destroy_resource_op(
+          buffer_resource_handle, ignore_lookup_error=True)
+
+    return (prefetch_op, reset_op, destroy_op)
+
+  def _prefetch_fn_helper_one_shot(self, buffer_name, device0, device1):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+
+    ds, ds_iterator = self._create_ds_and_iterator(device0, initializable=False)
+    prefetch_op, _, destroy_op = self._create_ops(ds, ds_iterator, buffer_name,
+                                                  device0, device1)
 
     with self.test_session(config=worker_config) as sess:
       elem = sess.run(prefetch_op)
@@ -87,26 +104,102 @@ class StagingAreaOpsTest(test.TestCase):
       self._event.wait()
       elem = sess.run(prefetch_op)
       self.assertEqual(elem, [5.0])
-      sess.run(
-          resource_variable_ops.destroy_resource_op(
-              buffer_resource_handle, ignore_lookup_error=True))
+      sess.run(destroy_op)
 
   def testSameDeviceCPU(self):
-    self._prefetch_fn_helper("same_device_cpu",
-                             "/job:localhost/replica:0/task:0/cpu:0",
-                             "/job:localhost/replica:0/task:0/cpu:0")
+    self._prefetch_fn_helper_one_shot("same_device_cpu",
+                                      "/job:localhost/replica:0/task:0/cpu:0",
+                                      "/job:localhost/replica:0/task:0/cpu:0")
 
   def testDifferentDeviceCPU(self):
-    self._prefetch_fn_helper("diff_device_cpu",
-                             "/job:localhost/replica:0/task:0/cpu:0",
-                             "/job:localhost/replica:0/task:0/cpu:1")
+    self._prefetch_fn_helper_one_shot("diff_device_cpu",
+                                      "/job:localhost/replica:0/task:0/cpu:0",
+                                      "/job:localhost/replica:0/task:0/cpu:1")
 
   def testDifferentDeviceCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
 
-    self._prefetch_fn_helper("cpu_gpu", "/job:localhost/replica:0/task:0/cpu:0",
-                             "/job:localhost/replica:0/task:0/gpu:0")
+    self._prefetch_fn_helper_one_shot("cpu_gpu",
+                                      "/job:localhost/replica:0/task:0/cpu:0",
+                                      "/job:localhost/replica:0/task:0/gpu:0")
+
+  def testReinitialization(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+
+    device0 = "/job:localhost/replica:0/task:0/cpu:0"
+    device1 = "/job:localhost/replica:0/task:0/cpu:1"
+    ds, ds_iterator = self._create_ds_and_iterator(device0, initializable=True)
+    prefetch_op, reset_op, destroy_op = self._create_ops(
+        ds, ds_iterator, "reinit", device0, device1)
+
+    with self.test_session(config=worker_config) as sess:
+      sess.run(ds_iterator.initializer)
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [1.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [2.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [3.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [4.0])
+      self._event.wait()
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [5.0])
+      # Lets reset the function buffering resource and reinitialize the
+      # iterator. Should be able to go through this again.
+      self._event.clear()
+      sess.run(reset_op)
+      sess.run(ds_iterator.initializer)
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [1.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [2.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [3.0])
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [4.0])
+      self._event.wait()
+      elem = sess.run(prefetch_op)
+      self.assertEqual(elem, [5.0])
+      sess.run(destroy_op)
+
+  def testReinitializationOutOfRange(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 2
+
+    device0 = "/job:localhost/replica:0/task:0/cpu:0"
+    device1 = "/job:localhost/replica:0/task:0/cpu:1"
+    ds, ds_iterator = self._create_ds_and_iterator(device0, initializable=True)
+    prefetch_op, reset_op, destroy_op = self._create_ops(
+        ds, ds_iterator, "reinit", device0, device1)
+
+    with self.test_session(config=worker_config) as sess:
+      sess.run(ds_iterator.initializer)
+      for i in range(1, 10):
+        elem = sess.run(prefetch_op)
+        self.assertEqual(elem, [float(i)])
+      # Try fetching after its over twice to test out end of sequence.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(prefetch_op)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(prefetch_op)
+
+      # Now reset everything and try it out again.
+      self._event.clear()
+      sess.run(reset_op)
+      sess.run(ds_iterator.initializer)
+      for i in range(1, 10):
+        elem = sess.run(prefetch_op)
+        self.assertEqual(elem, [float(i)])
+      # Try fetching after its over twice to test out end of sequence.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(prefetch_op)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(prefetch_op)
+
+      sess.run(destroy_op)
 
   def testPrefetchToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)

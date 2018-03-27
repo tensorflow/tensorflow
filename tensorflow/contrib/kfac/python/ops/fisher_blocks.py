@@ -75,37 +75,6 @@ def set_global_constants(normalize_damping_power=None, pi_type=None):
     PI_TYPE = pi_type
 
 
-def _make_partitionedtensors_inputs(inputs):
-  """Constructs PartitionedTensor for inputs.
-
-  The purpose of this method is to package up the towers/minibatch dimension
-  of these arrays into PartitionedTensor objects.
-
-  Args:
-    inputs: a 1-D list of Tensors. Index is tower/mini-batch.
-
-  Returns:
-    A PartitionedTensor.
-  """
-  return utils.PartitionedTensor(inputs)
-
-
-def _make_partitionedtensors_grads(grads_list):
-  """Constructs PartitionedTensor for grads_list.
-
-  The purpose of this method is to package up the towers/minibatch dimension
-  of these arrays into PartitionedTensor objects.
-
-  Args:
-    grads_list: 2-D list of Tensors. First index is for source, second
-      index for tower.
-
-  Returns:
-    Tuple of PartitionedTensors, one per source.
-  """
-  return tuple(utils.PartitionedTensor(grads) for grads in grads_list)
-
-
 def normalize_damping(damping, num_replications):
   """Normalize damping after adjusting scale by NORMALIZE_DAMPING_POWER."""
   if NORMALIZE_DAMPING_POWER:
@@ -191,7 +160,7 @@ class FisherBlock(object):
   """Abstract base class for objects modeling approximate Fisher matrix blocks.
 
   Subclasses must implement register_matpower, multiply_matpower,
-  instantiate_factors, tensors_to_compute_grads, and num_registered_minibatches
+  instantiate_factors, tensors_to_compute_grads, and num_registered_towers
   methods.
   """
 
@@ -266,8 +235,8 @@ class FisherBlock(object):
     pass
 
   @abc.abstractproperty
-  def num_registered_minibatches(self):
-    """Number of minibatches registered for this FisherBlock.
+  def num_registered_towers(self):
+    """Number of towers registered for this FisherBlock.
 
     Typically equal to the number of towers in a multi-tower setup.
     """
@@ -319,8 +288,8 @@ class FullFB(FisherBlock):
   def tensors_to_compute_grads(self):
     return self._params
 
-  def register_additional_minibatch(self, batch_size):
-    """Register an additional minibatch.
+  def register_additional_tower(self, batch_size):
+    """Register an additional tower.
 
     Args:
       batch_size: The batch size, used in the covariance estimator.
@@ -328,7 +297,7 @@ class FullFB(FisherBlock):
     self._batch_sizes.append(batch_size)
 
   @property
-  def num_registered_minibatches(self):
+  def num_registered_towers(self):
     return len(self._batch_sizes)
 
   @property
@@ -381,8 +350,8 @@ class NaiveDiagonalFB(FisherBlock):
   def tensors_to_compute_grads(self):
     return self._params
 
-  def register_additional_minibatch(self, batch_size):
-    """Register an additional minibatch.
+  def register_additional_tower(self, batch_size):
+    """Register an additional tower.
 
     Args:
       batch_size: The batch size, used in the covariance estimator.
@@ -390,7 +359,7 @@ class NaiveDiagonalFB(FisherBlock):
     self._batch_sizes.append(batch_size)
 
   @property
-  def num_registered_minibatches(self):
+  def num_registered_towers(self):
     return len(self._batch_sizes)
 
   @property
@@ -398,24 +367,78 @@ class NaiveDiagonalFB(FisherBlock):
     return math_ops.reduce_sum(self._batch_sizes)
 
 
-class InputOutputMultiMinibatch(object):
+class InputOutputMultiTower(object):
   """Mix-in class for blocks with inputs & outputs and multiple mini-batches."""
 
   def __init__(self, *args, **kwargs):
     self.__inputs = []
     self.__outputs = []
-    super(InputOutputMultiMinibatch, self).__init__(*args, **kwargs)
+    super(InputOutputMultiTower, self).__init__(*args, **kwargs)
+
+  def _process_data(self, grads_list):
+    """Process data into the format used by the factors.
+
+    This function takes inputs and grads_lists data and processes it into
+    one of the formats expected by the FisherFactor classes (depending on
+    the value of the global configuration variable TOWER_STRATEGY).
+
+    The initial format of self._inputs is expected to be a list of Tensors
+    over towers. Similarly grads_lists is expected to be a list over sources
+    of such lists.
+
+    If TOWER_STRATEGY is "concat", 'inputs' becomes a tuple containing a single
+    tensor (represented as a PartitionedTensor object) equal to the
+    concatenation (across towers) of all of the elements of self._inputs. And
+    similarly grads_list is formatted into a tuple (over sources) of such
+    tensors (also represented as PartitionedTensors).
+
+    If TOWER_STRATEGY is "separate", formatting of inputs and grads_list
+    remains unchanged from the initial format (although possibly converting
+    from lists into tuples).
+
+    Args:
+      grads_list: grads_list in its initial format (see above).
+
+    Returns:
+      inputs: self._inputs transformed into the appropriate format (see
+        above).
+      grads_list: grads_list transformed into the appropriate format (see
+        above).
+
+    Raises:
+      ValueError: if TOWER_STRATEGY is not one of "separate" or "concat".
+    """
+    inputs = self._inputs
+    # inputs is a list over towers of Tensors
+    # grads_list is a list of list with the first index being sources and the
+    # second being towers.
+    if fisher_factors.TOWER_STRATEGY == "concat":
+      # Merge towers together into a PartitionedTensor. We package it in
+      # a singleton tuple since the factors will expect a list over towers
+      inputs = (utils.PartitionedTensor(inputs),)
+      # Do the same for grads_list but preserve leading sources dimension
+      grads_list = tuple((utils.PartitionedTensor(grads),)
+                         for grads in grads_list)
+    elif fisher_factors.TOWER_STRATEGY == "separate":
+      inputs = tuple(inputs)
+      grads_list = tuple(grads_list)
+
+    else:
+      raise ValueError("Global config variable TOWER_STRATEGY must be one of "
+                       "'concat' or 'separate'.")
+
+    return inputs, grads_list
 
   def tensors_to_compute_grads(self):
     """Tensors to compute derivative of loss with respect to."""
-    return self._outputs
+    return tuple(self._outputs)
 
-  def register_additional_minibatch(self, inputs, outputs):
+  def register_additional_tower(self, inputs, outputs):
     self._inputs.append(inputs)
     self._outputs.append(outputs)
 
   @property
-  def num_registered_minibatches(self):
+  def num_registered_towers(self):
     result = len(self._inputs)
     assert result == len(self._outputs)
     return result
@@ -429,7 +452,7 @@ class InputOutputMultiMinibatch(object):
     return self.__outputs
 
 
-class FullyConnectedDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
+class FullyConnectedDiagonalFB(InputOutputMultiTower, FisherBlock):
   """FisherBlock for fully-connected (dense) layers using a diagonal approx.
 
   Estimates the Fisher Information matrix's diagonal entries for a fully
@@ -466,8 +489,7 @@ class FullyConnectedDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
     super(FullyConnectedDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    inputs = _make_partitionedtensors_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedDiagonalFactor,
@@ -500,7 +522,7 @@ class FullyConnectedDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
     return utils.mat2d_to_layer_params(vector, reshaped_out)
 
 
-class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
+class ConvDiagonalFB(InputOutputMultiTower, FisherBlock):
   """FisherBlock for 2-D convolutional layers using a diagonal approx.
 
   Estimates the Fisher Information matrix's diagonal entries for a convolutional
@@ -580,11 +602,10 @@ class ConvDiagonalFB(InputOutputMultiMinibatch, FisherBlock):
     super(ConvDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    inputs = _make_partitionedtensors_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     # Infer number of locations upon which convolution is applied.
-    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+    self._num_locations = num_conv_locations(inputs[0].shape.as_list(),
                                              self._strides)
 
     self._factor = self._layer_collection.make_or_get_factor(
@@ -691,7 +712,7 @@ class KroneckerProductFB(FisherBlock):
                                                         right_factor)
 
 
-class EmbeddingKFACFB(InputOutputMultiMinibatch, KroneckerProductFB):
+class EmbeddingKFACFB(InputOutputMultiTower, KroneckerProductFB):
   """K-FAC FisherBlock for embedding layers.
 
   This FisherBlock is similar to FullyConnectedKFACBasicFB, except that its
@@ -723,8 +744,7 @@ class EmbeddingKFACFB(InputOutputMultiMinibatch, KroneckerProductFB):
       damping: 0-D Tensor or float. 'damping' * identity is approximately added
         to this FisherBlock's Fisher approximation.
     """
-    inputs = _make_partitionedtensors_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.EmbeddingInputKroneckerFactor,
@@ -734,7 +754,7 @@ class EmbeddingKFACFB(InputOutputMultiMinibatch, KroneckerProductFB):
     self._setup_damping(damping)
 
 
-class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
+class FullyConnectedKFACBasicFB(InputOutputMultiTower, KroneckerProductFB):
   """K-FAC FisherBlock for fully-connected (dense) layers.
 
   This uses the Kronecker-factorized approximation from the original
@@ -764,8 +784,7 @@ class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
       damping: 0-D Tensor or float. 'damping' * identity is approximately added
         to this FisherBlock's Fisher approximation.
     """
-    inputs = _make_partitionedtensors_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedKroneckerFactor,
@@ -776,7 +795,7 @@ class FullyConnectedKFACBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
     self._setup_damping(damping)
 
 
-class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
+class ConvKFCBasicFB(InputOutputMultiTower, KroneckerProductFB):
   """FisherBlock for convolutional layers using the basic KFC approx.
 
   Estimates the Fisher Information matrix's blog for a convolutional
@@ -846,8 +865,7 @@ class ConvKFCBasicFB(InputOutputMultiMinibatch, KroneckerProductFB):
     self._num_locations = num_conv_locations(self._inputs[0].shape.as_list(),
                                              self._strides)
 
-    inputs = _make_partitionedtensors_inputs(self._inputs)
-    grads_list = _make_partitionedtensors_grads(grads_list)
+    inputs, grads_list = self._process_data(grads_list)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvInputKroneckerFactor,
@@ -1122,22 +1140,67 @@ def num_conv_locations(input_shape, strides):
   return spatial_input_locations // spatial_strides_divisor
 
 
-class InputOutputMultiMinibatchMultiUse(InputOutputMultiMinibatch):
-  """Adds methods for multi-use/time-step case to InputOutputMultiMinibatch."""
+class InputOutputMultiTowerMultiUse(InputOutputMultiTower):
+  """Adds methods for multi-use/time-step case to InputOutputMultiTower."""
 
   def __init__(self, num_uses=None, *args, **kwargs):
     self._num_uses = num_uses
-    super(InputOutputMultiMinibatchMultiUse, self).__init__(*args, **kwargs)
+    super(InputOutputMultiTowerMultiUse, self).__init__(*args, **kwargs)
 
   def _process_data(self, grads_list):
-    """Process temporal/multi-use data into a standard format."""
+    """Process temporal/multi-use data into the format used by the factors.
+
+    This function takes inputs and grads_lists data and processes it into
+    one of the formats expected by the FisherFactor classes (depending on
+    the value of the global configuration variable TOWER_STRATEGY).
+
+    It accepts the data in one of two initial formats. The first possible
+    format is where self._inputs is a list of list of Tensors. The first index
+    is tower, the second is use/time-step. grads_list, meanwhile, is a list
+    over sources of such lists of lists.
+
+    The second possible data format is where self._inputs is a Tensor with
+    uses/times-steps folded into the batch dimension.  i.e. it is a Tensor
+    of shape [num_uses * size_batch, ...] which represents a reshape of a
+    Tensor of shape [num_uses, size_batch, ...].  And similarly grads_list is
+    a list over sources of such Tensors.
+
+    There are two possible formats which inputs and grads_list are transformed
+    into.
+
+    If TOWER_STRATEGY is "concat", 'inputs' becomes a tuple containing
+    a single tensor (represented as a PartitionedTensor object) with all of
+    the data from the towers, as well as the uses/time-steps, concatenated
+    together. In this tensor the leading dimension is the batch and
+    use/time-step dimensions folded together (with 'use' being the major of
+    these two, so that the tensors can be thought of as reshapes of ones of
+    shape [num_uses, batch_size, ...]). grads_list is similarly formatted as a
+    tuple over sources of such tensors.
+
+    If TOWER_STRATEGY is "separate" the inputs are formatted into lists of
+    tensors over towers. Each of these tensors has a similar format to
+    the tensor produced by the "concat" option, except that each contains
+    only the data from a single tower.  grads_list is similarly formatted
+    into a tuple over sources of such tuples.
+
+    Args:
+      grads_list: grads_list in its initial format (see above).
+
+    Returns:
+      inputs: self._inputs transformed into the appropriate format (see
+        above).
+      grads_list: grads_list transformed into the appropriate format (see
+        above).
+
+    Raises:
+      ValueError: If TOWER_STRATEGY is not one of "separate" or "concat".
+      ValueError: If the given/initial format of self._inputs and grads_list
+        isn't recognized, or doesn't agree with self._num_uses.
+    """
 
     inputs = self._inputs
 
-    # The first possible data format is where inputs is a list of tensors,
-    # one for each use/time-step.
     if isinstance(inputs[0], (list, tuple)):
-      # The first index is tower/minibatch, the second is use/time-step
       num_uses = len(inputs[0])
       if self._num_uses is not None and self._num_uses != num_uses:
         raise ValueError("num_uses argument doesn't match length of inputs.")
@@ -1147,15 +1210,29 @@ class InputOutputMultiMinibatchMultiUse(InputOutputMultiMinibatch):
       # Check that all mini-batches/towers have the same number of uses
       if not all(len(input_) == num_uses for input_ in inputs):
         raise ValueError("Length of inputs argument is inconsistent across "
-                         "mini-batches/towers.")
-      # Fold uses/time-step and towers/minibatches dimensions together
-      inputs = nest.flatten(inputs)
+                         "towers.")
 
-      inputs = _make_partitionedtensors_inputs(inputs)
-    # If inputs is not a tuple then we assume that inputs is a tensor
-    # with 'uses' folded into the batch dimension. (And grads_list is a list
-    # across sources of such Tensors.)  This is the native format that the
-    # factor will take as arguments.
+      if fisher_factors.TOWER_STRATEGY == "concat":
+        # Reverse the tower and use/time-step indices, so that use is now first,
+        # and towers is second
+        inputs = tuple(zip(*inputs))
+
+        # Flatten the two dimensions
+        inputs = nest.flatten(inputs)
+
+        # Merge everything together into a PartitionedTensor. We package it in
+        # a singleton tuple since the factors will expect a list over towers
+        inputs = (utils.PartitionedTensor(inputs),)
+
+      elif fisher_factors.TOWER_STRATEGY == "separate":
+        # Merge together the uses/time-step dimension into PartitionedTensors,
+        # but keep the leading dimension (towers) intact for the factors to
+        # process individually.
+        inputs = tuple(utils.PartitionedTensor(input_) for input_ in inputs)
+
+      else:
+        raise ValueError("Global config variable TOWER_STRATEGY must be one of "
+                         "'concat' or 'separate'.")
 
     # Now we perform the analogous processing for grads_list
     if isinstance(grads_list[0][0], (list, tuple)):
@@ -1170,10 +1247,34 @@ class InputOutputMultiMinibatchMultiUse(InputOutputMultiMinibatch):
       if not all(len(grad) == num_uses for grads in grads_list
                  for grad in grads):
         raise ValueError("Length of outputs argument is inconsistent across "
-                         "mini-batches/towers.")
+                         "towers.")
 
-      grads_list = tuple(nest.flatten(grads) for grads in grads_list)
-      grads_list = _make_partitionedtensors_grads(grads_list)
+      if fisher_factors.TOWER_STRATEGY == "concat":
+        # Reverse the tower and use/time-step indices, so that use is now first,
+        # and towers is second
+        grads_list = tuple(tuple(zip(*grads)) for grads in grads_list)
+
+        # Flatten the two dimensions, leaving the leading dimension (source)
+        # intact
+        grads_list = tuple(nest.flatten(grads) for grads in grads_list)
+
+        # Merge inner dimensions together into PartitionedTensors. We package
+        # them in a singleton tuple since the factors will expect a list over
+        # towers
+        grads_list = tuple((utils.PartitionedTensor(grads),)
+                           for grads in grads_list)
+
+      elif fisher_factors.TOWER_STRATEGY == "separate":
+        # Merge together the uses/time-step dimension into PartitionedTensors,
+        # but keep the leading dimension (towers) intact for the factors to
+        # process individually.
+        grads_list = tuple(tuple(utils.PartitionedTensor(grad)
+                                 for grad in grads)
+                           for grads in grads_list)
+
+      else:
+        raise ValueError("Global config variable TOWER_STRATEGY must be one of "
+                         "'concat' or 'separate'.")
 
     if self._num_uses is None:
       raise ValueError("You must supply a value for the num_uses argument if "
@@ -1184,7 +1285,7 @@ class InputOutputMultiMinibatchMultiUse(InputOutputMultiMinibatch):
     return inputs, grads_list
 
 
-class FullyConnectedMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+class FullyConnectedMultiIndepFB(InputOutputMultiTowerMultiUse,
                                  KroneckerProductFB):
   """FisherBlock for fully-connected layers that share parameters.
 
@@ -1228,7 +1329,7 @@ class FullyConnectedMultiIndepFB(InputOutputMultiMinibatchMultiUse,
     return float(self._num_uses)
 
 
-class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+class ConvKFCBasicMultiIndepFB(InputOutputMultiTowerMultiUse,
                                KroneckerProductFB):
   """FisherBlock for 2D convolutional layers using the basic KFC approx.
 
@@ -1309,7 +1410,7 @@ class ConvKFCBasicMultiIndepFB(InputOutputMultiMinibatchMultiUse,
     return self._num_locations * self._num_uses
 
 
-class EmbeddingKFACMultiIndepFB(InputOutputMultiMinibatchMultiUse,
+class EmbeddingKFACMultiIndepFB(InputOutputMultiTowerMultiUse,
                                 KroneckerProductFB):
   """K-FAC FisherBlock for embedding layers used multiple times in the graph.
 
@@ -1320,7 +1421,7 @@ class EmbeddingKFACMultiIndepFB(InputOutputMultiMinibatchMultiUse,
   Does not support bias parameters.
   """
 
-  def __init__(self, layer_collection, vocab_size, num_uses):
+  def __init__(self, layer_collection, vocab_size, num_uses=None):
     """Creates a EmbeddingKFACMultiIndepFB block.
 
     Args:
@@ -1368,7 +1469,7 @@ class SeriesFBApproximation(enum.IntEnum):
   option2 = 2
 
 
-class FullyConnectedSeriesFB(InputOutputMultiMinibatchMultiUse,
+class FullyConnectedSeriesFB(InputOutputMultiTowerMultiUse,
                              KroneckerProductFB):
   """FisherBlock for fully-connected layers that share parameters across time.
 

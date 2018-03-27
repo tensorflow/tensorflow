@@ -87,25 +87,25 @@ TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
 TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
                                                       size_t* len);
 
-// Creates a stack of data set + iterator nodes reading the TFRecord files from
-// `file_path`, and outputs the following info on success:
+// Creates a stack of data set + iterator nodes, currently hard-coded to return
+// a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
+// returns the IteratorGetNext node, which caller can run or feed into an node.
 //
-// 1. Returns the IteratorGetNext node, which caller can run or feed into an
-// node.
-//
-// 2. Sets `dataset_func` to the created function that encapsulates the data set
-// nodes. Caller owns that function, and must call TF_DeleteFunction() on it.
-//
-//
-// The nodes are currently hard-coded to return a single Int32 of value 1.
 // TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeIteratorGetNextWithDatasets(
-    TF_Graph* graph, const char* file_path, TF_Function** dataset_func,
-    TF_Status* status);
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
+    TF_Graph* graph, TF_Status* status);
 
-// Returns the shape proto of shape {}.
-TF_CAPI_EXPORT extern void TF_GetAttrScalarTensorShapeProto(TF_Buffer* value,
-                                                            TF_Status* status);
+// Similar to the above API, except that the returned iterator reads the
+// file based dataset from `file_path`.
+// If `is_mnist` is 0, the dataset corresponds to ImageNet.
+// The iterators outputs 2 tensors:
+// - A float tensor of shape `batch_size` X 784 when `is_mnist` is non-zero, or
+// `batch_size` X 224 X 224 X 3 otherwise.
+// - An int32 tensor of shape `batch_size`
+// TODO(hongm): Extend the API to allow customization of the nodes created.
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
+    TF_Graph* graph, const char* file_path, int batch_size,
+    unsigned char is_mnist, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

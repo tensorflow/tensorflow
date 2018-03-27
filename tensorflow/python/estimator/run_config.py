@@ -43,7 +43,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
-    'log_step_count_steps'
+    'log_step_count_steps',
+    'distribute'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -300,7 +301,8 @@ class RunConfig(object):
                session_config=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               log_step_count_steps=100):
+               log_step_count_steps=100,
+               distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -424,7 +426,10 @@ class RunConfig(object):
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
         global step/sec and the loss will be logged during training.
-
+      distribute: an optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model according to the policy
+        specified by that strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -460,7 +465,8 @@ class RunConfig(object):
         session_config=session_config,
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        log_step_count_steps=log_step_count_steps)
+        log_step_count_steps=log_step_count_steps,
+        distribute=distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -670,6 +676,12 @@ class RunConfig(object):
   def service(self):
     """Returns the platform defined (in TF_CONFIG) service dict."""
     return self._service
+
+  @property
+  def distribute(self):
+    """Returns the optional `tf.contrib.distribute.DistributionStrategy` object.
+    """
+    return self._distribute
 
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.

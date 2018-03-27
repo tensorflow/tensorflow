@@ -164,6 +164,11 @@ StatusOr<XlaComputation> XlaBuilder::Build() {
   }
   module->add_computations()->Swap(&entry);
 
+  // Clear data held by this builder.
+  this->instructions_.clear();
+  this->embedded_.clear();
+  this->parameter_numbers_.clear();
+
   return std::move(computation);
 }
 
@@ -214,6 +219,16 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
+}
+
+XlaOp XlaBuilder::UnaryOp(HloOpcode unop, const XlaOp& operand) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, operand.GetShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferUnaryOpShape(unop, operand_shape));
+    return AddInstruction(std::move(instr), unop, {operand});
+  }());
 }
 
 XlaOp XlaBuilder::BinaryOp(
@@ -270,6 +285,44 @@ XlaOp XlaBuilder::BinaryOp(
     }
 
     return AddInstruction(std::move(instr), binop, {updated_lhs, updated_rhs});
+  }());
+}
+
+XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
+                            const XlaOp& ehs) {
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, lhs.GetShape());
+    TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, rhs.GetShape());
+    TF_ASSIGN_OR_RETURN(const Shape& ehs_shape, ehs.GetShape());
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferTernaryOpShape(
+                            triop, lhs_shape, rhs_shape, ehs_shape));
+    XlaOp updated_lhs = lhs;
+    XlaOp updated_rhs = rhs;
+    XlaOp updated_ehs = ehs;
+    if (!ShapeUtil::IsTuple(instr.shape())) {
+      if (!ShapeUtil::IsTuple(lhs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), lhs_shape)) {
+        // lhs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_lhs,
+                            AddBroadcastSequence(instr.shape(), lhs));
+      }
+      if (!ShapeUtil::IsTuple(rhs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), rhs_shape)) {
+        // rhs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_rhs,
+                            AddBroadcastSequence(instr.shape(), rhs));
+      }
+      if (!ShapeUtil::IsTuple(ehs_shape) &&
+          !ShapeUtil::SameDimensions(instr.shape(), ehs_shape)) {
+        // ehs is being implicitly broadcasted. Change to explicit.
+        TF_ASSIGN_OR_RETURN(updated_ehs,
+                            AddBroadcastSequence(instr.shape(), ehs));
+      }
+    }
+    return AddInstruction(std::move(instr), triop,
+                          {updated_lhs, updated_rhs, updated_ehs});
   }());
 }
 
@@ -434,7 +487,7 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
 
 XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
                          const XlaOp& on_false) {
-  return UnimplementedOp();
+  return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
 }
 
 XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
@@ -447,32 +500,32 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
 
 XlaOp XlaBuilder::Eq(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kEq, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Ne(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kNe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Ge(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kGe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Gt(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kGt, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Le(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kLe, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Lt(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kLt, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Dot(const XlaOp& lhs, const XlaOp& rhs) {
@@ -551,102 +604,134 @@ XlaOp XlaBuilder::HostCompute(tensorflow::gtl::ArraySlice<XlaOp> operands,
 XlaOp XlaBuilder::Complex(
     const XlaOp& real, const XlaOp& imag,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kComplex, real, imag, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Conj(const XlaOp& operand) { return UnimplementedOp(); }
 
 XlaOp XlaBuilder::Sub(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kSubtract, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Div(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kDivide, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Rem(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kRemainder, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Max(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kMaximum, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Min(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kMinimum, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::And(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kAnd, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Or(const XlaOp& lhs, const XlaOp& rhs,
                      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kOr, lhs, rhs, broadcast_dimensions);
 }
 
+// TODO(b/65209188): Create a dedicated lowering for Xor.
 XlaOp XlaBuilder::Xor(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return Or(And(Not(lhs), rhs, broadcast_dimensions),
+            And(lhs, Not(rhs), broadcast_dimensions));
 }
 
-XlaOp XlaBuilder::Not(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Not(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kNot, operand);
+}
 
 XlaOp XlaBuilder::ShiftLeft(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kShiftLeft, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ShiftRightArithmetic(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kShiftRightArithmetic, lhs, rhs,
+                  broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ShiftRightLogical(
     const XlaOp& lhs, const XlaOp& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kShiftRightLogical, lhs, rhs,
+                  broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::Abs(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Abs(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kAbs, operand);
+}
 
 XlaOp XlaBuilder::Atan2(
     const XlaOp& y, const XlaOp& x,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);
 }
 
-XlaOp XlaBuilder::Exp(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Exp(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kExp, operand);
+}
 
-XlaOp XlaBuilder::Floor(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Floor(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kFloor, operand);
+}
 
-XlaOp XlaBuilder::Ceil(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Ceil(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kCeil, operand);
+}
 
-XlaOp XlaBuilder::Round(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Round(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kRoundNearestAfz, operand);
+}
 
-XlaOp XlaBuilder::Log(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Log(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kLog, operand);
+}
 
-XlaOp XlaBuilder::Sign(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Sign(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kSign, operand);
+}
 
-XlaOp XlaBuilder::Cos(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Cos(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kCos, operand);
+}
 
-XlaOp XlaBuilder::Sin(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Sin(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kSin, operand);
+}
 
-XlaOp XlaBuilder::Tanh(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Tanh(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kTanh, operand);
+}
 
-XlaOp XlaBuilder::Real(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Real(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kReal, operand);
+}
 
-XlaOp XlaBuilder::Imag(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Imag(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kImag, operand);
+}
 
-XlaOp XlaBuilder::IsFinite(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::IsFinite(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kIsFinite, operand);
+}
 
 XlaOp XlaBuilder::Transpose(const XlaOp& operand,
                             tensorflow::gtl::ArraySlice<int64> permutation) {
@@ -668,13 +753,18 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   return UnimplementedOp();
 }
 
-XlaOp XlaBuilder::Sort(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::Sort(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kSort, operand);
+}
 
-XlaOp XlaBuilder::SqrtF32(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::SqrtF32(const XlaOp& operand) {
+  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(0.5),
+                  /*broadcast_dimensions=*/{});
+}
 
 XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return UnimplementedOp();
+  return BinaryOp(HloOpcode::kPower, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::ConvertElementType(const XlaOp& operand,
@@ -687,17 +777,23 @@ XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
   return UnimplementedOp();
 }
 
-XlaOp XlaBuilder::SquareF32(const XlaOp& operand) { return UnimplementedOp(); }
-
-XlaOp XlaBuilder::ReciprocalF32(const XlaOp& operand) {
-  return UnimplementedOp();
+XlaOp XlaBuilder::SquareF32(const XlaOp& operand) {
+  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(2.0),
+                  /*broadcast_dimensions=*/{});
 }
 
-XlaOp XlaBuilder::Neg(const XlaOp& operand) { return UnimplementedOp(); }
+XlaOp XlaBuilder::ReciprocalF32(const XlaOp& operand) {
+  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(-1.0),
+                  /*broadcast_dimensions=*/{});
+}
+
+XlaOp XlaBuilder::Neg(const XlaOp& operand) {
+  return UnaryOp(HloOpcode::kNegate, operand);
+}
 
 XlaOp XlaBuilder::Clamp(const XlaOp& min, const XlaOp& operand,
                         const XlaOp& max) {
-  return UnimplementedOp();
+  return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
 
 XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -838,8 +934,13 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(
         << "Do not add XlaOp from builder " << operand.builder_->name()
         << " to builder " << this->name();
     instr.add_operand_ids(operand.handle());
-    // TODO(b/74197823): Set metadata and sharding.
   }
+
+  *instr.mutable_metadata() = metadata_;
+  if (sharding_) {
+    *instr.mutable_sharding() = *sharding_;
+  }
+
   instructions_.push_back(instr);
 
   XlaOp op(handle, this);

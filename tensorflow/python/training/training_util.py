@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
@@ -30,7 +29,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
-
 
 # Picked a long key value to minimize the chance of collision with user defined
 # collection keys.
@@ -170,8 +168,7 @@ def assert_global_step(global_step_tensor):
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor) or
-          isinstance(global_step_tensor,
-                     resource_variable_ops.ResourceVariable)):
+          resource_variable_ops.is_resource_variable(global_step_tensor)):
     raise TypeError(
         'Existing "global_step" must be a Variable or Tensor: %s.' %
         global_step_tensor)

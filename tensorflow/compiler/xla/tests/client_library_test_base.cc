@@ -140,13 +140,30 @@ std::unique_ptr<Literal> ClientLibraryTestBase::ExecuteAndTransferOrDie(
 }
 
 string ClientLibraryTestBase::ExecuteToString(
-    ComputationBuilder* builder,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  StatusOr<Computation> computation_status = builder->Build();
+    XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  auto computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status().ToString();
   }
-  Computation computation = computation_status.ConsumeValueOrDie();
+  auto computation = computation_status.ConsumeValueOrDie();
+
+  auto result =
+      client_->ExecuteAndTransfer(computation, arguments, &execution_options_);
+  if (!result.ok()) {
+    return result.status().ToString();
+  } else {
+    return result.ValueOrDie()->ToString();
+  }
+}
+
+string ClientLibraryTestBase::ExecuteToString(
+    ComputationBuilder* builder,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  auto computation_status = builder->Build();
+  if (!computation_status.ok()) {
+    return computation_status.status().ToString();
+  }
+  auto computation = computation_status.ConsumeValueOrDie();
 
   auto result =
       client_->ExecuteAndTransfer(computation, arguments, &execution_options_);

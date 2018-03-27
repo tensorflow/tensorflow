@@ -220,6 +220,7 @@ tf_cc_test(
     name = "c_api_experimental_test",
     size = "small",
     srcs = ["c_api_experimental_test.cc"],
+    data = ["testdata/tf_record"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -230,6 +231,7 @@ tf_cc_test(
     deps = [
         ":c_api_experimental",
         ":c_test_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

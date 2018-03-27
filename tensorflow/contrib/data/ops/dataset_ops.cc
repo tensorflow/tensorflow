@@ -83,6 +83,15 @@ output: A list of return values.
 output_types: The type list for the return values.
 )doc");
 
+REGISTER_OP("FunctionBufferingResourceReset")
+    .Input("function_buffer_resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Resets the FunctionBufferingResource.
+
+function_buffer_resource: The FunctionBufferingResource handle.
+)doc");
+
 REGISTER_OP("ThreadPoolDataset")
     .Input("input_dataset: variant")
     .Input("thread_pool: resource")
