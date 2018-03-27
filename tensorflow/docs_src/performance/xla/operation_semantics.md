@@ -241,7 +241,7 @@ See also
 
 Clamps an operand to within the range between a minimum and maximum value.
 
-<b> `Clamp(computation, args...)` </b>
+<b> `Clamp(computation, min, operand, max)` </b>
 
 | Arguments     | Type                    | Semantics                        |
 | ------------- | ----------------------- | -------------------------------- |
