@@ -802,21 +802,20 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_offset, output_pipeline);
 }
 
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, int16* output_data,
-                           const Dims<4>& output_dims,
-                           gemmlowp::GemmContext* gemm_context) {
+inline void FullyConnected(
+    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
+    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
+    const int32* bias_data_int32, const Dims<4>& bias_dims, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, int16* output_data, const Dims<4>& output_dims,
+    gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected/Uint8Int16");
   // This is a copy of the reference implementation. We do not currently have a
   // properly optimized version.
   (void)gemm_context;  // only used in properly optimized code.
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_EQ(output_offset, 0);
+
   // TODO(benoitjacob): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
@@ -828,30 +827,49 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   const int accum_depth = ArraySize(filter_dims, 0);
   TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
   TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
-  for (int b = 0; b < batches; ++b) {
-    for (int out_c = 0; out_c < output_depth; ++out_c) {
-      // Internal accumulation.
-      // Initialize accumulator with the bias-value.
-      int32 accum = bias_data[out_c];
-      // Accumulation loop.
-      for (int d = 0; d < accum_depth; ++d) {
-        int16 input_val = input_data[b * accum_depth + d] + input_offset;
-        int16 filter_val = filter_data[out_c * accum_depth + d] + filter_offset;
-        accum += filter_val * input_val;
-      }
-      // Down-scale the final int32 accumulator to the scale used by our
-      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
-                                            -output_shift);
-      // Saturate, cast to int16, and store to output array.
-      accum = std::max(accum, output_activation_min - output_offset);
-      accum = std::min(accum, output_activation_max - output_offset);
-      accum += output_offset;
-      output_data[out_c + output_depth * b] = accum;
-    }
+
+  // Implementation of the fully connected node suited to the inside of an LSTM
+  // cell. The operands are 8-bit integers, the accumulators are internally
+  // 32bit integers, and the output is 16-bit fixed-point with 3 integer bits so
+  // the output range is [-2^3, 2^3] == [-8, 8]. The rationale for that
+  // is explained in the function comment above.
+#ifdef GEMMLOWP_NEON
+  if (batches == 1 && !(output_depth % 4) && !(accum_depth % 8) &&
+      input_offset == -128 && output_activation_min == -32768 &&
+      output_activation_max == 32767) {
+    GEMVForLstmCell(input_data, input_dims, filter_data, filter_dims,
+                    filter_offset, bias_data_int32, bias_dims,
+                    output_multiplier, -output_shift, output_data, output_dims);
+    return;
   }
+#endif
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> weights_matrix(
+      filter_data, output_depth, accum_depth);
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
+      input_data, accum_depth, batches);
+  gemmlowp::MatrixMap<int16, gemmlowp::MapOrder::ColMajor> output_matrix(
+      output_data, output_depth, batches);
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  ColVectorMap bias_vector(bias_data_int32, output_depth);
+  gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+  bias_addition_stage.bias_vector = bias_vector;
+  gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
+  scale_stage.result_offset_after_shift = 0;
+  scale_stage.result_fixedpoint_multiplier = output_multiplier;
+  // Note that this shift is negated wrt ordinary FC.
+  scale_stage.result_exponent = -output_shift;
+  gemmlowp::OutputStageClamp clamp_stage;
+  clamp_stage.min = output_activation_min;
+  clamp_stage.max = output_activation_max;
+  gemmlowp::OutputStageSaturatingCastToInt16 saturating_cast_int16_stage;
+  auto output_pipeline =
+      std::make_tuple(bias_addition_stage, scale_stage, clamp_stage,
+                      saturating_cast_int16_stage);
+  gemmlowp::GemmWithOutputPipeline<uint8, int16,
+                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
+      gemm_context, weights_matrix, input_matrix, &output_matrix, filter_offset,
+      input_offset, output_pipeline);
 }
 
 // legacy, for compatibility with old checked-in code
