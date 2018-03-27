@@ -40,12 +40,13 @@ GrapplerTest::GrapplerTest() {
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names) const {
+    const GraphDef& graph, const std::vector<string>& node_names,
+    const std::vector<std::pair<string, Tensor>>& inputs) const {
   std::unique_ptr<tensorflow::Session> session(NewSession(options_));
   TF_CHECK_OK(session->Create(graph));
   RunOptions run_options;
   std::vector<Tensor> output_tensors;
-  TF_CHECK_OK(session->Run(run_options, {}, node_names, node_names,
+  TF_CHECK_OK(session->Run(run_options, inputs, node_names, node_names,
                            &output_tensors, nullptr));
   TF_CHECK_OK(session->Close());
   return output_tensors;
