@@ -84,7 +84,10 @@ class SymbolRenamer(gast.NodeTransformer):
     return self._process(node)
 
   def visit_Attribute(self, node):
-    return self._process(node)
+    if anno.hasanno(node, anno.Basic.QN):
+      return self._process(node)
+    # Attributes of dynamic objects will not have a QN.
+    return self.generic_visit(node)
 
 
 def rename_symbols(node, name_map):
