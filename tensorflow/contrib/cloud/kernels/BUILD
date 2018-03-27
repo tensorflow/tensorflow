@@ -73,6 +73,7 @@ tf_cc_test(
     ],
     deps = [
         ":bigquery_table_accessor",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
