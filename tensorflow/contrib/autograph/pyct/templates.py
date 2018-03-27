@@ -95,6 +95,15 @@ class ReplaceTransformer(gast.NodeTransformer):
         self._check_inner_children_have_context(e)
       for e in node.values:
         self._check_inner_children_have_context(e)
+    elif isinstance(node, gast.Subscript):
+      self._check_inner_children_have_context(node.value)
+      self._check_inner_children_have_context(node.slice)
+    elif isinstance(node, gast.Slice):
+      self._check_inner_children_have_context(node.lower)
+      if node.upper:
+        self._check_inner_children_have_context(node.upper)
+      if node.step:
+        self._check_inner_children_have_context(node.step)
     elif isinstance(node, gast.Name):
       self._check_has_context(node)
     elif isinstance(node, (gast.Str, gast.Num)):
@@ -127,6 +136,9 @@ class ReplaceTransformer(gast.NodeTransformer):
         self._check_inner_children_have_context(e)
       for e in node.values:
         self._check_inner_children_have_context(e)
+    elif isinstance(node, gast.Subscript):
+      self._set_inner_child_context(node.value, ctx)
+      self._check_inner_children_have_context(node.slice)
     elif isinstance(node, (gast.Str, gast.Num)):
       pass
     else:
