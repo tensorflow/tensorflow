@@ -55,10 +55,17 @@ def run_cond(condition, true_fn, false_fn):
 
 
 def py_cond(condition, true_fn, false_fn):
+  """Functional version of Python's conditional."""
   if condition:
-    return true_fn()
+    results = true_fn()
   else:
-    return false_fn()
+    results = false_fn()
+
+  # The contract for the branch functions is to return tuples, but they should
+  # be collapsed to a single element when there is only one output.
+  if len(results) == 1:
+    return results[0]
+  return results
 
 
 def run_while(cond_fn, body_fn, init_args):
