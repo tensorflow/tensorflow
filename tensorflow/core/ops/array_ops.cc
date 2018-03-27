@@ -752,10 +752,24 @@ REGISTER_OP("ReverseV2")
       ShapeHandle input = c->input(0);
       ShapeHandle axis;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &axis));
-      // TODO(aselle): if input(0)'s dimension is known we could validate axis
       if (c->Rank(input) > 8) {
         return errors::InvalidArgument(
             "reverse does not work on tensors with more than 8 dimensions");
+      }
+      const Tensor* axis_tensor = c->input_tensor(1);
+      if (axis_tensor != nullptr && c->RankKnown(input)) {
+        std::vector<int64> axis_value;
+        if (axis_tensor->dtype() == DT_INT32) {
+          axis_value = AsInt64<int32>(axis_tensor, axis_tensor->NumElements());
+        } else {
+          axis_value = AsInt64<int64>(axis_tensor, axis_tensor->NumElements());
+        }
+        for (int i = 0; i < axis_value.size(); i++) {
+          int64 canonical_axis = axis_value[i] < 0 ? c->Rank(input) + axis_value[i] : axis_value[i];
+          if (canonical_axis < 0 || canonical_axis >= c->Rank(input)) {
+            return errors::InvalidArgument("'axis'[", i, "] = ", axis_value[i], " is out of valid range [", 0, ", ", c->Rank(input) - 1);
+          }
+        }
       }
       c->set_output(0, input);
       return Status::OK();
