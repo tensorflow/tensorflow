@@ -396,12 +396,17 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
       return false;
     }
   }
+  return !ModifiesInputsInPlace(node);
+}
+
+bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace") ||
-      StringPiece(op_name).starts_with("Inplace")) {
-    return false;
+  string op_name = node.op();
+  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
+  if (StringPiece(op_name).contains("inplace")) {
+    return true;
   }
-  return true;
+  return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
 }
 
 bool ModifiesFrameInfo(const NodeDef& node) {

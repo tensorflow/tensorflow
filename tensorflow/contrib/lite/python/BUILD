@@ -85,8 +85,8 @@ py_test(
 )
 
 py_binary(
-    name = "convert_savedmodel",
-    srcs = ["convert_savedmodel.py"],
+    name = "convert_saved_model",
+    srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -98,12 +98,12 @@ py_binary(
 )
 
 py_test(
-    name = "convert_savedmodel_test",
-    srcs = ["convert_savedmodel_test.py"],
+    name = "convert_saved_model_test",
+    srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":convert_savedmodel",
+        ":convert_saved_model",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
@@ -115,7 +115,7 @@ py_test(
 py_library(
     name = "tf_lite_py_pip",
     deps = [
-        ":convert_savedmodel",
+        ":convert_saved_model",
     ],
 )
 

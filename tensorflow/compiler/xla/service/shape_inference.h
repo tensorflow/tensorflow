@@ -49,6 +49,8 @@ class ShapeInference {
   static StatusOr<Shape> InferUnaryOpShape(UnaryOperation operation,
                                            const Shape& arg);
   static StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
+                                           const Shape& shape);
+  static StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
                                            const HloInstruction* operand);
 
   // Infers the shape produced by applying the given binary operation to the
@@ -67,6 +69,9 @@ class ShapeInference {
   // given input shapes.
   static StatusOr<Shape> InferTernaryOpShape(TernaryOperation operation,
                                              const Shape& lhs, const Shape& rhs,
+                                             const Shape& ehs);
+  static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode, const Shape& lhs,
+                                             const Shape& rhs,
                                              const Shape& ehs);
   static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode,
                                              const HloInstruction* lhs,

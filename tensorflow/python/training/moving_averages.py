@@ -52,16 +52,19 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   they were created in and the scope of the variables they debias. They are also
   given a uniqifying-suffix.
 
-  Ex:
+  E.g.:
+
+  ```
     with tf.variable_scope('scope1'):
       with tf.variable_scope('scope2'):
         var = tf.get_variable('foo')
-        assign_moving_average(var, 0.0, 1.0)
-        assign_moving_average(var, 0.0, 0.9)
+        tf.assign_moving_average(var, 0.0, 1.0)
+        tf.assign_moving_average(var, 0.0, 0.9)
 
-    var.name: 'scope1/scope2/foo'
-    shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
-                      'scope1/scope2/scope1/scope2/foo/biased_1'
+    # var.name: 'scope1/scope2/foo'
+    # shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
+    #                   'scope1/scope2/scope1/scope2/foo/biased_1'
+  ```
 
   Args:
     variable: A Variable.
