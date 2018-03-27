@@ -1,6 +1,6 @@
 FROM ubuntu:16.04
 
-LABEL maintainer="Craig Citro <craigcitro@google.com>"
+LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
