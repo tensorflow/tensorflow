@@ -191,6 +191,11 @@ class HashTable : public InitializableLookupTable {
     return Status::OK();
   };
 
+  Status DoLazyPrepare(std::function<int64(void)> unused) override {
+    constexpr size_t kUnusedSize = 0;
+    return DoPrepare(kUnusedSize);
+  }
+
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     if (!table_) {
       return errors::FailedPrecondition("HashTable is not prepared.");
