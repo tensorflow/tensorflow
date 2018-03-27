@@ -33,7 +33,7 @@ must be installed on your system:
 
   * CUDA® Toolkit 9.0. For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
-    Ensure that you append the relevant Cuda pathnames to the
+    Ensure that you append the relevant CUDA pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 9.0.
@@ -56,7 +56,7 @@ must be installed on your system:
     and add its path to your `LD_LIBRARY_PATH` environment variable:
 
     <pre>
-    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b>
+    $ <b>export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</b>
     </pre>
 
     For CUDA Toolkit <= 7.5 do:
@@ -64,6 +64,16 @@ must be installed on your system:
     <pre>
     $ <b>sudo apt-get install libcupti-dev</b>
     </pre>
+  * **[OPTIONAL]**  For optimized inferencing performance, you can also install
+    NVIDIA TensorRT 3.0. For details, see
+    [NVIDIA's TensorRT documentation](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#installing-tar).
+    Only steps 1-4 in the TensorRT Tar File installation instructions are
+    required for compatibility with TensorFlow; the Python package installation
+    in steps 5 and 6 can be omitted. Detailed installation instructions can be found at [package documentataion](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tensorrt#installing-tensorrt-304)
+
+    **IMPORTANT:** For compatibility with the pre-built `tensorflow-gpu`
+    package, please use the Ubuntu **14.04** tar file package of TensorRT
+    even when installing onto an Ubuntu 16.04 system.   
 
 If you have an earlier version of the preceding packages, please upgrade to
 the specified versions. If upgrading is not possible, then you may still run
