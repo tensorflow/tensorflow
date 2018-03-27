@@ -59,9 +59,15 @@ class LiveValueResolver(transformer.Base):
           obj = self.context.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
           if hasattr(obj, '__name__'):
+            anno.setanno(node, 'fqn', (obj.__name__,))
+          elif hasattr(obj, '__class__'):
+            obj_class = obj.__class__
+            anno.setanno(node, 'fqn',
+                         (obj_class.__module__, obj_class.__name__))
+          else:
             # If the symbol value is for example a primitive, then it will not
             # have a name.
-            anno.setanno(node, 'fqn', (obj.__name__,))
+            pass
         else:
           pass
           # TODO(mdan): Should we raise an error here?

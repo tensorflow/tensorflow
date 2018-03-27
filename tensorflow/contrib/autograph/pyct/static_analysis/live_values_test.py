@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
@@ -75,7 +77,11 @@ class LiveValuesResolverTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn, {'a': True})
     retval_node = node.body[0].body[0].value
-    self.assertFalse(anno.hasanno(retval_node, 'fqn'))
+    if six.PY2:
+      self.assertEqual(
+          anno.getanno(retval_node, 'fqn'), ('__builtin__', 'bool'))
+    else:
+      self.assertEqual(anno.getanno(retval_node, 'fqn'), ('builtins', 'bool'))
 
   def test_namespace(self):
 
