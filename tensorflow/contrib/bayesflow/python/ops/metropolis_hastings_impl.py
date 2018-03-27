@@ -238,7 +238,7 @@ def evolve(initial_sample,
   using the Metropolis-Hastings algorithm. These samples are from a Markov chain
   whose equilibrium distribution matches the target distribution.
 
-  The probability distribution may have an unknown normalization constan.
+  The probability distribution may have an unknown normalization constant.
   We parameterize the probability density as follows:
 
   ```none
