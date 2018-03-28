@@ -32,6 +32,10 @@ Status EagerExecute(EagerContext* ctx, Device* device,
                     KernelAndDevice* kernel, NodeExecStats* maybe_stats,
                     TensorHandle** retvals, int num_retvals);
 
+// Low-level utility to copy a tensor handle from one device to another.
+Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
+                         const char* device_name, TensorHandle** result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_

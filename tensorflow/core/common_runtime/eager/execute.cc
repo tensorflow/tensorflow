@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/copy_to_device_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -105,6 +106,29 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     }
   }
   return Status::OK();
+}
+
+Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
+                         const char* device_name, TensorHandle** result) {
+  TF_RETURN_IF_ERROR(ctx->GetStatus());
+  Device* dstd = ctx->HostCPU();
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    TF_RETURN_IF_ERROR(ctx->device_mgr()->LookupDevice(device_name, &dstd));
+  }
+  if (ctx->Async()) {
+    // Note that `h` may not be currently ready. However execution order will
+    // make sure that `h` is ready before the copy is actually done.
+    CopyToDeviceNode* node = new CopyToDeviceNode(h, dstd, ctx);
+    TensorHandle* output = node->dst();
+    // Note that calling Add makes `node` accessible by the EagerExecutor
+    // thread. So further accesses need to be thread-safe.
+    ctx->ExecutorAdd(node);
+    *result = output;
+    return Status::OK();
+  } else {
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, dstd, result));
+    return Status::OK();
+  }
 }
 
 }  // namespace tensorflow
