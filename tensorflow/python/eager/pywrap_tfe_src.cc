@@ -1406,15 +1406,32 @@ bool CheckInputsOk(PyObject* seq, int start_index,
     if (!op_def.input_arg(i).number_attr().empty() ||
         !op_def.input_arg(i).type_list_attr().empty()) {
       // This item should be a seq input.
-      if (!PySequence_Check(item)) return false;
+      if (!PySequence_Check(item)) {
+        VLOG(1) << "Falling back to slow path for Op \"" << op_def.name()
+                << "\", Input \"" << op_def.input_arg(i).name()
+                << "\" since we expected a sequence, but got "
+                << item->ob_type->tp_name;
+        return false;
+      }
       for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(item); j++) {
         PyObject* inner_item = PySequence_Fast_GET_ITEM(item, j);
         if (!EagerTensor_CheckExact(inner_item) &&
             !CheckResourceVariable(inner_item)) {
+          VLOG(1)
+              << "Falling back to slow path for Op \"" << op_def.name()
+              << "\", Input \"" << op_def.input_arg(i).name() << "\", Index "
+              << j
+              << " since we expected an EagerTensor/ResourceVariable, but got "
+              << inner_item->ob_type->tp_name;
           return false;
         }
       }
     } else if (!EagerTensor_CheckExact(item) && !CheckResourceVariable(item)) {
+      VLOG(1)
+          << "Falling back to slow path for Op \"" << op_def.name()
+          << "\", Input \"" << op_def.input_arg(i).name()
+          << "\" since we expected an EagerTensor/ResourceVariable, but got "
+          << item->ob_type->tp_name;
       return false;
     }
   }
@@ -1894,6 +1911,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
                               py_attr_value, &attr_list_sizes, status);
 
         if (TF_GetCode(status) != TF_OK) {
+          VLOG(1) << "Falling back to slow path for Op \"" << op_def->name()
+                  << "\" since we are unable to set the value for attr \""
+                  << attr.name() << "\" due to: " << TF_Message(status);
           RaiseFallbackException(TF_Message(status));
           return nullptr;
         }
