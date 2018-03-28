@@ -519,7 +519,7 @@ class DistributionStrategy(object):
   in the distributed vs. single tower cases.
   """
 
-  # TODO(josh11b): Raise an exception if variable paritioning requested before
+  # TODO(josh11b): Raise an exception if variable partitioning requested before
   #   we add support.
   # TODO(josh11b): Also `parameter_device_index` property?
   # TODO(josh11b): `map()`
