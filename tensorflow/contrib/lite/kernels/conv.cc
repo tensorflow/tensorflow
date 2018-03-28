@@ -332,6 +332,12 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteTensor* output) {
   gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
 
+  // checkout the number of threads again here, so that we can change the
+  // numberof threads dynamically (after the graph constructed)
+  if (context->recommended_num_threads != -1) {
+      gemm_context->set_max_num_threads(context->recommended_num_threads);
+  }
+
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
