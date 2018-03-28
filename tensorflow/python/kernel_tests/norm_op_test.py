@@ -37,17 +37,17 @@ class NormOpTest(test_lib.TestCase):
 
   def testBadOrder(self):
     matrix = [[0., 1.], [2., 3.]]
-    for ord_ in "foo", -7, -1.1, 0:
+    for ord_ in "fro", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
                                    "'ord' must be a supported vector norm"):
-        linalg_ops.norm(matrix, ord="fro")
+        linalg_ops.norm(matrix, ord=ord_)
 
-    for ord_ in "foo", -7, -1.1, 0:
+    for ord_ in "fro", -7, -1.1, 0:
       with self.assertRaisesRegexp(ValueError,
                                    "'ord' must be a supported vector norm"):
         linalg_ops.norm(matrix, ord=ord_, axis=-1)
 
-    for ord_ in 1.1, 2:
+    for ord_ in "foo", -7, -1.1, 1.1:
       with self.assertRaisesRegexp(ValueError,
                                    "'ord' must be a supported matrix norm"):
         linalg_ops.norm(matrix, ord=ord_, axis=[-2, -1])
