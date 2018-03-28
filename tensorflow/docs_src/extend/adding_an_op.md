@@ -530,12 +530,12 @@ form [described below](#attr_types).
 
 For example, if you'd like the `ZeroOut` op to preserve a user-specified index,
 instead of only the 0th element, you can register the op like so:
-<pre class="prettyprint"><code class="lang-cpp">
-REGISTER\_OP("ZeroOut")
-    <b>.Attr("preserve\_index: int")</b>
-    .Input("to\_zero: int32")
+```c++
+REGISTER_OP("ZeroOut")
+    .Attr("preserve_index: int")
+    .Input("to_zero: int32")
     .Output("zeroed: int32");
-</code></pre>
+```
 
 (Note that the set of [attribute types](#attr_types) is different from the
 @{tf.DType$tensor types} used for inputs and outputs.)
