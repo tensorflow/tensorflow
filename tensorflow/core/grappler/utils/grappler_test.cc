@@ -40,6 +40,11 @@ GrapplerTest::GrapplerTest() {
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
+    const GraphDef& graph, const std::vector<string>& node_names) const {
+  return EvaluateNodes(graph, node_names, {});
+}
+
+std::vector<Tensor> GrapplerTest::EvaluateNodes(
     const GraphDef& graph, const std::vector<string>& node_names,
     const std::vector<std::pair<string, Tensor>>& inputs) const {
   std::unique_ptr<tensorflow::Session> session(NewSession(options_));
