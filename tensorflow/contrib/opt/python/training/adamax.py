@@ -48,7 +48,7 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
     ```
 
     The update rule for `variable` with gradient `g` uses an optimization
-    described at the end of section7.1 of the paper:
+    described at the end of section 7.1 of the paper:
 
     ```
     t <- t + 1
