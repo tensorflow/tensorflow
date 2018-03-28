@@ -649,9 +649,7 @@ QUANTIZED_DTYPES = frozenset([
 tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
-    int: int64,
-    float: float64,
-    complex: complex128,
+    float: float32,
     bool: bool,
 }
 
