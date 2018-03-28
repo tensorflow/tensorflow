@@ -163,7 +163,7 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 
 extern "C" {
 
-static const int kMaxEagerTensorParentSize = 32;
+static const int kMaxEagerTensorParentSize = 64;
 
 // TODO(agarwal): store context handle in EagerTensor.
 typedef struct EagerTensor {

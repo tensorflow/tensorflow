@@ -3,7 +3,7 @@
 The @{tf.train.Saver} class provides methods to save and restore models. The
 @{tf.saved_model.simple_save} function is an easy way to build a
 @{tf.saved_model$saved model} suitable for serving.
-[Estimators](/programmers_guide/estimators) automatically save and restore
+[Estimators](@{$programmers_guide/estimators}) automatically save and restore
 variables in the `model_dir`.
 
 ## Save and restore variables
@@ -400,7 +400,7 @@ defined in:
 
 After training an `Estimator` model, you may want to create a service
 from that model that takes requests and returns a result.  You can run such a
-service locally on your machine or deploy it scalably in the cloud.
+service locally on your machine or deploy it in the cloud.
 
 To prepare a trained Estimator for serving, you must export it in the standard
 SavedModel format. This section explains how to:

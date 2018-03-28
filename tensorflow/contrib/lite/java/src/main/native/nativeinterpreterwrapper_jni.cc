@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/java/src/main/native/nativeinterpreterwrapper_jni.h"
-
 namespace {
 
 const int kByteBufferValue = 999;
@@ -324,6 +323,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
   return reinterpret_cast<jlong>(error_reporter);
 }
 
+// Verifies whether the model is a flatbuffer file.
+class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
+ public:
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    if (!VerifyModel(data, length)) {
+      reporter->Report("The model is not a valid Flatbuffer file");
+      return false;
+    }
+    return true;
+  }
+};
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
     JNIEnv* env, jclass clazz, jstring model_file, jlong error_handle) {
@@ -332,17 +344,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   if (error_reporter == nullptr) return 0;
   const char* path = env->GetStringUTFChars(model_file, nullptr);
 
-  {
-    tflite::FileCopyAllocation allocation(path, nullptr);
-    if (!VerifyModel(allocation.base(), allocation.bytes())) {
-      throwException(env, kIllegalArgumentException,
-                     "Contents of %s is not a valid flatbuffer model", path);
-      env->ReleaseStringUTFChars(model_file, path);
-      return 0;
-    }
-  }
+  std::unique_ptr<tflite::TfLiteVerifier> verifier;
+  verifier.reset(new JNIFlatBufferVerifier());
 
-  auto model = tflite::FlatBufferModel::BuildFromFile(path, error_reporter);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
+      path, verifier.get(), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid TensorFlowLite "
@@ -384,7 +390,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle) {
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
+    jint num_threads) {
   tflite::FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
   BufferErrorReporter* error_reporter =
@@ -392,8 +399,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   if (error_reporter == nullptr) return 0;
   auto resolver = ::tflite::CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
-  TfLiteStatus status =
-      tflite::InterpreterBuilder(*model, *(resolver.get()))(&interpreter);
+  TfLiteStatus status = tflite::InterpreterBuilder(*model, *(resolver.get()))(
+      &interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Cannot create interpreter: %s",

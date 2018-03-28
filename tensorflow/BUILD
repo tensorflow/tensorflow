@@ -241,6 +241,13 @@ config_setting(
 )
 
 config_setting(
+    name = "with_kafka_support_windows_override",
+    define_values = {"with_kafka_support": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_gcp_support_android_override",
     define_values = {"with_gcp_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
@@ -467,6 +474,12 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
+        "//tensorflow/contrib/autograph:all_files",
+        "//tensorflow/contrib/autograph/converters:all_files",
+        "//tensorflow/contrib/autograph/impl:all_files",
+        "//tensorflow/contrib/autograph/pyct:all_files",
+        "//tensorflow/contrib/autograph/pyct/static_analysis:all_files",
+        "//tensorflow/contrib/autograph/utils:all_files",
         "//tensorflow/contrib/batching:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
@@ -560,12 +573,6 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/periodic_resample:all_files",
         "//tensorflow/contrib/predictor:all_files",
-        "//tensorflow/contrib/py2tf:all_files",
-        "//tensorflow/contrib/py2tf/converters:all_files",
-        "//tensorflow/contrib/py2tf/impl:all_files",
-        "//tensorflow/contrib/py2tf/pyct:all_files",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
-        "//tensorflow/contrib/py2tf/utils:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
@@ -610,6 +617,7 @@ filegroup(
         "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/api_def:all_files",
+        "//tensorflow/core/common_runtime/eager:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
@@ -672,6 +680,7 @@ filegroup(
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/kernel_tests/linalg:all_files",
         "//tensorflow/python/kernel_tests/random:all_files",
+        "//tensorflow/python/kernel_tests/testdata:all_files",
         "//tensorflow/python/ops/distributions:all_files",
         "//tensorflow/python/ops/linalg:all_files",
         "//tensorflow/python/ops/losses:all_files",
@@ -785,7 +794,7 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "//tensorflow/c:exported_symbols.lds",
+            "$(location //tensorflow/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
@@ -794,7 +803,7 @@ tf_cc_shared_object(
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "//tensorflow/c:version_script.lds",
+            "$(location //tensorflow/c:version_script.lds)",
         ],
     }),
     deps = [
@@ -812,7 +821,7 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "//tensorflow:tf_exported_symbols.lds",
+            "$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
@@ -820,7 +829,7 @@ tf_cc_shared_object(
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "//tensorflow:tf_version_script.lds",
+            "$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
     deps = [

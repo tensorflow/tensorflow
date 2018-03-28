@@ -49,27 +49,25 @@ class FunctionBufferingResource : public ResourceBase {
         source_device_(source_device),
         target_device_(target_device),
         func_args_(func_args),
-        thread_pool_(new thread::ThreadPool(Env::Default(), ThreadOptions(),
-                                            "buffer_resource", thread_pool_size,
-                                            false /* low_latency_hint */)),
         handle_(kInvalidHandle),
         is_buffering_(false),
         end_of_sequence_(false),
         cancelled_(false) {
-    runner_ = [this](std::function<void()> c) {
-      thread_pool_->Schedule(std::move(c));
-    };
+    if (thread_pool_size > 0) {
+      thread_pool_ = new thread::ThreadPool(Env::Default(), ThreadOptions(),
+                                            "buffer_resource", thread_pool_size,
+                                            false /* low_latency_hint */);
+      runner_ = [this](std::function<void()> c) {
+        thread_pool_->Schedule(std::move(c));
+      };
+    }
   }
 
   ~FunctionBufferingResource() override {
     Cancel();
-    {
-      mutex_lock l(mu_);
-      while (is_buffering_) {
-        cond_var_.wait(l);
-      }
+    if (thread_pool_ != nullptr) {
+      delete thread_pool_;
     }
-    delete thread_pool_;
   }
 
   string DebugString() override {
@@ -103,6 +101,20 @@ class FunctionBufferingResource : public ResourceBase {
   void Cancel() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     cancelled_ = true;
+    while (is_buffering_) {
+      cond_var_.wait(l);
+    }
+  }
+
+  // Cancels all pending operations and then clears out the state.
+  void Reset() LOCKS_EXCLUDED(mu_) {
+    Cancel();
+    mutex_lock l(mu_);
+    buffer_.clear();
+    requests_.clear();
+    is_buffering_ = false;
+    end_of_sequence_ = false;
+    cancelled_ = false;
   }
 
   // If the buffer has anything, runs `callback` on the first element in the
@@ -175,7 +187,9 @@ class FunctionBufferingResource : public ResourceBase {
     FunctionLibraryRuntime::Options opts;
     // Copied from CapturedFunction::generate_step_id();
     opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-    opts.runner = &runner_;
+    if (runner_ != nullptr) {
+      opts.runner = &runner_;
+    }
     opts.source_device = source_device_;
     AllocatorAttributes arg_alloc_attr;
     arg_alloc_attr.set_on_host(true);
@@ -194,13 +208,12 @@ class FunctionBufferingResource : public ResourceBase {
                   mutex_lock l(mu_);
                   BufferElement buffer_element;
                   buffer_element.status = status;
-                  if (!status.ok()) {
+                  if (status.ok()) {
+                    buffer_element.value.swap(*rets);
+                  } else {
                     end_of_sequence_ = true;
                     is_buffering_ = false;
-                    buffer_.push_back(std::move(buffer_element));
-                    return;
                   }
-                  buffer_element.value.swap(*rets);
                   buffer_.push_back(std::move(buffer_element));
                   if (!requests_.empty()) {
                     buffer_front = std::move(buffer_.front());
@@ -208,7 +221,7 @@ class FunctionBufferingResource : public ResourceBase {
                     callback = std::move(requests_.front());
                     requests_.pop_front();
                   }
-                  if (buffer_.size() < buffer_size_) {
+                  if (buffer_.size() < buffer_size_ && !end_of_sequence_) {
                     restart_buffering = true;
                   } else {
                     is_buffering_ = false;
@@ -231,7 +244,7 @@ class FunctionBufferingResource : public ResourceBase {
   const string source_device_;
   const string target_device_;
   const std::vector<Tensor> func_args_;
-  thread::ThreadPool* thread_pool_;
+  thread::ThreadPool* thread_pool_ = nullptr;
   FunctionLibraryRuntime::Handle handle_ GUARDED_BY(mu_);
   std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
   std::deque<FunctionBufferCallback> requests_ GUARDED_BY(mu_);
@@ -399,5 +412,63 @@ REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
 #endif  // TENSORFLOW_USE_SYCL
+
+// Resets the FunctionBufferingResource, cancelling all pending requests and
+// clearing out the buffer.
+class FunctionBufferingResourceResetOp : public OpKernel {
+ public:
+  explicit FunctionBufferingResourceResetOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  ~FunctionBufferingResourceResetOp() override {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx,
+                   HandleFromInput(ctx, "function_buffer_resource", &handle));
+    FunctionBufferingResource* buffer = nullptr;
+    OP_REQUIRES_OK(
+        ctx, LookupResource<FunctionBufferingResource>(ctx, handle, &buffer));
+    core::ScopedUnref s(buffer);
+
+    buffer->Reset();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("function_buffer_resource"),
+                        FunctionBufferingResourceResetOp);
+#endif  // TENSORFLOW_USE_SYCL
+
+class IteratorGetDeviceOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    // NOTE(mrry): We do not currently Validate that the handle
+    // corresponds to a real IteratorResource, because that symbol is
+    // not exposed from the framework library.
+    Tensor* device_name_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &device_name_t));
+    // NOTE(mrry): Since the operation's input is a resource, we must be
+    // colocated with it, and so we can simply return the current device's
+    // name without looking at the input.
+    device_name_t->scalar<string>()() = ctx->device()->name();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
+                        IteratorGetDeviceOp);
 
 }  // namespace tensorflow

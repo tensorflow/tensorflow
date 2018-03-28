@@ -31,6 +31,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -43,8 +44,7 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-# TODO(skyewm): reenable when this works with _USE_C_SHAPES=False
-# @test_util.with_c_api
+@test_util.with_c_api
 class ImportGraphDefTest(test.TestCase):
 
   def _MakeGraphDef(self,
@@ -679,6 +679,49 @@ class ImportGraphDefTest(test.TestCase):
       self.assertProtoEquals(
           "list { s: 'loc:@imported_graph/A' }",
           b.node_def.attr["_class"])
+
+  def testColocationAndDevice(self):
+    # A and B are colocated, device set on A.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      self.assertEqual(a.device, "/device:CPU:0")
+      self.assertEqual(b.device, "/device:CPU:0")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
+
+    # A and B are colocated, device set on B.
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None' device: '/device:CPU:0' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(original_graph_def,
+                                       return_elements=["A", "B"],
+                                       name="")
+      # TODO(skyewm): this behavior seems inconsistent with the above. Why is
+      # B's device ignored?
+      self.assertEqual(a.device, "")
+      self.assertEqual(b.device, "")
+      self.assertEqual(a.colocation_groups(), [b"loc:@A"])
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
 
   def testColocationWithDeviceFn(self):
     original_graph_def = self._MakeGraphDef("""

@@ -22,7 +22,7 @@ namespace tensorflow {
 Status ScopedAllocatorContainer::AddScopedAllocator(
     const Tensor& backing_tensor, int32 scope_id, const string& scope_name,
     const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-    int32 expected_call_count, ScopedAllocator** sa_ptr) {
+    int32 expected_call_count) {
   VLOG(1) << "AddScopedAllocator " << mgr_->device_name()
           << " step_id_=" << step_id_ << " scope_id=" << scope_id;
   mutex_lock l(mu_);
@@ -41,17 +41,17 @@ Status ScopedAllocatorContainer::AddScopedAllocator(
     }
   }
   VLOG(2) << " container " << this << " step_id " << step_id_;
-  *sa_ptr = new ScopedAllocator(backing_tensor, scope_id, scope_name, fields,
-                                expected_call_count, this);
-  allocators_[scope_id] = ScopedAllocatorContainer::SAField(
-      ScopedAllocator::kBackingIndex, *sa_ptr);
+  ScopedAllocator* sa = new ScopedAllocator(
+      backing_tensor, scope_id, scope_name, fields, expected_call_count, this);
+  allocators_[scope_id] =
+      ScopedAllocatorContainer::SAField(ScopedAllocator::kBackingIndex, sa);
   VLOG(2) << "#fields " << fields.size();
   for (int i = 0; i < fields.size(); ++i) {
     const ScopedAllocator::Field& f = fields[i];
     VLOG(2) << "Adding instance with for " << mgr_->device_name()
             << " scope_id=" << f.scope_id;
     allocators_[f.scope_id] = ScopedAllocatorContainer::SAField(
-        i, new ScopedAllocatorInstance(*sa_ptr, i));
+        i, new ScopedAllocatorInstance(sa, i));
   }
   return Status::OK();
 }
@@ -154,23 +154,26 @@ Status ScopedAllocatorMgr::AddScopedAllocator(
     const Tensor& backing_tensor, int64 step_id, int32 scope_id,
     const string& scope_name,
     const gtl::ArraySlice<ScopedAllocator::Field>& fields,
-    int32 expected_call_count, ScopedAllocator** sa_ptr) {
+    int32 expected_call_count) {
   ScopedAllocatorContainer* sac = GetContainer(step_id);
   return sac->AddScopedAllocator(backing_tensor, scope_id, scope_name, fields,
-                                 expected_call_count, sa_ptr);
+                                 expected_call_count);
 }
 
 void ScopedAllocatorMgr::PopulateFields(
-    int32 scope_id, const gtl::ArraySlice<TensorShape>& shapes, DataType dtype,
-    std::vector<ScopedAllocator::Field>* fields) {
+    int32 scope_id, const gtl::ArraySlice<TensorShape>& shapes,
+    const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
   const int32 num_fields = static_cast<int32>(shapes.size());
   fields->resize(num_fields);
   size_t offset = 0;
   for (int32 i = 0; i < num_fields; ++i) {
-    size_t bytes = shapes[i].num_elements() * sizeof(dtype);
+    size_t bytes = shapes[i].num_elements() * DataTypeSize(dtype);
     (*fields)[i].scope_id = scope_id + 1 + i;
     (*fields)[i].bytes = bytes;
     (*fields)[i].offset = offset;
+    VLOG(1) << "field=" << i << " scope_id=" << (*fields)[i].scope_id
+            << " bytes=" << (*fields)[i].bytes
+            << " offset=" << (*fields)[i].offset;
     offset += bytes;
     size_t overshoot = offset % Allocator::kAllocatorAlignment;
     if (overshoot > 0) {

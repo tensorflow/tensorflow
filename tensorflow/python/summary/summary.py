@@ -48,10 +48,12 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 # pylint: enable=unused-import
 
+
 from tensorflow.python.eager import context as _context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
+from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
 
 # exports tensor-related summaries
@@ -98,8 +100,7 @@ def scalar(name, tensor, collections=None, family=None):
   """
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._scalar_summary(tags=tag, values=tensor, name=scope)
+    val = _gen_logging_ops.scalar_summary(tags=tag, values=tensor, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
@@ -191,8 +192,7 @@ def histogram(name, values, collections=None, family=None):
   with _summary_op_util.summary_scope(
       name, family, values=[values],
       default_name='HistogramSummary') as (tag, scope):
-    # pylint: disable=protected-access
-    val = _gen_logging_ops._histogram_summary(
+    val = _gen_logging_ops.histogram_summary(
         tag=tag, values=values, name=scope)
     _summary_op_util.collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val

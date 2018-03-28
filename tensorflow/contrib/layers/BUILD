@@ -188,7 +188,6 @@ py_test(
     size = "small",
     srcs = ["python/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":layers_py",
         "//tensorflow/contrib/framework:framework_py",
@@ -354,7 +353,6 @@ py_test(
     size = "small",
     srcs = ["python/ops/sparse_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":layers_py",
         "//tensorflow/python:array_ops",

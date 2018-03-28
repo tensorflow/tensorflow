@@ -578,9 +578,11 @@ class BaseSaverBuilder(object):
           names_to_saveables[name] = [var]
       elif (isinstance(var, checkpointable.CheckpointableBase)
             and not isinstance(var, variables.Variable)):
+        checkpointable_saveables = [
+            (factory() if callable(factory) else factory)
+            for factory in var._gather_saveables_for_checkpoint().values()]
         names_to_saveables.update(
-            BaseSaverBuilder.OpListToDict(
-                list(var._gather_saveables_for_checkpoint().values())))
+            BaseSaverBuilder.OpListToDict(checkpointable_saveables))
       else:
         if context.executing_eagerly():
           if not isinstance(var, resource_variable_ops.ResourceVariable):
@@ -1133,8 +1135,9 @@ class Saver(object):
   the proliferation of checkpoint files on disk:
 
   * `max_to_keep` indicates the maximum number of recent checkpoint files to
-    keep.  As new files are created, older files are deleted.  If None or 0,
-    all checkpoint files are kept.  Defaults to 5 (that is, the 5 most recent
+    keep.  As new files are created, older files are deleted.   If None or 0,
+    no checkpoints are deleted from the filesystem but only the last one is
+    kept in the `checkpoint` file.  Defaults to 5 (that is, the 5 most recent
     checkpoint files are kept.)
 
   * `keep_checkpoint_every_n_hours`: In addition to keeping the most recent
@@ -1967,7 +1970,7 @@ def export_meta_graph(filename=None,
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
-    graph: The `Graph` to import into. If `None`, use the default graph.
+    graph: The `Graph` to export. If `None`, use the default graph.
     export_scope: Optional `string`. Name scope under which to extract
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph

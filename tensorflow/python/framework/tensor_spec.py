@@ -110,6 +110,9 @@ class TensorSpec(object):
   def __ne__(self, other):
     return not self == other
 
+  def __reduce__(self):
+    return TensorSpec, (self._shape, self._dtype, self._name)
+
 
 class BoundedTensorSpec(TensorSpec):
   """A `TensorSpec` that specifies minimum and maximum values.
@@ -210,4 +213,7 @@ class BoundedTensorSpec(TensorSpec):
     return (tensor_spec_eq and np.allclose(self.minimum, other.minimum) and
             np.allclose(self.maximum, other.maximum))
 
+  def __reduce__(self):
+    return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
+                               self._maximum, self._name)
 

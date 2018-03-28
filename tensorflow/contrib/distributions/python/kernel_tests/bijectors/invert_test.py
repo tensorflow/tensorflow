@@ -37,8 +37,7 @@ class InvertBijectorTest(test.TestCase):
           bijectors.Exp(event_ndims=1),
           bijectors.Affine(shift=[0., 1.], scale_diag=[2., 3.]),
           bijectors.Softplus(event_ndims=1),
-          bijectors.SoftmaxCentered(event_ndims=1),
-          bijectors.SigmoidCentered(),
+          bijectors.SoftmaxCentered(),
       ]:
         rev = bijectors.Invert(fwd)
         self.assertEqual("_".join(["invert", fwd.name]), rev.name)
@@ -61,9 +60,9 @@ class InvertBijectorTest(test.TestCase):
 
   def testShapeGetters(self):
     with self.test_session():
-      bijector = bijectors.Invert(bijectors.SigmoidCentered(validate_args=True))
+      bijector = bijectors.Invert(bijectors.SoftmaxCentered(validate_args=True))
       x = tensor_shape.TensorShape([2])
-      y = tensor_shape.TensorShape([])
+      y = tensor_shape.TensorShape([1])
       self.assertAllEqual(y, bijector.forward_event_shape(x))
       self.assertAllEqual(
           y.as_list(),

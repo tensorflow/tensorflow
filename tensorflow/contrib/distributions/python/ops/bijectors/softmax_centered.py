@@ -19,10 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -45,17 +42,14 @@ class SoftmaxCentered(bijector.Bijector):
   e.g., `softmax(x) = exp(x-c) / sum(exp(x-c))` where `c` is the implicit last
   coordinate.
 
-  Because we append a coordinate, this bijector only supports `event_ndim in [0,
-  1]`, i.e., scalars and vectors.
-
   Example Use:
 
   ```python
-  bijector.SoftmaxCentered(event_ndims=1).forward(tf.log([2, 3, 4]))
+  bijector.SoftmaxCentered().forward(tf.log([2, 3, 4]))
   # Result: [0.2, 0.3, 0.4, 0.1]
   # Extra result: 0.1
 
-  bijector.SoftmaxCentered(event_ndims=1).inverse([0.2, 0.3, 0.4, 0.1])
+  bijector.SoftmaxCentered().inverse([0.2, 0.3, 0.4, 0.1])
   # Result: tf.log([2, 3, 4])
   # Extra coordinate removed.
   ```
@@ -67,82 +61,47 @@ class SoftmaxCentered(bijector.Bijector):
   """
 
   def __init__(self,
-               event_ndims=0,
                validate_args=False,
                name="softmax_centered"):
     self._graph_parents = []
     self._name = name
-    with self._name_scope("init", values=[event_ndims]):
-      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-      event_ndims = tensor_util.constant_value(event_ndims)
-      if event_ndims is None or event_ndims not in [0, 1]:
-        raise ValueError("`event_ndims` must be a TF constant which is 0 or 1")
-    self._static_event_ndims = event_ndims
     super(SoftmaxCentered, self).__init__(
-        event_ndims=event_ndims,
+        event_ndims=1,
         validate_args=validate_args,
         name=name)
 
   def _forward_event_shape(self, input_shape):
-    if input_shape.ndims is None:
+    if input_shape.ndims is None or input_shape[-1] is None:
       return input_shape
-    if input_shape.ndims != self._static_event_ndims:
-      raise ValueError("input_shape.dims = %d != %d" %
-                       (input_shape.ndims, self._static_event_ndims))
-    if input_shape.ndims == 0:
-      return tensor_shape.TensorShape([2])
-    if input_shape.ndims == 1:
-      return tensor_shape.TensorShape(input_shape[0] + 1)
-    # Unreachable code:
-    raise ValueError("event_ndims = %d must be 0 or 1" % input_shape.ndims)
+    return tensor_shape.TensorShape([input_shape[-1] + 1])
 
   def _forward_event_shape_tensor(self, input_shape):
-    ndims = array_ops.shape(input_shape)
-    if self.validate_args:
-      # It is not possible for a negative shape so we need only check <= 1.
-      is_zero_or_one = check_ops.assert_equal(
-          ndims, 0 if self._static_event_ndims == 0 else 1,
-          message="event_ndims must be 0 or 1")
-      ndims = control_flow_ops.with_dependencies([is_zero_or_one], ndims)
-    if self._static_event_ndims == 0:
-      return ops.convert_to_tensor(
-          [2], dtype=dtypes.int32, name="output_shape")
-    return input_shape + 1
+    return (input_shape[-1] + 1)[..., array_ops.newaxis]
 
   def _inverse_event_shape(self, output_shape):
-    if output_shape.ndims is None:
+    if output_shape.ndims is None or output_shape[-1] is None:
       return output_shape
-    if output_shape.ndims != 1:
-      raise ValueError("output_shape.ndims = %d != 1" % output_shape.ndims)
-    if self._static_event_ndims == 0:
-      return tensor_shape.TensorShape([])
-    return tensor_shape.TensorShape(output_shape[0] - 1)
+    if output_shape[-1] <= 1:
+      raise ValueError("output_shape[-1] = %d <= 1" % output_shape[-1])
+    return tensor_shape.TensorShape([output_shape[-1] - 1])
 
   def _inverse_event_shape_tensor(self, output_shape):
-    ndims = array_ops.shape(output_shape)[0]
     if self.validate_args:
       # It is not possible for a negative shape so we need only check <= 1.
-      is_one = check_ops.assert_equal(
-          ndims, 1, message="event_ndims must be 1")
-      ndims = control_flow_ops.with_dependencies([is_one], ndims)
-    if self._static_event_ndims == 0:
-      return ops.convert_to_tensor([], dtype=dtypes.int32, name="output_shape")
-    return array_ops.expand_dims(output_shape[0] - 1, dim=0)
+      is_greater_one = check_ops.assert_greater(
+          output_shape[-1], 1, message="Need last dimension greater than 1.")
+      output_shape = control_flow_ops.with_dependencies(
+          [is_greater_one], output_shape)
+    return (output_shape[-1] - 1)[..., array_ops.newaxis]
 
   def _forward(self, x):
     # Pad the last dim with a zeros vector. We need this because it lets us
     # infer the scale in the inverse function.
-    y = array_ops.expand_dims(x, dim=-1) if self._static_event_ndims == 0 else x
-    y = distribution_util.pad(y, axis=-1, back=True)
+    y = distribution_util.pad(x, axis=-1, back=True)
 
     # Set shape hints.
     if x.shape.ndims is not None:
-      shape = x.shape.as_list()
-      if self._static_event_ndims == 0:
-        shape += [2]
-      elif shape[-1] is not None:
-        shape[-1] += 1
-      shape = tensor_shape.TensorShape(shape)
+      shape = x.shape[:-1].concatenate(x.shape[-1] + 1)
       y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
@@ -167,17 +126,9 @@ class SoftmaxCentered(bijector.Bijector):
     log_normalization = (-x[..., -1])[..., array_ops.newaxis]
     x = x[..., :-1] + log_normalization
 
-    if self._static_event_ndims == 0:
-      x = array_ops.squeeze(x, squeeze_dims=-1)
-
     # Set shape hints.
     if y.shape.ndims is not None:
-      shape = y.shape.as_list()
-      if self._static_event_ndims == 0:
-        shape = shape[:-1]
-      elif shape[-1] is not None:
-        shape[-1] -= 1
-      shape = tensor_shape.TensorShape(shape)
+      shape = y.shape[:-1].concatenate(y.shape[-1] - 1)
       x.shape.assert_is_compatible_with(shape)
       x.set_shape(shape)
 
@@ -203,19 +154,16 @@ class SoftmaxCentered(bijector.Bijector):
     return -math_ops.reduce_sum(math_ops.log(y), axis=-1)
 
   def _forward_log_det_jacobian(self, x):
-    if self._static_event_ndims == 0:
-      return x - 2. * nn_ops.softplus(x)
-    else:
-      # This code is similar to nn_ops.log_softmax but different because we have
-      # an implicit zero column to handle. I.e., instead of:
-      #   reduce_sum(logits - reduce_sum(exp(logits), dim))
-      # we must do:
-      #   log_normalization = 1 + reduce_sum(exp(logits))
-      #   -log_normalization + reduce_sum(logits - log_normalization)
-      log_normalization = nn_ops.softplus(
-          math_ops.reduce_logsumexp(x, axis=-1, keep_dims=True))
-      fldj = (-log_normalization +
-              math_ops.reduce_sum(x - log_normalization,
-                                  axis=-1,
-                                  keep_dims=True))
-      return array_ops.squeeze(fldj, squeeze_dims=-1)
+    # This code is similar to nn_ops.log_softmax but different because we have
+    # an implicit zero column to handle. I.e., instead of:
+    #   reduce_sum(logits - reduce_sum(exp(logits), dim))
+    # we must do:
+    #   log_normalization = 1 + reduce_sum(exp(logits))
+    #   -log_normalization + reduce_sum(logits - log_normalization)
+    log_normalization = nn_ops.softplus(
+        math_ops.reduce_logsumexp(x, axis=-1, keep_dims=True))
+    fldj = (-log_normalization +
+            math_ops.reduce_sum(x - log_normalization,
+                                axis=-1,
+                                keep_dims=True))
+    return array_ops.squeeze(fldj, squeeze_dims=-1)

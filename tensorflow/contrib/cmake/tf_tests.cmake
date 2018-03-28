@@ -195,9 +195,11 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/profiler/model_analyzer_test.py"
     # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/sparse_image_warp_test.py"
     # requires scipy
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/interpolate_spline_test.py"
     # Takes very long to run without sharding (defined in bazel build file).
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
@@ -208,6 +210,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/learn_io/graph_io_test.py"
     # Test is flaky on Windows GPU builds (b/38283730).
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
+    # Disable following manual tag in BUILD.
+    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/layers/convolutional_test.py"
+
   )
   if (WIN32)
     set(tf_test_src_py_exclude

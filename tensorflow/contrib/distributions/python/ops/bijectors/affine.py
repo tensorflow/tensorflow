@@ -62,7 +62,7 @@ class Affine(bijector.Bijector):
   matrices, i.e., the matmul is [matrix-free](
   https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
 
-  Examples:
+  #### Examples
 
   ```python
   # Y = X

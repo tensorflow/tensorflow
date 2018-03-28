@@ -50,6 +50,26 @@ def _expected_inception_score(logits):
   return np.exp(np.mean(per_example_logincscore))
 
 
+def _expected_mean_only_fid(real_imgs, gen_imgs):
+  m = np.mean(real_imgs, axis=0)
+  m_v = np.mean(gen_imgs, axis=0)
+  mean = np.square(m - m_v).sum()
+  mofid = mean
+  return mofid
+
+
+def _expected_diagonal_only_fid(real_imgs, gen_imgs):
+  m = np.mean(real_imgs, axis=0)
+  m_v = np.mean(gen_imgs, axis=0)
+  var = np.var(real_imgs, axis=0)
+  var_v = np.var(gen_imgs, axis=0)
+  sqcc = np.sqrt(var * var_v)
+  mean = (np.square(m - m_v)).sum()
+  trace = (var + var_v - 2 * sqcc).sum()
+  dofid = mean + trace
+  return dofid
+
+
 def _expected_fid(real_imgs, gen_imgs):
   m = np.mean(real_imgs, axis=0)
   m_v = np.mean(gen_imgs, axis=0)
@@ -284,6 +304,46 @@ class ClassifierMetricsTest(test.TestCase):
       incscore_np = sess.run(incscore, {'concat:0': logits})
 
     self.assertAllClose(_expected_inception_score(logits), incscore_np)
+
+  def test_mean_only_frechet_classifier_distance_value(self):
+    """Test that `frechet_classifier_distance` gives the correct value."""
+    np.random.seed(0)
+
+    pool_real_a = np.float32(np.random.randn(256, 2048))
+    pool_gen_a = np.float32(np.random.randn(256, 2048))
+
+    tf_pool_real_a = array_ops.constant(pool_real_a)
+    tf_pool_gen_a = array_ops.constant(pool_gen_a)
+
+    mofid_op = classifier_metrics.mean_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
+        tf_pool_real_a, tf_pool_gen_a)
+
+    with self.test_session() as sess:
+      actual_mofid = sess.run(mofid_op)
+
+    expected_mofid = _expected_mean_only_fid(pool_real_a, pool_gen_a)
+
+    self.assertAllClose(expected_mofid, actual_mofid, 0.0001)
+
+  def test_diagonal_only_frechet_classifier_distance_value(self):
+    """Test that `frechet_classifier_distance` gives the correct value."""
+    np.random.seed(0)
+
+    pool_real_a = np.float32(np.random.randn(256, 2048))
+    pool_gen_a = np.float32(np.random.randn(256, 2048))
+
+    tf_pool_real_a = array_ops.constant(pool_real_a)
+    tf_pool_gen_a = array_ops.constant(pool_gen_a)
+
+    dofid_op = classifier_metrics.diagonal_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
+        tf_pool_real_a, tf_pool_gen_a)
+
+    with self.test_session() as sess:
+      actual_dofid = sess.run(dofid_op)
+
+    expected_dofid = _expected_diagonal_only_fid(pool_real_a, pool_gen_a)
+
+    self.assertAllClose(expected_dofid, actual_dofid, 0.0001)
 
   def test_frechet_classifier_distance_value(self):
     """Test that `frechet_classifier_distance` gives the correct value."""
