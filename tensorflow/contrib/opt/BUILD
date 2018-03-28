@@ -53,10 +53,6 @@ py_test(
     name = "adamax_test",
     srcs = ["python/training/adamax_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",  # b/73507407
-        "notsan",  # b/31055119
-    ],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
