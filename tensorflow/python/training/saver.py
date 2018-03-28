@@ -50,9 +50,11 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Op names which identify variable reads which should be saved.
@@ -195,8 +197,8 @@ class BaseSaverBuilder(object):
       # Copy the restored tensor to the variable's device.
       with ops.device(self._var_device):
         restored_tensor = array_ops.identity(restored_tensor)
-      return resource_variable_ops.shape_safe_assign_variable_handle(
-          self.handle_op, self._var_shape, restored_tensor)
+        return resource_variable_ops.shape_safe_assign_variable_handle(
+            self.handle_op, self._var_shape, restored_tensor)
 
   def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
@@ -309,8 +311,7 @@ class BaseSaverBuilder(object):
     Returns:
       A string tensor.
     """
-    # pylint: disable=protected-access
-    return gen_io_ops._sharded_filename(filename_tensor, shard, num_shards)
+    return gen_io_ops.sharded_filename(filename_tensor, shard, num_shards)
 
   def _AddSaveOps(self, filename_tensor, saveables):
     """Add ops to save variables that are on the same shard.
@@ -419,8 +420,7 @@ class BaseSaverBuilder(object):
         sharded_saves.append(self._AddSaveOps(sharded_filename, saveables))
     # Return the sharded name for the save path.
     with ops.control_dependencies([x.op for x in sharded_saves]):
-      # pylint: disable=protected-access
-      return gen_io_ops._sharded_filespec(filename_tensor, num_shards_tensor)
+      return gen_io_ops.sharded_filespec(filename_tensor, num_shards_tensor)
 
   def _AddRestoreOps(self,
                      filename_tensor,
@@ -576,10 +576,33 @@ class BaseSaverBuilder(object):
           names_to_saveables[name].append(var)
         else:
           names_to_saveables[name] = [var]
+      elif (isinstance(var, checkpointable.CheckpointableBase)
+            and not isinstance(var, variables.Variable)):
+        checkpointable_saveables = [
+            (factory() if callable(factory) else factory)
+            for factory in var._gather_saveables_for_checkpoint().values()]
+        names_to_saveables.update(
+            BaseSaverBuilder.OpListToDict(checkpointable_saveables))
       else:
-        if context.in_graph_mode():
+        if context.executing_eagerly():
+          if not isinstance(var, resource_variable_ops.ResourceVariable):
+            raise ValueError(
+                "Can only save/restore ResourceVariables when eager execution "
+                "is enabled, type: %s." % type(var))
+          set_var = names_to_saveables.setdefault(var._shared_name, var)
+          if set_var is not var:
+            raise ValueError(
+                ("Two different ResourceVariable objects with the same "
+                 "shared_name '%s' were passed to the Saver. This likely means "
+                 "that they were created in different Graphs or isolation "
+                 "contexts, and may not be checkpointed together.") %
+                (var._shared_name,))
+        else:
           if convert_variable_to_tensor:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            if isinstance(var, resource_variable_ops.ResourceVariable):
+              var = var._graph_element  # pylint: disable=protected-access
+            else:
+              var = ops.internal_convert_to_tensor(var, as_ref=True)
             if not BaseSaverBuilder._IsVariable(var):
               raise TypeError("Variable to save is not a Variable: %s" % var)
           if var.op.type == "ReadVariableOp":
@@ -590,18 +613,6 @@ class BaseSaverBuilder(object):
             raise ValueError("At least two variables have the same name: %s" %
                              name)
           names_to_saveables[name] = var
-        else:
-          if not isinstance(var, resource_variable_ops.ResourceVariable):
-            raise ValueError("Can only save/restore ResourceVariable eager "
-                             "mode is enabled, type: %s." % type(var))
-          set_var = names_to_saveables.setdefault(var._shared_name, var)
-          if set_var is not var:
-            raise ValueError(
-                ("Two different ResourceVariable objects with the same "
-                 "shared_name '%s' were passed to the Saver. This likely means "
-                 "that they were created in different Graphs or isolation "
-                 "contexts, and may not be checkpointed together.") % (
-                     var._shared_name,))
 
       # pylint: enable=protected-access
     return names_to_saveables
@@ -663,13 +674,16 @@ class BaseSaverBuilder(object):
         # pylint: enable=protected-access
       else:
         # A variable or tensor.
-        if context.in_eager_mode():
+        if context.executing_eagerly():
           if not isinstance(op, resource_variable_ops.ResourceVariable):
             raise ValueError("Can only save/restore ResourceVariable eager "
                              "mode is enabled, type: %s." % type(op))
           saveable = BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
         else:
-          variable = ops.internal_convert_to_tensor(op, as_ref=True)
+          if isinstance(op, resource_variable_ops.ResourceVariable):
+            variable = op._graph_element  # pylint: disable=protected-access
+          else:
+            variable = ops.internal_convert_to_tensor(op, as_ref=True)
           if not BaseSaverBuilder._IsVariable(variable):
             raise TypeError("names_to_saveables must be a dict mapping string "
                             "names to Tensors/Variables. Not a variable: %s" %
@@ -767,8 +781,10 @@ class BaseSaverBuilder(object):
                       build_save=True,
                       build_restore=True):
     """build() with option to only perform save and restore."""
-    if context.in_graph_mode() and (not build_save or not build_restore):
-      raise ValueError("Graph mode needs to build save and restore together.")
+    if not context.executing_eagerly() and (not build_save or
+                                            not build_restore):
+      raise ValueError("save and restore operations need to be built together "
+                       " when eager execution is not enabled.")
 
     saveables = self._ValidateAndSliceInputs(names_to_saveables)
     if max_to_keep is None:
@@ -805,22 +821,22 @@ class BaseSaverBuilder(object):
     # such usage model makes sense.
     #
     # assert restore_op.name.endswith("restore_all"), restore_op.name
-    if context.in_graph_mode():
-      return saver_pb2.SaverDef(
-          filename_tensor_name=filename_tensor.name,
-          save_tensor_name=save_tensor.name,
-          restore_op_name=restore_op.name,
-          max_to_keep=max_to_keep,
-          sharded=sharded,
-          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-          version=self._write_version)
-    else:
+    if context.executing_eagerly():
       # Store the tensor values to the tensor_names.
       save_tensor_name = save_tensor.numpy() if build_save else ""
       return saver_pb2.SaverDef(
           filename_tensor_name=filename_tensor.numpy(),
           save_tensor_name=save_tensor_name,
           restore_op_name="",
+          max_to_keep=max_to_keep,
+          sharded=sharded,
+          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
+          version=self._write_version)
+    else:
+      return saver_pb2.SaverDef(
+          filename_tensor_name=filename_tensor.name,
+          save_tensor_name=save_tensor.name,
+          restore_op_name=restore_op.name,
           max_to_keep=max_to_keep,
           sharded=sharded,
           keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
@@ -889,6 +905,7 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
+@tf_export("train.generate_checkpoint_state_proto")
 def generate_checkpoint_state_proto(save_dir,
                                     model_checkpoint_path,
                                     all_model_checkpoint_paths=None):
@@ -933,6 +950,7 @@ def generate_checkpoint_state_proto(save_dir,
   return coord_checkpoint_proto
 
 
+@tf_export("train.update_checkpoint_state")
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
                             all_model_checkpoint_paths=None,
@@ -1025,6 +1043,7 @@ def _update_checkpoint_state(save_dir,
                                       text_format.MessageToString(ckpt))
 
 
+@tf_export("train.get_checkpoint_state")
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   """Returns CheckpointState proto from the "checkpoint" file.
 
@@ -1082,6 +1101,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   return ckpt
 
 
+@tf_export("train.Saver")
 class Saver(object):
   """Saves and restores variables.
 
@@ -1115,8 +1135,9 @@ class Saver(object):
   the proliferation of checkpoint files on disk:
 
   * `max_to_keep` indicates the maximum number of recent checkpoint files to
-    keep.  As new files are created, older files are deleted.  If None or 0,
-    all checkpoint files are kept.  Defaults to 5 (that is, the 5 most recent
+    keep.  As new files are created, older files are deleted.   If None or 0,
+    no checkpoints are deleted from the filesystem but only the last one is
+    kept in the `checkpoint` file.  Defaults to 5 (that is, the 5 most recent
     checkpoint files are kept.)
 
   * `keep_checkpoint_every_n_hours`: In addition to keeping the most recent
@@ -1229,7 +1250,7 @@ class Saver(object):
         The `saver_def` proto should be the one returned by the
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
-        Defaults to `BaseSaverBuilder()`.
+        Defaults to `BulkSaverBuilder()`.
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
@@ -1265,7 +1286,7 @@ class Saver(object):
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
-    if context.in_eager_mode() and var_list is None:
+    if context.executing_eagerly() and var_list is None:
       raise RuntimeError(
           "When eager execution is enabled, `var_list` must specify a list or "
           "dict of variables to save")
@@ -1284,7 +1305,12 @@ class Saver(object):
     self._write_version = write_version
     self._pad_step_number = pad_step_number
     self._filename = filename
-    if not defer_build and context.in_graph_mode():
+    self._last_checkpoints = []
+    self._checkpoints_to_be_deleted = []
+    if context.executing_eagerly():
+      self._next_checkpoint_time = (
+          time.time() + self._keep_checkpoint_every_n_hours * 3600)
+    elif not defer_build:
       self.build()
     if self.saver_def:
       self._check_saver_def()
@@ -1292,7 +1318,7 @@ class Saver(object):
     self._save_relative_paths = save_relative_paths
 
   def build(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Use save/restore instead of build in eager mode.")
     self._build(self._filename, build_save=True, build_restore=True)
 
@@ -1302,14 +1328,14 @@ class Saver(object):
 
   def _build(self, checkpoint_path, build_save, build_restore):
     """Builds saver_def."""
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if self._is_built:
         return
       self._is_built = True
 
-    if not self.saver_def or context.in_eager_mode():
+    if not self.saver_def or context.executing_eagerly():
       if self._builder is None:
-        self._builder = BaseSaverBuilder(self._write_version)
+        self._builder = BulkSaverBuilder(self._write_version)
 
       if self._var_list is None:
         # pylint: disable=protected-access
@@ -1344,17 +1370,17 @@ class Saver(object):
           self.saver_def.restore_op_name, self._name)
 
     self._check_saver_def()
-    # Updates next checkpoint time.
-    self._next_checkpoint_time = (
-        time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
-    self._last_checkpoints = []
-    self._checkpoints_to_be_deleted = []
+    if not context.executing_eagerly():
+      # Updates next checkpoint time.
+      # Set in __init__ when executing eagerly.
+      self._next_checkpoint_time = (
+          time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
 
   def _check_saver_def(self):
     if not isinstance(self.saver_def, saver_pb2.SaverDef):
       raise ValueError("saver_def must be a saver_pb2.SaverDef: %s" %
                        self.saver_def)
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       if not self.saver_def.save_tensor_name:
         raise ValueError("saver_def must specify the save_tensor_name: %s" %
                          str(self.saver_def))
@@ -1592,9 +1618,9 @@ class Saver(object):
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A string: path prefix used for the checkpoint files. If checkpoint
-        format is V1 and the saver is sharded, this string ends with:
-         '-?????-of-nnnnn' where 'nnnnn' is the number of shards created.
+      A string: path prefix used for the checkpoint files.  If the saver is
+        sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
+        is the number of shards created.
       If the saver is empty, returns None.
 
     Raises:
@@ -1604,7 +1630,7 @@ class Saver(object):
       RuntimeError: If save and restore ops weren't built.
     """
     # pylint: enable=line-too-long
-    if not self._is_built and context.in_graph_mode():
+    if not self._is_built and not context.executing_eagerly():
       raise RuntimeError(
           "`build()` should be called before save if defer_build==True")
     if latest_filename is None:
@@ -1636,21 +1662,21 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if (context.in_graph_mode() and
+    if (not context.executing_eagerly() and
         not isinstance(sess, session.SessionInterface)):
       raise TypeError("'sess' must be a Session; %s" % sess)
 
     save_path_parent = os.path.dirname(save_path)
     if not self._is_empty:
       try:
-        if context.in_graph_mode():
-          model_checkpoint_path = sess.run(
-              self.saver_def.save_tensor_name,
-              {self.saver_def.filename_tensor_name: checkpoint_file})
-        else:
+        if context.executing_eagerly():
           self._build_eager(
               checkpoint_file, build_save=True, build_restore=False)
           model_checkpoint_path = self.saver_def.save_tensor_name
+        else:
+          model_checkpoint_path = sess.run(
+              self.saver_def.save_tensor_name,
+              {self.saver_def.filename_tensor_name: checkpoint_file})
 
         model_checkpoint_path = compat.as_str(model_checkpoint_path)
         if write_state:
@@ -1672,7 +1698,7 @@ class Saver(object):
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         with sess.graph.as_default():
           self.export_meta_graph(
               meta_graph_filename, strip_default_attrs=strip_default_attrs)
@@ -1744,17 +1770,12 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
-    if (os.path.isfile(save_path) and
-        self._write_version != saver_pb2.SaverDef.V1):
-      raise ValueError("The specified path: %s is a file."
-                       " Please specify only the path prefix"
-                       " to the checkpoint files." % save_path)
     logging.info("Restoring parameters from %s", save_path)
-    if context.in_graph_mode():
+    if context.executing_eagerly():
+      self._build_eager(save_path, build_save=False, build_restore=True)
+    else:
       sess.run(self.saver_def.restore_op_name,
                {self.saver_def.filename_tensor_name: save_path})
-    else:
-      self._build_eager(save_path, build_save=False, build_restore=True)
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):
@@ -1788,6 +1809,7 @@ def _prefix_to_checkpoint_path(prefix, format_version):
   return prefix  # Just the data file.
 
 
+@tf_export("train.latest_checkpoint")
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
   """Finds the filename of latest saved checkpoint file.
 
@@ -1817,6 +1839,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
+@tf_export("train.import_meta_graph")
 def import_meta_graph(meta_graph_or_file, clear_devices=False,
                       import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
@@ -1892,7 +1915,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
                        "execution is enabled.")
@@ -1918,6 +1941,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
       return None
 
 
+@tf_export("train.export_meta_graph")
 def export_meta_graph(filename=None,
                       meta_info_def=None,
                       graph_def=None,
@@ -1946,7 +1970,7 @@ def export_meta_graph(filename=None,
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
-    graph: The `Graph` to import into. If `None`, use the default graph.
+    graph: The `Graph` to export. If `None`, use the default graph.
     export_scope: Optional `string`. Name scope under which to extract
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph
@@ -1974,7 +1998,7 @@ def export_meta_graph(filename=None,
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
                        "execution is enabled.")
@@ -1994,6 +2018,7 @@ def export_meta_graph(filename=None,
   return meta_graph_def
 
 
+@tf_export("train.checkpoint_exists")
 def checkpoint_exists(checkpoint_prefix):
   """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
 
@@ -2018,6 +2043,7 @@ def checkpoint_exists(checkpoint_prefix):
     return False
 
 
+@tf_export("train.get_checkpoint_mtimes")
 def get_checkpoint_mtimes(checkpoint_prefixes):
   """Returns the mtimes (modification timestamps) of the checkpoints.
 

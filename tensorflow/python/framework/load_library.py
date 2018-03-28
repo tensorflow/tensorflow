@@ -21,10 +21,10 @@ from __future__ import print_function
 import hashlib
 import imp
 import sys
-import threading
+import threading  # pylint: disable=unused-import
 
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.core.lib.core import error_codes_pb2  # pylint: disable=unused-import
 from tensorflow.python import pywrap_tensorflow as py_tf
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import compat

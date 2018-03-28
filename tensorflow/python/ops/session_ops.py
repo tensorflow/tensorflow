@@ -16,7 +16,6 @@
 """Tensor Handle Operations. See the @{$python/session_ops} guide.
 
 @@get_session_handle
-@@get_session_handle_v2
 @@get_session_tensor
 @@delete_session_tensor
 """
@@ -182,7 +181,7 @@ def get_session_handle(data, name=None):
 
   # Colocate this operation with data.
   with ops.colocate_with(data):
-    return gen_data_flow_ops._get_session_handle(data, name=name)  # pylint: disable=protected-access
+    return gen_data_flow_ops.get_session_handle(data, name=name)
 
 
 @tf_export("get_session_tensor")
@@ -222,7 +221,7 @@ def get_session_tensor(handle, dtype, name=None):
   with ops.device(handle_device):
     holder = array_ops.placeholder(dtypes.string)
     _register_handle_feeder(holder.graph, holder, dtype)
-    tensor = gen_data_flow_ops._get_session_tensor(holder, dtype, name=name)
+    tensor = gen_data_flow_ops.get_session_tensor(holder, dtype, name=name)
   return (holder, tensor)
 
 
@@ -246,7 +245,7 @@ def delete_session_tensor(handle, name=None):
   handle_device = TensorHandle._get_device_name(handle)
   with ops.device(handle_device):
     holder = array_ops.placeholder(dtypes.string)
-    deleter = gen_data_flow_ops._delete_session_tensor(holder, name=name)
+    deleter = gen_data_flow_ops.delete_session_tensor(holder, name=name)
   return (holder, deleter)
 
 
@@ -268,7 +267,7 @@ def _get_handle_reader(graph, handle, dtype):
     with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
       _register_handle_feeder(holder.graph, holder, dtype)
-      reader = gen_data_flow_ops._get_session_tensor(holder, dtype)
+      reader = gen_data_flow_ops.get_session_tensor(holder, dtype)
     result = (holder, reader)
     graph._handle_readers[graph_key] = result
   return result
@@ -289,7 +288,7 @@ def _get_handle_mover(graph, feeder, handle):
     # Create mover if we haven't done it.
     holder, reader = _get_handle_reader(graph, handle, dtype)
     with graph.as_default(), graph.device(feeder.op.device):
-      mover = gen_data_flow_ops._get_session_handle(reader)  # pylint: disable=protected-access
+      mover = gen_data_flow_ops.get_session_handle(reader)
     result = (holder, mover)
     graph._handle_movers[graph_key] = result
   return result
@@ -303,7 +302,7 @@ def _get_handle_deleter(graph, deleter_key, handle):
     handle_device = TensorHandle._get_device_name(handle)
     with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
-      deleter = gen_data_flow_ops._delete_session_tensor(holder)
+      deleter = gen_data_flow_ops.delete_session_tensor(holder)
     result = (holder, deleter)
     graph._handle_deleters[deleter_key] = result
   return result

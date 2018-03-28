@@ -32,11 +32,46 @@ namespace tflite {
 
 const char* kEmptyTensorName = "";
 
+// Loads a model from `filename`. If `mmap_file` is true then use mmap,
+// otherwise make a copy of the model in a buffer.
+std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
+                                                  bool mmap_file,
+                                                  ErrorReporter* error_reporter,
+                                                  bool use_nnapi) {
+  std::unique_ptr<Allocation> allocation;
+  if (mmap_file) {
+    if (use_nnapi && NNAPIExists())
+      allocation.reset(new NNAPIAllocation(filename, error_reporter));
+    else
+      allocation.reset(new MMAPAllocation(filename, error_reporter));
+  } else {
+    allocation.reset(new FileCopyAllocation(filename, error_reporter));
+  }
+  return allocation;
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter,
-                                  /*use_nnapi=*/true));
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  if (!model->initialized()) model.reset();
+  return model;
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
+    const char* filename, TfLiteVerifier* verifier,
+    ErrorReporter* error_reporter) {
+  std::unique_ptr<FlatBufferModel> model;
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  if (verifier &&
+      !verifier->Verify(static_cast<const char*>(allocation->base()),
+                        allocation->bytes(), error_reporter)) {
+    return model;
+  }
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -44,7 +79,9 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(buffer, buffer_size, error_reporter));
+  Allocation* allocation =
+      new MemoryAllocation(buffer, buffer_size, error_reporter);
+  model.reset(new FlatBufferModel(allocation, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -55,23 +92,6 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
   model.reset(new FlatBufferModel(model_spec, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
-}
-
-FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
-                                 ErrorReporter* error_reporter, bool use_nnapi)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
-      allocation_ = new NNAPIAllocation(filename, error_reporter);
-    else
-      allocation_ = new MMAPAllocation(filename, error_reporter);
-  } else {
-    allocation_ = new FileCopyAllocation(filename, error_reporter);
-  }
-  if (!allocation_->valid() || !CheckModelIdentifier()) return;
-
-  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -85,21 +105,21 @@ bool FlatBufferModel::CheckModelIdentifier() const {
   return true;
 }
 
-FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
-                                 ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
-  if (!allocation_->valid()) return;
-
-  model_ = ::tflite::GetModel(allocation_->base());
-}
-
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   model_ = model;
+}
+
+FlatBufferModel::FlatBufferModel(Allocation* allocation,
+                                 ErrorReporter* error_reporter)
+    : error_reporter_(error_reporter ? error_reporter
+                                     : DefaultErrorReporter()) {
+  allocation_ = allocation;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
+
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::~FlatBufferModel() { delete allocation_; }
@@ -124,19 +144,25 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
     TfLiteRegistration* registration = nullptr;
-
-    if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
-      auto x = opcode->builtin_code();
-      flatbuffer_op_index_to_registration_types_.push_back(x);
-      registration = op_resolver_.FindOp(x);
+    auto builtin_code = opcode->builtin_code();
+    if (builtin_code > BuiltinOperator_MAX ||
+        builtin_code < BuiltinOperator_MIN) {
+      error_reporter_->Report(
+          "Op builtin_code out or range: %d. Are you using old TFLite binary "
+          "with newer model?",
+          builtin_code);
+      status = kTfLiteError;
+    } else if (builtin_code != BuiltinOperator_CUSTOM) {
+      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
+      registration = op_resolver_.FindOp(builtin_code);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(x));
+                                EnumNameBuiltinOperator(builtin_code));
         status = kTfLiteError;
       }
     } else if (!opcode->custom_code()) {
       error_reporter_->Report(
-          "Operator with builtin_code==0 has no custom_code.\n");
+          "Operator with CUSTOM builtin_code has no custom_code.\n");
       status = kTfLiteError;
     } else {
       const char* name = opcode->custom_code()->c_str();
@@ -278,6 +304,12 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_TOPK_V2:
+    case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_CAST:
+    case BuiltinOperator_DEQUANTIZE:
+    case BuiltinOperator_PRELU:
       break;
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =
@@ -328,6 +360,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
       TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
       if (auto* sequence_rnn_params =
@@ -452,6 +485,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
       TfLiteLSTMParams* params = MallocPOD<TfLiteLSTMParams>();
@@ -468,6 +502,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteResizeBilinearParams>();
       if (auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
+        params->align_corners = schema_params->align_corners();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -515,62 +550,26 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_SPACE_TO_BATCH_ND: {
-      auto* params = MallocPOD<TfLiteSpaceToBatchNDParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_SpaceToBatchNDOptions()) {
-        const auto& block_shape = schema_params->block_shape();
-        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
-                                   params->block_shape, error_reporter);
-        const auto& before_paddings = schema_params->before_paddings();
-        FlatBufferIntVectorToArray(sizeof(params->before_paddings),
-                                   before_paddings, params->before_paddings,
-                                   error_reporter);
-        const auto& after_paddings = schema_params->after_paddings();
-        FlatBufferIntVectorToArray(sizeof(params->after_paddings),
-                                   after_paddings, params->after_paddings,
-                                   error_reporter);
-        params->num_spatial_dimensions = block_shape->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      auto* params = MallocPOD<TfLiteBatchToSpaceNDParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_BatchToSpaceNDOptions()) {
-        const auto& block_shape = schema_params->block_shape();
-        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
-                                   params->block_shape, error_reporter);
-        const auto& before_crops = schema_params->before_crops();
-        FlatBufferIntVectorToArray(sizeof(params->before_crops), before_crops,
-                                   params->before_crops, error_reporter);
-        const auto& after_crops = schema_params->after_crops();
-        FlatBufferIntVectorToArray(sizeof(params->after_crops), after_crops,
-                                   params->after_crops, error_reporter);
-        params->num_spatial_dimensions = block_shape->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_TRANSPOSE: {
-      auto* params = MallocPOD<TfLiteTransposeParams>();
-      if (auto* schema_params = op->builtin_options_as_TransposeOptions()) {
-        const auto& perm = schema_params->perm();
-        FlatBufferIntVectorToArray(sizeof(params->perm), perm, params->perm,
-                                   error_reporter);
-        params->num_dimensions = perm->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_MEAN: {
       auto* params = MallocPOD<TfLiteMeanParams>();
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
-        const auto& axis = schema_params->axis();
-        FlatBufferIntVectorToArray(sizeof(params->axis), axis, params->axis,
-                                   error_reporter);
         params->keep_dims = schema_params->keep_dims();
-        params->num_axis_dimensions = axis->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SPLIT: {
+      auto* params = MallocPOD<TfLiteSplitParams>();
+      if (auto* schema_params = op->builtin_options_as_SplitOptions()) {
+        params->num_splits = schema_params->num_splits();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -596,6 +595,14 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
       builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_MAXIMUM: {
+      break;
+    }
+    case BuiltinOperator_DELEGATE: {
+      // TODO(ycling): Revisit when supporting saving delegated models.
+      error_reporter->Report("DELEGATE op shouldn't exist in model.");
       break;
     }
   }
@@ -676,9 +683,27 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       // but we really only support one value for the whole tensor.
       // TODO(aselle): This breaks as well if these are nullptr's.
       // TODO(aselle): This assumes non per-channel quantization.
-      if (q_params->scale()) quantization.scale = q_params->scale()->Get(0);
-      if (q_params->zero_point())
+
+      if (q_params->scale()) {
+        if (q_params->scale()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d scale values (only 1 is supported).",
+              q_params->scale()->size());
+          return kTfLiteError;
+        }
+        quantization.scale = q_params->scale()->Get(0);
+      }
+
+      if (q_params->zero_point()) {
+        if (q_params->zero_point()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d zero_point values"
+              " (only 1 is supported).",
+              q_params->zero_point()->size());
+          return kTfLiteError;
+        }
         quantization.zero_point = q_params->zero_point()->Get(0);
+      }
     }
 
     TfLiteType type;
@@ -756,6 +781,11 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
+  return operator()(interpreter, /*num_threads=*/-1);
+}
+
+TfLiteStatus InterpreterBuilder::operator()(
+    std::unique_ptr<Interpreter>* interpreter, int num_threads) {
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
@@ -810,7 +840,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   if ((**interpreter).AddTensors(tensors->Length()) != kTfLiteOk) {
     return cleanup_and_error();
   }
-
+  // Set num threads
+  (**interpreter).SetNumThreads(num_threads);
   // Parse inputs/outputs
   (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
   (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));

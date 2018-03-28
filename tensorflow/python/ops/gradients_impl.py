@@ -35,7 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -44,6 +44,7 @@ from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -85,17 +86,19 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
         % str(value))
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
-  dense_shape_value = tensor_util.constant_value(value.dense_shape)
-  if dense_shape_value is not None:
-    num_elements = np.prod(dense_shape_value)
-    if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+  if not context.executing_eagerly():
+    dense_shape_value = tensor_util.constant_value(value.dense_shape)
+    if dense_shape_value is not None:
+      num_elements = np.prod(dense_shape_value)
+      if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
+        warnings.warn(
+            "Converting sparse IndexedSlices to a dense Tensor with %d "
+            "elements. This may consume a large amount of memory." %
+            num_elements)
+    else:
       warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor with %d elements. "
-          "This may consume a large amount of memory." % num_elements)
-  else:
-    warnings.warn(
-        "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-        "This may consume a large amount of memory.")
+          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
+          "This may consume a large amount of memory.")
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
@@ -353,7 +356,7 @@ def _SymGrad(op, out_grads):
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
   # pylint: disable=protected-access
-  in_grads = functional_ops._symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   # pylint: enable=protected-access
   return in_grads
 
@@ -477,9 +480,21 @@ def gradients(ys,
     RuntimeError: if called in Eager mode.
 
   """
-  if context.in_eager_mode():
-    raise RuntimeError("tf.gradients not supported in EAGER mode. Use "
-                       "functions in tf.contrib.eager.backprop instead.")
+  # Creating the gradient graph for control flow mutates Operations. _lock
+  # ensures a Session.run call cannot occur between creating and mutating new
+  # ops.
+  with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+    return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
+                            gate_gradients, aggregation_method, stop_gradients)
+
+
+def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
+                     gate_gradients, aggregation_method, stop_gradients):
+  """Implementation of gradients()."""
+  if context.executing_eagerly():
+    raise RuntimeError("tf.gradients not supported when eager execution "
+                       "is enabled. Use tf.contrib.eager.GradientTape "
+                       "instead.")
   ys = _AsList(ys)
   xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
@@ -493,7 +508,7 @@ def gradients(ys,
       list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = [
-        x.handle if isinstance(x, resource_variable_ops.ResourceVariable) else x
+        x.handle if resource_variable_ops.is_resource_variable(x) else x
         for x in xs
     ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(

@@ -26,6 +26,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(touts): switch to variables.Variable.
@@ -51,16 +52,19 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   they were created in and the scope of the variables they debias. They are also
   given a uniqifying-suffix.
 
-  Ex:
+  E.g.:
+
+  ```
     with tf.variable_scope('scope1'):
       with tf.variable_scope('scope2'):
         var = tf.get_variable('foo')
-        assign_moving_average(var, 0.0, 1.0)
-        assign_moving_average(var, 0.0, 0.9)
+        tf.assign_moving_average(var, 0.0, 1.0)
+        tf.assign_moving_average(var, 0.0, 0.9)
 
-    var.name: 'scope1/scope2/foo'
-    shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
-                      'scope1/scope2/scope1/scope2/foo/biased_1'
+    # var.name: 'scope1/scope2/foo'
+    # shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
+    #                   'scope1/scope2/scope1/scope2/foo/biased_1'
+  ```
 
   Args:
     variable: A Variable.
@@ -230,6 +234,7 @@ def _zero_debias(unbiased_var, value, decay):
       return unbiased_ema_delta
 
 
+@tf_export("train.ExponentialMovingAverage")
 class ExponentialMovingAverage(object):
   """Maintains moving averages of variables by employing an exponential decay.
 
@@ -398,7 +403,9 @@ class ExponentialMovingAverage(object):
           avg = slot_creator.create_zeros_slot(
               var,
               self._name,
-              colocate_with_primary=(var.op.type in ["Variable", "VariableV2"]))
+              colocate_with_primary=(var.op.type in ["Variable",
+                                                     "VariableV2",
+                                                     "VarHandleOp"]))
           if self._zero_debias:
             zero_debias_true.add(avg)
       self._averages[var] = avg

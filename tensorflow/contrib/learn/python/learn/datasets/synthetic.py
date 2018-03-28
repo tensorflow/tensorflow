@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Synthetic dataset generators."""
+"""Synthetic dataset generators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +26,10 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.datasets.base import Dataset
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Consider using synthetic datasets from scikits.learn.')
 def circles(n_samples=100,
             noise=None,
             seed=None,
@@ -93,6 +100,7 @@ def circles(n_samples=100,
   return Dataset(data=X[indices], target=y[indices])
 
 
+@deprecated(None, 'Consider using synthetic datasets from scikits.learn.')
 def spirals(n_samples=100,
             noise=None,
             seed=None,
@@ -151,7 +159,7 @@ def spirals(n_samples=100,
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
   if extras > 0:
-    x_exrta, y_extra = _modes[mode](np.random.rand(extras) * 2 * np.pi, *args,
+    x_extra, y_extra = _modes[mode](np.random.rand(extras) * 2 * np.pi, *args,
                                     **kwargs)
     spir_x = np.append(spir_x, x_extra)
     spir_y = np.append(spir_y, y_extra)

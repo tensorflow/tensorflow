@@ -270,14 +270,14 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
 
           train_op = lr.minimize()
 
-          def Minimize():
+          def minimize():
             with self._single_threaded_test_session():
               for _ in range(_MAX_ITERATIONS):
-                train_op.run()
+                train_op.run()  # pylint: disable=cell-var-from-loop
 
           threads = []
           for _ in range(num_loss_partitions):
-            threads.append(threading.Thread(target=Minimize))
+            threads.append(threading.Thread(target=minimize))
             threads[-1].start()
 
           for t in threads:
@@ -395,7 +395,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllClose([0, 1, 1, 1], predicted_labels.eval())
         self.assertAllClose(
-            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
+            0.0, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testFractionalExampleLabel(self):
     # Setup test data with 1 positive, and 1 mostly-negative example.
@@ -407,7 +407,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         make_example_proto({
             'age': [1],
             'gender': [1]
-        }, 1),
+        }, 0.9),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:

@@ -400,7 +400,13 @@ size_t nonScalarTF_STRINGTensorSize(JNIEnv* env, jarray value, int num_dims) {
   for (jsize i = 0; i < len; ++i) {
     jarray elem = static_cast<jarray>(
         env->GetObjectArrayElement(static_cast<jobjectArray>(value), i));
+    if (elem == nullptr) {
+      throwException(env, kNullPointerException,
+                     "null entries in provided array");
+      return ret;
+    }
     ret += nonScalarTF_STRINGTensorSize(env, elem, num_dims - 1);
+    if (env->ExceptionCheck()) return ret;
   }
   return ret;
 }
@@ -421,8 +427,8 @@ void fillNonScalarTF_STRINGTensorData(JNIEnv* env, jarray value, int num_dims,
   for (jsize i = 0; i < len; ++i) {
     jarray elem = static_cast<jarray>(
         env->GetObjectArrayElement(static_cast<jobjectArray>(value), i));
-    if (TF_GetCode(status) != TF_OK) return;
     fillNonScalarTF_STRINGTensorData(env, elem, num_dims - 1, writer, status);
+    if (TF_GetCode(status) != TF_OK) return;
   }
 }
 }  // namespace
@@ -444,6 +450,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNonScalarBytes(
   }
   const size_t encoded_size =
       nonScalarTF_STRINGTensorSize(env, value, num_dims);
+  if (env->ExceptionCheck()) return 0;
   TF_Tensor* t = TF_AllocateTensor(TF_STRING, dims, num_dims,
                                    8 * num_elements + encoded_size);
   if (t == nullptr) {

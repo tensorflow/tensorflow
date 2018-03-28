@@ -27,7 +27,7 @@ The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
 
-### Pre-requisites
+### Prerequisites
 
 * CMake version 3.5 or later.
 
@@ -43,12 +43,15 @@ bindings.
 
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015 (latest version of MSVC 2017 is not supported by CUDA yet, try it on your own risk)
+  
   - Python 3.5
-  - NumPy 1.11.0 or later
 
-* Additional pre-requisites for Linux:
+* Additional prerequisites for Linux:
   - Python 2.7 or later
   - [Docker](https://www.docker.com/) (for automated testing)
+
+* Python dependencies:
+  - wheel
   - NumPy 1.11.0 or later
 
 ### Known-good configurations
@@ -252,7 +255,7 @@ Here we assume that you have basic knowledge on gathering dependency with `CMake
 Step-by-step Windows build (command prompt)
 ==========================
 
-1. Install the pre-requisites detailed above, and set up your environment.
+1. Install the prerequisites detailed above, and set up your environment.
 
    * The following commands assume that you are using the Windows Command
      Prompt (`cmd.exe`). You will need to set up your environment to use the

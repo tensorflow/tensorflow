@@ -884,10 +884,25 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+
+// StrCat and StrAppend don't support Eigen::half directly at the moment, and
+// we would like to keep them compatible with their absl counterparts, for ease
+// of migration. We could rely on errors::internal::PrepareForStrCat() but the
+// logic is so simple we can just replicate it here, where it is close to its
+// usage and easy to change later. And there's the extra benefit of not
+// accessing an 'internal' namespace.
+inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
+  return a;
+}
+inline float PrintOneElement(const Eigen::half& h) {
+  return static_cast<float>(h);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
-                 int shape_size, T* data, int64* data_index, string* result) {
+void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+                 int64 limit, int shape_size, const T* data, int64* data_index,
+                 string* result) {
   if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
@@ -895,7 +910,7 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
     for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) return;
       if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, data[(*data_index)++]);
+      strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }
     return;
   }
@@ -926,7 +941,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, array[i]);
+      strings::StrAppend(&ret, PrintOneElement(array[i]));
     }
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
@@ -1024,9 +1039,8 @@ StringPiece Tensor::tensor_data() const {
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {
-  CHECK_NE(nullptr, buf_);
-  CHECK_NE(nullptr, b.buf_);
-  return buf_->root_buffer() == b.buf_->root_buffer();
+  return buf_ != nullptr && b.buf_ != nullptr &&
+         buf_->root_buffer() == b.buf_->root_buffer();
 }
 
 string Tensor::DebugString() const {

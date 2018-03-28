@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {

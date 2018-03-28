@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <random>
@@ -84,6 +85,10 @@ class HloModule {
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
+  // Performs a deep clone of the computation, by recursively cloning all
+  // the called computations as well.
+  HloComputation* DeepCloneComputation(HloComputation* computation);
+
   // Return a pointer to the entry computation of the module..
   const HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
@@ -98,7 +103,7 @@ class HloModule {
     return config_.mutable_entry_computation_layout();
   }
 
-  ComputationLayout entry_computation_layout() const {
+  const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
 
@@ -182,11 +187,6 @@ class HloModule {
   // Returns a randomly generated uint64.
   uint64 RandomNew64() const;
 
-  // Returns the unique name for a computation in this module.
-  string GetUniqueCompuationName(const string& prefix) {
-    return computation_name_uniquer_.GetUniqueName(prefix);
-  }
-
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
 
@@ -200,6 +200,10 @@ class HloModule {
   // Returns the number of unique intruction ids given out.  All ids up to
   // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
   int NumUniqueInstructionIds() const { return next_unique_id_; }
+
+  // Returns an id that is unique to this module across all modules created over
+  // the lifetime of this process.
+  int unique_id() const { return unique_id_; }
 
  private:
   HloComputation* AddComputationInternal(
@@ -227,6 +231,11 @@ class HloModule {
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
   int next_unique_id_ = 0;
+
+  // Used to keep track of the next unique module id that should be assigned.
+  static std::atomic<int> next_unique_module_id_;
+  // A unique id to label modules with.
+  int unique_id_;
 };
 
 }  // namespace xla

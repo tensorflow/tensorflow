@@ -106,8 +106,8 @@ class TfLiteDriver::Expectation {
       if (error_is_large) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": " << reference
-                    << " != " << computed << std::endl;
+          std::cerr << "  index " << i << ": got " << computed
+                    << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -203,6 +203,10 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
+  if (expected_output_.count(id) != 0) {
+    fprintf(stderr, "Overriden expectation for tensor %d\n", id);
+    Invalidate("Overriden expectation");
+  }
   expected_output_[id].reset(new Expectation);
   switch (tensor->type) {
     case kTfLiteFloat32:

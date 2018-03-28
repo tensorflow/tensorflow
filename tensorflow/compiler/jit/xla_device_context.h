@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/jit/xla_tensor_info.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -49,7 +50,9 @@ class XlaDeviceAllocator : public Allocator {
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(perftools::gputools::Stream* stream);
+  explicit XlaTransferManager(perftools::gputools::Stream* stream,
+                              XlaTensorInfoManager* tensor_info_manager,
+                              bool transfer_as_literal);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
@@ -62,6 +65,10 @@ class XlaTransferManager {
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
   perftools::gputools::Stream* stream_;
+  // The tensor info manager, for access to sideband information about tensors.
+  XlaTensorInfoManager* tensor_info_manager_;
+  // True if we must use XLA's TransferManager for correct device transfers.
+  bool transfer_as_literal_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -69,7 +76,9 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(perftools::gputools::Stream* stream);
+  explicit XlaDeviceContext(perftools::gputools::Stream* stream,
+                            XlaTensorInfoManager* tensor_info_manager,
+                            bool transfer_as_literal);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,

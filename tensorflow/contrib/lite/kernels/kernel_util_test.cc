@@ -30,6 +30,8 @@ class KernelUtilTest : public ::testing::Test {
 
     tensor1_.dims = nullptr;
     tensor2_.dims = nullptr;
+    tensor1_.allocation_type = kTfLiteMmapRo;
+    tensor2_.allocation_type = kTfLiteMmapRo;
   }
   ~KernelUtilTest() {
     TfLiteTensorFree(&tensor1_);

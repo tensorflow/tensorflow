@@ -18,13 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
-from tensorflow.python.keras._impl.keras.engine.topology import Input
-from tensorflow.python.keras._impl.keras.engine.topology import InputLayer
-from tensorflow.python.keras._impl.keras.engine.topology import InputSpec
-from tensorflow.python.keras._impl.keras.engine.topology import Layer
+from tensorflow.python.keras._impl.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
+from tensorflow.python.keras._impl.keras.engine.input_layer import Input
+from tensorflow.python.keras._impl.keras.engine.input_layer import InputLayer
+from tensorflow.python.keras._impl.keras.engine.network import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.engine.training import Model
-
-
-# Note: topology.Node is an internal class,
-# it isn't meant to be used by Keras users.

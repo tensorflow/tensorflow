@@ -27,7 +27,10 @@ namespace tpu {
 // The following tools are supported:
 //   - Trace viewer
 //   - Op profile
-//   - HLO computation graph
+//   - Input pipeline analyzer
+//   - Overview page
+// Note: this function creates a directory even when all fields in
+// ProfileResponse are unset/empty.
 Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
                                   const ProfileResponse& response,
                                   std::ostream* os);

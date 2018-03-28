@@ -125,14 +125,14 @@ an operation:
   @{tf.Tensor} accepts an optional `name` argument. For example,
   `tf.constant(42.0, name="answer")` creates a new @{tf.Operation} named
   `"answer"` and returns a @{tf.Tensor} named `"answer:0"`. If the default graph
-  already contained an operation named `"answer"`, the TensorFlow would append
+  already contains an operation named `"answer"`, then TensorFlow would append
   `"_1"`, `"_2"`, and so on to the name, in order to make it unique.
 
 * The @{tf.name_scope} function makes it possible to add a **name scope** prefix
   to all operations created in a particular context. The current name scope
   prefix is a `"/"`-delimited list of the names of all active @{tf.name_scope}
   context managers. If a name scope has already been used in the current
-  context, TensorFlow appens `"_1"`, `"_2"`, and so on. For example:
+  context, TensorFlow appends `"_1"`, `"_2"`, and so on. For example:
 
   ```python
   c_0 = tf.constant(0, name="c")  # => operation named "c"
@@ -210,9 +210,8 @@ with tf.device("/device:GPU:0"):
   # Operations created in this context will be pinned to the GPU.
   result = tf.matmul(weights, img)
 ```
-
-If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed
-configuration}, you might specify the job name and task ID to place variables on
+If you are deploying TensorFlow in a @{$deploy/distributed$typical distributed configuration},
+you might specify the job name and task ID to place variables on
 a task in the parameter server job (`"/job:ps"`), and the other operations on
 task in the worker job (`"/job:worker"`):
 
@@ -336,20 +335,20 @@ described below.
   controls the behavior of the session. For example, some of the configuration
   options include:
 
-  * `allow_soft_placement`. Set this to `True` to enable a "soft" device
+    * `allow_soft_placement`. Set this to `True` to enable a "soft" device
     placement algorithm, which ignores @{tf.device} annotations that attempt
     to place CPU-only operations on a GPU device, and places them on the CPU
     instead.
 
-  * `cluster_def`. When using distributed TensorFlow, this option allows you
+    * `cluster_def`. When using distributed TensorFlow, this option allows you
     to specify what machines to use in the computation, and provide a mapping
     between job names, task indices, and network addresses. See
     @{tf.train.ClusterSpec.as_cluster_def} for details.
 
-  * `graph_options.optimizer_options`. Provides control over the optimizations
+    * `graph_options.optimizer_options`. Provides control over the optimizations
     that TensorFlow performs on your graph before executing it.
 
-  * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
+    * `gpu_options.allow_growth`. Set this to `True` to change the GPU memory
     allocator so that it gradually increases the amount of memory allocated,
     rather than allocating most of the memory at startup.
 

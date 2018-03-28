@@ -20,33 +20,52 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 # Subdirectory name containing the asset files.
 ASSETS_DIRECTORY = "assets"
+tf_export("saved_model.constants.ASSETS_DIRECTORY").export_constant(
+    __name__, "ASSETS_DIRECTORY")
 
 # CollectionDef key containing SavedModel assets.
 ASSETS_KEY = "saved_model_assets"
+tf_export("saved_model.constants.ASSETS_KEY").export_constant(
+    __name__, "ASSETS_KEY")
 
 # CollectionDef key for the legacy init op.
 LEGACY_INIT_OP_KEY = "legacy_init_op"
+tf_export("saved_model.constants.LEGACY_INIT_OP_KEY").export_constant(
+    __name__, "LEGACY_INIT_OP_KEY")
 
 # CollectionDef key for the SavedModel main op.
 MAIN_OP_KEY = "saved_model_main_op"
+tf_export("saved_model.constants.MAIN_OP_KEY").export_constant(
+    __name__, "MAIN_OP_KEY")
 
 # Schema version for SavedModel.
 SAVED_MODEL_SCHEMA_VERSION = 1
+tf_export("saved_model.constants.SAVED_MODEL_SCHEMA_VERSION").export_constant(
+    __name__, "SAVED_MODEL_SCHEMA_VERSION")
 
 # File name for SavedModel protocol buffer.
 SAVED_MODEL_FILENAME_PB = "saved_model.pb"
+tf_export("saved_model.constants.SAVED_MODEL_FILENAME_PB").export_constant(
+    __name__, "SAVED_MODEL_FILENAME_PB")
 
 # File name for text version of SavedModel protocol buffer.
 SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
+tf_export("saved_model.constants.SAVED_MODEL_FILENAME_PBTXT").export_constant(
+    __name__, "SAVED_MODEL_FILENAME_PBTXT")
 
 # Subdirectory name containing the variables/checkpoint files.
 VARIABLES_DIRECTORY = "variables"
+tf_export("saved_model.constants.VARIABLES_DIRECTORY").export_constant(
+    __name__, "VARIABLES_DIRECTORY")
 
 # File name used for variables.
 VARIABLES_FILENAME = "variables"
+tf_export("saved_model.constants.VARIABLES_FILENAME").export_constant(
+    __name__, "VARIABLES_FILENAME")
 
 
 _allowed_symbols = [

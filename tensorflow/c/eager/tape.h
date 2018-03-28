@@ -152,6 +152,8 @@ class GradientTape {
                          gtl::ArraySlice<Gradient*> output_gradients,
                          std::vector<Gradient*>* result);
 
+  bool IsPersistent() const { return persistent_; }
+
  private:
   TensorTape tensor_tape_;
   OpTape<BackwardFunction> op_tape_;

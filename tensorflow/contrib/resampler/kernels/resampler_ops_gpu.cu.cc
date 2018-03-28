@@ -31,18 +31,15 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace {
 
-#define GET_DATA_POINT(x, y)                   \
-  data[batch_id * data_batch_stride +          \
-       data_channels * (y * data_width + x) +  \
+#define GET_DATA_POINT(x, y)                                                 \
+  data[batch_id * data_batch_stride + data_channels * (y * data_width + x) + \
        chan]
 
 template <typename T>
 __global__ void Resampler2DKernel(const T* __restrict__ data,
                                   const T* __restrict__ warp,
-                                  T* __restrict__ output,
-                                  const int batch_size,
-                                  const int data_height,
-                                  const int data_width,
+                                  T* __restrict__ output, const int batch_size,
+                                  const int data_height, const int data_width,
                                   const int data_channels,
                                   const int num_sampling_points) {
   const int output_data_size = batch_size * num_sampling_points * data_channels;
@@ -75,10 +72,8 @@ __global__ void Resampler2DKernel(const T* __restrict__ data,
     // The effect is that the sampled signal smoothly goes to 0 outside
     // the original input domain, rather than presenting a jump
     // discontinuity at the image boundaries.
-    if (x > static_cast<T>(-1.0) &&
-        y > static_cast<T>(-1.0) &&
-        x < static_cast<T>(data_width) &&
-        y < static_cast<T>(data_height)) {
+    if (x > static_cast<T>(-1.0) && y > static_cast<T>(-1.0) &&
+        x < static_cast<T>(data_width) && y < static_cast<T>(data_height)) {
       // Precompute floor (f) and ceil (c) values for x and y.
       const int fx = std::floor(static_cast<float>(x));
       const int fy = std::floor(static_cast<float>(y));
@@ -87,21 +82,20 @@ __global__ void Resampler2DKernel(const T* __restrict__ data,
       const T dx = static_cast<T>(cx) - x;
       const T dy = static_cast<T>(cy) - y;
 
-      const T img_fxfy = (fx >= 0 && fy >= 0)
-                         ? dx * dy * GET_DATA_POINT(fx, fy)
-                         : zero;
+      const T img_fxfy =
+          (fx >= 0 && fy >= 0) ? dx * dy * GET_DATA_POINT(fx, fy) : zero;
 
       const T img_cxcy = (cx <= data_width - 1 && cy <= data_height - 1)
-                         ? (one - dx) * (one - dy) * GET_DATA_POINT(cx, cy)
-                         : zero;
+                             ? (one - dx) * (one - dy) * GET_DATA_POINT(cx, cy)
+                             : zero;
 
       const T img_fxcy = (fx >= 0 && cy <= data_height - 1)
-                         ? dx * (one - dy) * GET_DATA_POINT(fx, cy)
-                         : zero;
+                             ? dx * (one - dy) * GET_DATA_POINT(fx, cy)
+                             : zero;
 
       const T img_cxfy = (cx <= data_width - 1 && fy >= 0)
-                         ? (one - dx) * dy * GET_DATA_POINT(cx, fy)
-                         : zero;
+                             ? (one - dx) * dy * GET_DATA_POINT(cx, fy)
+                             : zero;
 
       output[out_index] = img_fxfy + img_cxcy + img_fxcy + img_cxfy;
     } else {
@@ -115,24 +109,20 @@ __global__ void Resampler2DKernel(const T* __restrict__ data,
 namespace functor {
 
 template <typename T>
-struct Resampler2DFunctor<GPUDevice, T>{
-  void operator ()(::tensorflow::OpKernelContext* ctx,
-                   const GPUDevice& d,
-                   const T* __restrict__ data,
-                   const T* __restrict__ warp,
-                   T* __restrict__ output,
-                   const int batch_size,
-                   const int data_height,
-                   const int data_width,
-                   const int data_channels,
-                   const int num_sampling_points) {
-  const int output_data_size = batch_size * num_sampling_points * data_channels;
-  ::tensorflow::CudaLaunchConfig config =
-      ::tensorflow::GetCudaLaunchConfig(output_data_size, d);
-  Resampler2DKernel<T>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          data, warp, output, batch_size, data_height, data_width,
-          data_channels, num_sampling_points);
+struct Resampler2DFunctor<GPUDevice, T> {
+  void operator()(::tensorflow::OpKernelContext* ctx, const GPUDevice& d,
+                  const T* __restrict__ data, const T* __restrict__ warp,
+                  T* __restrict__ output, const int batch_size,
+                  const int data_height, const int data_width,
+                  const int data_channels, const int num_sampling_points) {
+    const int output_data_size =
+        batch_size * num_sampling_points * data_channels;
+    ::tensorflow::CudaLaunchConfig config =
+        ::tensorflow::GetCudaLaunchConfig(output_data_size, d);
+    Resampler2DKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            data, warp, output, batch_size, data_height, data_width,
+            data_channels, num_sampling_points);
   }
 };
 
@@ -145,26 +135,20 @@ template struct Resampler2DFunctor<GPUDevice, double>;
 
 namespace {
 
-#define UPDATE_GRAD_DATA_POINT(x, y, v)                  \
-  atomicAdd(grad_data + (batch_id * data_batch_stride +  \
-            data_channels * (y * data_width + x) +       \
-            chan),                                       \
+#define UPDATE_GRAD_DATA_POINT(x, y, v)                                \
+  atomicAdd(grad_data + (batch_id * data_batch_stride +                \
+                         data_channels * (y * data_width + x) + chan), \
             v)
 
-
 template <typename T>
-__global__ void ResamplerGrad2DKernel(const T* __restrict__ data,
-                                      const T* __restrict__ warp,
-                                      const T* __restrict__ grad_output,
-                                      T* __restrict__ grad_data,
-                                      T* __restrict__ grad_warp,
-                                      const int batch_size,
-                                      const int data_height,
-                                      const int data_width,
-                                      const int data_channels,
-                                      const int num_sampling_points) {
-  const int resampler_output_size = batch_size * num_sampling_points *
-      data_channels;
+__global__ void ResamplerGrad2DKernel(
+    const T* __restrict__ data, const T* __restrict__ warp,
+    const T* __restrict__ grad_output, T* __restrict__ grad_data,
+    T* __restrict__ grad_warp, const int batch_size, const int data_height,
+    const int data_width, const int data_channels,
+    const int num_sampling_points) {
+  const int resampler_output_size =
+      batch_size * num_sampling_points * data_channels;
   CUDA_1D_KERNEL_LOOP(index, resampler_output_size) {
     const int out_index = index;
 
@@ -199,10 +183,8 @@ __global__ void ResamplerGrad2DKernel(const T* __restrict__ data,
     // The effect is that the sampled signal smoothly goes to 0 outside
     // the original input domain, rather than presenting a jump
     // discontinuity at the image boundaries.
-    if (x > static_cast<T>(-1.0) &&
-        y > static_cast<T>(-1.0) &&
-        x < static_cast<T>(data_width) &&
-        y < static_cast<T>(data_height)) {
+    if (x > static_cast<T>(-1.0) && y > static_cast<T>(-1.0) &&
+        x < static_cast<T>(data_width) && y < static_cast<T>(data_height)) {
       // Precompute floor (f) and ceil (c) values for x and y.
       const int fx = std::floor(static_cast<float>(x));
       const int fy = std::floor(static_cast<float>(y));
@@ -211,21 +193,17 @@ __global__ void ResamplerGrad2DKernel(const T* __restrict__ data,
       const T dx = static_cast<T>(cx) - x;
       const T dy = static_cast<T>(cy) - y;
 
-      const T img_fxfy = (fx >= 0 && fy >= 0)
-                         ? GET_DATA_POINT(fx, fy)
-                         : zero;
+      const T img_fxfy = (fx >= 0 && fy >= 0) ? GET_DATA_POINT(fx, fy) : zero;
 
       const T img_cxcy = (cx <= data_width - 1 && cy <= data_height - 1)
-                         ? GET_DATA_POINT(cx, cy)
-                         : zero;
+                             ? GET_DATA_POINT(cx, cy)
+                             : zero;
 
-      const T img_fxcy = (fx >= 0 && cy <= data_height - 1)
-                         ? GET_DATA_POINT(fx, cy)
-                         : zero;
+      const T img_fxcy =
+          (fx >= 0 && cy <= data_height - 1) ? GET_DATA_POINT(fx, cy) : zero;
 
-      const T img_cxfy = (cx <= data_width - 1 && fy >= 0)
-                         ? GET_DATA_POINT(cx, fy)
-                         : zero;
+      const T img_cxfy =
+          (cx <= data_width - 1 && fy >= 0) ? GET_DATA_POINT(cx, fy) : zero;
 
       // Update partial gradients wrt relevant warp field entries
       atomicAdd(grad_warp + warp_id_x,
@@ -241,7 +219,7 @@ __global__ void ResamplerGrad2DKernel(const T* __restrict__ data,
       }
       if (cx <= data_width - 1 && cy <= data_height - 1) {
         UPDATE_GRAD_DATA_POINT(cx, cy,
-                               grad_output_value  * (one - dx) * (one - dy));
+                               grad_output_value * (one - dx) * (one - dy));
       }
       if (fx >= 0 && cy <= data_height - 1) {
         UPDATE_GRAD_DATA_POINT(fx, cy, grad_output_value * dx * (one - dy));
@@ -261,43 +239,37 @@ __global__ void ResamplerGrad2DKernel(const T* __restrict__ data,
 namespace functor {
 
 template <typename T>
-struct ResamplerGrad2DFunctor<GPUDevice, T>{
-  void operator ()(::tensorflow::OpKernelContext* ctx,
-                   const GPUDevice& d,
-                   const T* __restrict__ data,
-                   const T* __restrict__ warp,
-                   const T* __restrict__ grad_output,
-                   T* __restrict__ grad_data,
-                   T* __restrict__ grad_warp,
-                   const int batch_size,
-                   const int data_height,
-                   const int data_width,
-                   const int data_channels,
-                   const int num_sampling_points) {
-  // Set gradients to 0, because the kernel incrementally updates the
-  // tensor entries by adding partial contributions.
-  const int grad_warp_size = batch_size * num_sampling_points * 2;
-  const int grad_data_size = batch_size * data_height * data_width *
-      data_channels;
+struct ResamplerGrad2DFunctor<GPUDevice, T> {
+  void operator()(::tensorflow::OpKernelContext* ctx, const GPUDevice& d,
+                  const T* __restrict__ data, const T* __restrict__ warp,
+                  const T* __restrict__ grad_output, T* __restrict__ grad_data,
+                  T* __restrict__ grad_warp, const int batch_size,
+                  const int data_height, const int data_width,
+                  const int data_channels, const int num_sampling_points) {
+    // Set gradients to 0, because the kernel incrementally updates the
+    // tensor entries by adding partial contributions.
+    const int grad_warp_size = batch_size * num_sampling_points * 2;
+    const int grad_data_size =
+        batch_size * data_height * data_width * data_channels;
 
-  ::tensorflow::CudaLaunchConfig config =
-     ::tensorflow::GetCudaLaunchConfig(grad_warp_size, d);
-  ::tensorflow::SetZero
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          grad_warp_size, grad_warp);
+    ::tensorflow::CudaLaunchConfig config =
+        ::tensorflow::GetCudaLaunchConfig(grad_warp_size, d);
+    ::tensorflow::
+        SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            grad_warp_size, grad_warp);
 
-  config = ::tensorflow::GetCudaLaunchConfig(grad_data_size, d);
-  ::tensorflow::SetZero
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          grad_data_size, grad_data);
+    config = ::tensorflow::GetCudaLaunchConfig(grad_data_size, d);
+    ::tensorflow::
+        SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            grad_data_size, grad_data);
 
-  const int resampler_output_size = batch_size * num_sampling_points *
-      data_channels;
-  config = ::tensorflow::GetCudaLaunchConfig(resampler_output_size, d);
-  ResamplerGrad2DKernel<T>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          data, warp, grad_output, grad_data, grad_warp, batch_size,
-          data_height, data_width, data_channels, num_sampling_points);
+    const int resampler_output_size =
+        batch_size * num_sampling_points * data_channels;
+    config = ::tensorflow::GetCudaLaunchConfig(resampler_output_size, d);
+    ResamplerGrad2DKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            data, warp, grad_output, grad_data, grad_warp, batch_size,
+            data_height, data_width, data_channels, num_sampling_points);
   }
 };
 

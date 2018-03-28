@@ -52,6 +52,8 @@ class GraphOptimizer {
           shape_map,
       const std::function<bool(const Node*)>& cse_consider_fn = nullptr);
 
+  const OptimizerOptions& options() { return opts_; }
+
  private:
   OptimizerOptions opts_;
 

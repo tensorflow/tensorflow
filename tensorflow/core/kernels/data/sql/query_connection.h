@@ -19,6 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class IteratorContext;
+
 namespace sql {
 // This interface allows a user to connect to a database, execute a query, and
 // iterate over the result set, putting the results into an output tensor.
@@ -56,7 +58,7 @@ class QueryConnection {
   // If there are no more rows in the result set, then instead `true` will be
   // stored in `*end_of_sequence`, and the content of `*out_tensors` will be
   // undefined.
-  virtual Status GetNext(std::vector<Tensor>* out_tensors,
+  virtual Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) = 0;
 };
 

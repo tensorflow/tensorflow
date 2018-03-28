@@ -2,6 +2,7 @@ path: "tensorflow.train.ProximalAdagradOptimizer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.proximal_adagrad.ProximalAdagradOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "GATE_GRAPH"

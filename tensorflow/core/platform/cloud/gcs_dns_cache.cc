@@ -18,9 +18,9 @@ limitations under the License.
 #include <arpa/inet.h>
 #include <netdb.h>
 #else
+#include <Windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <Windows.h>
 #endif
 #include <sys/types.h>
 

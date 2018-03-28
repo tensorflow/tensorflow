@@ -99,4 +99,14 @@ void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
   }
 }
 
+void SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
+  mutex_lock l(graph->mu);
+  graph->refiner.set_require_shape_inference_fns(require);
+}
+
+void ExtendSession(TF_Session* session, TF_Status* status) {
+  ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
+}
+
 }  // namespace tensorflow

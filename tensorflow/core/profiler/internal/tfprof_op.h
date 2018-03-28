@@ -41,8 +41,7 @@ namespace tfprof {
 // to input ops.
 class TFOp : public TFMultiShow {
  public:
-  explicit TFOp()
-      : TFMultiShow() {}
+  explicit TFOp() : TFMultiShow() {}
   ~TFOp() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -51,7 +50,7 @@ class TFOp : public TFMultiShow {
 
  private:
   const ShowMultiNode* ShowInternal(const Options& opts,
-                                   Timeline* timeline) override;
+                                    Timeline* timeline) override;
 
   int64 SearchRoot(const std::vector<OpNode*> nodes,
                    const std::vector<string>& regexes);

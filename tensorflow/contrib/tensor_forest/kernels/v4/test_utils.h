@@ -27,9 +27,7 @@ class TestableInputTarget : public StoredInputTarget<std::vector<float>> {
       : StoredInputTarget(new std::vector<float>(t), new std::vector<float>(w),
                           num_t) {}
 
-  int NumItems() const {
-    return target_->size();
-  }
+  int NumItems() const { return target_->size(); }
 
   int32 GetTargetAsClassIndex(int example_index,
                               int target_index) const override {
@@ -50,7 +48,6 @@ class TestableInputTarget : public StoredInputTarget<std::vector<float>> {
     return (*target_)[example_index * num_targets_ + target_index];
   }
 };
-
 
 class TestableDataSet : public TensorDataSet {
  public:

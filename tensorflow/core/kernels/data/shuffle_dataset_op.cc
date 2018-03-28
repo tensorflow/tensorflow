@@ -104,13 +104,12 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
               break;
             }
             if (first_call && dataset()->count_ == -1) {
-              // If the first call to GetNext() fails because the end of
-              // sequence has been reached, we return an OutOfRange error to
-              // terminate the iteration. (Otherwise, this iterator may loop
-              // infinitely and never produce a value.)
+              // If the first call to GetNext() fails because the end
+              // of sequence has been reached, we terminate the
+              // iteration immediately. (Otherwise, this iterator
+              // would loop infinitely and never produce a value.)
               *end_of_sequence = true;
-              return errors::OutOfRange(
-                  "Attempted to repeat an empty dataset infinitely.");
+              return Status::OK();
             }
             epoch_++;
             int64 n = slices_.back()->end;

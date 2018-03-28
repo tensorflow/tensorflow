@@ -8,6 +8,7 @@ load(
     "//tensorflow/contrib/lite:build_def.bzl",
     "gen_zipped_test_files",
 )
+load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -25,6 +26,7 @@ gen_zipped_test_files(
         "conv.zip",
         "depthwiseconv.zip",
         "div.zip",
+        "exp.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
         "gather.zip",
@@ -32,10 +34,13 @@ gen_zipped_test_files(
         "l2_pool.zip",
         "l2norm.zip",
         "local_response_norm.zip",
+        "log_softmax.zip",
         "max_pool.zip",
+        "maximum.zip",
         "mean.zip",
         "mul.zip",
         "pad.zip",
+        "prelu.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",
@@ -45,9 +50,11 @@ gen_zipped_test_files(
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "split.zip",
         "squeeze.zip",
         "strided_slice.zip",
         "sub.zip",
+        "topk.zip",
         "transpose.zip",
     ],
 )
@@ -117,6 +124,21 @@ cc_test(
     srcs = ["split_test.cc"],
     deps = [
         ":split",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "join",
+    hdrs = ["join.h"],
+)
+
+cc_test(
+    name = "join_test",
+    size = "small",
+    srcs = ["join_test.cc"],
+    deps = [
+        ":join",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -195,9 +217,128 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "tf_driver",
+    srcs = ["tf_driver.cc"],
+    hdrs = ["tf_driver.h"],
+    deps = [
+        ":join",
+        ":split",
+        ":test_runner",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_test(
+    name = "tf_driver_test",
+    size = "small",
+    srcs = ["tf_driver_test.cc"],
+    data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
+    tags = [
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":tf_driver",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "generate_testspec",
+    testonly = 1,
+    srcs = ["generate_testspec.cc"],
+    hdrs = ["generate_testspec.h"],
+    deps = [
+        ":join",
+        ":split",
+        ":tf_driver",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "generate_testspec_test",
+    size = "small",
+    srcs = ["generate_testspec_test.cc"],
+    tags = [
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":generate_testspec",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tflite_diff_util",
+    testonly = 1,
+    srcs = ["tflite_diff_util.cc"],
+    hdrs = ["tflite_diff_util.h"],
+    deps = [
+        ":generate_testspec",
+        ":parse_testdata_lib",
+        ":split",
+        ":tflite_driver",
+        ":util",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+    ],
+)
+
+cc_library(
+    name = "tflite_diff_flags",
+    testonly = 1,
+    hdrs = ["tflite_diff_flags.h"],
+    deps = [
+        ":split",
+        ":tflite_diff_util",
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "tflite_diff_example_test",
+    size = "medium",
+    srcs = ["tflite_diff_example_test.cc"],
+    args = [
+        "--tensorflow_model=third_party/tensorflow/contrib/lite/testdata/multi_add.pb",
+        "--tflite_model=third_party/tensorflow/contrib/lite/testdata/multi_add.bin",
+        "--input_layer=a,b,c,d",
+        "--input_layer_type=float,float,float,float",
+        "--input_layer_shape=1,3,4,3:1,3,4,3:1,3,4,3:1,3,4,3",
+        "--output_layer=x,y",
+    ],
+    data = [
+        "//tensorflow/contrib/lite:testdata/multi_add.bin",
+        "//tensorflow/contrib/lite:testdata/multi_add.pb",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":tflite_diff_flags",
+        ":tflite_diff_util",
+    ],
+)
+
 tf_cc_test(
     name = "generated_examples_zip_test",
-    size = "medium",
+    size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
         "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
@@ -206,8 +347,11 @@ tf_cc_test(
         "--unzip_binary_path=/usr/bin/unzip",
     ],
     data = [":optest"],
-    shard_count = 10,
-    tags = ["no_oss"],
+    shard_count = 20,
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
@@ -241,3 +385,5 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+tflite_portable_test_suite()

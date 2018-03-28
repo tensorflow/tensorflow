@@ -64,7 +64,6 @@ class SingleMachine : public Cluster {
 
   Status ClearAllocatorStats() const;
 
-  const int num_gpus_;
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
   string last_graph_id_;

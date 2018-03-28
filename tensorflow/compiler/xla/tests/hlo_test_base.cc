@@ -115,6 +115,13 @@ StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
   return test_runner_.Execute(std::move(module), arguments);
 }
 
+StatusOr<std::unique_ptr<Literal>> HloTestBase::ExecuteNoHloPasses(
+    std::unique_ptr<HloModule> module,
+    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+  return test_runner_.Execute(std::move(module), arguments,
+                              /*run_hlo_passes=*/false);
+}
+
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<Literal*> arguments) {
@@ -140,15 +147,10 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
   return std::move(reference_module);
 }
 
-template <typename LiteralPtr>
 StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor) {
-  static_assert(
-      std::is_same<Literal*, LiteralPtr>::value ||
-          std::is_same<std::unique_ptr<Literal>, LiteralPtr>::value,
-      "The LiteralPtr type only accepts Literal* or std::unique_ptr<Literal>.");
   TF_RETURN_IF_ERROR(
       VerifyHloModule(*test_runner_.backend().platform(), module.get()));
   TF_ASSIGN_OR_RETURN(auto reference_module,
@@ -165,9 +167,8 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                                       error);
 }
 
-template <typename LiteralPtr>
 ::testing::AssertionResult HloTestBase::RunAndCompare(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -179,9 +180,8 @@ template <typename LiteralPtr>
   return result.ValueOrDie();
 }
 
-template <typename LiteralPtr>
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
-    std::unique_ptr<HloModule> module, const ArraySlice<LiteralPtr> arguments,
+    std::unique_ptr<HloModule> module, const ArraySlice<Literal*> arguments,
     const optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto result =
@@ -198,8 +198,14 @@ template <typename LiteralPtr>
     const std::function<void(HloModule*)>& reference_preprocessor) {
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
-  return RunAndCompare<std::unique_ptr<Literal>>(
-      std::move(module), fake_arguments, error, reference_preprocessor);
+
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+
+  return RunAndCompare(std::move(module), fake_argument_ptrs, error,
+                       reference_preprocessor);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
@@ -207,8 +213,13 @@ template <typename LiteralPtr>
     const std::function<void(HloModule*)>& reference_preprocessor) {
   const auto& fake_arguments =
       MakeFakeArguments(module.get()).ConsumeValueOrDie();
-  return RunAndCompareNoHloPasses<std::unique_ptr<Literal>>(
-      std::move(module), fake_arguments, error, reference_preprocessor);
+  std::vector<Literal*> fake_argument_ptrs;
+  c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
+
+  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
+                                  reference_preprocessor);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
@@ -230,7 +241,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
@@ -258,13 +269,35 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
   }
   return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
                                   reference_preprocessor);
+}
+
+HloComputation* HloTestBase::FindComputation(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  auto it = c_find_if(module->computations(),
+                      [&](HloComputation* c) { return c->name() == name; });
+  if (it == module->computations().end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             tensorflow::StringPiece name) {
+  for (const HloComputation* c : module->computations()) {
+    auto it = c_find_if(c->instructions(),
+                        [&](HloInstruction* i) { return i->name() == name; });
+    if (it != c->instructions().end()) {
+      return *it;
+    }
+  }
+  return nullptr;
 }
 
 Backend& HloTestBase::backend() { return test_runner_.backend(); }

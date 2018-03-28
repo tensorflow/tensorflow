@@ -63,9 +63,19 @@ class HloModuleConfig {
     return &(*entry_computation_layout_);
   }
 
-  // Sets/returns whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
-  void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
+  // Returns whether to enable HLO-level profiling.
+  bool hlo_profiling_enabled() const {
+    return debug_options_.xla_hlo_profile();
+  }
+
+  // Sets/returns whether this is a "host module".  Host modules are used to
+  // record the data- and control-flow dependencies of host side computation
+  // that communicates with compiled code.  They are used for analysis and
+  // scheduling purposes, but no code is generated.
+  bool is_host_module() const { return is_host_module_; }
+  void set_is_host_module(bool is_host_module) {
+    is_host_module_ = is_host_module;
+  }
 
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
@@ -101,8 +111,8 @@ class HloModuleConfig {
 
   tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
 
-  // Whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled_ = false;
+  // Whether this is a 'host module'.
+  bool is_host_module_ = false;
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;

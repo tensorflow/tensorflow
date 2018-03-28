@@ -25,10 +25,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -569,6 +572,82 @@ class OrthogonalInitializerTest(test.TestCase):
           else:
             self.assertAllClose(
                 np.dot(t, t.T), np.eye(t.shape[0]), rtol=tol, atol=tol)
+
+
+class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = init_ops.convolutional_delta_orthogonal()
+    self.assertFalse(duplicated_initializer(self, init, 1, (3, 3, 10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.convolutional_delta_orthogonal,
+        dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init1 = init_ops.convolutional_delta_orthogonal()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[3, 3, 6, 5])
+
+  def testGain(self):
+    shape = (3, 3, 10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(gain=3.14,
+                                                      seed=1, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testShapesValues(self):
+    for dtype in [dtypes.float32]:
+      for kernel_size in [[3], [8], [3, 5], [2, 4], [3, 3, 3], [2, 2, 2]]:
+        tol = 1e-2
+        # Check orthogonality by computing the 2-norms of the inputs and ouputs.
+        if len(kernel_size) == 1:
+          shape = [4, 32, 64]
+          convolution = convolutional.conv1d
+        elif len(kernel_size) == 2:
+          convolution = convolutional.conv2d
+          shape = [4, 32, 32, 64]
+        else:
+          shape = [4, 16, 16, 16, 64]
+          convolution = convolutional.conv3d
+        inputs = random_ops.random_normal(shape, dtype=dtype)
+        inputs_2norm = linalg_ops.norm(inputs)
+        outputs = convolution(
+            inputs, padding="same", filters=128,
+            kernel_size=kernel_size, use_bias=False,
+            kernel_initializer=init_ops.convolutional_delta_orthogonal(
+                gain=3.14))
+        outputs_shape = shape[0:-1] + [128]
+        outputs_2norm = linalg_ops.norm(outputs)
+        my_ops = variables.global_variables_initializer()
+        with self.test_session(use_gpu=True) as sess:
+          sess.run(my_ops)
+          # Check the shape of the outputs
+          t = outputs.eval()
+          self.assertAllEqual(t.shape, outputs_shape)
+          # Check isometry of the delta-orthogonal kernel.
+          self.assertAllClose(
+              sess.run(inputs_2norm)/np.sqrt(np.prod(shape)),
+              sess.run(outputs_2norm)/(np.sqrt(np.prod(shape))*np.sqrt(3.14)),
+              rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

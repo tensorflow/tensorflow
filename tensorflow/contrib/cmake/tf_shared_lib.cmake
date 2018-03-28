@@ -46,7 +46,11 @@ if(WIN32)
       $<TARGET_FILE:tf_protos_cc>
   )
 
-  set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+  else()
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
+  endif()
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
   add_custom_command(TARGET tensorflow_static POST_BUILD
@@ -117,8 +121,7 @@ if(WIN32)
 endif(WIN32)
 
 target_include_directories(tensorflow PUBLIC 
-    $<INSTALL_INTERFACE:include/>
-    $<INSTALL_INTERFACE:include/external/nsync/public>)
+    $<INSTALL_INTERFACE:include/>)
 
 # Add all targets to build-tree export set
 export(TARGETS tensorflow
@@ -192,10 +195,6 @@ install(DIRECTORY ${tensorflow_source_dir}/tensorflow/stream_executor/
 # google protobuf headers
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src/google/
         DESTINATION include/google
-        FILES_MATCHING PATTERN "*.h")
-# nsync headers
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/
-        DESTINATION include/external/nsync
         FILES_MATCHING PATTERN "*.h")
 # Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/Eigen/

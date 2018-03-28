@@ -177,6 +177,22 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
+StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GlobalData> data,
+      Execute(computation, arguments, execution_options, execution_profile));
+
+  const Shape* shape_with_output_layout = nullptr;
+  if (execution_options && execution_options->has_shape_with_output_layout()) {
+    shape_with_output_layout = &execution_options->shape_with_output_layout();
+  }
+  return Transfer(*data, shape_with_output_layout);
+}
+
 StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
   LoadComputationSnapshotRequest request;
   *request.mutable_module() = module;
@@ -226,6 +242,41 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
           ExecutionStatsAsString(computation, response.profile()));
       VLOG(1) << execution_stats;
     }
+  }
+
+  return MakeUnique<GlobalData>(stub_, response.output());
+}
+
+StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  ExecuteGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
+    *request.mutable_execution_options() = *execution_options;
+  }
+  for (GlobalData* argument : arguments) {
+    CHECK(argument != nullptr) << "Argument pointers must not be null.";
+    *request.add_arguments() = argument->handle();
+  }
+
+  ExecuteResponse response;
+  VLOG(1) << "making execute request: " << request.ShortDebugString();
+  Status s = stub_->ExecuteGraph(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+
+  if (execution_profile != nullptr) {
+    *execution_profile = response.profile();
+    // TODO(b/74197823): Get execution stats for the graph and VLOG(1) them.
   }
 
   return MakeUnique<GlobalData>(stub_, response.output());

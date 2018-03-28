@@ -9,6 +9,10 @@ load(
     "tf_custom_op_library",
     "tf_gen_op_libs",
 )
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
 
 py_library(
     name = "data",
@@ -17,6 +21,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/contrib/data/python/ops:shuffle_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
@@ -27,13 +32,17 @@ py_library(
 )
 
 tf_custom_op_library(
-    name = "_prefetching_ops.so",
-    srcs = ["ops/prefetching_ops.cc"],
-    deps = ["//tensorflow/contrib/data/kernels:prefetching_kernels"],
+    name = "_dataset_ops.so",
+    srcs = ["ops/dataset_ops.cc"],
+    deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"] +
+           if_static(
+               extra_deps = ["//tensorflow/core:lib_proto_parsing"],
+               otherwise = [],
+           ),
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["prefetching_ops"],
+    op_lib_names = ["dataset_ops"],
 )
 
 filegroup(

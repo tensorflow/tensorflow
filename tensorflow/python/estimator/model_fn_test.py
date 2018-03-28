@@ -72,7 +72,8 @@ class EstimatorSpecTrainTest(test.TestCase):
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
           scaffold=monitored_session.Scaffold(),
-          evaluation_hooks=[_FakeHook()])
+          evaluation_hooks=[_FakeHook()],
+          prediction_hooks=[_FakeHook()])
 
   def testLossNumber(self):
     """Tests that error is raised when loss is a number (not Tensor)."""
@@ -465,7 +466,17 @@ class EstimatorSpecInferTest(test.TestCase):
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
           scaffold=monitored_session.Scaffold(),
-          evaluation_hooks=[_FakeHook()])
+          evaluation_hooks=[_FakeHook()],
+          prediction_hooks=[_FakeHook()])
+
+  def testPredictionHookInvalid(self):
+    with ops.Graph().as_default(), self.test_session():
+      with self.assertRaisesRegexp(
+          TypeError, 'All hooks must be SessionRunHook instances'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.PREDICT,
+            predictions=constant_op.constant(1.),
+            prediction_hooks=[_InvalidHook()])
 
   def testPredictionsMissing(self):
     with ops.Graph().as_default(), self.test_session():

@@ -53,7 +53,8 @@
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
   ```
 
-  Example of how to use tf.contrib.framework.add_arg_scope to enable your function to be called within an arg_scope later:
+  Example of how to use tf.contrib.framework.add_arg_scope to enable your
+  function to be called within an arg_scope later:
 
   @tf.contrib.framework.add_arg_scope
   def conv2d(*args, **kwargs)
@@ -65,11 +66,10 @@ from __future__ import print_function
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
-__all__ = ['arg_scope',
-           'add_arg_scope',
-           'current_arg_scope',
-           'has_arg_scope',
-           'arg_scoped_arguments']
+__all__ = [
+    'arg_scope', 'add_arg_scope', 'current_arg_scope', 'has_arg_scope',
+    'arg_scoped_arguments'
+]
 
 _ARGSTACK = [{}]
 
@@ -142,7 +142,7 @@ def arg_scope(list_ops_or_scope, **kwargs):
   else:
     # Assumes that list_ops_or_scope is a list/tuple of ops with kwargs.
     if not isinstance(list_ops_or_scope, (list, tuple)):
-      raise TypeError('list_ops_or_scope must either be a list/tuple or reused'
+      raise TypeError('list_ops_or_scope must either be a list/tuple or reused '
                       'scope (i.e. dict)')
     try:
       current_scope = current_arg_scope().copy()
@@ -172,6 +172,7 @@ def add_arg_scope(func):
   Returns:
     A tuple with the decorated function func_with_args().
   """
+
   def func_with_args(*args, **kwargs):
     current_scope = current_arg_scope()
     current_args = kwargs
@@ -180,6 +181,7 @@ def add_arg_scope(func):
       current_args = current_scope[key_func].copy()
       current_args.update(kwargs)
     return func(*args, **current_args)
+
   _add_op(func)
   setattr(func_with_args, '_key_op', _key_op(func))
   return tf_decorator.make_decorator(func, func_with_args)

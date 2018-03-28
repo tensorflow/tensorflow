@@ -75,7 +75,7 @@ enum BuiltinOperator : byte {
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
   // DEPTH_TO_SPACE = 5,
-  // DEQUANTIZE = 6,
+  DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   // FLOOR = 8,
   FULLY_CONNECTED = 9,
@@ -119,6 +119,19 @@ enum BuiltinOperator : byte {
   SQUEEZE = 43,
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   STRIDED_SLICE = 45,
+  BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  EXP = 47,
+  TOPK_V2 = 48,
+  SPLIT = 49,
+  LOG_SOFTMAX = 50,
+  // DELEGATE is a special op type for the operations which are delegated to
+  // other backends.
+  // WARNING: Experimental interface, subject to change
+  DELEGATE = 51,
+  BIDIRECTIONAL_SEQUENCE_LSTM = 52,
+  CAST = 53,
+  PRELU = 54,
+  MAXIMUM = 55,
 }
 
 // Options for the builtin operators.
@@ -155,6 +168,13 @@ union BuiltinOptions {
   SqueezeOptions,
   SequenceRNNOptions,
   StridedSliceOptions,
+  ExpOptions,
+  TopKV2Options,
+  SplitOptions,
+  LogSoftmaxOptions,
+  CastOptions,
+  DequantizeOptions,
+  MaximumOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -224,6 +244,12 @@ table SequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+// An implementation of TensorFlow bidrectional_dynamic_rnn with RNNCell.
+table BidirectionalSequenceRNNOptions {
+  time_major:bool;
+  fused_activation_function:ActivationFunctionType;
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
   fused_activation_function:ActivationFunctionType;
@@ -266,6 +292,9 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
+  new_height: int (deprecated);
+  new_width: int (deprecated);
+  align_corners: bool;
 }
 
 // A call operation options
@@ -282,15 +311,9 @@ table ReshapeOptions {
 }
 
 table SpaceToBatchNDOptions {
-  block_shape:[int];
-  before_paddings:[int];
-  after_paddings:[int];
 }
 
 table BatchToSpaceNDOptions {
-  block_shape:[int];
-  before_crops:[int];
-  after_crops:[int];
 }
 
 table SkipGramOptions {
@@ -311,6 +334,9 @@ table DivOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+table TopKV2Options {
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -326,16 +352,21 @@ table GatherOptions {
 }
 
 table TransposeOptions {
-  perm:[int];
+}
+
+table ExpOptions {
 }
 
 table MeanOptions {
-  axis:[int];
   keep_dims: bool;
 }
 
 table SqueezeOptions {
   squeeze_dims:[int];
+}
+
+table SplitOptions {
+  num_splits: int;
 }
 
 table StridedSliceOptions {
@@ -344,6 +375,18 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+}
+
+table LogSoftmaxOptions {
+}
+
+table CastOptions {
+}
+
+table DequantizeOptions {
+}
+
+table MaximumOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

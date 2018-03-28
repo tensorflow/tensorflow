@@ -648,8 +648,9 @@ struct BatchNarrowMatrixTransposeDispatcher {
     static_assert(
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
-    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
-                             min(tile_size_i, tile_size_j) <= TileShortSide;
+    bool request_satisfied =
+        std::max(tile_size_i, tile_size_j) <= TileLongSide &&
+        std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
@@ -662,7 +663,7 @@ struct BatchNarrowMatrixTransposeDispatcher {
     // determine whether it is the long side or the short side that falls short
     // of the request and increase that parameter accordingly.
     const bool long_side_request_not_satisfied =
-        max(tile_size_i, tile_size_j) > TileLongSide;
+        std::max(tile_size_i, tile_size_j) > TileLongSide;
 
     if (long_side_request_not_satisfied) {
       BatchNarrowMatrixTransposeDispatcher<
@@ -690,8 +691,9 @@ struct BatchNarrowMatrixTransposeDispatcher<
     static_assert(
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
-    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
-                             min(tile_size_i, tile_size_j) <= TileShortSide;
+    bool request_satisfied =
+        std::max(tile_size_i, tile_size_j) <= TileLongSide &&
+        std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
@@ -816,7 +818,7 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
   int tile_long_side_len = 0;
   int tile_short_side_len = 0;
   float lowest_cost = std::numeric_limits<float>::max();
-  int data_long_side = max(input_dims[1], input_dims[2]);
+  int data_long_side = std::max(input_dims[1], input_dims[2]);
 
   for (auto tile_size_pair : tile_spec) {
     int proposed_tile_long_side_len = tile_size_pair.first;
@@ -861,12 +863,14 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
   // Truncate the shorter size requested according to the manual limit set in
   // tile_spec to make sure that we do not launch configurations violating
   // hardware limits.
-  requested_tile_size_i = requested_tile_size_i == tile_long_side_len
-                              ? tile_long_side_len
-                              : min(requested_tile_size_i, tile_short_side_len);
-  requested_tile_size_j = requested_tile_size_j == tile_long_side_len
-                              ? tile_long_side_len
-                              : min(requested_tile_size_j, tile_short_side_len);
+  requested_tile_size_i =
+      requested_tile_size_i == tile_long_side_len
+          ? tile_long_side_len
+          : std::min(requested_tile_size_i, tile_short_side_len);
+  requested_tile_size_j =
+      requested_tile_size_j == tile_long_side_len
+          ? tile_long_side_len
+          : std::min(requested_tile_size_j, tile_short_side_len);
 
   Dimension<3> input_dims_in_tiles = {
       input_dims[0],
@@ -1035,9 +1039,11 @@ template struct functor::SwapDimension0And2InTensor3<GPUDevice, double2,
                                                      /*conjugate=*/true>;
 
 // For 2d ops.
+template struct functor::TransformFilter<GPUDevice, double, int, 4>;
 template struct functor::TransformFilter<GPUDevice, float, int, 4>;
 template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 4>;
 
+template struct functor::ReverseTransformFilter<GPUDevice, double, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, float, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 4>;
 
@@ -1050,6 +1056,7 @@ template struct functor::NCHWToNHWC<GPUDevice, float, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 4>;
 
 template struct functor::PadInput<GPUDevice, int, int, 4>;
+template struct functor::PadInput<GPUDevice, double, int, 4>;
 template struct functor::PadInput<GPUDevice, float, int, 4>;
 template struct functor::PadInput<GPUDevice, Eigen::half, int, 4>;
 

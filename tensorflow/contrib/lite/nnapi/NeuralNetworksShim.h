@@ -569,7 +569,7 @@ enum {
   ANEURALNETWORKS_LOGISTIC = 14,
 
   /**
-   * Projects an input to a bit vector via locality senstive hashing.
+   * Projects an input to a bit vector via locality sensitive hashing.
    *
    * Inputs:
    * * 0: Hash functions. Dim.size == 2, DataType: Float.
@@ -1571,7 +1571,7 @@ inline int ANeuralNetworksModel_addOperation(ANeuralNetworksModel* model,
 }
 
 /**
- * Specfifies which operands will be the model's inputs and outputs.
+ * Specifies which operands will be the model's inputs and outputs.
  *
  * An operand cannot be used for both input and output. Doing so will
  * return an error.

@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 730b778632e79cc3c96ad237f282d687ee325ce7)
+set(GRPC_TAG 575bda39755b98d1f7099406bb57a6e3b2074874)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES
@@ -42,6 +42,7 @@ ExternalProject_Add(grpc
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${grpc_STATIC_LIBRARIES}
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
     COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""

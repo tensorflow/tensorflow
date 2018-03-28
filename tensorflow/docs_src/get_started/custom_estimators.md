@@ -15,7 +15,7 @@ git clone https://github.com/tensorflow/models/
 cd models/samples/core/get_started
 ```
 
-In this document we wil be looking at
+In this document we will be looking at
 [`custom_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py).
 You can run it with the following command:
 
@@ -161,12 +161,12 @@ classifier = tf.estimator.Estimator(
 
 To implement a typical model function, you must do the following:
 
-* (Define the model)[#define_the_model].
+* [Define the model](#define_the_model).
 * Specify additional calculations for each of
   the [three different modes](#modes):
-  * [Predict](#predict)
-  * [Evaluate](#evaluate)
-  * [Train](#train)
+    * [Predict](#predict)
+    * [Evaluate](#evaluate)
+    * [Train](#train)
 
 ## Define the model
 
@@ -213,7 +213,7 @@ is connected to every node in the preceding layer.  Here's the relevant code:
 ```
 
 * The `units` parameter defines the number of output neurons in a given layer.
-* The `activation` parameter defines the [activation function](https://developers.google.com/machine-learning/glossary/#a) —
+* The `activation` parameter defines the [activation function](https://developers.google.com/machine-learning/glossary/#activation_function) —
   [Relu](https://developers.google.com/machine-learning/glossary/#ReLU) in this
   case.
 
@@ -546,8 +546,8 @@ In brief, here's what the three graphs tell you:
 
 * accuracy: The accuracy is recorded by the following two lines:
 
-  * `eval_metric_ops={'my_accuracy': accuracy})`, during evaluation.
-  * `tf.summary.scalar('accuracy', accuracy[1])`, during training.
+    * `eval_metric_ops={'my_accuracy': accuracy})`, during evaluation.
+    * `tf.summary.scalar('accuracy', accuracy[1])`, during training.
 
 These tensorboard graphs are one of the main reasons it's important to pass a
 `global_step` to your optimizer's `minimize` method. The model can't record

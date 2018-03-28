@@ -98,15 +98,25 @@ const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
   return shaped_buffer_;
 }
 
+static StatusOr<std::unique_ptr<ScopedShapedBuffer>> ToBuffer(
+    LocalClient* client, int device_ordinal, const Literal& arg) {
+  return client->LiteralToShapedBuffer(arg, device_ordinal,
+                                       client->backend().memory_allocator());
+}
+
 /* static */
-LocalShapedBuffer* LocalShapedBuffer::FromLiteral(const Literal& argument) {
+LocalShapedBuffer* LocalShapedBuffer::FromLiteral(
+    const Literal& argument,
+    const tensorflow::gtl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
-  std::unique_ptr<ScopedShapedBuffer> buf =
-      client
-          ->LiteralToShapedBuffer(argument,
-                                  /*device_ordinal=*/0,
-                                  client->backend().memory_allocator())
-          .ConsumeValueOrDie();
+  std::unique_ptr<ScopedShapedBuffer> buf;
+  if (shape_with_layout) {
+    std::unique_ptr<Literal> relaid =
+        argument.Relayout(shape_with_layout.value());
+    buf = ToBuffer(client, /*device_ordinal=*/0, *relaid).ConsumeValueOrDie();
+  } else {
+    buf = ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
+  }
   return new LocalShapedBuffer(std::move(buf));
 }
 
@@ -120,7 +130,8 @@ CompiledLocalComputation::CompiledLocalComputation(
     : executable_(std::move(executable)) {}
 
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
-    const std::vector<Literal>& arguments) {
+    const std::vector<Literal>& arguments,
+    const std::vector<tensorflow::gtl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
 
   VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
@@ -133,7 +144,8 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
                                         GetReplicaCount());
 
     for (int replica = 0; replica < GetReplicaCount(); ++replica) {
-      pool.Schedule([this, client, replica, &arguments, &results] {
+      pool.Schedule([this, client, replica, &arguments, &shapes_with_layout,
+                     &results] {
         StatusOr<int> device_ordinal_status =
             client->ReplicaNumberToDeviceOrdinal(replica);
         if (!device_ordinal_status.ok()) {
@@ -144,18 +156,28 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         VLOG(3) << "Replica " << replica
                 << " mapped to device ordinal for execution: "
                 << device_ordinal;
+
         // Transfer arguments in
         std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
         scoped_buffers.reserve(arguments.size());
-        for (const Literal& argument : arguments) {
-          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed =
-              client->LiteralToShapedBuffer(
-                  argument, device_ordinal,
-                  client->backend().memory_allocator());
+        for (int i = 0; i < arguments.size(); ++i) {
+          const Literal& argument = arguments[i];
+          const tensorflow::gtl::optional<Shape>& shape_with_layout =
+              shapes_with_layout[i];
+
+          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed;
+          if (shape_with_layout) {
+            std::unique_ptr<Literal> relaid =
+                argument.Relayout(shape_with_layout.value());
+            pushed = ToBuffer(client, device_ordinal, *relaid);
+          } else {
+            pushed = ToBuffer(client, device_ordinal, argument);
+          }
           if (!pushed.ok()) {
             results[replica] = pushed.status();
             return;
           }
+
           scoped_buffers.push_back(std::move(pushed).ValueOrDie());
         }
 
@@ -233,7 +255,8 @@ LocalComputation::LocalComputation(Computation computation)
     : computation_(std::move(computation)) {}
 
 StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
-    const std::vector<Shape>& argument_shapes) {
+    const std::vector<Shape>& argument_shapes,
+    const ExecutableBuildOptions* build_options) {
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
   for (auto& argument_shape : argument_shapes) {
@@ -242,6 +265,9 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
 
   LocalClient* client = GetOrCreateLocalClient();
   ExecutableBuildOptions options;
+  if (build_options != nullptr) {
+    options = *build_options;
+  }
   TF_ASSIGN_OR_RETURN(
       auto local_executable,
       client->Compile(computation_, argument_shape_pointers, options));
@@ -250,6 +276,12 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
 
 const Computation& LocalComputation::computation() const {
   return computation_;
+}
+
+StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation_.GetProgramShape());
+  return std::move(*program_shape.mutable_result());
 }
 
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
@@ -275,6 +307,11 @@ ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
 std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
     const ComputationDataHandle& operand) {
   return builder_.GetShape(operand).ConsumeValueOrDie();
+}
+
+StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
+  return program_shape.result();
 }
 
 ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
@@ -331,6 +368,12 @@ ComputationDataHandle LocalComputationBuilder::Slice(
   return builder_.Slice(operand, start_indices, limit_indices, strides);
 }
 
+ComputationDataHandle LocalComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  return builder_.SliceInDim(operand, start_index, limit_index, stride, dimno);
+}
+
 ComputationDataHandle LocalComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,
@@ -363,12 +406,6 @@ LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
       source, init_value, scatter.computation());
 }
 
-ComputationDataHandle LocalComputationBuilder::Select(
-    const ComputationDataHandle& pred, const ComputationDataHandle& on_true,
-    const ComputationDataHandle& on_false) {
-  return builder_.Select(pred, on_true, on_false);
-}
-
 ComputationDataHandle LocalComputationBuilder::Tuple(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> elements) {
   return builder_.Tuple(elements);
@@ -382,6 +419,12 @@ ComputationDataHandle LocalComputationBuilder::GetTupleElement(
 ComputationDataHandle LocalComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
   return builder_.Dot(lhs, rhs);
+}
+
+ComputationDataHandle LocalComputationBuilder::DotGeneral(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return builder_.DotGeneral(lhs, rhs, dimension_numbers);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(
@@ -467,6 +510,17 @@ ComputationDataHandle LocalComputationBuilder::While(
   return builder_.While(condition.computation(), body.computation(), init);
 }
 
+ComputationDataHandle LocalComputationBuilder::Conditional(
+    const ComputationDataHandle& predicate,
+    const ComputationDataHandle& true_operand,
+    const LocalComputation& true_computation,
+    const ComputationDataHandle& false_operand,
+    const LocalComputation& false_computation) {
+  return builder_.Conditional(predicate, true_operand,
+                              true_computation.computation(), false_operand,
+                              false_computation.computation());
+}
+
 #define _FORWARD(method_name, return_sig, args_sig, args)    \
   return_sig LocalComputationBuilder::method_name args_sig { \
     return builder_.method_name args;                        \
@@ -483,6 +537,15 @@ ComputationDataHandle LocalComputationBuilder::While(
        tensorflow::gtl::ArraySlice<int64> broadcast_dimensions),           \
       (lhs, rhs, broadcast_dimensions))
 
+#define _FORWARD_TRIOP(method_name)                                        \
+  _FORWARD(                                                                \
+      method_name, ComputationDataHandle,                                  \
+      (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
+       const ComputationDataHandle& ehs),                                  \
+      (lhs, rhs, ehs))
+
+_FORWARD_TRIOP(Select)
+_FORWARD_TRIOP(Clamp)
 _FORWARD_BINOP(Eq)
 _FORWARD_BINOP(Ne)
 _FORWARD_BINOP(Ge)
@@ -503,6 +566,7 @@ _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
 _FORWARD_UNOP(Floor)
 _FORWARD_UNOP(Ceil)
+_FORWARD_UNOP(Round)
 _FORWARD_UNOP(Log)
 _FORWARD_UNOP(Sign)
 _FORWARD_UNOP(Cos)
@@ -519,6 +583,7 @@ _FORWARD_UNOP(Sort)
 #undef _FORWARD
 #undef _FORWARD_UNOP
 #undef _FORWARD_BINOP
+#undef _FORWARD_TRIOP
 
 void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer) {
   delete local_shaped_buffer;

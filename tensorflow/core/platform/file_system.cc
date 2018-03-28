@@ -19,15 +19,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -131,18 +128,19 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
     children_dir_status.resize(children.size());
-    ForEach(0, children.size(), [this, &current_dir, &children, &fixed_prefix,
-                                 &children_dir_status](int i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      // In case the child_path doesn't start with the fixed_prefix then
-      // we don't need to explore this path.
-      if (!StringPiece(child_path).starts_with(fixed_prefix)) {
-        children_dir_status[i] =
-            Status(tensorflow::error::CANCELLED, "Operation not needed");
-      } else {
-        children_dir_status[i] = IsDirectory(child_path);
-      }
-    });
+    ForEach(0, children.size(),
+            [this, &current_dir, &children, &fixed_prefix,
+             &children_dir_status](int i) {
+              const string child_path = io::JoinPath(current_dir, children[i]);
+              // In case the child_path doesn't start with the fixed_prefix then
+              // we don't need to explore this path.
+              if (!StringPiece(child_path).starts_with(fixed_prefix)) {
+                children_dir_status[i] = Status(tensorflow::error::CANCELLED,
+                                                "Operation not needed");
+              } else {
+                children_dir_status[i] = IsDirectory(child_path);
+              }
+            });
     for (int i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
       // If the IsDirectory call was cancelled we bail.
@@ -262,6 +260,10 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
     }
   }
   return Status::OK();
+}
+
+Status FileSystem::CopyFile(const string& src, const string& target) {
+  return FileSystemCopyFile(this, src, this, target);
 }
 
 }  // namespace tensorflow

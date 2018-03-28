@@ -31,6 +31,11 @@ END
   description: <<END
 Input images can be of different types but output images are always float.
 
+The range of pixel values for the output image might be slightly different
+from the range for the input image because of limited numerical precision.
+To guarantee an output range, for example `[0.0, 1.0]`, apply
+`tf.clip_by_value` to the output.
+
 Each output pixel is computed by first transforming the pixel's footprint into
 the input tensor and then averaging the pixels that intersect the footprint. An
 input pixel's contribution to the average is weighted by the fraction of its

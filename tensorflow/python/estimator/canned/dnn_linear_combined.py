@@ -37,6 +37,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
+from tensorflow.python.util.tf_export import tf_export
 
 # The default learning rates are a historical artifact of the initial
 # implementation.
@@ -116,7 +117,7 @@ def _dnn_linear_combined_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
-    `ModelFnOps`
+    An `EstimatorSpec` instance.
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
@@ -225,6 +226,7 @@ def _dnn_linear_combined_model_fn(features,
       logits=logits)
 
 
+@tf_export('estimator.DNNLinearCombinedClassifier')
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined classification models.
 
@@ -405,6 +407,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         warm_start_from=warm_start_from)
 
 
+@tf_export('estimator.DNNLinearCombinedRegressor')
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined models for regression.
 

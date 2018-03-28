@@ -32,10 +32,8 @@ namespace tensorflow {
 namespace ffmpeg {
 namespace {
 
-const char kTestWavFilename[] =
-    "contrib/ffmpeg/testdata/mono_10khz.wav";
-const char kTestMp3Filename[] =
-    "contrib/ffmpeg/testdata/test_sound1.mp3";
+const char kTestWavFilename[] = "contrib/ffmpeg/testdata/mono_10khz.wav";
+const char kTestMp3Filename[] = "contrib/ffmpeg/testdata/test_sound1.mp3";
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.
@@ -139,7 +137,7 @@ TEST(FfmpegLibTest, TestRoundTripWav) {
 }  // namespace ffmpeg
 }  // namespace tensorflow
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   tensorflow::string usage = tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
   if (argc != 1) {

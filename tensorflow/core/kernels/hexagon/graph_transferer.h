@@ -181,8 +181,8 @@ class GraphTransferer {
   void AppendNodeInputParams(const int id, const Node& node,
                              const std::vector<int>& extra_inputs);
 
-  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
-                              const int id, const Node& node);
+  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner, const int id,
+                              const Node& node);
 
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,
