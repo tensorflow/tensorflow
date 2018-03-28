@@ -542,25 +542,25 @@ REGISTER_OP("ZeroOut")
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
-<pre class="prettyprint"><code class="lang-cpp">
+```c++
 class ZeroOutOp : public OpKernel {
  public:
-  explicit ZeroOutOp(OpKernelConstruction\* context) : OpKernel(context) {<b>
+  explicit ZeroOutOp(OpKernelConstruction* context) : OpKernel(context) {
     // Get the index of the value to preserve
-    OP\_REQUIRES\_OK(context,
-                   context-&gt;GetAttr("preserve\_index", &preserve\_index\_));
-    // Check that preserve\_index is positive
-    OP\_REQUIRES(context, preserve\_index_ &gt;= 0,
-                errors::InvalidArgument("Need preserve\_index &gt;= 0, got ",
-                                        preserve\_index_));
-  </b>}
-  void Compute(OpKernelContext\* context) override {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("preserve_index", &preserve_index_));
+    // Check that preserve_index is positive
+    OP_REQUIRES(context, preserve_index_ >= 0,
+                errors::InvalidArgument("Need preserve_index >= 0, got ",
+                                        preserve_index_));
+  }
+  void Compute(OpKernelContext* context) override {
     // ...
   }
- <b>private:
-  int preserve\_index\_;</b>
+ private:
+  int preserve_index_;
 };
-</code></pre>
+```
 
 which can then be used in the `Compute` method:
 <pre class="prettyprint"><code class="lang-cpp">
