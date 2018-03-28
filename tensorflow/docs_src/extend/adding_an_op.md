@@ -727,12 +727,12 @@ you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` op to work on `float`s
 in addition to `int32`s, your op registration might look like:
-<pre class="prettyprint"><code class="lang-cpp">
-REGISTER\_OP("ZeroOut")
-    <b>.Attr("T: {float, int32}")</b>
-    .Input("to\_zero: <b>T</b>")
-    .Output("zeroed: <b>T</b>");
-</code></pre>
+```c++
+REGISTER_OP("ZeroOut")
+    .Attr("T: {float, int32}")
+    .Input("to_zero: T")
+    .Output("zeroed: T");
+```
 
 Your op registration now specifies that the input's type must be `float`, or
 `int32`, and that its output will be the same type, since both have type `T`.
@@ -831,12 +831,12 @@ class ZeroOutFloatOp : public OpKernel {
 // instantiation.
 REGISTER_KERNEL_BUILDER(
     Name("ZeroOut")
-    .Device(DEVICE\_CPU)
+    .Device(DEVICE_CPU)
     .TypeConstraint<int32>("T"),
     ZeroOutOpInt32);
-<b>REGISTER_KERNEL_BUILDER(
+REGISTER_KERNEL_BUILDER(
     Name("ZeroOut")
-    .Device(DEVICE\_CPU)
+    .Device(DEVICE_CPU)
     .TypeConstraint<float>("T"),
     ZeroOutFloatOp);
 ```
@@ -853,12 +853,12 @@ REGISTER_KERNEL_BUILDER(
 > ```
 
 Let's say you wanted to add more types, say `double`:
-<pre class="prettyprint"><code class="lang-cpp">
-REGISTER\_OP("ZeroOut")
-    <b>.Attr("T: {float, <b>double,</b> int32}")</b>
-    .Input("to\_zero: <b>T</b>")
-    .Output("zeroed: <b>T</b>");
-</code></pre>
+```c++
+REGISTER_OP("ZeroOut")
+    .Attr("T: {float, double, int32}")
+    .Input("to_zero: T")
+    .Output("zeroed: T");
+```
 
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
