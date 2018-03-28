@@ -617,6 +617,54 @@ def make_relu6_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_prelu_tests(zip_path):
+  """Make a set of tests to do PReLU."""
+
+  test_parameters = [{
+      # The canonical case for image processing is having a 4D `input` (NHWC)
+      # and `shared_axes`=[1, 2], so the alpha parameter is per channel.
+      "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
+      "shared_axes": [[1, 2], [1]],
+  }]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    prelu = tf.keras.layers.PReLU(shared_axes=parameters["shared_axes"])
+    out = prelu(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+
+    input_shape = parameters["input_shape"]
+    input_values = create_tensor_data(
+        np.float32, input_shape, min_value=-10, max_value=10)
+    shared_axes = parameters["shared_axes"]
+
+    alpha_shape = []
+    for dim in range(1, len(input_shape)):
+      alpha_shape.append(1 if dim in shared_axes else input_shape[dim])
+
+    alpha_values = create_tensor_data(np.float32, alpha_shape)
+
+    with tf.variable_scope("", reuse=True):
+      alpha = tf.get_variable("p_re_lu/alpha")
+      sess.run(alpha.assign(alpha_values))
+
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      use_frozen_graph=True)
+
+
 # This function tests various TensorFLow functions that generates Const op,
 # including `tf.ones`, `tf.zeros` and random functions.
 def make_constant_tests(zip_path):
@@ -706,7 +754,7 @@ def make_mean_tests(zip_path):
           [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
       ],
       "const_axis": [True, False],
-      "keep_dims": [True, False],
+      "keepdims": [True, False],
   }, {
       "input_dtype": [tf.float32, tf.int32, tf.int64],
       "input_shape": [[1, 224, 224, 3]],
@@ -717,7 +765,7 @@ def make_mean_tests(zip_path):
           [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
       ],
       "const_axis": [True, False],
-      "keep_dims": [True, False],
+      "keepdims": [True, False],
   }]
 
   def build_graph(parameters):
@@ -740,7 +788,7 @@ def make_mean_tests(zip_path):
       input_tensors = [input_tensor, axis]
 
     out = tf.reduce_mean(
-        input_tensor, axis=axis, keep_dims=parameters["keep_dims"])
+        input_tensor, axis=axis, keepdims=parameters["keepdims"])
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -808,6 +856,41 @@ def make_log_softmax_tests(zip_path):
             parameters["input_shape"],
             min_value=-100,
             max_value=9)
+    ]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_maximum_tests(zip_path):
+  """Make a set of tests to do maximum."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape_1": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_2": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+  }]
+
+  def build_graph(parameters):
+    """Build the maximum op testing graph."""
+    input_tensor_1 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input_1",
+        shape=parameters["input_shape_1"])
+    input_tensor_2 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input_2",
+        shape=parameters["input_shape_2"])
+
+    out = tf.maximum(input_tensor_1, input_tensor_2)
+    return [input_tensor_1, input_tensor_2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = [
+        create_tensor_data(parameters["input_dtype"],
+                           parameters["input_shape_1"]),
+        create_tensor_data(parameters["input_dtype"],
+                           parameters["input_shape_2"])
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
@@ -1571,7 +1654,7 @@ def make_transpose_tests(zip_path):
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4, 5]],
-      "perm": [[0, 1, 2, 3, 4]],
+      "perm": [[4, 3, 2, 1, 0]],
       "constant_perm": [True, False],
   }]
 
@@ -1911,6 +1994,7 @@ def main(unused_args):
         "relu.zip": make_relu_tests,
         "relu1.zip": make_relu1_tests,
         "relu6.zip": make_relu6_tests,
+        "prelu.zip": make_prelu_tests,
         "l2_pool.zip": make_pool_tests(make_l2_pool),
         "avg_pool.zip": make_pool_tests(tf.nn.avg_pool),
         "max_pool.zip": make_pool_tests(tf.nn.max_pool),
@@ -1929,6 +2013,7 @@ def main(unused_args):
         "exp.zip": make_exp_tests,
         "log_softmax.zip": make_log_softmax_tests,
         "lstm.zip": make_lstm_tests,
+        "maximum.zip": make_maximum_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

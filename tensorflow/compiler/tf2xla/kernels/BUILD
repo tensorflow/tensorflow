@@ -93,6 +93,7 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":if_op",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -142,6 +143,22 @@ tf_kernel_library(
     name = "while_op",
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "if_op",
+    srcs = ["if_op.cc"],
+    hdrs = ["if_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",

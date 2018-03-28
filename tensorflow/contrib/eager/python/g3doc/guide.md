@@ -273,9 +273,9 @@ assert 6 == df(3.)[0].numpy()
 d2f = tfe.gradients_function(lambda x: df(x)[0])
 assert 2 == d2f(3.)[0].numpy()
 
-# Third order derivative.
+# Third order derivative: Will be None
 d3f = tfe.gradients_function(lambda x : d2f(x)[0])
-assert 0 == d3f(3.)[0].numpy()
+assert None == d3f(3.)[0]
 ```
 
 These functions can be used to train models. For example, consider the following
@@ -590,14 +590,14 @@ checkpoint = tfe.Checkpoint(x=x, y=y)
 
 # Assign new values to the variables and save.
 x.assign(2.)
-checkpoint.save('/tmp/ckpt')
+save_path = checkpoint.save('/tmp/ckpt')
 
 # Change the variable after saving.
 x.assign(11.)
 assert 16. == (x + y).numpy()  # 11 + 5
 
 # Restore the values in the checkpoint.
-checkpoint.restore('/tmp/ckpt-1')
+checkpoint.restore(save_path)  # save_path='/tmp/ckpt-1'
 
 assert 7. == (x + y).numpy()  # 2 + 5
 ```

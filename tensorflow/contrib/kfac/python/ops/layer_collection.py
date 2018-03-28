@@ -26,6 +26,7 @@ from __future__ import print_function
 
 from collections import defaultdict
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import partial
 
 import math
@@ -59,6 +60,10 @@ _CONV2D_APPROX_TO_BLOCK_TYPES = {
     APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
 }
 
+_EMBEDDING_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_NAME: fb.EmbeddingKFACFB
+}
+
 APPROX_KRONECKER_INDEP_NAME = "kron_indep"
 APPROX_KRONECKER_SERIES_1_NAME = "kron_series_1"
 APPROX_KRONECKER_SERIES_2_NAME = "kron_series_2"
@@ -71,9 +76,38 @@ _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES = {
                                             option=2)
 }
 
+_CONV2D_MULTI_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_INDEP_NAME: fb.ConvKFCBasicMultiIndepFB
+}
+
+_EMBEDDING_MULTI_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_INDEP_NAME: fb.EmbeddingKFACMultiIndepFB
+}
+
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
+
+_DEFAULT_LAYER_COLLECTION = None
+
+
+def get_default_layer_collection():
+  """Get default LayerCollection."""
+  if _DEFAULT_LAYER_COLLECTION is None:
+    raise ValueError(
+        "Attempted to retrieve default LayerCollection when none is set. Use "
+        "LayerCollection.as_default().")
+
+  return _DEFAULT_LAYER_COLLECTION
+
+
+def set_default_layer_collection(layer_collection):
+  global _DEFAULT_LAYER_COLLECTION
+
+  if _DEFAULT_LAYER_COLLECTION is not None and layer_collection is not None:
+    raise ValueError("Default LayerCollection is already set.")
+
+  _DEFAULT_LAYER_COLLECTION = layer_collection
 
 
 class LayerParametersDict(OrderedDict):
@@ -147,9 +181,12 @@ class LayerCollection(object):
     self._default_generic_approximation = APPROX_FULL_NAME
     self._default_embedding_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
-    self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
+    self._default_conv2d_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_multi_approximation = (
-        APPROX_KRONECKER_SERIES_2_NAME)
+        APPROX_KRONECKER_INDEP_NAME)
+    self._default_conv2d_multi_approximation = (
+        APPROX_KRONECKER_INDEP_NAME)
+    self._default_embedding_multi_approximation = APPROX_KRONECKER_INDEP_NAME
     self.loss_colocation_ops = {}
     self._vars_to_uses = defaultdict(lambda: 0)
 
@@ -223,14 +260,14 @@ class LayerCollection(object):
 
   @property
   def default_conv2d_approximation(self):
-    return self._default_convolution_2d_approximation
+    return self._default_conv2d_approximation
 
   def set_default_conv2d_approximation(self, value):
     if value not in _CONV2D_APPROX_TO_BLOCK_TYPES:
       raise ValueError(
           "{} is not a valid approximation for 2d convolutional layers.".format(
               value))
-    self._default_convolution_2d_approximation = value
+    self._default_conv2d_approximation = value
 
   @property
   def default_fully_connected_multi_approximation(self):
@@ -241,6 +278,14 @@ class LayerCollection(object):
       raise ValueError("{} is not a valid approximation for a fully-connected "
                        "multi layer.".format(value))
     self._default_fully_connected_multi_approximation = value
+
+  @property
+  def default_conv2d_multi_approximation(self):
+    return self._default_conv2d_multi_approximation
+
+  @property
+  def default_embedding_multi_approximation(self):
+    return self._default_embedding_multi_approximation
 
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
@@ -345,7 +390,7 @@ class LayerCollection(object):
       if name in self._loss_dict:
         raise KeyError(
             "Loss function named {} already exists. Set reuse=True to append "
-            "another minibatch/tower.".format(name))
+            "another tower.".format(name))
 
       loss_list = []
       self._loss_dict[name] = loss_list
@@ -504,45 +549,54 @@ class LayerCollection(object):
     else:
       return None
 
+  def _get_block_type(self, params, approx, default, approx_to_type):
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = default
+
+    if approx not in approx_to_type:
+      raise ValueError("Bad value {} for approx.".format(approx))
+
+    return approx_to_type[approx], approx
+
   def register_embedding(self,
                          params,
                          inputs,
                          outputs,
                          approx=None,
                          reuse=VARIABLE_SCOPE):
-    """Registers a fully connnected layer.
+    """Registers an embedding layer.
 
     Args:
       params: Embedding matrix of shape [vocab_size, embedding_size].
       inputs: Tensor of shape [batch_size, input_size] and dtype int32. Indices
         into embedding matrix.
-      outputs: Tensor of shape [batch_size, output_size]. Outputs
+      outputs: Tensor of shape [batch_size, embedding_size]. Outputs
         produced by layer.
-      approx: str. Must be "kron".
-      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If "VARIABLE_SCOPE", use
-        tf.get_variable_scope().reuse.
+      approx: str or None. If not None must be "kron".  The Fisher
+        approximation to use. If None the default value is used. (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
 
     Raises:
       ValueError: For improper value to 'approx'.
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    if approx is None:
-      approx = self._get_linked_approx(params)
-      if approx is None:
-        approx = self.default_embedding_approximation
-
-    if approx != APPROX_KRONECKER_NAME:
-      raise ValueError("Bad value {} for approx.".format(approx))
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_embedding_approximation,
+        _EMBEDDING_APPROX_TO_BLOCK_TYPES)
 
     if isinstance(params, (tuple, list)):
       raise ValueError("Bias not supported.")
-
     vocab_size = int(params.shape[0])
     block = self.register_block(
-        params, fb.EmbeddingKFACFB(self, vocab_size), reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+        params, block_type(self, vocab_size), reuse=reuse)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -561,30 +615,29 @@ class LayerCollection(object):
       inputs: Tensor of shape [batch_size, input_size]. Inputs to layer.
       outputs: Tensor of shape [batch_size, output_size]. Outputs
         produced by layer.
-      approx: str. One of "kron" or "diagonal".
-      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If "VARIABLE_SCOPE", use
-        tf.get_variable_scope().reuse.
+      approx: str or None. If not None must be one of "kron" or "diagonal".
+        The Fisher approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
 
     Raises:
       ValueError: For improper value to 'approx'.
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
-    if approx is None:
-      approx = self._get_linked_approx(params)
-      if approx is None:
-        approx = self.default_fully_connected_approximation
 
-    if approx not in _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES:
-      raise ValueError("Bad value {} for approx.".format(approx))
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_fully_connected_approximation,
+        _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES)
 
-    block_type = _FULLY_CONNECTED_APPROX_TO_BLOCK_TYPES[approx]
     has_bias = isinstance(params, (tuple, list))
-
     block = self.register_block(params, block_type(self, has_bias=has_bias),
                                 reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
 
@@ -594,25 +647,33 @@ class LayerCollection(object):
                       padding,
                       inputs,
                       outputs,
+                      data_format=None,
+                      dilations=None,
                       approx=None,
                       reuse=VARIABLE_SCOPE):
-    """Registers a convolutional layer.
+    """Registers a call to tf.nn.conv2d().
 
     Args:
       params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
         this layer. Weight matrix should have shape [kernel_height,
         kernel_width, in_channels, out_channels].  Bias should have shape
         [out_channels].
-      strides: 1-D Tensor of length 4. Strides for convolution kernel.
+      strides: List of 4 ints. Strides for convolution kernel.
       padding: string. see tf.nn.conv2d for valid values.
       inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
         to layer.
       outputs: Tensor of shape [batch_size, height, width, out_channels].
         Output produced by layer.
-      approx: str. One of "kron" or "diagonal".
-      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If "VARIABLE_SCOPE", use
-        tf.get_variable_scope().reuse.
+      data_format: str or None. Format of data.
+      dilations: List of 4 ints. Dilations along each dimension.
+      approx: str or None. If not None must be one of "kron" or "diagonal".
+        The Fisher approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
 
     Raises:
       ValueError: For improper value to 'approx'.
@@ -620,20 +681,228 @@ class LayerCollection(object):
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
 
-    if approx is None:
-      approx = self._get_linked_approx(params)
-      if approx is None:
-        approx = self.default_conv2d_approximation
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_conv2d_approximation,
+        _CONV2D_APPROX_TO_BLOCK_TYPES)
 
-    if approx not in _CONV2D_APPROX_TO_BLOCK_TYPES:
-      raise ValueError("Bad value {} for approx.".format(approx))
+    # It feels bad to pass in configuration that has to do with the internal
+    # implementation.  And then we can't use the same constructor for both
+    # anymore and are thus forced to use this ugly if-statement.
+    # TODO(b/74793309): Clean this up?
+    if approx == APPROX_KRONECKER_NAME:
+      block = self.register_block(
+          params,
+          block_type(
+              layer_collection=self,
+              params=params,
+              padding=padding,
+              strides=strides,
+              data_format=data_format,
+              dilation_rate=dilations,
+              extract_patches_fn="extract_image_patches"),
+          reuse=reuse)
+    elif approx == APPROX_DIAGONAL_NAME:
+      assert strides[0] == strides[-1] == 1
+      block = self.register_block(
+          params,
+          block_type(
+              layer_collection=self,
+              params=params,
+              padding=padding,
+              strides=strides,
+              dilations=dilations,
+              data_format=data_format),
+          reuse=reuse)
+    else:
+      raise NotImplementedError(approx)
 
-    block_type = _CONV2D_APPROX_TO_BLOCK_TYPES[approx]
-    block = self.register_block(
-        params, block_type(self, params, strides, padding), reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
 
     self._add_uses(params, 1)
+
+  def register_convolution(self,
+                           params,
+                           inputs,
+                           outputs,
+                           padding,
+                           strides=None,
+                           dilation_rate=None,
+                           data_format=None,
+                           approx=None,
+                           reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.convolution().
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [..filter_spatial_size..,
+        in_channels, out_channels].  Bias should have shape [out_channels].
+      inputs: Tensor of shape [batch_size, ..input_spatial_size.., in_channels].
+        Inputs to layer.
+      outputs: Tensor of shape [batch_size, ..output_spatial_size..,
+        out_channels].  Output produced by layer.
+      padding: string. see tf.nn.conv2d for valid values.
+      strides: List of ints of length len(..input_spatial_size..). Strides for
+        convolution kernel in spatial dimensions.
+      dilation_rate: List of ints of length len(..input_spatial_size..).
+        Dilations along spatial dimension.
+      data_format: str or None. Format of data.
+      approx: str or None. If not None must be one of "kron" or "diagonal".
+        The Fisher approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    # TODO(b/74793309): Have this use _get_block_type like the other
+    # registration functions?
+    assert approx is None or approx == APPROX_KRONECKER_NAME
+
+    block = self.register_block(
+        params,
+        fb.ConvKFCBasicFB(
+            layer_collection=self,
+            params=params,
+            padding=padding,
+            strides=strides,
+            dilation_rate=dilation_rate,
+            data_format=data_format),
+        reuse=reuse)
+    block.register_additional_tower(inputs, outputs)
+
+    self._add_uses(params, 1)
+
+  def register_depthwise_conv2d(self,
+                                params,
+                                inputs,
+                                outputs,
+                                strides,
+                                padding,
+                                rate=None,
+                                data_format=None,
+                                approx=None,
+                                reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.depthwise_conv2d().
+
+    Args:
+      params: 4-D Tensor of shape [filter_height, filter_width,
+        in_channels, channel_multiplier].  Convolutional filter.
+      inputs: Tensor of shape [batch_size, input_height, input_width,
+        in_channels].  Inputs to layer.
+      outputs: Tensor of shape [batch_size, output_height, output_width,
+        in_channels * channel_multiplier].  Output produced by depthwise conv2d.
+      strides: List of ints of length 4. Strides along all dimensions.
+      padding: string. see tf.nn.conv2d for valid values.
+      rate: None or List of ints of length 2. Dilation rates in spatial
+        dimensions.
+      data_format: str or None. Format of data.
+      approx: str or None. If not None must "diagonal".  The Fisher
+        approximation to use. If None the default value is used. (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    # TODO(b/74793309): Have this use _get_block_type like the other
+    # registration functions?
+    assert approx is None or approx == APPROX_DIAGONAL_NAME
+    assert data_format in [None, "NHWC"]
+
+    block = self.register_block(
+        params,
+        fb.DepthwiseConvDiagonalFB(
+            layer_collection=self,
+            params=params,
+            strides=strides,
+            padding=padding,
+            rate=rate,
+            data_format=data_format),
+        reuse=reuse)
+    block.register_additional_tower(inputs, outputs)
+
+    self._add_uses(params, 1)
+
+  def register_separable_conv2d(self,
+                                depthwise_params,
+                                pointwise_params,
+                                inputs,
+                                depthwise_outputs,
+                                pointwise_outputs,
+                                strides,
+                                padding,
+                                rate=None,
+                                data_format=None,
+                                approx=None,
+                                reuse=VARIABLE_SCOPE):
+    """Register a call to tf.nn.separable_conv2d().
+
+    Note: This requires access to intermediate outputs between depthwise and
+    pointwise convolutions.
+
+    Args:
+      depthwise_params: 4-D Tensor of shape [filter_height, filter_width,
+        in_channels, channel_multiplier].  Filter for depthwise conv2d.
+      pointwise_params: 4-D Tensor of shape [1, 1, in_channels *
+        channel_multiplier, out_channels].  Filter for pointwise conv2d.
+      inputs: Tensor of shape [batch_size, input_height, input_width,
+        in_channels].  Inputs to layer.
+      depthwise_outputs: Tensor of shape [batch_size, output_height,
+        output_width, in_channels * channel_multiplier].  Output produced by
+        depthwise conv2d.
+      pointwise_outputs: Tensor of shape [batch_size, output_height,
+        output_width, out_channels].  Output produced by pointwise conv2d.
+      strides: List of ints of length 4. Strides for depthwise conv2d kernel in
+        all dimensions.
+      padding: string. see tf.nn.conv2d for valid values.
+      rate: None or List of ints of length 2. Dilation rate of depthwise conv2d
+        kernel in spatial dimensions.
+      data_format: str or None. Format of data.
+      approx: str or None. If not None must be one of "kron" or "diagonal".
+        The Fisher approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds 'inputs' and 'outputs' as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.
+        (Default: "VARIABLE_SCOPE")
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    self.register_depthwise_conv2d(
+        params=depthwise_params,
+        inputs=inputs,
+        outputs=depthwise_outputs,
+        strides=strides,
+        padding=padding,
+        rate=rate,
+        data_format=data_format,
+        approx=APPROX_DIAGONAL_NAME,
+        reuse=reuse)
+
+    self.register_conv2d(
+        params=pointwise_params,
+        inputs=depthwise_outputs,
+        outputs=pointwise_outputs,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format=data_format,
+        approx=approx,
+        reuse=reuse)
 
   def register_generic(self,
                        params,
@@ -644,34 +913,32 @@ class LayerCollection(object):
 
     Args:
       params: Tensor or tuple of Tensors corresponding to the parameters.
-      batch_size: 0-D Tensor. Size of the minibatch.
-      approx: str. One of "full" or "diagonal".
-      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If "VARIABLE_SCOPE", use
-        tf.get_variable_scope().reuse.
+      batch_size: 0-D Tensor. Size of the minibatch (for this tower).
+      approx: str or None. It not None, must be one of "full" or "diagonal".
+        The Fisher approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str. If True, this adds 'batch_size' to the total
+        mini-batch size use when estimating the Fisher block for this layer
+        (which must have already been registered). If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
 
     Raises:
       ValueError: For improper value to 'approx'.
       KeyError: If reuse == True but no FisherBlock found for 'params'.
       ValueError: If reuse == True and FisherBlock found but of the wrong type.
     """
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_generic_approximation,
+        _GENERIC_APPROX_TO_BLOCK_TYPES)
 
-    if approx is None:
-      approx = self._get_linked_approx(params)
-      if approx is None:
-        approx = self.default_generic_approximation
-
-    if approx not in _GENERIC_APPROX_TO_BLOCK_TYPES:
-      raise ValueError("Bad value {} for approx.".format(approx))
-
-    block_type = _GENERIC_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(params, block_type(self, params), reuse=reuse)
-    block.register_additional_minibatch(batch_size)
+    block.register_additional_tower(batch_size)
 
     self._add_uses(params, float("inf"))
 
   def register_fully_connected_multi(self, params, inputs, outputs,
-                                     approx=None, reuse=VARIABLE_SCOPE):
+                                     num_uses=None, approx=None,
+                                     reuse=VARIABLE_SCOPE):
     """Register fully connected layers with shared parameters.
 
     This can handle general fully-connected layers with shared parameters, but
@@ -682,40 +949,187 @@ class LayerCollection(object):
       params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
         this layer. Weight matrix should have shape [input_size, output_size].
         Bias should have shape [output_size].
-      inputs: A list of tensors, each of shape [batch_size, input_size]. Inputs
-        to layer. In the case of RNNs, one Tensor per time step.
-      outputs: A list of tensors, the same length as 'inputs', each of shape
-        [batch_size, output_size]. Outputs produced by layer. In the case of
-        RNNs, one Tensor per time step.
-      approx: str. One of "kron_indep", "kron_series_1", or "kron_series_2".
-      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If "VARIABLE_SCOPE", use
-        tf.get_variable_scope().reuse.
+      inputs: A list of Tensors, each of shape [batch_size, input_size]. Inputs
+        to layer. The list indexes each use in the graph (which might
+        correspond to a "time-step" in an RNN). OR, can be single Tensor, of
+        shape [num_uses * batch_size , input_size], which is a reshaped version
+        of a Tensor of shape [num_uses, batch_size, input_size].
+      outputs: A list of Tensors, the same length as 'inputs', each of shape
+        [batch_size, output_size]. Outputs produced by layer. The list indexes
+        each use in the graph (which might correspond to a "time-step" in an
+        RNN). Needs to correspond with the order used in 'inputs'.  OR, can be
+        a single Tensor of shape [num_uses * batch_size, output_size], which is
+        a reshaped version of a Tensor of shape [num_uses, batch_size,
+        output_size].
+      num_uses: int or None. The number uses/time-steps in the graph where the
+        layer appears. Only needed if both inputs and outputs are given in the
+        single Tensor format. (Default: None)
+      approx: str or None. If not None, must be of "kron_indep", "kron_series_1"
+        or "kron_series_2". The Fisher approximation to use. If None the default
+        value is used. (Default: None)
+      reuse: bool or str.  If True, this adds inputs and outputs as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
+        word 'use' here has a completely different meaning to "use in the graph"
+        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        (Default: "VARIABLE_SCOPE")
 
     Raises:
       ValueError: For improper value to 'approx'.
     """
-    if approx is None:
-      approx = self._get_linked_approx(params)
-      if approx is None:
-        approx = self.default_fully_connected_multi_approximation
-    has_bias = isinstance(params, (tuple, list))
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_fully_connected_multi_approximation,
+        _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES)
 
     # TODO(b/70283649): something along the lines of find_canonical_output
     # should be added back in here (and for the other block types, arguably).
 
-    if approx not in _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES:
-      raise ValueError("Bad value {} for approx.".format(approx))
-    block_type = _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES[approx]
-
-    block = self.register_block(params, block_type(self, has_bias=has_bias),
+    has_bias = isinstance(params, (tuple, list))
+    block = self.register_block(params, block_type(self, has_bias=has_bias,
+                                                   num_uses=num_uses),
                                 reuse=reuse)
-    block.register_additional_minibatch(inputs, outputs)
+    block.register_additional_tower(inputs, outputs)
+
+    assert len(inputs) == len(outputs)
+    self._add_uses(params, len(inputs))
+
+  def register_conv2d_multi(self,
+                            params,
+                            strides,
+                            padding,
+                            inputs,
+                            outputs,
+                            num_uses=None,
+                            data_format=None,
+                            dilations=None,
+                            approx=None,
+                            reuse=VARIABLE_SCOPE):
+    """Registers convolutional layers with shared parameters.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [kernel_height,
+        kernel_width, in_channels, out_channels].  Bias should have shape
+        [out_channels].
+      strides: 1-D Tensor of length 4. Strides for convolution kernel.
+      padding: string. see tf.nn.conv2d for valid values.
+      inputs: A list of Tensors, each of shape [batch_size, height, width,
+        in_channels]. Inputs to layer. The list indexes each use in the graph
+        (which might correspond to a "time-step" in an RNN). OR, can be single
+        Tensor, of shape [num_uses * batch_size, height, width, in_channels],
+        which is a reshaped version of a Tensor of shape [num_uses, batch_size,
+        height, width, in_channels].
+      outputs: A list of Tensors, each of shape [batch_size, height, width,
+        out_channels]. Output produced by layer. The list indexes each use
+        in the graph (which might correspond to a "time-step" in an RNN).
+        Needs to correspond with the order used in 'inputs'.  OR, can be a
+        single Tensor, of shape [num_uses * batch_size, height, width,
+        out_channels], which is a reshaped version of a Tensor of shape
+        [num_uses, batch_size, height, width, out_channels].
+      num_uses: int or None. The number uses/time-steps in the graph where the
+        layer appears. Only needed if both inputs and outputs are given in the
+        single Tensor format. (Default: None)
+      data_format: str or None. Format of data.
+      dilations: List of 4 ints. Dilations along each dimension.
+      approx: str or None. If not None must by "kron_indep". The Fisher
+        approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds inputs and outputs as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
+        word 'use' here has a completely different meaning to "use in the graph"
+        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        (Default: "VARIABLE_SCOPE")
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_conv2d_multi_approximation,
+        _CONV2D_MULTI_APPROX_TO_BLOCK_TYPES)
+
+    block = self.register_block(
+        params,
+        block_type(
+            layer_collection=self,
+            params=params,
+            padding=padding,
+            strides=strides,
+            data_format=data_format,
+            dilation_rate=dilations,
+            extract_patches_fn="extract_image_patches",
+            num_uses=num_uses),
+        reuse=reuse)
+
+    block.register_additional_tower(inputs, outputs)
+
+    assert len(inputs) == len(outputs)
     self._add_uses(params, len(inputs))
 
   # TODO(b/74108452): change the loss registration functions names to refer
   # to "loss functions" instead of distributions.  Following naming convention
   # of the loss function classes themselves.
+
+  def register_embedding_multi(self,
+                               params,
+                               inputs,
+                               outputs,
+                               num_uses=None,
+                               approx=None,
+                               reuse=VARIABLE_SCOPE):
+    """Registers embedding layers with shared parameters.
+
+    Args:
+      params: Embedding matrix of shape [vocab_size, embedding_size].
+      inputs: A list of Tensors, each of shape [batch_size, input_size] and
+        dtype int32. Indices into embedding matrix. The list indexes each use
+        in the graph (which might correspond to a "time-step" in an RNN).
+        OR, can be single Tensor, of shape [num_uses, batch_size, input_size],
+        which is a reshaped version of a Tensor of shape [num_uses, batch_size,
+        input_size].
+      outputs: A list of Tensors, each of shape [batch_size, embedding_size].
+        Outputs produced by layer. The list indexes each use in the graph
+        (which might correspond to a "time-step" in an RNN). Needs to
+        correspond with the order used in 'inputs'. OR, can be a
+        single Tensor, of shape [num_uses * batch_size, embedding_size], which
+        is a reshaped version of a Tensor of shape [num_uses, batch_size,
+        embedding_size].
+      num_uses: int or None. The number uses/time-steps in the graph where the
+        layer appears. Only needed if both inputs and outputs are given in the
+        single Tensor format. (Default: None)
+      approx: str or None. If not None must by "kron_indep". The Fisher
+        approximation to use. If None the default value is used.
+        (Default: None)
+      reuse: bool or str.  If True, this adds inputs and outputs as an
+        additional mini-batch/tower of data to use when estimating the Fisher
+        block for this layer (which must have already been registered). If
+        "VARIABLE_SCOPE", use tf.get_variable_scope().reuse.  (Note that the
+        word 'use' here has a completely different meaning to "use in the graph"
+        as it perturns to the 'inputs', 'outputs', and 'num_uses' arguments.)
+        (Default: "VARIABLE_SCOPE")
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    block_type, approx = self._get_block_type(
+        params, approx, self.default_embedding_multi_approximation,
+        _EMBEDDING_MULTI_APPROX_TO_BLOCK_TYPES)
+
+    if isinstance(params, (tuple, list)):
+      raise ValueError("Bias not supported.")
+    vocab_size = int(params.shape[0])
+
+    block = self.register_block(
+        params, block_type(self, vocab_size, num_uses=num_uses), reuse=reuse)
+    block.register_additional_tower(inputs, outputs)
+
+    self._add_uses(params, len(inputs))
 
   def register_categorical_predictive_distribution(self,
                                                    logits,
@@ -735,9 +1149,10 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
-        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
-        tf.get_variable_scope().reuse.
+      reuse: bool or str.  If True, this adds 'logits' as an additional
+        mini-batch/tower of inputs to the loss-function/predictive distribution
+        (which must have already been registered). If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
     """
     loss = lf.CategoricalLogitsNegativeLogProbLoss(logits, targets=targets,
                                                    seed=seed)
@@ -768,9 +1183,10 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
-        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
-        tf.get_variable_scope().reuse.
+      reuse: bool or str.  If True, this adds 'mean' and 'var' as an additional
+        mini-batch/tower of inputs to the loss-function/predictive distribution
+        (which must have already been registered). If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
     """
     loss = lf.NormalMeanNegativeLogProbLoss(mean, var, targets=targets,
                                             seed=seed)
@@ -796,9 +1212,10 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
-      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
-        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
-        tf.get_variable_scope().reuse.
+      reuse: bool or str.  If True, this adds 'logits' as an additional
+        mini-batch/tower of inputs to the loss-function/predictive distribution
+        (which must have already been registered). If "VARIABLE_SCOPE", use
+        tf.get_variable_scope().reuse. (Default: "VARIABLE_SCOPE")
     """
     loss = lf.MultiBernoulliNegativeLogProbLoss(logits, targets=targets,
                                                 seed=seed)
@@ -833,3 +1250,10 @@ class LayerCollection(object):
       with variable_scope.variable_scope(self._var_scope):
         self.fisher_factors[key] = cls(*args)
     return self.fisher_factors[key]
+
+  @contextmanager
+  def as_default(self):
+    """Sets this LayerCollection as the default."""
+    set_default_layer_collection(self)
+    yield
+    set_default_layer_collection(None)

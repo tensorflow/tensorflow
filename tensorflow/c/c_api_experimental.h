@@ -25,6 +25,7 @@ limitations under the License.
 // Experimental C API for TensorFlow.
 //
 // The API here is subject to changes in the future.
+// --------------------------------------------------------------------------
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -58,6 +59,53 @@ extern "C" {
 // cannot read/write the tensorflow.ConfigProto proto.
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
+
+// Initializes TPU system. Must be called exactly once before TF_SessionRun() is
+// called on a TPU graph.
+//
+// The session graph must contain a node named ConfigureDistributedTPU.
+// TODO(b/74774824): Improve the API on initializing TPU system.
+TF_CAPI_EXPORT extern void TF_InitializeTPU(TF_Session* session,
+                                            TF_Status* status);
+
+// Shuts down TPU system. For any `session` where TF_InitializeTPU() has
+// been successfully called, this call must be made exactly once before the
+// session is closed.
+// The session graph must contain a node named ShutdownDistributedTPU.
+TF_CAPI_EXPORT extern void TF_ShutdownTPU(TF_Session* session,
+                                          TF_Status* status);
+
+// Returns the graph content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len);
+
+// Returns the graph content in a human-readable format, with length set in
+// `len`. The format is subject to change in the future.
+// The returned string is heap-allocated, and caller should call free() on it.
+TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
+                                                      size_t* len);
+
+// Creates a stack of data set + iterator nodes, currently hard-coded to return
+// a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
+// returns the IteratorGetNext node, which caller can run or feed into an node.
+//
+// TODO(hongm): Extend the API to allow customization of the nodes created.
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
+    TF_Graph* graph, TF_Status* status);
+
+// Similar to the above API, except that the returned iterator reads the
+// file based dataset from `file_path`.
+// If `is_mnist` is 0, the dataset corresponds to ImageNet.
+// The iterators outputs 2 tensors:
+// - A float tensor of shape `batch_size` X 784 when `is_mnist` is non-zero, or
+// `batch_size` X 224 X 224 X 3 otherwise.
+// - An int32 tensor of shape `batch_size`
+// TODO(hongm): Extend the API to allow customization of the nodes created.
+TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
+    TF_Graph* graph, const char* file_path, int batch_size,
+    unsigned char is_mnist, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -8,6 +8,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -401,11 +402,10 @@ py_test(
 
 py_test(
     name = "convolutional_recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["_impl/keras/layers/convolutional_recurrent_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
-    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -612,6 +612,7 @@ py_test(
         "no_windows",
         "noasan",  # times out
         "notsan",
+        "optonly",  # times out
     ],
     deps = [
         ":keras",
@@ -636,10 +637,7 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/utils/io_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # TODO: needs investigation on Windows
-        "notsan",
-    ],
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -659,16 +657,17 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "multi_gpu_utils_test",
-    size = "medium",
     srcs = ["_impl/keras/utils/multi_gpu_utils_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["multi_gpu"],
-    deps = [
+    additional_deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "guitar",
+        "multi_gpu",
     ],
 )
 
@@ -777,6 +776,9 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/engine/topology_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

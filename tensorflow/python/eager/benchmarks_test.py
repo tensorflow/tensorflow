@@ -55,7 +55,7 @@ def c_tfe_py_fastpath_execute(a,
                               transpose_b=False,
                               name=None):
   ctx = context.context()
-  assert ctx.in_eager_mode(
+  assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
@@ -82,16 +82,24 @@ class MicroBenchmarks(test.Benchmark):
     self._num_iters_2_by_2 = 30000
     self._num_iters_100_by_784 = 1000
 
-  def _run(self, func, num_iters):
+  def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
-    func()
-    start = time.time()
-    for _ in xrange(num_iters):
+    ctx = context.context()
+    with ctx.execution_mode(execution_mode):
       func()
-    end = time.time()
-    mean_us = (end - start) * 1e6 / num_iters
-    self.report_benchmark(iters=num_iters, wall_time=mean_us,
-                          extras={"examples_per_sec": num_iters/(end-start)})
+      if execution_mode == context.ASYNC:
+        ctx.async_wait()
+      start = time.time()
+      for _ in xrange(num_iters):
+        func()
+      if execution_mode == context.ASYNC:
+        ctx.async_wait()
+      end = time.time()
+      mean_us = (end - start) * 1e6 / num_iters
+      self.report_benchmark(
+          iters=num_iters,
+          wall_time=mean_us,
+          extras={"examples_per_sec": num_iters / (end - start)})
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -236,9 +244,10 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: np.dot(a, b)
     self._run(func, num_iters)
 
-  def _benchmark_tf_matmul(self, m, transpose_b, num_iters):
+  def _benchmark_tf_matmul(self, m, transpose_b, num_iters,
+                           execution_mode=None):
     func = lambda: math_ops.matmul(m, m, transpose_b=transpose_b)
-    self._run(func, num_iters)
+    self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_gen_math_ops_matmul(self, m, transpose_b, num_iters):
     def func():
@@ -267,10 +276,14 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, num_iters)
 
-  def _benchmark_defun_matmul(self, m, transpose_b, num_iters):
+  def _benchmark_defun_matmul(self,
+                              m,
+                              transpose_b,
+                              num_iters,
+                              execution_mode=None):
     f = function.defun(math_ops.matmul)
     func = lambda: f(m, m, transpose_b)
-    self._run(func, num_iters)
+    self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_read_variable(self, m, num_iters):
     self._run(m.value, num_iters)
@@ -301,6 +314,15 @@ class MicroBenchmarks(test.Benchmark):
       self._benchmark_tf_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  def benchmark_tf_matmul_2_by_2_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_tf_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
   def benchmark_gen_math_ops_matmul_2_by_2_CPU(self):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
@@ -325,6 +347,15 @@ class MicroBenchmarks(test.Benchmark):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  def benchmark_defun_matmul_2_by_2_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
   def benchmark_tf_matmul_2_by_2_GPU(self):
     if not context.num_gpus():
       return
@@ -332,6 +363,17 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_2_by_2.gpu()
       self._benchmark_tf_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_matmul_2_by_2_GPU_async(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_tf_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
 
   def benchmark_gen_math_ops_matmul_2_by_2_GPU(self):
     if not context.num_gpus():
@@ -357,6 +399,17 @@ class MicroBenchmarks(test.Benchmark):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  def benchmark_defun_matmul_2_by_2_GPU_async(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
   # Benchmarks for AA.T, A of dimension 100 by 784.
   def benchmark_np_matmul_100_by_784(self):
     self._benchmark_np_matmul(
@@ -369,6 +422,15 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.cpu()
       self._benchmark_tf_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tf_matmul_100_by_784_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_tf_matmul(
+          m,
+          transpose_b=True,
+          num_iters=self._num_iters_100_by_784,
+          execution_mode=context.ASYNC)
 
   def benchmark_gen_math_ops_matmul_100_by_784_CPU(self):
     with context.device(CPU):
@@ -401,6 +463,17 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_tf_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tf_matmul_100_by_784_GPU_async(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_100_by_784.gpu()
+      self._benchmark_tf_matmul(
+          m,
+          transpose_b=True,
+          num_iters=self._num_iters_100_by_784,
+          execution_mode=context.ASYNC)
 
   def benchmark_gen_math_ops_matmul_100_by_784_GPU(self):
     if not context.num_gpus():

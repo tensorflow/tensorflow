@@ -64,11 +64,11 @@ class LogMessageFatal : public LogMessage {
 };
 
 #define _TF_LOG_INFO \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::INFO)
 #define _TF_LOG_WARNING \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::WARNING)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::WARNING)
 #define _TF_LOG_ERROR \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::ERROR)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::ERROR)
 #define _TF_LOG_FATAL \
   ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
 

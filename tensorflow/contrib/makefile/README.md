@@ -194,6 +194,8 @@ with:
 srcs = glob(["libs/arm64-v8a/*.so"]),
 ```
 
+If you are building for Android TV (Shield TV devices), replace "portrait" with "landscape" for android:screenOrientation in all four activities in tensorflow/examples/android/AndroidManifest.xml
+
 Then run:
 ```bash
 # Create dir for native libs

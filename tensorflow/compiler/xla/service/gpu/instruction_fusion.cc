@@ -52,6 +52,34 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
+  // Check if we can use output fusion for (A @ B) * alpha
+  if (producer->opcode() == HloOpcode::kDot) {
+    if (consumer->opcode() == HloOpcode::kMultiply) {
+      CHECK_EQ(consumer->operand_count(), 2);
+      int64 other_operand_index = 1 - operand_index;
+      const HloInstruction* alpha = consumer->operand(other_operand_index);
+      if (alpha->opcode() == HloOpcode::kConstant &&
+          ShapeUtil::IsScalar(alpha->shape())) {
+        return true;
+      }
+    }
+  }
+
+  // Only allow to fuse transpose into an output fusion.
+  if (consumer->opcode() == HloOpcode::kFusion &&
+      consumer->fusion_kind() == HloInstruction::FusionKind::kOutput) {
+    if (producer->opcode() != HloOpcode::kTranspose) {
+      return false;
+    }
+    // Check that the transpose is the operand of a dot.
+    auto producer_operand_index = consumer->operand_index(producer);
+    auto fused_parameter = consumer->fused_parameter(producer_operand_index);
+    const std::vector<HloInstruction*>& fused_parameter_users =
+        fused_parameter->users();
+    return (fused_parameter_users.size() == 1 &&
+            fused_parameter_users[0]->opcode() == HloOpcode::kDot);
+  }
+
   // Output fusion is not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     return false;
@@ -92,6 +120,9 @@ HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
   if (IsReductionToVector(*consumer)) {
     return HloInstruction::FusionKind::kInput;
+  }
+  if (producer->opcode() == HloOpcode::kDot) {
+    return HloInstruction::FusionKind::kOutput;
   }
   if (HloOpcode::kFusion == consumer->opcode()) {
     return consumer->fusion_kind();

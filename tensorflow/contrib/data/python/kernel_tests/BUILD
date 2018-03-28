@@ -479,7 +479,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "no_oss",  # b/68785503
+        "no_oss",
+        "notap",
     ],
     deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",

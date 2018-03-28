@@ -1795,6 +1795,7 @@ _rgb_to_yiq_kernel = [[0.299, 0.59590059,
                       [0.114, -0.32134392, 0.31119955]]
 
 
+@tf_export('image.rgb_to_yiq')
 def rgb_to_yiq(images):
   """Converts one or more images from RGB to YIQ.
 
@@ -1820,6 +1821,7 @@ _yiq_to_rgb_kernel = [[1, 1, 1], [0.95598634, -0.27201283, -1.10674021],
                       [0.6208248, -0.64720424, 1.70423049]]
 
 
+@tf_export('image.yiq_to_rgb')
 def yiq_to_rgb(images):
   """Converts one or more images from YIQ to RGB.
 
@@ -1847,6 +1849,7 @@ _rgb_to_yuv_kernel = [[0.299, -0.14714119,
                       [0.114, 0.43601035, -0.10001026]]
 
 
+@tf_export('image.rgb_to_yuv')
 def rgb_to_yuv(images):
   """Converts one or more images from RGB to YUV.
 
@@ -1872,6 +1875,7 @@ _yuv_to_rgb_kernel = [[1, 1, 1], [0, -0.394642334, 2.03206185],
                       [1.13988303, -0.58062185, 0]]
 
 
+@tf_export('image.yuv_to_rgb')
 def yuv_to_rgb(images):
   """Converts one or more images from YUV to RGB.
 

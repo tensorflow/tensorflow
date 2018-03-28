@@ -415,6 +415,8 @@ typedef struct _TfLiteDelegate {
 typedef struct {
   TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;
+  TfLiteIntArray* input_tensors;
+  TfLiteIntArray* output_tensors;
 } TfLiteDelegateParams;
 
 #ifdef __cplusplus

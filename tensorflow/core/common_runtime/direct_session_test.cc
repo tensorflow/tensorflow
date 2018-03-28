@@ -49,6 +49,22 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+CallableOptions MakeCallableOptions(gtl::ArraySlice<string> feeds,
+                                    gtl::ArraySlice<string> fetches,
+                                    gtl::ArraySlice<string> targets) {
+  CallableOptions ret;
+  for (const string& feed : feeds) {
+    ret.add_feed(feed);
+  }
+  for (const string& fetch : fetches) {
+    ret.add_fetch(fetch);
+  }
+  for (const string& target : targets) {
+    ret.add_target(target);
+  }
+  return ret;
+}
+
 std::unique_ptr<Session> CreateSession() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
@@ -111,6 +127,53 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 }
 
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Run the test twice to ensure that the Make/Run/Release cycle is hermetic.
+  for (int i = 0; i < 2; ++i) {
+    // Request two targets: one fetch output and one non-fetched output.
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(
+        MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+    for (int i = 0; i < 2; ++i) {
+      std::vector<Tensor> outputs;
+      TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+      ASSERT_EQ(1, outputs.size());
+      // The first output should be initialized and have the correct
+      // output.
+      auto mat = outputs[0].matrix<float>();
+      ASSERT_TRUE(outputs[0].IsInitialized());
+      EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+    }
+
+    Status s = session->RunCallable(handle, {}, nullptr, nullptr);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(StringPiece(s.error_message())
+                    .contains("`fetch_tensors` must be provided"));
+
+    TF_ASSERT_OK(session->ReleaseCallable(handle));
+
+    std::vector<Tensor> outputs;
+    s = session->RunCallable(handle, {}, &outputs, nullptr);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(
+        StringPiece(s.error_message())
+            .contains("Attempted to run callable after handle was released"));
+
+    s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(
+        StringPiece(s.error_message()).contains("No such callable handle"));
+  }
+}
+
 TEST_F(DirectSessionMinusAXTest, TestFeed) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();
@@ -140,6 +203,39 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
   EXPECT_FLOAT_EQ(39.0, mat(1, 0));
 }
 
+TEST_F(DirectSessionMinusAXTest, TestFeed_Callable) {
+  Initialize({1, 2, 3, 4});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Fill in the input and ask for the output
+  //
+  // Note that the input being fed is on the second device.
+  CallableOptions callable_options;
+  callable_options.add_feed(x_);
+  callable_options.add_fetch(y_ + ":0");
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(MakeCallableOptions({x_}, {y_ + ":0"}, {}),
+                                     &handle));
+  Tensor t(DT_FLOAT, TensorShape({2, 1}));
+  t.matrix<float>()(0, 0) = 5;
+  t.matrix<float>()(1, 0) = 6;
+  std::vector<Tensor> inputs = {t};
+  std::vector<Tensor> outputs;
+
+  // Run the callable
+  TF_ASSERT_OK(session->RunCallable(handle, inputs, &outputs, nullptr));
+
+  ASSERT_EQ(1, outputs.size());
+  auto mat = outputs[0].matrix<float>();
+
+  // Expect outputs to be; 1*5 + 2*6, 3*5 + 4*6
+  EXPECT_FLOAT_EQ(17.0, mat(0, 0));
+  EXPECT_FLOAT_EQ(39.0, mat(1, 0));
+}
+
 TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();
@@ -158,6 +254,39 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
       // Run the graph
       Status s = session->Run(inputs, output_names, {}, &outputs);
       TF_ASSERT_OK(s);
+      ASSERT_EQ(1, outputs.size());
+      auto mat = outputs[0].matrix<float>();
+      EXPECT_FLOAT_EQ(3.0, mat(0, 0));
+    }
+  };
+
+  for (int i = 0; i < 4; ++i) {
+    tp->Schedule(fn);
+  }
+
+  // Wait for the functions to finish.
+  delete tp;
+}
+
+TEST_F(DirectSessionMinusAXTest, TestConcurrency_Callable) {
+  Initialize({1, 2, 3, 4});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Fill in the input and ask for the output
+  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
+
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle));
+
+  // Run the callable 1000 times in 4 different threads concurrently.
+  auto fn = [&session, handle]() {
+    for (int i = 0; i < 1000; ++i) {
+      std::vector<Tensor> outputs;
+      // Run the graph
+      TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
       EXPECT_FLOAT_EQ(3.0, mat(0, 0));
@@ -297,6 +426,38 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
 }
 
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  CallableOptions callable_options =
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_});
+  callable_options.mutable_run_options()->set_trace_level(
+      RunOptions::FULL_TRACE);
+  TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
+
+  RunMetadata run_metadata;
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
+
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, &run_metadata));
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Checks RunMetadata is well-formed
+  ASSERT_TRUE(run_metadata.has_step_stats());
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
+}
+
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   GraphDef def;
   Graph g(OpRegistry::Global());
@@ -405,6 +566,89 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {{first_const->name(), value_11}, {first_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
+}
+
+TEST(DirectSessionTest, MultipleFeedTest_Callable) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  Session::CallableHandle handle;
+  std::vector<Tensor> outputs;
+
+  // Fetch without feeding.
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions(
+          {}, {first_identity->name() + ":0", second_identity->name() + ":0"},
+          {}),
+      &handle));
+  TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(1.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(2.0, outputs[1].flat<float>()(0));
+
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions(
+          {}, {second_identity->name() + ":0", first_identity->name() + ":0"},
+          {}),
+      &handle));
+  TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(2.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(1.0, outputs[1].flat<float>()(0));
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Feed [first_const, second_const]
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions(
+          {first_const->name(), second_const->name()},
+          {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
+      &handle));
+  TF_ASSERT_OK(
+      session->RunCallable(handle, {value_11, value_22}, &outputs, nullptr));
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [second_const, first_const]
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions(
+          {second_const->name(), first_const->name()},
+          {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
+      &handle));
+  TF_ASSERT_OK(
+      session->RunCallable(handle, {value_22, value_11}, &outputs, nullptr));
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [first_const, first_const]
+  Status s = session->MakeCallable(
+      MakeCallableOptions(
+          {first_const->name(), first_const->name()},
+          {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
+      &handle);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
   EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
@@ -643,6 +887,59 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
 }
 
 TEST(DirectSessionTest, RunHandleTest) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor value0(DT_FLOAT, TensorShape({}));
+  value0.scalar<float>()() = 1.0;
+  Node* const0 = test::graph::Constant(&g, value0);
+  Node* identity0 = test::graph::Identity(&g, const0);
+
+  Tensor value1(DT_FLOAT, TensorShape({}));
+  value1.scalar<float>()() = 2.0;
+  Node* const1 = test::graph::Constant(&g, value1);
+  Node* node3 = test::graph::Add(&g, identity0, const1);
+  Node* node4 = test::graph::Unary(&g, "GetSessionHandleV2", node3);
+
+  Tensor value2(DT_STRING, TensorShape({}));
+  Node* const2 = test::graph::Constant(&g, value2);
+  Node* node5 = test::graph::GetSessionTensor(&g, const2);
+  Node* node6 = test::graph::Add(&g, node5, const1);
+
+  Node* node7 = test::graph::Unary(&g, "DeleteSessionTensor", const2);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // First run call: Create a handle.
+  std::vector<Tensor> outputs;
+  Status s = session->Run({}, {node4->name() + ":0"}, {}, &outputs);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs.size());
+
+  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  Tensor string_handle(DT_STRING, {});
+  string_handle.flat<string>().setConstant(resource_handle.name());
+
+  // Second run call: Use a handle.
+  std::vector<Tensor> outputs1;
+  s = session->Run({{const2->name(), string_handle}}, {node6->name() + ":0"},
+                   {}, &outputs1);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(1, outputs1.size());
+  ASSERT_EQ(5.0, outputs1[0].flat<float>()(0));
+
+  // Third run call: Delete a handle.
+  std::vector<Tensor> outputs2;
+  s = session->Run({{const2->name(), string_handle}}, {}, {node7->name()},
+                   &outputs2);
+  ASSERT_TRUE(s.ok());
+}
+
+TEST(DirectSessionTest, RunHandleTest_Callable) {
   GraphDef def;
   Graph g(OpRegistry::Global());
 
@@ -1109,12 +1406,21 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   EXPECT_EQ(t.scalar<float>()(), outputs[0].scalar<float>()());
   outputs.clear();
 
+  // Make a callable handle before closing the session.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {}, {var_assign->name()}), &handle));
+
   // Close the session.
   TF_ASSERT_OK(session->Close());
 
   // Run the read on the variable to get an error.
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+
+  // Run the read as a callable to verify that we get the same error.
+  s = session->RunCallable(handle, {}, {}, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
 }
 
@@ -1217,7 +1523,8 @@ TEST(DirectSessionTest, LocalDeviceManager) {
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds,
+                              bool use_make_callable) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -1253,29 +1560,55 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds) {
   SessionOptions opts;
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
-  {
-    // NOTE(mrry): Ignore the first run, which will incur the graph
-    // partitioning/pruning overhead and skew the results.
-    //
-    // Note that we should also optimize and monitor the overhead on
-    // the first run, which will impact application startup times, but
-    // that is not the object of study in this benchmark.
-    std::vector<Tensor> output_values;
-    TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
+  if (use_make_callable) {
+    Session::CallableHandle handle;
+    CallableOptions callable_options;
+    std::vector<Tensor> input_tensors;
+    for (const auto& input : inputs) {
+      callable_options.add_feed(input.first);
+      input_tensors.push_back(input.second);
+    }
+    for (const string& output : outputs) {
+      callable_options.add_fetch(output);
+    }
+    TF_CHECK_OK(session->MakeCallable(callable_options, &handle));
+
+    testing::StartTiming();
+    for (int i = 0; i < iters; ++i) {
+      std::vector<Tensor> output_values;
+      TF_CHECK_OK(
+          session->RunCallable(handle, input_tensors, &output_values, nullptr));
+    }
+    testing::StopTiming();
+  } else {
+    {
+      // NOTE(mrry): Ignore the first run, which will incur the graph
+      // partitioning/pruning overhead and skew the results.
+      //
+      // Note that we should also optimize and monitor the overhead on
+      // the first run, which will impact application startup times, but
+      // that is not the object of study in this benchmark.
+      std::vector<Tensor> output_values;
+      TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
+    }
+    testing::StartTiming();
+    for (int i = 0; i < iters; ++i) {
+      std::vector<Tensor> output_values;
+      TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
+    }
+    testing::StopTiming();
   }
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
-    std::vector<Tensor> output_values;
-    TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
-  }
-  testing::StopTiming();
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+}
+void BM_FeedFetchCallable(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
 }  // namespace tensorflow

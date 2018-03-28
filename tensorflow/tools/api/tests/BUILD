@@ -23,6 +23,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow:experimental_tensorflow_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:lib",

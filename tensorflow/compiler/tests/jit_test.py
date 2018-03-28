@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.contrib.compiler import jit
@@ -434,6 +435,56 @@ class XlaCompilationTest(test.TestCase):
     self.assertFalse(InLabels(labels, "Reciprocal"))
     self.assertFalse(InLabels(labels, "Mul"))
     self.assertTrue(InLabels(labels, "_XlaLaunch"))
+
+
+class ElementWiseFusionTest(test.TestCase):
+
+  # Runs a simple test with the input jit_level and fusion_only flag.
+  def simpleTest(self, arg0, arg1, global_jit_level):
+    config = config_pb2.ConfigProto()
+    config.graph_options.optimizer_options.global_jit_level = global_jit_level
+
+    with session_lib.Session(config=config) as sess:
+      a1 = array_ops.placeholder(dtypes.float32, [2, 2], name="a1")
+      a2 = array_ops.placeholder(dtypes.float32, [2, 2], name="a2")
+      # Two element-wise ops. We need at least two ops since single
+      # element clusters are not passed to XLA in fusion_only mode.
+      a3 = a1 * a2
+      a4 = a3 + a1
+      # A matmul to break XLA clustering.
+      a5 = math_ops.matmul(a4, a1)
+      # Two more element-wise ops.
+      a6 = a5 - a4
+      a7 = a6 + a2
+
+      run_metadata = config_pb2.RunMetadata()
+      output = sess.run(
+          a7, {
+              a1: arg0,
+              a2: arg1
+          },
+          run_metadata=run_metadata,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+
+      labels = RunMetadataLabels(run_metadata)
+      count = sum("_XlaLaunch(" in x for x in labels)
+
+      return output, count
+
+  def testElementWiseClustering(self):
+    arg0 = np.random.rand(2, 2).astype(np.float32)
+    arg1 = np.random.rand(2, 2).astype(np.float32)
+    os.environ["TF_XLA_FLAGS"] = "--tf_xla_fusion_only=true"
+    tf_op, tf_count = self.simpleTest(arg0, arg1,
+                                      config_pb2.OptimizerOptions.OFF)
+    self.assertEqual(0, tf_count)
+
+    tfef_op, tfef_count = self.simpleTest(arg0, arg1,
+                                          config_pb2.OptimizerOptions.ON_1)
+    self.assertEqual(2, tfef_count)
+
+    self.assertAllClose(tf_op, tfef_op, rtol=1e-1)
 
 
 if __name__ == "__main__":

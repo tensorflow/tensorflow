@@ -53,7 +53,7 @@ from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import optimizer
+from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
@@ -134,7 +134,8 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
       hidden_weights_names + hidden_biases_names +
       [LOGITS_WEIGHTS_NAME + '/part_0:0', LOGITS_BIASES_NAME + '/part_0:0'])
 
-  def _create_estimator_spec(features, mode, logits, labels, train_op_fn):
+  def _create_estimator_spec(
+      features, mode, logits, labels, train_op_fn=None, optimizer=None):
     del features, labels  # Not used.
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     testcase.assertItemsEqual(expected_var_names,
@@ -144,8 +145,12 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
         expected_logits, logits, message='Failed for mode={}. '.format(mode))
     with ops.control_dependencies([assert_logits]):
       if mode == model_fn.ModeKeys.TRAIN:
+        if train_op_fn is not None:
+          train_op = train_op_fn(loss)
+        elif optimizer is not None:
+          train_op = optimizer.minimize(loss, global_step=None)
         return model_fn.EstimatorSpec(
-            mode=mode, loss=loss, train_op=train_op_fn(loss))
+            mode=mode, loss=loss, train_op=train_op)
       elif mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(mode=mode, loss=array_ops.identity(loss))
       elif mode == model_fn.ModeKeys.PREDICT:
@@ -203,8 +208,8 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
       return control_flow_ops.no_op()
 
   optimizer_mock = test.mock.NonCallableMagicMock(
-      spec=optimizer.Optimizer,
-      wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+      spec=optimizer_lib.Optimizer,
+      wraps=optimizer_lib.Optimizer(use_locking=False, name='my_optimizer'))
   optimizer_mock.minimize = test.mock.MagicMock(wraps=_minimize)
 
   return optimizer_mock
@@ -1035,6 +1040,8 @@ class BaseDNNClassifierEvaluateTest(object):
         metric_keys.MetricKeys.LOSS: expected_loss,
         metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2.,
         metric_keys.MetricKeys.ACCURACY: 0.5,
+        metric_keys.MetricKeys.PRECISION: 0.0,
+        metric_keys.MetricKeys.RECALL: 0.0,
         metric_keys.MetricKeys.PREDICTION_MEAN: 0.11105597,
         metric_keys.MetricKeys.LABEL_MEAN: 0.5,
         metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1042,6 +1049,7 @@ class BaseDNNClassifierEvaluateTest(object):
         # that is what the algorithm returns.
         metric_keys.MetricKeys.AUC: 0.5,
         metric_keys.MetricKeys.AUC_PR: 0.75,
+
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 

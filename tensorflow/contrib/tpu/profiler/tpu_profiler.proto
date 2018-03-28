@@ -36,10 +36,17 @@ message ProfileRequest {
   // Optional profiling options that control how a TF session will be profiled.
   ProfileOptions opts = 4;
 
+  // The place where we will dump profile data. We will normally use
+  // MODEL_DIR/plugin/profile/ as our repository root.
+  string repository_root = 5;
+
+  // The user provided profile session identifier.
+  string session_id = 6;
+
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
-  // next-field: 5
+  // next-field: 7
 }
 
 message ProfileToolData {

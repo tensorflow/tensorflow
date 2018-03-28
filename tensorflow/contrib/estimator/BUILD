@@ -142,6 +142,7 @@ py_test(
     deps = [
         ":extenders",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/predictor",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -174,6 +175,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
@@ -291,6 +293,8 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
@@ -354,6 +358,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:dnn",
         "//tensorflow/python/estimator:export_export",

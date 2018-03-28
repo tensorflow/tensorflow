@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 class MockFisherBlock(object):
   """A fake FisherBlock."""
 
-  num_registered_minibatches = 2
+  num_registered_towers = 2
 
   def __init__(self, name='MockFisherBlock'):
     self.name = name
@@ -104,22 +104,53 @@ class LayerCollectionTest(test.TestCase):
           array_ops.constant(3),
           approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_conv2d(
-          array_ops.constant(4), [1, 1, 1, 1], 'SAME',
-          array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=array_ops.ones((1, 2, 3, 4)),
+          outputs=array_ops.ones((1, 1, 1, 5)))
       lc.register_conv2d(
-          array_ops.constant(4), [1, 1, 1, 1],
-          'SAME',
-          array_ops.ones((1, 1, 1, 1)),
-          array_ops.constant(3),
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=array_ops.ones((1, 2, 3, 4)),
+          outputs=array_ops.ones((1, 1, 1, 5)),
           approx=layer_collection.APPROX_DIAGONAL_NAME)
+      lc.register_separable_conv2d(
+          depthwise_params=array_ops.ones((3, 3, 1, 2)),
+          pointwise_params=array_ops.ones((1, 1, 2, 4)),
+          inputs=array_ops.ones((32, 5, 5, 1)),
+          depthwise_outputs=array_ops.ones((32, 5, 5, 2)),
+          pointwise_outputs=array_ops.ones((32, 5, 5, 4)),
+          strides=[1, 1, 1, 1],
+          padding='SAME')
+      lc.register_convolution(
+          params=array_ops.ones((3, 3, 1, 8)),
+          inputs=array_ops.ones((32, 5, 5, 1)),
+          outputs=array_ops.ones((32, 5, 5, 8)),
+          padding='SAME')
       lc.register_generic(
           array_ops.constant(5), 16, approx=layer_collection.APPROX_FULL_NAME)
       lc.register_generic(
           array_ops.constant(6),
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
+      lc.register_fully_connected_multi(
+          array_ops.constant(1),
+          (array_ops.constant(2), array_ops.constant(3)),
+          (array_ops.constant(4), array_ops.constant(5)))
+      lc.register_conv2d_multi(
+          params=array_ops.ones((2, 3, 4, 5)),
+          strides=[1, 1, 1, 1],
+          padding='SAME',
+          inputs=(array_ops.ones((1, 2, 3, 4)), array_ops.ones((5, 6, 7, 8))),
+          outputs=(array_ops.ones((1, 1, 1, 5)), array_ops.ones((2, 2, 2, 10))))
+      lc.register_embedding_multi(
+          array_ops.constant((1,)),
+          (array_ops.constant(2), array_ops.constant(3)),
+          (array_ops.constant(4), array_ops.constant(5)))
 
-      self.assertEqual(6, len(lc.get_blocks()))
+      self.assertEqual(12, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
@@ -437,13 +468,13 @@ class LayerCollectionTest(test.TestCase):
       b = variable_scope.get_variable('b', [3])
       lc = layer_collection.LayerCollection()
       lc.register_fully_connected(w, inputs, outputs)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 1)
       with self.assertRaises(KeyError):
         lc.register_fully_connected((w, b), inputs, outputs, reuse=True)
       self.assertNotIn((w, b), lc.fisher_blocks)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 1)
       lc.register_fully_connected(w, inputs, outputs, reuse=True)
-      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 2)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_towers, 2)
 
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():
@@ -534,6 +565,32 @@ class LayerCollectionTest(test.TestCase):
         b_1, batch_size=1, approx=layer_collection.APPROX_DIAGONAL_NAME)
     self.assertIsInstance(lc.fisher_blocks[b_0], fisher_blocks.FullFB)
     self.assertIsInstance(lc.fisher_blocks[b_1], fisher_blocks.NaiveDiagonalFB)
+
+  def testDefaultLayerCollection(self):
+    with ops.Graph().as_default():
+      # Can't get default if there isn't one set.
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
+
+      # Can't set default twice.
+      lc = layer_collection.LayerCollection()
+      layer_collection.set_default_layer_collection(lc)
+      with self.assertRaises(ValueError):
+        layer_collection.set_default_layer_collection(lc)
+
+      # Same as one set.
+      self.assertTrue(lc is layer_collection.get_default_layer_collection())
+
+      # Can set to None.
+      layer_collection.set_default_layer_collection(None)
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
+
+      # as_default() is the same as setting/clearing.
+      with lc.as_default():
+        self.assertTrue(lc is layer_collection.get_default_layer_collection())
+      with self.assertRaises(ValueError):
+        layer_collection.get_default_layer_collection()
 
 
 if __name__ == '__main__':
