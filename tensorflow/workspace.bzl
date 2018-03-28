@@ -405,12 +405,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
-          "https://github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
+          "https://github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
       ],
-      sha256 = "f08a5c8e265191b39cc74915b1bc1fd380d86cd0176c92b7cce30b6ac50514ad",
-      strip_prefix = "grpc-575bda39755b98d1f7099406bb57a6e3b2074874",
+      sha256 = "0a05bd355e4571b01d813dddffa38e57e689ac41b264dc9b1bd6ec66463ef5d6",
+      strip_prefix = "grpc-bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2",
   )
+
 
   tf_http_archive(
       name = "linenoise",

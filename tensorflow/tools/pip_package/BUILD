@@ -113,6 +113,7 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@grpc//third_party/nanopb:LICENSE.txt",
+        "@grpc//third_party/address_sorting:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@pcre//:LICENCE",
