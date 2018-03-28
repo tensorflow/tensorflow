@@ -14,16 +14,33 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
+
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
 Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* output) {
-  // TODO(haoliang): Let's remove assertions here.
   *output = item.graph;
+  for (NodeDef& node : *output->mutable_node()) {
+    if (IsAssert(node)) {
+      // Convert this node into a no-op.
+      node.set_op("NoOp");
+      node.clear_attr();
+      // Convert all its inputs into control dependency, which will then
+      // be optimized away by dependency optimizer.
+      for (string& inp : *node.mutable_input()) {
+        if (!IsControlInput(inp)) {
+          inp = AsControlDependency(inp);
+        }
+      }
+    }
+  }
   return Status::OK();
 }
 
