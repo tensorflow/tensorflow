@@ -285,6 +285,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dfs_hlo_visitor_with_default_test",
+    srcs = ["dfs_hlo_visitor_with_default_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_runner",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
