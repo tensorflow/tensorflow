@@ -82,3 +82,6 @@ from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_s
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)
+
+# A constant that can be used to enable auto-tuning.
+AUTOTUNE = -1
