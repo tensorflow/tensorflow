@@ -34,40 +34,54 @@ StatusOr<GlobalDataHandle> AllocationTracker::Register(
     std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Register";
-  return RegisterInternal(std::move(shaped_buffer), tag);
+  std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers;
+  replicated_buffers.emplace_back(std::move(shaped_buffer));
+  return RegisterInternal(std::move(replicated_buffers), tag);
+}
+
+StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
+    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
+    const string& tag) {
+  tensorflow::mutex_lock lock(mutex_);
+  VLOG(2) << "RegisterReplicatedBuffers";
+  return RegisterInternal(std::move(replicated_buffers), tag);
 }
 
 StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::unique_ptr<ShapedBuffer> shaped_buffer, const string& tag) {
+    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers,
+    const string& tag) {
   VLOG(2) << "RegisterInternal("
-          << "tag: \"" << tag << "\" "
-          << "shaped_buffer: " << *shaped_buffer;
-  if (shaped_buffer->platform() != backend_->platform()) {
-    return InvalidArgument(
-        "AllocationTracker for platform %s cannot register buffer from "
-        "platform %s",
-        backend_->platform()->Name().c_str(),
-        shaped_buffer->platform()->Name().c_str());
+          << "tag: \"" << tag << "\" with " << replicated_buffers.size()
+          << " shaped_buffers.";
+  for (const auto& shaped_buffer : replicated_buffers) {
+    VLOG(2) << "shaped_buffer:" << *shaped_buffer;
+    if (shaped_buffer->platform() != backend_->platform()) {
+      return InvalidArgument(
+          "AllocationTracker for platform %s cannot register buffer from "
+          "platform %s",
+          backend_->platform()->Name().c_str(),
+          shaped_buffer->platform()->Name().c_str());
+    }
   }
 
   int64 handle = next_handle_++;
-  std::vector<ShapeIndex> shape_indices;
-  ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
-                             [this, &shape_indices](const Shape& /*subshape*/,
-                                                    const ShapeIndex& index) {
-                               shape_indices.push_back(index);
-                             });
-  for (const ShapeIndex& index : shape_indices) {
-    AddAllocationOrIncrementRefCount(shaped_buffer->buffer(index),
-                                     shaped_buffer->device_ordinal());
+  for (auto& shaped_buffer : replicated_buffers) {
+    std::vector<ShapeIndex> shape_indices;
+    ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
+                               [this, &shape_indices](const Shape& /*subshape*/,
+                                                      const ShapeIndex& index) {
+                                 shape_indices.push_back(index);
+                               });
+    for (const ShapeIndex& index : shape_indices) {
+      AddAllocationOrIncrementRefCount(shaped_buffer->buffer(index),
+                                       shaped_buffer->device_ordinal());
+    }
+    handle_to_shaped_buffers_[handle].emplace_back(std::move(shaped_buffer));
   }
+
   GlobalDataHandle result;
   result.set_handle(handle);
-
-  handle_to_shaped_buffer_[handle] = std::move(shaped_buffer);
-
   VLOG(2) << "handle: " << handle;
-
   return result;
 }
 
@@ -75,23 +89,35 @@ tensorflow::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   tensorflow::mutex_lock lock(mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
-  TF_ASSIGN_OR_RETURN(ShapedBuffer * shaped_buffer, ResolveInternal(data));
-  std::vector<ShapeIndex> shape_indices;
-  ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
-                             [this, &shape_indices](const Shape& /*subshape*/,
-                                                    const ShapeIndex& index) {
-                               shape_indices.push_back(index);
-                             });
-  for (const ShapeIndex& index : shape_indices) {
-    TF_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
-                                         shaped_buffer->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+                      ResolveInternal(data));
+  for (const auto& shaped_buffer : replicated_buffers) {
+    std::vector<ShapeIndex> shape_indices;
+    ShapeUtil::ForEachSubshape(shaped_buffer->on_device_shape(),
+                               [this, &shape_indices](const Shape& /*subshape*/,
+                                                      const ShapeIndex& index) {
+                                 shape_indices.push_back(index);
+                               });
+    for (const ShapeIndex& index : shape_indices) {
+      TF_RETURN_IF_ERROR(DecrementRefCount(shaped_buffer->buffer(index),
+                                           shaped_buffer->device_ordinal()));
+    }
   }
+  return Reset(data);
+}
 
-  // Keep a nullptr as a tombstone for unregistered handles. This enables better
-  // error messages. That is, "handle has been deallocated" versus "handle does
-  // not exist".
-  handle_to_shaped_buffer_.at(data.handle()).reset();
-
+Status AllocationTracker::Reset(const GlobalDataHandle& data) {
+  // Keep a nullptr as a tombstone for unregistered handles. This enables
+  // better error messages. That is, "handle has been deallocated" versus
+  // "handle does not exist".
+  auto it = handle_to_shaped_buffers_.find(data.handle());
+  if (it == handle_to_shaped_buffers_.end()) {
+    return NotFound("no allocation record for global data handle: %lld",
+                    data.handle());
+  }
+  for (auto& shaped_buffer : it->second) {
+    shaped_buffer.reset();
+  }
   return tensorflow::Status::OK();
 }
 
@@ -99,7 +125,11 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
     const GlobalDataHandle& data) {
   tensorflow::mutex_lock lock(mutex_);
 
-  TF_ASSIGN_OR_RETURN(ShapedBuffer * shaped_buffer, ResolveInternal(data));
+  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+                      ResolveInternal(data));
+  // We only need to care about replica id 0 here, since the GlobalDataHandle is
+  // the same for all buffers across replicas.
+  const ShapedBuffer* shaped_buffer = replicated_buffers[0];
   if (!ShapeUtil::IsTuple(shaped_buffer->on_host_shape())) {
     return InvalidArgument("global data handle %lld is not a tuple",
                            data.handle());
@@ -109,7 +139,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   TF_RET_CHECK(ShapeUtil::IsTuple(shaped_buffer->on_device_shape()));
 
   if (ShapeUtil::IsNestedTuple(shaped_buffer->on_device_shape())) {
-    return Unimplemented("deconstructing nested tuples not yet supported");
+    return Unimplemented("Deconstructing nested tuples is not implemented.");
   }
 
   std::vector<GlobalDataHandle> element_handles;
@@ -122,37 +152,55 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
         shaped_buffer->platform(), shaped_buffer->device_ordinal());
     element_buffer->set_buffer(shaped_buffer->buffer(/*index=*/{i}),
                                /*index=*/{});
+    std::vector<std::unique_ptr<ShapedBuffer>> replicated_buffers;
+    replicated_buffers.emplace_back(std::move(element_buffer));
     TF_ASSIGN_OR_RETURN(
         GlobalDataHandle element_handle,
-        RegisterInternal(std::move(element_buffer), "deconstructed tuple"));
+        RegisterInternal(std::move(replicated_buffers), "deconstructed tuple"));
 
     element_handles.push_back(element_handle);
   }
   return std::move(element_handles);
 }
 
-StatusOr<const ShapedBuffer*> AllocationTracker::Resolve(
+StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
     const GlobalDataHandle& data) {
   tensorflow::mutex_lock lock(mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
-StatusOr<ShapedBuffer*> AllocationTracker::ResolveInternal(
+StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
+    const GlobalDataHandle& data, int replica_id) {
+  tensorflow::mutex_lock lock(mutex_);
+  TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+                      ResolveInternal(data));
+  if (replica_id >= replicated_buffers.size()) {
+    return InvalidArgument(
+        "Requesting buffer for replica %d, but found buffers only for %lu "
+        "replicas.",
+        replica_id, replicated_buffers.size());
+  }
+  return replicated_buffers[replica_id];
+}
+
+StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
     const GlobalDataHandle& data) {
   VLOG(2) << "resolve:" << data.handle();
-  auto it = handle_to_shaped_buffer_.find(data.handle());
-  if (it == handle_to_shaped_buffer_.end()) {
+  auto it = handle_to_shaped_buffers_.find(data.handle());
+  if (it == handle_to_shaped_buffers_.end()) {
     return NotFound("no allocation record for global data handle: %lld",
                     data.handle());
   }
-  ShapedBuffer* shaped_buffer = it->second.get();
-
-  if (shaped_buffer == nullptr) {
-    return InvalidArgument("global data handle %lld was previously deallocated",
-                           data.handle());
+  std::vector<const ShapedBuffer*> replicated_buffers;
+  for (const auto& shaped_buffer : it->second) {
+    if (shaped_buffer == nullptr) {
+      return InvalidArgument(
+          "global data handle %lld was previously deallocated", data.handle());
+    }
+    replicated_buffers.push_back(shaped_buffer.get());
   }
 
-  return shaped_buffer;
+  return replicated_buffers;
 }
 
 void AllocationTracker::AddAllocationOrIncrementRefCount(

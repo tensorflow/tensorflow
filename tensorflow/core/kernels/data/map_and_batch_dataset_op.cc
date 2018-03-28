@@ -66,12 +66,16 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 errors::InvalidArgument(
                     "num_parallel_batches must be greater than zero."));
 
+    bool drop_remainder;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
+
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(
                             func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(input, batch_size, num_parallel_batches,
-                          output_types_, output_shapes_,
+                          drop_remainder, output_types_, output_shapes_,
                           std::move(captured_func), &ctx->eigen_cpu_device());
   }
 
@@ -79,13 +83,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(const DatasetBase* input, int64 batch_size,
-            int64 num_parallel_batches, const DataTypeVector& output_types,
+            int64 num_parallel_batches, bool drop_remainder,
+            const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func,
             const Eigen::ThreadPoolDevice* device)
         : input_(input),
           batch_size_(batch_size),
           num_parallel_batches_(num_parallel_batches),
+          drop_remainder_(drop_remainder),
           output_types_(output_types),
           output_shapes_(output_shapes),
           captured_func_(std::move(captured_func)),
@@ -177,13 +183,21 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           batch_results_[current_batch_index_].output.clear();
         } else {
           if (num_elements < dataset()->batch_size_) {
+            if (dataset()->drop_remainder_) {
+              // Deallocate tensors allocated for the output.
+              batch_results_[current_batch_index_].output.clear();
+              *end_of_sequence = true;
+              return Status::OK();
+            }
             const std::vector<Tensor>& output =
                 batch_results_[current_batch_index_].output;
             for (size_t i = 0; i < output.size(); ++i) {
               TensorShape component_shape(
                   batch_results_[current_batch_index_].output[i].shape());
               component_shape.set_dim(0, num_elements);
-              Tensor component(cpu_allocator(), output[i].dtype(),
+              AllocatorAttributes attr;
+              attr.set_gpu_compatible(true);
+              Tensor component(ctx->allocator(attr), output[i].dtype(),
                                component_shape);
               TF_RETURN_IF_ERROR(
                   CopyPartialBatch(&component, output[i], num_elements));
@@ -244,7 +258,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      void EnsureOutputAllocated(BatchResult* batch_result,
+      void EnsureOutputAllocated(IteratorContext* ctx,
+                                 BatchResult* batch_result,
                                  const std::vector<Tensor>& return_values) {
         mutex_lock l(batch_result->mu);
         if (batch_result->output_allocated) {
@@ -254,7 +269,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({dataset()->batch_size_});
           component_shape.AppendShape(return_values[i].shape());
-          Tensor component(cpu_allocator(), return_values[i].dtype(),
+          AllocatorAttributes attr;
+          attr.set_gpu_compatible(true);
+          Tensor component(ctx->allocator(attr), return_values[i].dtype(),
                            component_shape);
           batch_result->output.emplace_back(std::move(component));
         }
@@ -285,10 +302,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               dataset()->captured_func_->RunAsync(
                   ctx, std::move(input_element), &result->return_values,
                   [this, ctx, result, batch_result, offset](Status ret_status) {
-                    delete ctx;
                     result->status.Update(ret_status);
                     if (ret_status.ok()) {
-                      EnsureOutputAllocated(batch_result,
+                      EnsureOutputAllocated(ctx, batch_result,
                                             result->return_values);
                       const size_t num_components =
                           result->return_values.size();
@@ -318,6 +334,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                         }
                       }
                     }
+                    delete ctx;
                     // NOTE(mrry): We clear the return values here to release
                     // any memory associated with them and to paralellize the
                     // destruction of the tensors (which can be surprisingly
@@ -387,6 +404,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const NameAttrList func_;
     const int64 batch_size_;
     const int64 num_parallel_batches_;
+    const bool drop_remainder_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::unique_ptr<CapturedFunction> captured_func_;

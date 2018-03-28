@@ -110,7 +110,8 @@ def replicate_model_fn(model_fn,
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
     - Losses from all towers are reduced according to `loss_reduction`.
-    - Gradients are reduced using sum for each trainable variable.
+    - Gradients from all towers are reduced according to `loss_reduction`
+      for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
       reduced using concatenation.
@@ -135,7 +136,7 @@ def replicate_model_fn(model_fn,
       the train_op argument of `EstimatorSpec`.
     loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
-      argument can be used to replice only on the subset of available GPUs.
+      argument can be used to replicate only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
 
@@ -195,7 +196,7 @@ def _replicate_model_fn_with_mode(
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
-  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
+  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0].upper()
   consolidation_device = devices[0] if is_a_single_gpu_case else '/CPU:0'
 
   ps_devices = [consolidation_device]
@@ -457,6 +458,13 @@ def _get_local_devices(device_type):
 def _split_batch(features, labels, number_of_shards, device):
   """Split input features and labes into batches."""
 
+  def ensure_divisible_by_shards(sequence):
+    batch_size = ops_lib.convert_to_tensor(sequence).get_shape()[0]
+    if batch_size % number_of_shards != 0:
+      raise ValueError(
+          'Batch size {} needs to be divisible by the number of GPUs, which '
+          'is {}.'.format(batch_size, number_of_shards))
+
   def split_dictionary(dictionary):
     """Split a dictionary into shards."""
     shards = [{} for _ in range(number_of_shards)]
@@ -467,6 +475,7 @@ def _split_batch(features, labels, number_of_shards, device):
                 sp_input=tensor, num_split=number_of_shards, axis=0)):
           shards[i][name] = shard
       else:
+        ensure_divisible_by_shards(tensor)
         for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
           shards[i][name] = shard
     return shards
@@ -476,6 +485,7 @@ def _split_batch(features, labels, number_of_shards, device):
       if isinstance(features, dict):
         feature_shards = split_dictionary(features)
       else:
+        ensure_divisible_by_shards(features)
         feature_shards = array_ops.split(features, number_of_shards)
 
       if labels is None:
@@ -483,6 +493,7 @@ def _split_batch(features, labels, number_of_shards, device):
       elif isinstance(labels, dict):
         label_shards = split_dictionary(labels)
       else:
+        ensure_divisible_by_shards(labels)
         label_shards = array_ops.split(labels, number_of_shards)
   return feature_shards, label_shards
 
@@ -780,7 +791,7 @@ def _extract_tensors(tensors_and_vars):
     tensor, _ = tensor_and_var
     if isinstance(tensor, ops_lib.IndexedSlices):
       tensors.append(tensor.values)
-    else:
+    elif tensor is not None:
       tensors.append(tensor)
   return tensors
 

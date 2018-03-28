@@ -142,26 +142,32 @@ REGISTER_OP("IRFFT3D")
 REGISTER_OP("BatchFFT")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT");
 REGISTER_OP("BatchIFFT")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT");
 REGISTER_OP("BatchFFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT2D");
 REGISTER_OP("BatchIFFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT2D");
 REGISTER_OP("BatchFFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use FFT3D");
 REGISTER_OP("BatchIFFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(15, "Use IFFT3D");
 
 }  // namespace tensorflow

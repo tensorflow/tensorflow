@@ -49,7 +49,11 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
       break;
   }
   if (*output_size < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
+    return errors::InvalidArgument(
+        "Computed output size would be negative: ", *output_size,
+        " [input_size: ", input_size,
+        ", effective_filter_size: ", effective_filter_size,
+        ", stride: ", stride, "]");
   }
   return Status::OK();
 }
@@ -1206,7 +1210,7 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
   ShapeHandle shape_x = c->input(0);
   ShapeHandle shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
@@ -1268,7 +1272,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, c->MakeShape(dims));
+  c->set_output(output_index, c->MakeShape(dims));
   return Status::OK();
 }
 

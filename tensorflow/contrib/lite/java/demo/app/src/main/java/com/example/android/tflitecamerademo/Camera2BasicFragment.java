@@ -296,9 +296,10 @@ public class Camera2BasicFragment extends Fragment
   public void onActivityCreated(Bundle savedInstanceState) {
     super.onActivityCreated(savedInstanceState);
     try {
-      classifier = new ImageClassifier(getActivity());
+      // create either a new ImageClassifierQuantizedMobileNet or an ImageClassifierFloatInception
+      classifier = new ImageClassifierQuantizedMobileNet(getActivity());
     } catch (IOException e) {
-      Log.e(TAG, "Failed to initialize an image classifier.");
+      Log.e(TAG, "Failed to initialize an image classifier.", e);
     }
     startBackgroundThread();
   }
@@ -432,7 +433,7 @@ public class Camera2BasicFragment extends Fragment
         return;
       }
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to access Camera", e);
     } catch (NullPointerException e) {
       // Currently an NPE is thrown when the Camera2API is used but not supported on the
       // device this code runs.
@@ -477,7 +478,7 @@ public class Camera2BasicFragment extends Fragment
       }
       manager.openCamera(cameraId, stateCallback, backgroundHandler);
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to open Camera", e);
     } catch (InterruptedException e) {
       throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
     }
@@ -544,7 +545,7 @@ public class Camera2BasicFragment extends Fragment
         runClassifier = false;
       }
     } catch (InterruptedException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Interrupted when stopping background thread", e);
     }
   }
 
@@ -603,7 +604,7 @@ public class Camera2BasicFragment extends Fragment
                 captureSession.setRepeatingRequest(
                     previewRequest, captureCallback, backgroundHandler);
               } catch (CameraAccessException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to set up config to capture Camera", e);
               }
             }
 
@@ -614,7 +615,7 @@ public class Camera2BasicFragment extends Fragment
           },
           null);
     } catch (CameraAccessException e) {
-      e.printStackTrace();
+      Log.e(TAG, "Failed to preview Camera", e);
     }
   }
 
@@ -658,8 +659,7 @@ public class Camera2BasicFragment extends Fragment
       showToast("Uninitialized Classifier or invalid context.");
       return;
     }
-    Bitmap bitmap =
-        textureView.getBitmap(ImageClassifier.DIM_IMG_SIZE_X, ImageClassifier.DIM_IMG_SIZE_Y);
+    Bitmap bitmap = textureView.getBitmap(classifier.getImageSizeX(), classifier.getImageSizeY());
     String textToShow = classifier.classifyFrame(bitmap);
     bitmap.recycle();
     showToast(textToShow);

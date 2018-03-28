@@ -54,7 +54,7 @@ def make_custom_export_strategy(name,
     An `ExportStrategy`.
   """
   base_strategy = saved_model_export_utils.make_export_strategy(
-      serving_input_fn=export_input_fn)
+      serving_input_fn=export_input_fn, strip_default_attrs=True)
   input_fn = export_input_fn()
   (sorted_feature_names, dense_floats, sparse_float_indices, _, _,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
@@ -93,7 +93,9 @@ def make_custom_export_strategy(name,
                          "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
-  return export_strategy.ExportStrategy(name, export_fn)
+
+  return export_strategy.ExportStrategy(
+      name, export_fn, strip_default_attrs=True)
 
 
 def convert_to_universal_format(dtec, sorted_feature_names,

@@ -307,7 +307,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
@@ -326,6 +326,7 @@ GENERATE_PYTHON_OP_LIB("checkpoint_ops")
 GENERATE_PYTHON_OP_LIB("control_flow_ops"
   ADDITIONAL_LIBRARIES $<TARGET_OBJECTS:tf_no_op>)
 GENERATE_PYTHON_OP_LIB("ctc_ops")
+GENERATE_PYTHON_OP_LIB("cudnn_rnn_ops")
 GENERATE_PYTHON_OP_LIB("data_flow_ops")
 GENERATE_PYTHON_OP_LIB("dataset_ops")
 GENERATE_PYTHON_OP_LIB("image_ops")
@@ -335,6 +336,7 @@ GENERATE_PYTHON_OP_LIB("list_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
 GENERATE_PYTHON_OP_LIB("lookup_ops")
 GENERATE_PYTHON_OP_LIB("nn_ops")
+GENERATE_PYTHON_OP_LIB("manip_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"
@@ -347,6 +349,7 @@ GENERATE_PYTHON_OP_LIB("state_ops")
 GENERATE_PYTHON_OP_LIB("sparse_ops")
 GENERATE_PYTHON_OP_LIB("spectral_ops")
 GENERATE_PYTHON_OP_LIB("string_ops")
+GENERATE_PYTHON_OP_LIB("summary_ops")
 GENERATE_PYTHON_OP_LIB("user_ops")
 GENERATE_PYTHON_OP_LIB("training_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/training/gen_training_ops.py)
@@ -365,10 +368,8 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_coder_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/coder/python/ops/gen_coder_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_data_prefetching_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_prefetching_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
@@ -418,8 +419,6 @@ GENERATE_PYTHON_OP_LIB("stateless_random_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 GENERATE_PYTHON_OP_LIB("debug_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
-GENERATE_PYTHON_OP_LIB("summary_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/summary/gen_summary_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -540,7 +539,11 @@ if(WIN32)
 	${nsync_STATIC_LIBRARIES}
     )
 
-    set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
+    else()
+        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.def")
+    endif()
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
     add_custom_command(TARGET pywrap_tensorflow_internal_static POST_BUILD
@@ -548,6 +551,7 @@ if(WIN32)
             --input "${pywrap_tensorflow_internal_static_dependencies}"
             --output "${pywrap_tensorflow_deffile}"
             --target _pywrap_tensorflow_internal.pyd
+        BYPRODUCTS ${pywrap_tensorflow_deffile} # Required for Ninja
     )
 endif(WIN32)
 
@@ -716,11 +720,19 @@ add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/testing/python/framework/)
 
 if(WIN32)
-  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  else()
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.dll
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.lib
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  endif()
 else()
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so

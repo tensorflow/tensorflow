@@ -26,6 +26,9 @@ namespace toco {
 
 namespace tflite {
 
+using flatbuffers::FlatBufferBuilder;
+using flatbuffers::Offset;
+using flatbuffers::Vector;
 using ::tflite::Buffer;
 using ::tflite::BuiltinOperator;
 using ::tflite::BuiltinOperator_CUSTOM;
@@ -39,9 +42,6 @@ using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
 using ::tflite::Tensor;
-using flatbuffers::FlatBufferBuilder;
-using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 namespace {
 

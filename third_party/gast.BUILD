@@ -3,7 +3,7 @@
 
 licenses(["notice"])  # BSD 3-clause
 
-exports_files(["LICENSE"])
+exports_files(["PKG-INFO"])
 
 py_library(
     name = "gast",

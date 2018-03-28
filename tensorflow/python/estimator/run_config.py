@@ -27,8 +27,8 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
@@ -43,7 +43,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
-    'log_step_count_steps'
+    'log_step_count_steps',
+    'distribute'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -287,6 +288,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
+@tf_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
@@ -299,7 +301,8 @@ class RunConfig(object):
                session_config=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               log_step_count_steps=100):
+               log_step_count_steps=100,
+               distribute=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -344,7 +347,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'worker', 'index': 1}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
       assert config.num_ps_replicas == 2
@@ -362,7 +365,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'chief', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == 'host0:2222'
       assert config.task_id == 0
       assert config.num_ps_replicas == 2
@@ -380,7 +383,7 @@ class RunConfig(object):
       os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
            'task': {'type': 'evaluator', 'index': 0}})
-      config = ClusterConfig()
+      config = RunConfig()
       assert config.master == ''
       assert config.evaluator_master == ''
       assert config.task_id == 0
@@ -422,8 +425,11 @@ class RunConfig(object):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
-        global step/sec will be logged during training.
-
+        global step/sec and the loss will be logged during training.
+      distribute: an optional instance of
+        `tf.contrib.distribute.DistributionStrategy`. If specified,
+        then Estimator will distribute the user's model according to the policy
+        specified by that strategy.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -459,7 +465,8 @@ class RunConfig(object):
         session_config=session_config,
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        log_step_count_steps=log_step_count_steps)
+        log_step_count_steps=log_step_count_steps,
+        distribute=distribute)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -669,6 +676,12 @@ class RunConfig(object):
   def service(self):
     """Returns the platform defined (in TF_CONFIG) service dict."""
     return self._service
+
+  @property
+  def distribute(self):
+    """Returns the optional `tf.contrib.distribute.DistributionStrategy` object.
+    """
+    return self._distribute
 
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.

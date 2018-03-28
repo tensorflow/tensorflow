@@ -60,7 +60,7 @@ and serialized as protocol buffers:
   the `NodeDef`, so if all the `Variable` weights are converted to `Const` nodes,
   then we only need a single `GraphDef` file to hold the model architecture and
   the weights. Freezing the graph handles the process of loading the
-  checkpoints, and then converts all Consts to Variables. You can then load the
+  checkpoints, and then converts all Variables to Consts. You can then load the
   resulting file in a single call, without having to restore variable values
   from checkpoints. One thing to watch out for with `GraphDef` files is that
   sometimes they’re stored in text format for easy inspection. These versions

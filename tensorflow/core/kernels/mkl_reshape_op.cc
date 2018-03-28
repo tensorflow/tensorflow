@@ -266,7 +266,9 @@ class MklReshapeOp : public OpKernel {
                                                    &net)) {
               stream(stream::kind::eager).submit(net).wait();
             } else {
-              output_tensor->CopyFrom(input_tensor, shape_to);
+              OP_REQUIRES(
+                  context, output_tensor->CopyFrom(input_tensor, shape_to),
+                  errors::InvalidArgument("invalid input tensor shape"));
             }
             return;
           } else {

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import dtypes
+from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -239,7 +239,9 @@ class MixtureSameFamily(distribution.Distribution):
           depth=self._num_components,                        # == k
           on_value=np.ones([], dtype=npdt),
           off_value=np.zeros([], dtype=npdt))                # [n, B, k]
-      mask = self._pad_mix_dims(mask)                        # [n, B, k, [1]*e]
+      mask = distribution_utils.pad_mixture_dimensions(
+          mask, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [n, B, k, [1]*e]
       return math_ops.reduce_sum(
           x * mask, axis=-1 - self._event_ndims)             # [n, B, E]
 
@@ -254,8 +256,9 @@ class MixtureSameFamily(distribution.Distribution):
 
   def _mean(self):
     with ops.control_dependencies(self._runtime_assertions):
-      probs = self._pad_mix_dims(
-          self.mixture_distribution.probs)                   # [B, k, [1]*e]
+      probs = distribution_utils.pad_mixture_dimensions(
+          self.mixture_distribution.probs, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, [1]*e]
       return math_ops.reduce_sum(
           probs * self.components_distribution.mean(),
           axis=-1 - self._event_ndims)                       # [B, E]
@@ -271,8 +274,9 @@ class MixtureSameFamily(distribution.Distribution):
   def _variance(self):
     with ops.control_dependencies(self._runtime_assertions):
       # Law of total variance: Var(Y) = E[Var(Y|X)] + Var(E[Y|X])
-      probs = self._pad_mix_dims(
-          self.mixture_distribution.probs)                   # [B, k, [1]*e]
+      probs = distribution_utils.pad_mixture_dimensions(
+          self.mixture_distribution.probs, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, [1]*e]
       mean_cond_var = math_ops.reduce_sum(
           probs * self.components_distribution.variance(),
           axis=-1 - self._event_ndims)                       # [B, E]
@@ -291,8 +295,12 @@ class MixtureSameFamily(distribution.Distribution):
 
     with ops.control_dependencies(self._runtime_assertions):
       # Law of total variance: Var(Y) = E[Var(Y|X)] + Var(E[Y|X])
-      probs = self._pad_mix_dims(self._pad_mix_dims(
-          self.mixture_distribution.probs))                  # [B, k, 1, 1]
+      probs = distribution_utils.pad_mixture_dimensions(
+          distribution_utils.pad_mixture_dimensions(
+              self.mixture_distribution.probs, self, self.mixture_distribution,
+              self._event_shape().ndims),
+          self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, 1, 1]
       mean_cond_var = math_ops.reduce_sum(
           probs * self.components_distribution.covariance(),
           axis=-3)                                           # [B, e, e]
@@ -310,27 +318,6 @@ class MixtureSameFamily(distribution.Distribution):
       d = ndims - self._event_ndims
       x = array_ops.reshape(x, shape=array_ops.concat([
           shape[:d], [1], shape[d:]], axis=0))
-      return x
-
-  def _pad_mix_dims(self, x):
-    with ops.name_scope("pad_mix_dims", values=[x]):
-      def _get_ndims(d):
-        if d.batch_shape.ndims is not None:
-          return d.batch_shape.ndims
-        return array_ops.shape(d.batch_shape_tensor())[0]
-      dist_batch_ndims = _get_ndims(self)
-      cat_batch_ndims = _get_ndims(self.mixture_distribution)
-      pad_ndims = array_ops.where(
-          self.mixture_distribution.is_scalar_batch(),
-          dist_batch_ndims,
-          dist_batch_ndims - cat_batch_ndims)
-      s = array_ops.shape(x)
-      x = array_ops.reshape(x, shape=array_ops.concat([
-          s[:-1],
-          array_ops.ones([pad_ndims], dtype=dtypes.int32),
-          s[-1:],
-          array_ops.ones([self._event_ndims], dtype=dtypes.int32),
-      ], axis=0))
       return x
 
 

@@ -99,7 +99,7 @@ class RandomDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        Tensor value_tensor(cpu_allocator(), DT_INT64, {});
+        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
         value_tensor.scalar<int64>()() = Random();
         out_tensors->emplace_back(std::move(value_tensor));
         *end_of_sequence = false;

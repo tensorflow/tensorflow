@@ -94,7 +94,7 @@ of thin wrapper functions in
 [variables.py](https://www.tensorflow.org/code/tensorflow/contrib/framework/python/ops/variables.py)
 which allow callers to easily define variables.
 
-For example, to create a `weight` variable, initialize it using a truncated
+For example, to create a `weights` variable, initialize it using a truncated
 normal distribution, regularize it with an `l2_loss` and place it on the `CPU`,
 one need only declare the following:
 
@@ -145,7 +145,7 @@ regular_variables_and_model_variables = slim.get_variables()
 
 How does this work? When you create a model variable via TF-Slim's layers or
 directly via the `slim.model_variable` function, TF-Slim adds the variable to
-a the `tf.GraphKeys.MODEL_VARIABLES` collection. What if you have your own
+the `tf.GraphKeys.MODEL_VARIABLES` collection. What if you have your own
 custom layers or variable creation routine but still want TF-Slim to manage or
 be aware of your model variables? TF-Slim provides a convenience function for
 adding the model variable to its collection:

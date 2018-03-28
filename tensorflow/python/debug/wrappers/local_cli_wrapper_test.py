@@ -87,7 +87,11 @@ class LocalCLIDebuggerWrapperSessionForTest(
   def _prep_cli_for_run_start(self):
     pass
 
-  def _prep_debug_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
+  def _prep_debug_cli_for_run_end(self,
+                                  debug_dump,
+                                  tf_error,
+                                  passed_filter,
+                                  passed_filter_exclude_op_names):
     self.observers["debug_dumps"].append(debug_dump)
     self.observers["tf_errors"].append(tf_error)
 
@@ -451,6 +455,36 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
 
+  def testRunTillFilterPassesWithExcludeOpNames(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run", "-f", "greater_than_twelve",
+          "--filter_exclude_node_names", "inc_v.*"],
+         ["run"], ["run"]],
+        self.sess,
+        dump_root=self._tmp_dir)
+
+    def greater_than_twelve(datum, tensor):
+      del datum  # Unused.
+      return tensor > 12.0
+
+    # Verify that adding the same tensor filter more than once is tolerated
+    # (i.e., as if it were added only once).
+    wrapped_sess.add_tensor_filter("greater_than_twelve", greater_than_twelve)
+
+    # run five times.
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+
+    self.assertAllClose(14.0, self.sess.run(self.v))
+
+    self.assertEqual([1], wrapped_sess.observers["run_start_cli_run_numbers"])
+
+    # Due to the --filter_exclude_op_names flag, the run-end CLI should show up
+    # not after run 3, but after run 4.
+    self.assertEqual([4], wrapped_sess.observers["run_end_cli_run_numbers"])
+
   def testRunTillFilterPassesWorksInConjunctionWithOtherNodeNameFilter(self):
     """Test that --.*_filter flags work in conjunction with -f.
 
@@ -663,6 +697,20 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     wrapped_monitored_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], monitored_sess)
     self.assertFalse(wrapped_monitored_sess.should_stop())
+
+  def testRunsWithEmptyFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run([])
+    self.assertEqual([], run_output)
+
+  def testRunsWithEmptyNestedFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run({"foo": {"baz": []}, "bar": ()})
+    self.assertEqual({"foo": {"baz": []}, "bar": ()}, run_output)
 
 
 if __name__ == "__main__":

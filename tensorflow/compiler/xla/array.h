@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -121,6 +122,44 @@ class Array {
     CHECK(idx == num_elements());
   }
 
+  // Creates a 1D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<T2> values)
+      : Array(ToInt64Vector({values.size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      values_[idx] = static_cast<T>(it1);
+      ++idx;
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 2D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<T2>> values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        values_[idx] = static_cast<T>(it2);
+        ++idx;
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
   // Creates a 3D array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
   Array(InitializerList3D values)
@@ -131,6 +170,30 @@ class Array {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
           values_[idx] = it3;
+          ++idx;
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 3D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          values_[idx] = static_cast<T>(it3);
           ++idx;
         }
       }
@@ -150,6 +213,34 @@ class Array {
         for (const auto& it3 : it2) {
           for (const auto& it4 : it3) {
             values_[idx] = it4;
+            ++idx;
+          }
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 4D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<
+        std::initializer_list<std::initializer_list<std::initializer_list<T2>>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size(),
+                             values.begin()->begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          for (const auto& it4 : it3) {
+            values_[idx] = static_cast<T>(it4);
             ++idx;
           }
         }
@@ -185,7 +276,7 @@ class Array {
   // Fills the array with the sequence i*multiplier for i=0,1,...
   void FillWithMultiples(const T& multiplier) {
     for (int64 i = 0; i < num_elements(); ++i) {
-      values_[i] = i * multiplier;
+      values_[i] = static_cast<T>(i) * multiplier;
     }
   }
 

@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import os
 import sys
 import tarfile
 
@@ -43,10 +44,10 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
-
 
 __all__ = [
     'get_graph_def_from_disk',
@@ -61,9 +62,10 @@ __all__ = [
     'frechet_inception_distance',
     'frechet_classifier_distance',
     'frechet_classifier_distance_from_activations',
+    'mean_only_frechet_classifier_distance_from_activations',
+    'diagonal_only_frechet_classifier_distance_from_activations',
     'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
-
 
 INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
 INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
@@ -76,8 +78,7 @@ INCEPTION_DEFAULT_IMAGE_SIZE = 299
 def _validate_images(images, image_size):
   images = ops.convert_to_tensor(images)
   images.shape.with_rank(4)
-  images.shape.assert_is_compatible_with(
-      [None, image_size, image_size, None])
+  images.shape.assert_is_compatible_with([None, image_size, image_size, None])
   return images
 
 
@@ -108,9 +109,10 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
 
-def preprocess_image(
-    images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
-    width=INCEPTION_DEFAULT_IMAGE_SIZE, scope=None):
+def preprocess_image(images,
+                     height=INCEPTION_DEFAULT_IMAGE_SIZE,
+                     width=INCEPTION_DEFAULT_IMAGE_SIZE,
+                     scope=None):
   """Prepare a batch of images for evaluation.
 
   This is the preprocessing portion of the graph from
@@ -189,20 +191,34 @@ def get_graph_def_from_resource(filename):
   return graph_pb2.GraphDef.FromString(resource_loader.load_resource(filename))
 
 
-def get_graph_def_from_url_tarball(url, filename):
-  """Get a GraphDef proto from a tarball on the web."""
-  def _progress(count, block_size, total_size):
-    sys.stdout.write('\r>> Downloading %s %.1f%%' % (
-        url, float(count * block_size) / float(total_size) * 100.0))
-    sys.stdout.flush()
-  tar_filename, _ = urllib.request.urlretrieve(url, reporthook=_progress)
+def get_graph_def_from_url_tarball(url, filename, tar_filename=None):
+  """Get a GraphDef proto from a tarball on the web.
+
+  Args:
+    url: Web address of tarball
+    filename: Filename of graph definition within tarball
+    tar_filename: Temporary download filename (None = always download)
+
+  Returns:
+    A GraphDef loaded from a file in the downloaded tarball.
+  """
+  if not (tar_filename and os.path.exists(tar_filename)):
+
+    def _progress(count, block_size, total_size):
+      sys.stdout.write('\r>> Downloading %s %.1f%%' %
+                       (url,
+                        float(count * block_size) / float(total_size) * 100.0))
+      sys.stdout.flush()
+
+    tar_filename, _ = urllib.request.urlretrieve(url, tar_filename, _progress)
   with tarfile.open(tar_filename, 'r:gz') as tar:
     proto_str = tar.extractfile(filename).read()
   return graph_pb2.GraphDef.FromString(proto_str)
 
 
 def _default_graph_def_fn():
-  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH)
+  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH,
+                                        os.path.basename(INCEPTION_URL))
 
 
 def run_inception(images,
@@ -257,8 +273,11 @@ def run_inception(images,
   return activations
 
 
-def run_image_classifier(tensor, graph_def, input_tensor,
-                         output_tensor, scope='RunClassifier'):
+def run_image_classifier(tensor,
+                         graph_def,
+                         input_tensor,
+                         output_tensor,
+                         scope='RunClassifier'):
   """Runs a network from a frozen graph.
 
   Args:
@@ -302,7 +321,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
 
   NOTE: This function consumes images, computes their logits, and then
   computes the classifier score. If you would like to precompute many logits for
-  large batches, use clasifier_score_from_logits(), which this method also
+  large batches, use classifier_score_from_logits(), which this method also
   uses.
 
   Args:
@@ -418,8 +437,8 @@ def trace_sqrt_product(sigma, sigma_v):
   sqrt_sigma = _symmetric_matrix_square_root(sigma)
 
   # This is sqrt(A sigma_v A) above
-  sqrt_a_sigmav_a = math_ops.matmul(
-      sqrt_sigma, math_ops.matmul(sigma_v, sqrt_sigma))
+  sqrt_a_sigmav_a = math_ops.matmul(sqrt_sigma,
+                                    math_ops.matmul(sigma_v, sqrt_sigma))
 
   return math_ops.trace(_symmetric_matrix_square_root(sqrt_a_sigmav_a))
 
@@ -435,9 +454,9 @@ def frechet_classifier_distance(real_images,
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
-  |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
+              |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
   which captures how different the distributions of real images and generated
   images (or more accurately, their visual features) are. Note that unlike the
@@ -448,7 +467,7 @@ def frechet_classifier_distance(real_images,
   Frechet distance is biased. It is more biased for small sample sizes. (e.g.
   even if the two distributions are the same, for a small sample size, the
   expected Frechet distance is large). It is important to use the same
-  sample size to compute frechet classifier distance when comparing two
+  sample size to compute Frechet classifier distance when comparing two
   generative models.
 
   NOTE: This function consumes images, computes their activations, and then
@@ -496,9 +515,141 @@ def frechet_classifier_distance(real_images,
   return frechet_classifier_distance_from_activations(real_a, gen_a)
 
 
-def frechet_classifier_distance_from_activations(
+def mean_only_frechet_classifier_distance_from_activations(
     real_activations, generated_activations):
   """Classifier distance for evaluating a generative model from activations.
+
+  Given two Gaussian distribution with means m and m_w and covariance matrices
+  C and C_w, this function calcuates
+
+                                |m - m_w|^2
+
+  which captures how different the distributions of real images and generated
+  images (or more accurately, their visual features) are. Note that unlike the
+  Inception score, this is a true distance and utilizes information about real
+  world images.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
+  In this variant, we only compute the difference between the means of the
+  fitted Gaussians. The computation leads to O(n) vs. O(n^2) memory usage, yet
+  still retains much of the same information as FID.
+
+  Args:
+    real_activations: 2D array of activations of real images of size
+      [num_images, num_dims] to use to compute Frechet Inception distance.
+    generated_activations: 2D array of activations of generated images of size
+      [num_images, num_dims] to use to compute Frechet Inception distance.
+
+  Returns:
+    The mean-only Frechet Inception distance. A floating-point scalar of the
+    same type as the output of the activations.
+  """
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+
+  activations_dtype = real_activations.dtype
+  if activations_dtype != dtypes.float64:
+    real_activations = math_ops.to_double(real_activations)
+    generated_activations = math_ops.to_double(generated_activations)
+
+  # Compute means of activations.
+  m = math_ops.reduce_mean(real_activations, 0)
+  m_w = math_ops.reduce_mean(generated_activations, 0)
+
+  # Next the distance between means.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
+  mofid = mean
+  if activations_dtype != dtypes.float64:
+    mofid = math_ops.cast(mofid, activations_dtype)
+
+  return mofid
+
+
+def diagonal_only_frechet_classifier_distance_from_activations(
+    real_activations, generated_activations):
+  """Classifier distance for evaluating a generative model.
+
+  This is based on the Frechet Inception distance, but for an arbitrary
+  classifier.
+
+  This technique is described in detail in https://arxiv.org/abs/1706.08500.
+  Given two Gaussian distribution with means m and m_w and covariance matrices
+  C and C_w, this function calcuates
+
+          |m - m_w|^2 + (sigma + sigma_w - 2(sigma x sigma_w)^(1/2))
+
+  which captures how different the distributions of real images and generated
+  images (or more accurately, their visual features) are. Note that unlike the
+  Inception score, this is a true distance and utilizes information about real
+  world images. In this variant, we compute diagonal-only covariance matrices.
+  As a result, instead of computing an expensive matrix square root, we can do
+  something much simpler, and has O(n) vs O(n^2) space complexity.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
+  Args:
+    real_activations: Real images to use to compute Frechet Inception distance.
+    generated_activations: Generated images to use to compute Frechet Inception
+      distance.
+
+  Returns:
+    The diagonal-only Frechet Inception distance. A floating-point scalar of
+    the same type as the output of the activations.
+
+  Raises:
+    ValueError: If the shape of the variance and mean vectors are not equal.
+  """
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+
+  activations_dtype = real_activations.dtype
+  if activations_dtype != dtypes.float64:
+    real_activations = math_ops.to_double(real_activations)
+    generated_activations = math_ops.to_double(generated_activations)
+
+  # Compute mean and covariance matrices of activations.
+  m, var = nn_impl.moments(real_activations, axes=[0])
+  m_w, var_w = nn_impl.moments(generated_activations, axes=[0])
+
+  actual_shape = var.get_shape()
+  expected_shape = m.get_shape()
+
+  if actual_shape != expected_shape:
+    raise ValueError('shape: {} must match expected shape: {}'.format(
+        actual_shape, expected_shape))
+
+  # Compute the two components of FID.
+
+  # First the covariance component.
+  # Here, note that trace(A + B) = trace(A) + trace(B)
+  trace = math_ops.reduce_sum(
+      (var + var_w) - 2.0 * math_ops.sqrt(math_ops.multiply(var, var_w)))
+
+  # Next the distance between means.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
+  dofid = trace + mean
+  if activations_dtype != dtypes.float64:
+    dofid = math_ops.cast(dofid, activations_dtype)
+
+  return dofid
+
+
+def frechet_classifier_distance_from_activations(real_activations,
+                                                 generated_activations):
+  """Classifier distance for evaluating a generative model.
 
   This methods computes the Frechet classifier distance from activations of
   real images and generated images. This can be used independently of the
@@ -508,14 +659,21 @@ def frechet_classifier_distance_from_activations(
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
-  |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
+                |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
   which captures how different the distributions of real images and generated
   images (or more accurately, their visual features) are. Note that unlike the
   Inception score, this is a true distance and utilizes information about real
   world images.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
 
   Args:
     real_activations: 2D Tensor containing activations of real data. Shape is
@@ -538,35 +696,37 @@ def frechet_classifier_distance_from_activations(
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_activations, 0)
-  m_v = math_ops.reduce_mean(generated_activations, 0)
+  m_w = math_ops.reduce_mean(generated_activations, 0)
   num_examples = math_ops.to_double(array_ops.shape(real_activations)[0])
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   real_centered = real_activations - m
   sigma = math_ops.matmul(
-      real_centered, real_centered, transpose_a=True) / (num_examples - 1)
+      real_centered, real_centered, transpose_a=True) / (
+          num_examples - 1)
 
-  gen_centered = generated_activations - m_v
-  sigma_v = math_ops.matmul(
-      gen_centered, gen_centered, transpose_a=True) / (num_examples - 1)
+  gen_centered = generated_activations - m_w
+  sigma_w = math_ops.matmul(
+      gen_centered, gen_centered, transpose_a=True) / (
+          num_examples - 1)
 
-  # Find the Tr(sqrt(sigma sigma_v)) component of FID
-  sqrt_trace_component = trace_sqrt_product(sigma, sigma_v)
+  # Find the Tr(sqrt(sigma sigma_w)) component of FID
+  sqrt_trace_component = trace_sqrt_product(sigma, sigma_w)
 
   # Compute the two components of FID.
 
   # First the covariance component.
   # Here, note that trace(A + B) = trace(A) + trace(B)
-  trace = math_ops.trace(sigma + sigma_v) - 2.0 * sqrt_trace_component
+  trace = math_ops.trace(sigma + sigma_w) - 2.0 * sqrt_trace_component
 
   # Next the distance between means.
-  mean = math_ops.square(linalg_ops.norm(m - m_v))  # This uses the L2 norm.
+  mean = math_ops.reduce_sum(
+      math_ops.squared_difference(m, m_w))  # Equivalent to L2 but more stable.
   fid = trace + mean
   if activations_dtype != dtypes.float64:
     fid = math_ops.cast(fid, activations_dtype)
 
   return fid
-
 
 frechet_inception_distance = functools.partial(
     frechet_classifier_distance,

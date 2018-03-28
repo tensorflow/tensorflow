@@ -101,7 +101,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
   // TODO(nupurgarg): Change kernel implementation to take in int* instead of
@@ -177,9 +176,7 @@ TfLiteRegistration* Register_PAD_GENERIC_OPT() {
   return &r;
 }
 
-TfLiteRegistration* Register_PAD() {
-  return Register_PAD_GENERIC_OPT();
-}
+TfLiteRegistration* Register_PAD() { return Register_PAD_GENERIC_OPT(); }
 
 }  // namespace builtin
 }  // namespace ops

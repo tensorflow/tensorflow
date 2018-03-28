@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +35,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.embedding_ops import embedding_lookup
-from tensorflow.python.summary import summary
 
 # Machine epsilon.
 MEPS = np.finfo(float).eps
@@ -253,14 +251,16 @@ class GmmAlgorithm(object):
     return ret
 
   def scores(self):
-    """Returns the distances to each class.
+    """Returns the per-sample likelihood fo the data.
 
     Returns:
-      A tuple with two Tensors. The first contains the distance to
-    each class. The second contains the distance to the assigned
-    class.
+      Log probabilities of each data point.
     """
-    return (self._all_scores, self._scores)
+    return self._scores
+
+  def log_likelihood_op(self):
+    """Returns the log-likelihood operation."""
+    return self._log_likelihood_op
 
   def _define_graph(self, data):
     """Define graph for a single iteration.
@@ -276,10 +276,11 @@ class GmmAlgorithm(object):
       self._define_expectation_operation(shard_id)
       self._define_partial_maximization_operation(shard_id, shard)
     self._define_maximization_operation(len(data))
-    self._define_distance_to_clusters(data)
+    self._define_loglikelihood_operation()
+    self._define_score_samples()
 
   def _define_full_covariance_probs(self, shard_id, shard):
-    """Defines the full covariance probabilties per example in a class.
+    """Defines the full covariance probabilities per example in a class.
 
     Updates a matrix with dimension num_examples X num_classes.
 
@@ -343,7 +344,7 @@ class GmmAlgorithm(object):
   def _define_prior_log_prob_operation(self, shard_id):
     """Computes the prior probability of all samples.
 
-    Updates a vector where each item is the prior probabibility of an
+    Updates a vector where each item is the prior probability of an
     input example.
 
     Args:
@@ -440,50 +441,20 @@ class GmmAlgorithm(object):
                 state_ops.assign(
                     self._covs, new_covs, validate_shape=False))
 
-  def _define_distance_to_clusters(self, data):
-    """Defines the Mahalanobis distance to the assigned Gaussian."""
-    # TODO(xavigonzalvo): reuse (input - mean) * cov^-1 * (input -
-    # mean) from log probability function.
-    self._all_scores = []
-    for shard in data:
-      all_scores = []
-      shard = array_ops.expand_dims(shard, 0)
-      for c in xrange(self._num_classes):
-        if self._covariance_type == FULL_COVARIANCE:
-          cov = self._covs[c, :, :]
-        elif self._covariance_type == DIAG_COVARIANCE:
-          cov = array_ops.diag(self._covs[c, :])
-        inverse = linalg_ops.matrix_inverse(cov + self._min_var)
-        inv_cov = array_ops.tile(
-            array_ops.expand_dims(inverse, 0),
-            array_ops.stack([self._num_examples, 1, 1]))
-        diff = array_ops.transpose(shard - self._means[c, :, :], perm=[1, 0, 2])
-        m_left = math_ops.matmul(diff, inv_cov)
-        all_scores.append(
-            math_ops.sqrt(
-                math_ops.matmul(
-                    m_left, array_ops.transpose(
-                        diff, perm=[0, 2, 1]))))
-      self._all_scores.append(
-          array_ops.reshape(
-              array_ops.concat(all_scores, 1),
-              array_ops.stack([self._num_examples, self._num_classes])))
-
-    # Distance to the associated class.
-    self._all_scores = array_ops.concat(self._all_scores, 0)
-    assignments = array_ops.concat(self.assignments(), 0)
-    rows = math_ops.to_int64(math_ops.range(0, self._num_examples))
-    indices = array_ops.concat(
-        [array_ops.expand_dims(rows, 1), array_ops.expand_dims(assignments, 1)],
-        1)
-    self._scores = array_ops.gather_nd(self._all_scores, indices)
-
   def _define_loglikelihood_operation(self):
     """Defines the total log-likelihood of current iteration."""
-    self._ll_op = []
+    op = []
     for prior_probs in self._prior_probs:
-      self._ll_op.append(math_ops.reduce_sum(math_ops.log(prior_probs)))
-    summary.scalar('ll', math_ops.reduce_sum(self._ll_op))
+      op.append(math_ops.reduce_logsumexp(prior_probs))
+    self._log_likelihood_op = math_ops.reduce_logsumexp(op)
+
+  def _define_score_samples(self):
+    """Defines the likelihood of each data sample."""
+    op = []
+    for shard_id, prior_probs in enumerate(self._prior_probs):
+      op.append(prior_probs + math_ops.log(self._w[shard_id]))
+    self._scores = array_ops.squeeze(
+        math_ops.reduce_logsumexp(op, axis=2, keep_dims=True), axis=0)
 
 
 def gmm(inp,
@@ -511,14 +482,9 @@ def gmm(inp,
   Returns:
     Note: tuple of lists returned to be consistent with skflow
     A tuple consisting of:
-    all_scores: A matrix (or list of matrices) of dimensions (num_input,
-      num_clusters) where the value is the distance of an input vector and a
-      cluster center.
     assignments: A vector (or list of vectors). Each element in the vector
       corresponds to an input row in 'inp' and specifies the cluster id
       corresponding to the input.
-    scores: Similar to assignments but specifies the distance to the
-      assigned cluster instead.
     training_op: an op that runs an iteration of training.
     init_op: an op that runs the initialization.
   """
@@ -532,6 +498,7 @@ def gmm(inp,
   gmm_tool = GmmAlgorithm(inp, num_clusters, initial_means, params,
                           covariance_type, random_seed)
   assignments = gmm_tool.assignments()
-  all_scores, scores = gmm_tool.scores()
-  return ([all_scores], [assignments], [scores], gmm_tool.training_ops(),
+  scores = gmm_tool.scores()
+  loss = gmm_tool.log_likelihood_op()
+  return (loss, scores, [assignments], gmm_tool.training_ops(),
           gmm_tool.init_ops(), gmm_tool.is_initialized())

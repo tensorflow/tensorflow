@@ -26,6 +26,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Pooling1D(base.Layer):
@@ -96,6 +97,7 @@ class _Pooling1D(base.Layer):
     return tensor_shape.TensorShape([input_shape[0], length, input_shape[2]])
 
 
+@tf_export('layers.AveragePooling1D')
 class AveragePooling1D(_Pooling1D):
   """Average Pooling layer for 1D inputs.
 
@@ -127,6 +129,7 @@ class AveragePooling1D(_Pooling1D):
         **kwargs)
 
 
+@tf_export('layers.average_pooling1d')
 def average_pooling1d(inputs, pool_size, strides,
                       padding='valid', data_format='channels_last',
                       name=None):
@@ -161,6 +164,7 @@ def average_pooling1d(inputs, pool_size, strides,
   return layer.apply(inputs)
 
 
+@tf_export('layers.MaxPooling1D')
 class MaxPooling1D(_Pooling1D):
   """Max Pooling layer for 1D inputs.
 
@@ -192,6 +196,7 @@ class MaxPooling1D(_Pooling1D):
         **kwargs)
 
 
+@tf_export('layers.max_pooling1d')
 def max_pooling1d(inputs, pool_size, strides,
                   padding='valid', data_format='channels_last',
                   name=None):
@@ -297,6 +302,7 @@ class _Pooling2D(base.Layer):
           [input_shape[0], rows, cols, input_shape[3]])
 
 
+@tf_export('layers.AveragePooling2D')
 class AveragePooling2D(_Pooling2D):
   """Average pooling layer for 2D inputs (e.g. images).
 
@@ -328,6 +334,7 @@ class AveragePooling2D(_Pooling2D):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@tf_export('layers.average_pooling2d')
 def average_pooling2d(inputs,
                       pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -365,6 +372,7 @@ def average_pooling2d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.MaxPooling2D')
 class MaxPooling2D(_Pooling2D):
   """Max pooling layer for 2D inputs (e.g. images).
 
@@ -396,6 +404,7 @@ class MaxPooling2D(_Pooling2D):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@tf_export('layers.max_pooling2d')
 def max_pooling2d(inputs,
                   pool_size, strides,
                   padding='valid', data_format='channels_last',
@@ -515,6 +524,7 @@ class _Pooling3D(base.Layer):
           [input_shape[0], len_dim1, len_dim2, len_dim3, input_shape[4]])
 
 
+@tf_export('layers.AveragePooling3D')
 class AveragePooling3D(_Pooling3D):
   """Average pooling layer for 3D inputs (e.g. volumes).
 
@@ -548,6 +558,7 @@ class AveragePooling3D(_Pooling3D):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@tf_export('layers.average_pooling3d')
 def average_pooling3d(inputs,
                       pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -587,6 +598,7 @@ def average_pooling3d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.MaxPooling3D')
 class MaxPooling3D(_Pooling3D):
   """Max pooling layer for 3D inputs (e.g. volumes).
 
@@ -620,6 +632,7 @@ class MaxPooling3D(_Pooling3D):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@tf_export('layers.max_pooling3d')
 def max_pooling3d(inputs,
                   pool_size, strides,
                   padding='valid', data_format='channels_last',

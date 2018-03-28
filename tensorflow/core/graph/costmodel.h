@@ -198,7 +198,7 @@ class CostModel {
   // Cumulative execution time.
   std::vector<Microseconds> time_;
   // Cumulative Bytes output on each channel.
-  std::vector<gtl::InlinedVector<Bytes, 2> > slot_bytes_;
+  std::vector<gtl::InlinedVector<Bytes, 2>> slot_bytes_;
 
   // Maximum execution time
   std::vector<Microseconds> max_exec_time_;
@@ -217,7 +217,7 @@ class CostModel {
   };
   std::vector<MemUsage> max_mem_usage_;
 
-  std::vector<gtl::InlinedVector<int64, 2> > output_port_alloc_ids_;
+  std::vector<gtl::InlinedVector<int64, 2>> output_port_alloc_ids_;
 
   std::set<int64> persistent_alloc_ids_;
   std::map<string, std::set<int64>> persistent_alloc_ids_by_devices_;

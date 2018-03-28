@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -260,6 +262,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
+    pipeline.AddPass<GatherExpander>();
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -275,6 +278,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
+    pass.AddPass<ConditionalSimplifier>();
   }
   pipeline.AddPass<TransposeFolding>(
       [](const HloInstruction& dot,
@@ -314,7 +318,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     // Note this is not run for AOT because it would bring in thread pool
     // and thread synchronization dependencies which would likely increase
     // binary size (and most AOT applications are single-threaded).
-    // TODO(29630486) Support multi-threaded AOT.
+    // TODO(b/29630486) Support multi-threaded AOT.
     pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
                                            ShapeSizeBytesFunction());
   }
@@ -437,7 +441,8 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* /*stream_exec*/) {
+    perftools::gputools::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(2) << "Before optimization:";
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -450,7 +455,8 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* stream_exec) {
+    perftools::gputools::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
   XLA_SCOPED_LOGGING_TIMER(timer_message);
@@ -517,8 +523,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string xla_dump_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_proto_to();
+  const string xla_dump_optimized_hlo_proto_to =
+      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -538,10 +544,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -647,10 +653,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // Each computation is a single function.  Emit all embedded computations
@@ -826,12 +832,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    const string xla_dump_hlo_proto_to =
-        module->config().debug_options().xla_dump_hlo_proto_to();
-    if (!xla_dump_hlo_proto_to.empty()) {
+    const string xla_dump_optimized_hlo_proto_to =
+        module->config().debug_options().xla_dump_optimized_hlo_proto_to();
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
@@ -886,13 +892,11 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
-        post_optimization_ir_dump_hook);
-    llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
+        pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
+    std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);
-    llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();
-    ObjectFileData object_file_data(object_file_data_ref.begin(),
-                                    object_file_data_ref.end());
+    ObjectFileData object_file_data(object_file->getBufferStart(),
+                                    object_file->getBufferEnd());
 
     BufferSizes buffer_sizes;
     for (const BufferAllocation& allocation : assignment->Allocations()) {

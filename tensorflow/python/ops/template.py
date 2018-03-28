@@ -26,6 +26,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
@@ -140,7 +141,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
     re-enter the scope and reuse those variables.
 
   Raises:
-    ValueError: if the name is None.
+    ValueError: if `name_` is None.
   """
   return make_template_internal(
       name_,
@@ -176,16 +177,14 @@ def make_template_internal(name_,
     custom_getter_: Optional custom getter for variables used in `func_`. See
       the @{tf.get_variable} `custom_getter` documentation for
       more information.
-    create_graph_function_: When True, the first invocation of the template will
-      execute `func_` as is, to allow for variable creation; however, the second
-      invocation and every invocation thereafter will execute func as a graph
-      function.  In particular, this implies that `func_` must satisfy the
-      properties that `function.defun` requires of functions: See the
-      documentation of `function.defun` for details. When executing eagerly,
-      setting this flag to True can improve performance. Regardless of whether
-      eager execution is enabled, enabling this flag gives the caller access to
-      graph-function semantics, i.e., accesses to variables are totally ordered
-      and side-effecting ops are not pruned.
+    create_graph_function_: When True, `func_` will be executed as a graph
+      function. This implies that `func_` must satisfy the properties that
+      `function.defun` requires of functions: See the documentation of
+      `function.defun` for details. When executing eagerly, setting this flag to
+      True can improve performance. Regardless of whether eager execution is
+      enabled, enabling this flag gives the caller access to graph-function
+      semantics, i.e., accesses to variables are totally ordered and
+      side-effecting ops are not pruned.
     **kwargs: Keyword arguments to apply to `func_`.
 
   Returns:
@@ -198,14 +197,14 @@ def make_template_internal(name_,
     re-enter the scope and reuse those variables.
 
   Raises:
-    ValueError: if the name is None.
-    ValueError: if unique_name_ is not None and eager execution is enabled.
+    ValueError: if `name_` is None.
+    ValueError: if `unique_name_` is not None and eager execution is enabled.
   """
 
   if kwargs:
     func_ = tf_decorator.make_decorator(func_, functools.partial(
         func_, **kwargs))
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(
           "unique_name_ cannot be used when eager exeuction is enabled.")
@@ -232,7 +231,7 @@ def _skip_common_stack_elements(stacktrace, base_case):
   return stacktrace[-1:]
 
 
-class Template(object):
+class Template(checkpointable.CheckpointableBase):
   """Wrap a function to aid in variable sharing.
 
   Templates are functions that create variables the first time they are called
@@ -266,18 +265,18 @@ class Template(object):
         template of the same scope/unique_name already exists and reuse is
         false, an error is raised. Defaults to None.
       custom_getter: optional custom getter to pass to `variable_scope()`
-      create_graph_function: When True, the first invocation of the template
-        will execute `func` as is, to allow for variable creation; however, the
-        second invocation and every invocation thereafter will execute `func` as
-        a graph function. Enabling this flag gives the caller access to
-        graph-function semantics, i.e., accesses to variables are totally
-        ordered and side-effecting ops are not pruned.
-
+      create_graph_function: When True, `func` will be executed as a graph
+        function. Enabling this flag gives the caller access to graph-function
+        semantics, i.e., accesses to variables are totally ordered and
+        side-effecting ops are not pruned.
 
     Raises:
-      ValueError: if the name is None.
+      ValueError: if `name` is None.
     """
-    self._func = func
+    if create_graph_function:
+      self._func = function.defun(func)
+    else:
+      self._func = func
     self._stacktrace = traceback.format_stack()[:-2]
     self._name = name
     self._unique_name = unique_name
@@ -295,19 +294,116 @@ class Template(object):
     # This variable keeps track of whether the template has been called yet,
     # which is not the same as whether the scope has been created.
     self._variables_created = False
-    self._create_graph_function = create_graph_function
+
+  @property
+  def _checkpoint_dependencies(self):
+    """Sanity checking for object-based saving.
+
+    Does not override Checkpointable dependency tracking, but checks that
+    variables accessible through Checkpointable dependencies on other `Template`
+    objects include all of the variable_scope-filtered `Template.variables`.
+
+    Returns:
+      A list of checkpointable.CheckpointableReference objects.
+    Raises:
+      ValueError: If this object is not compatible with object-based saving.
+    """
+    dependencies = super(Template, self)._checkpoint_dependencies
+    dependency_variables = []
+    for _, dependency in dependencies:
+      if isinstance(dependency, Template):
+        dependency_variables.extend(dependency.variables)
+      else:
+        dependency_variables.append(dependency)
+    dependency_variables = set(dependency_variables)
+    not_included_variables = []
+    for expected_variable in sorted(self.variables, key=lambda v: v.name):
+      if expected_variable not in dependency_variables:
+        not_included_variables.append(expected_variable)
+    if not_included_variables:
+      # Trying to save a Template which improperly tracks its variables.
+      raise ValueError(
+          ("The Template '%s' references variables which are not included via "
+           "object-based dependency tracking. Most likely a custom "
+           "getter/creator was registered which does not call Template's "
+           "custom variable creator (which is responsible for tracking "
+           "dependencies).\n\nExpected these variables to be dependencies: %s")
+          % (self, not_included_variables))
+    return dependencies
+
+  def _checkpointable_custom_creator(self, next_creator, name, initial_value,
+                                     checkpointable_parent=None, **kwargs):
+    """A variable creation hook which adds Checkpointable dependencies.
+
+    Set during the `Template`'s first wrapped function execution. Ensures that
+    (a) `Template` objects depend on `Template`s created inside them which
+    create variables, and (b) that any variables not in a more deeply nested
+    `Template` are added as dependencies directly.
+
+    The `checkpointable_parent` argument is passed between `Template` custom
+    creators but ignored when the variable object itself is created. This
+    argument indicates (if not `None`) that a more deeply nested `Template` has
+    already added the variable as a dependency, and that parent `Template`s
+    should add a dependency on that `Template` rather than on the variable
+    directly.
+
+    Args:
+      next_creator: See `variable_scope.variable_creator_scope`; the next
+        creator in the chain.
+      name: The (full, scope-influenced) name of the variable. The scope name
+        for the Template itself is stripped for the purposes of object-based
+        dependency tracking, but scopes within Templates are respected.
+      initial_value: See `variable_scope.variable_creator_scope`. Taken
+        explicitly so the argument can be re-named and used with
+        `Checkpointable._add_variable_with_custom_getter`.
+      checkpointable_parent: If not None, a more deeply nested Template object
+        to add a dependency on (rather than depending on the variable directly).
+      **kwargs: Passed through to the next creator.
+    Returns:
+      The output of `next_creator`: the fetched/created variable object.
+    """
+    def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
+      inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
+      # we don't want to propagate.
+      return next_creator(
+          initial_value=initializer,
+          name=name,
+          **inner_kwargs)
+    if name.startswith(self._variable_scope.name):
+      scope_stripped_name = name[len(self._variable_scope.name) + 1:]
+      if not checkpointable_parent:
+        return self._add_variable_with_custom_getter(
+            initializer=initial_value,
+            name=scope_stripped_name,
+            getter=_call_next_creator_renaming_initializer,
+            # Disable error checking for Checkpointable. Exceptions are instead
+            # raised if necessary when the object-based saver tries to
+            # save/restore the object.
+            overwrite=True,
+            checkpointable_parent=self,
+            **kwargs)
+      else:
+        self._track_checkpointable(
+            checkpointable_parent,
+            name=checkpointable_parent._variable_scope.name[  # pylint: disable=protected-access
+                len(self._variable_scope.name) + 1:],
+            overwrite=True)
+    return next_creator(name=name, initial_value=initial_value,
+                        checkpointable_parent=self, **kwargs)
 
   def _call_func(self, args, kwargs):
     try:
       vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
-      result = self._func(*args, **kwargs)
-      if self._create_graph_function and not self._variables_created:
-        # Only execute self._func as a graph function once variables are
-        # created.
-        self._func = function.defun(self._func)
+      if self._variables_created:
+        result = self._func(*args, **kwargs)
+      else:
+        # The first time we run, restore variables if necessary (via
+        # Checkpointable).
+        with variable_scope.variable_creator_scope(
+            self._checkpointable_custom_creator):
+          result = self._func(*args, **kwargs)
 
       if self._variables_created:
         # Variables were previously created, implying this is not the first
@@ -487,7 +583,7 @@ class _EagerTemplateVariableStore(object):
       if self._variable_scope_name is None:
         raise RuntimeError("A variable scope must be set before an "
                            "_EagerTemplateVariableStore object exits.")
-      self._eager_variable_store._store.close_variable_subscopes(  # pylint: disable=protected-access
+      variable_scope.get_variable_scope_store().close_variable_subscopes(
           self._variable_scope_name)
 
   def _variables_in_scope(self, variable_list):
@@ -542,19 +638,16 @@ class EagerTemplate(Template):
         names of all created Tensors. If set to False, the scope will be created
         at the first call location.
       custom_getter: optional custom getter to pass to `variable_scope()`
-      create_graph_function: When True, the first invocation of the template
-        will execute `func` as is, to allow for variable creation; however, the
-        second invocation and every invocation thereafter will execute `func` as
-        a graph function. Enabling this flag allows the caller to reap the
-        performance benefits associated with executing graphs, at the cost of
-        sacrificing debuggability; however, not all functions can be compiled
-        into graph functions. See the documentation for `function.defun` for
-        details.
+      create_graph_function: When True, `func` will be executed as a graph
+        function. Enabling this flag allows the caller to reap the performance
+        benefits associated with executing graphs, at the cost of sacrificing
+        debuggability; however, not all Python functions can be compiled into
+        graph functions. See the documentation for `function.defun` for details.
 
     Raises:
       RuntimeError: if eager execution is not enabled.
     """
-    if not context.in_eager_mode():
+    if not context.executing_eagerly():
       raise RuntimeError(
           "{} objects can only be used when eager execution is enabled, use "
           "tf.Template for graph construction".
@@ -568,17 +661,20 @@ class EagerTemplate(Template):
       # is created in __call__.
       variable_scope_name = None
     self._template_store = _EagerTemplateVariableStore(variable_scope_name)
+    self._variable_scope_context_manager = None
 
   def _call_func(self, args, kwargs):
     try:
       vars_at_start = self._template_store.variables()
       trainable_at_start = self._template_store.trainable_variables()
-
-      result = self._func(*args, **kwargs)
-      if self._create_graph_function and not self._variables_created:
-        # Only execute self._func as a graph function once variables are
-        # created.
-        self._func = function.defun(self._func)
+      if self._variables_created:
+        result = self._func(*args, **kwargs)
+      else:
+        # The first time we run, restore variables if necessary (via
+        # Checkpointable).
+        with variable_scope.variable_creator_scope(
+            self._checkpointable_custom_creator):
+          result = self._func(*args, **kwargs)
 
       if self._variables_created:
         # Variables were previously created, implying this is not the first
@@ -627,8 +723,12 @@ class EagerTemplate(Template):
     # the variable scope is opened in order to ensure that templates nested at
     # the same level correctly uniquify lower variable scope names.
     if self._variable_scope:
-      with variable_scope.variable_scope(
-          self._variable_scope, reuse=variable_scope.AUTO_REUSE):
+      # Create a cache for the variable scope context manager the first time
+      # around so that we don't have to keep recreating it.
+      if not self._variable_scope_context_manager:
+        self._variable_scope_context_manager = variable_scope.variable_scope(
+            self._variable_scope, reuse=variable_scope.AUTO_REUSE)
+      with self._variable_scope_context_manager:
         with self._template_store.as_default():
           result = self._call_func(args, kwargs)
       return result

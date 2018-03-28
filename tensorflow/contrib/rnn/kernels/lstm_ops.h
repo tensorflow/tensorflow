@@ -92,7 +92,6 @@ struct TensorZeroPadding {
   }
 };
 
-
 struct LSTMBlockCell {
   LSTMBlockCell(const int batch_size, const int input_size, const int cell_size)
       : batch_size_(batch_size),

@@ -26,8 +26,10 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('estimator.export.ExportOutput')
 class ExportOutput(object):
   """Represents an output of a model that can be served.
 
@@ -50,6 +52,7 @@ class ExportOutput(object):
     pass
 
 
+@tf_export('estimator.export.ClassificationOutput')
 class ClassificationOutput(ExportOutput):
   """Represents the output of a classification head.
 
@@ -118,6 +121,7 @@ class ClassificationOutput(ExportOutput):
         examples, self.classes, self.scores)
 
 
+@tf_export('estimator.export.RegressionOutput')
 class RegressionOutput(ExportOutput):
   """Represents the output of a regression head."""
 
@@ -153,6 +157,7 @@ class RegressionOutput(ExportOutput):
 _SINGLE_OUTPUT_DEFAULT_NAME = 'output'
 
 
+@tf_export('estimator.export.PredictOutput')
 class PredictOutput(ExportOutput):
   """Represents the output of a generic prediction head.
 

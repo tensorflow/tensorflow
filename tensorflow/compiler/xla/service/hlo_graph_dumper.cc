@@ -157,52 +157,60 @@ enum ColorScheme {
   kDashedBorder,
 };
 
+// Graphviz attributes/colors that make up a color scheme.
+struct NodeColors {
+  const char* style;
+  const char* fill_color;
+  const char* stroke_color;
+  const char* font_color;
+};
+
+NodeColors NodeColorsForScheme(ColorScheme color) {
+  switch (color) {
+    case kBlue:
+      return NodeColors{"filled", "#bbdefb", "#8aacc8", "black"};
+    case kBrown:
+      return NodeColors{"filled", "#bcaaa4", "#8c7b75", "black"};
+    case kDarkBlue:
+      return NodeColors{"filled", "#1565c0", "#003c8f", "white"};
+    case kDarkGreen:
+      return NodeColors{"filled", "#2e7d32", "#005005", "white"};
+    case kDarkRed:
+      return NodeColors{"filled", "#b71c1c", "#7f0000", "white"};
+    case kGray:
+      return NodeColors{"filled", "#cfd8dc", "#9ea7aa", "black"};
+    case kGreen:
+      return NodeColors{"filled", "#c8e6c9", "#97b498", "black"};
+    case kOrange:
+      return NodeColors{"filled", "#ffe0b2", "#cbae82", "black"};
+    case kPurple:
+      return NodeColors{"filled", "#e1bee7", "#af8eb5", "black"};
+    case kRed:
+      return NodeColors{"filled", "#ffcdd2", "#cb9ca1", "black"};
+    case kWhite:
+      return NodeColors{"filled", "white", "black", "black"};
+    case kYellow:
+      return NodeColors{"filled", "#fff9c4", "#cbc693", "black"};
+    case kDashedBorder:
+      // "filled,dashed" looks the same as "dashed", since we have a white
+      // background.  But we use "filled,dashed" so that when you hover over
+      // any part of the node (not just the text inside the node), our css
+      // :hover rule is triggered.
+      return NodeColors{"filled,dashed", "white", "#757575", "#757575"};
+  }
+}
+
 // Given a ColorScheme, returns an attribute string for a node of that color.
 // Sets the node's style and fill/stroke/text colors.
 //
 // Colors are from https://material.io/color.
 string NodeColorAttributes(ColorScheme color) {
-  using std::make_tuple;
-
-  const char *style, *fill_color, *stroke_color, *font_color;
-  std::tie(style, fill_color, stroke_color, font_color) = [color] {
-    switch (color) {
-      case kBlue:
-        return make_tuple("filled", "#bbdefb", "#8aacc8", "black");
-      case kBrown:
-        return make_tuple("filled", "#bcaaa4", "#8c7b75", "black");
-      case kDarkBlue:
-        return make_tuple("filled", "#1565c0", "#003c8f", "white");
-      case kDarkGreen:
-        return make_tuple("filled", "#2e7d32", "#005005", "white");
-      case kDarkRed:
-        return make_tuple("filled", "#b71c1c", "#7f0000", "white");
-      case kGray:
-        return make_tuple("filled", "#cfd8dc", "#9ea7aa", "black");
-      case kGreen:
-        return make_tuple("filled", "#c8e6c9", "#97b498", "black");
-      case kOrange:
-        return make_tuple("filled", "#ffe0b2", "#cbae82", "black");
-      case kPurple:
-        return make_tuple("filled", "#e1bee7", "#af8eb5", "black");
-      case kRed:
-        return make_tuple("filled", "#ffcdd2", "#cb9ca1", "black");
-      case kWhite:
-        return make_tuple("filled", "white", "black", "black");
-      case kYellow:
-        return make_tuple("filled", "#fff9c4", "#cbc693", "black");
-      case kDashedBorder:
-        // "filled,dashed" looks the same as "dashed", since we have a white
-        // background.  But we use "filled,dashed" so that when you hover over
-        // any part of the node (not just the text inside the node), our css
-        // :hover rule is triggered.
-        return make_tuple("filled,dashed", "white", "#757575", "#757575");
-    }
-  }();
+  NodeColors node_colors = NodeColorsForScheme(color);
 
   return Printf(
-      R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")", style,
-      font_color, stroke_color, fill_color);
+      R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
+      node_colors.style, node_colors.font_color, node_colors.stroke_color,
+      node_colors.fill_color);
 }
 
 // Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
@@ -604,11 +612,21 @@ tooltip = " ";
       StrAppend(&subcomp_label, "<br/>", extra_info);
     }
 
-    // Subcomputation's fill/stroke color is light/dark red/gray, depending on
-    // whether or not the subcomputation's fusion node is highlighted.
     bool highlight = filter_.Highlight(parent_instr);
-    const char* fillcolor = highlight ? "#ffcdd2" : "#f5f5f5";
-    const char* strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
+    const char* fillcolor;
+    const char* strokecolor;
+    if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
+      // Use the sharding color, if the node isn't highlighted.
+      NodeColors node_colors =
+          NodeColorsForScheme(GetInstructionColor(parent_instr));
+      fillcolor = node_colors.fill_color;
+      strokecolor = node_colors.stroke_color;
+    } else {
+      // Subcomputation's fill/stroke color is light/dark red/gray, depending on
+      // whether or not the subcomputation's fusion node is highlighted.
+      fillcolor = highlight ? "#ffcdd2" : "#f5f5f5";
+      strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
+    }
     style =
         Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
                fillcolor, strokecolor);
@@ -782,6 +800,14 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
   auto stringify_constant = [](const HloInstruction* constant) {
     const auto& shape = constant->shape();
 
+    // If the shape has a dimension of size zero, print it as e.g.
+    // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
+    // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
+    // is just noise.
+    if (ShapeUtil::HasZeroElements(shape)) {
+      return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
+    }
+
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
     if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
@@ -940,6 +966,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
+    case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -988,6 +1015,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kHostCompute:
     case HloOpcode::kWhile:
       return kDarkGreen;
     case HloOpcode::kConstant:
@@ -1063,14 +1091,19 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
       !ShouldShowFusionSubcomputation(instr)) {
-    string instr_shape = ShapeUtil::HumanString(instr->shape());
-
-    // Show layout of non-tuple shapes with more than one dimension.
-    if (LayoutUtil::HasLayout(instr->shape()) &&
-        instr->shape().dimensions_size() > 1 &&
-        !ShapeUtil::IsTuple(instr->shape())) {
-      StrAppend(&instr_shape, "{",
-                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
+    // Show layout of instructions with more than one dimension.  Don't show
+    // layout on tuples or tensors with just one dimension (which only have one
+    // possible layout) to avoid visual noise.
+    bool shape_is_multidim = false;
+    ShapeUtil::ForEachSubshape(instr->shape(),
+                               [&](const Shape& s, const ShapeIndex&) {
+                                 shape_is_multidim |= s.dimensions_size() > 1;
+                               });
+    string instr_shape;
+    if (instr->opcode() != HloOpcode::kTuple && shape_is_multidim) {
+      instr_shape = ShapeUtil::HumanStringWithLayout(instr->shape());
+    } else {
+      instr_shape = ShapeUtil::HumanString(instr->shape());
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
@@ -1421,9 +1454,11 @@ void DumpText(const HloModule& module, const string& label,
 
 string MaybeDumpHloModule(const HloModule& module, const string& label,
                           const HloExecutionProfile* profile) {
-  VLOG(2) << "MaybeDumpHloModule called on module " << module.name();
-  string graph_url;
   const DebugOptions& debug_options = module.config().debug_options();
+  VLOG(2) << "MaybeDumpHloModule called on module " << module.name()
+          << " with generate_hlo_graph regex \""
+          << debug_options.xla_generate_hlo_graph() << "\"";
+  string graph_url;
   if (!debug_options.xla_generate_hlo_graph().empty() &&
       RE2::PartialMatch(module.name(),
                         debug_options.xla_generate_hlo_graph())) {

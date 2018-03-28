@@ -220,10 +220,13 @@ class HloParser {
   bool AddComputation(const string& name, HloComputation* computation,
                       LocTy name_loc);
 
-  // The map from the instruction name to the instruction. This does not own the
-  // instructions.
-  std::unordered_map<string, HloInstruction*> instruction_pool_;
-  std::unordered_map<string, HloComputation*> computation_pool_;
+  // The map from the instruction/computation name to the
+  // instruction/computation itself and it's location. This does not own the
+  // pointers.
+  std::unordered_map<string, std::pair<HloInstruction*, LocTy>>
+      instruction_pool_;
+  std::unordered_map<string, std::pair<HloComputation*, LocTy>>
+      computation_pool_;
 
   HloLexer lexer_;
   std::unique_ptr<HloModule> module_;
@@ -340,15 +343,16 @@ bool HloParser::ParseComputation(HloComputation** entry_computation) {
     return false;
   }
 
-  HloInstruction* root =
-      tensorflow::gtl::FindPtrOrNull(instruction_pool_, root_name);
+  std::pair<HloInstruction*, LocTy>* root_node =
+      tensorflow::gtl::FindOrNull(instruction_pool_, root_name);
   // This means some instruction was marked as ROOT but we didn't find it in the
   // pool, which should not happen.
-  if (!root_name.empty() && root == nullptr) {
+  if (!root_name.empty() && root_node == nullptr) {
     LOG(FATAL) << "instruction " << root_name
                << " was marked as ROOT but the parser has not seen it before";
   }
 
+  HloInstruction* root = root_node == nullptr ? nullptr : root_node->first;
   // Now root can be either an existing instruction or a nullptr. If it's a
   // nullptr, the implementation of Builder will set the last instruction as
   // root instruction.
@@ -990,6 +994,20 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands, *custom_call_target));
       break;
     }
+    case HloOpcode::kHostCompute: {
+      optional<string> channel_name;
+      optional<int64> cost_estimate_ns;
+      attrs["channel_name"] = {/*required=*/true, AttrTy::kString,
+                               &channel_name};
+      attrs["cost_estimate_ns"] = {/*required=*/true, AttrTy::kInt64,
+                                   &cost_estimate_ns};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateHostCompute(
+          shape, operands, *channel_name, *cost_estimate_ns));
+      break;
+    }
     case HloOpcode::kDot: {
       optional<std::vector<int64>> lhs_contracting_dims;
       attrs["lhs_contracting_dims"] = {
@@ -1029,6 +1047,40 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
 
       instruction = builder->AddInstruction(
           HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
+      break;
+    }
+    case HloOpcode::kGather: {
+      optional<std::vector<int64>> output_window_dims;
+      attrs["output_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &output_window_dims};
+      optional<std::vector<int64>> elided_window_dims;
+      attrs["elided_window_dims"] = {
+          /*required=*/true, AttrTy::kBracedInt64List, &elided_window_dims};
+      optional<std::vector<int64>> gather_dims_to_operand_dims;
+      attrs["gather_dims_to_operand_dims"] = {/*required=*/true,
+                                              AttrTy::kBracedInt64List,
+                                              &gather_dims_to_operand_dims};
+      optional<int64> index_vector_dim;
+      attrs["index_vector_dim"] = {/*required=*/true, AttrTy::kInt64,
+                                   &index_vector_dim};
+      optional<std::vector<int64>> window_bounds;
+      attrs["window_bounds"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                                &window_bounds};
+
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+
+      GatherDimensionNumbers dim_numbers = HloInstruction::MakeGatherDimNumbers(
+          /*output_window_dims=*/*output_window_dims,
+          /*elided_window_dims=*/*elided_window_dims,
+          /*gather_dims_to_operand_dims=*/*gather_dims_to_operand_dims,
+          /*index_vector_dim=*/*index_vector_dim);
+
+      instruction = builder->AddInstruction(HloInstruction::CreateGather(
+          shape, /*operand=*/operands[0], /*gather_indices=*/operands[1],
+          dim_numbers, *window_bounds));
       break;
     }
     case HloOpcode::kTrace:
@@ -1229,13 +1281,13 @@ bool HloParser::ParseInstructionNames(
     if (!ParseName(&name)) {
       return Error(loc, "expects a instruction name");
     }
-    HloInstruction* instr =
-        tensorflow::gtl::FindPtrOrNull(instruction_pool_, name);
+    std::pair<HloInstruction*, LocTy>* instr =
+        tensorflow::gtl::FindOrNull(instruction_pool_, name);
     if (!instr) {
       return TokenError(
           Printf("instruction '%s' is not defined", name.c_str()));
     }
-    instructions->push_back(instr);
+    instructions->push_back(instr->first);
   } while (EatIfPresent(TokKind::kComma));
 
   return ParseToken(TokKind::kRbrace,
@@ -1705,12 +1757,12 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
       if (!ParseName(&name)) {
         return false;
       }
-      HloInstruction* instruction =
-          tensorflow::gtl::FindPtrOrNull(instruction_pool_, name);
+      std::pair<HloInstruction*, LocTy>* instruction =
+          tensorflow::gtl::FindOrNull(instruction_pool_, name);
       if (!instruction) {
         return Error(loc, StrCat("instruction does not exist: ", name));
       }
-      operands->push_back(instruction);
+      operands->push_back(instruction->first);
     } while (EatIfPresent(TokKind::kComma));
   }
   return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");
@@ -1957,10 +2009,12 @@ bool HloParser::ParseComputationName(HloComputation** value) {
   if (!ParseName(&name)) {
     return Error(loc, "expects computation name");
   }
-  *value = tensorflow::gtl::FindPtrOrNull(computation_pool_, name);
-  if (*value == nullptr) {
+  std::pair<HloComputation*, LocTy>* computation =
+      tensorflow::gtl::FindOrNull(computation_pool_, name);
+  if (computation == nullptr) {
     return Error(loc, StrCat("computation does not exist: ", name));
   }
+  *value = computation->first;
   return true;
 }
 
@@ -2173,7 +2227,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 //
 //  {[2:3:4], [5:6:7], [8:9]}
 //
-// The the parsed result will be:
+// The parsed result will be:
 //
 //  {/*starts=*/{2, 5, 8}, /*limits=*/{3, 6, 9}, /*strides=*/{4, 7, 1}}
 //
@@ -2576,18 +2630,22 @@ bool HloParser::EatIfPresent(TokKind kind) {
 
 bool HloParser::AddInstruction(const string& name, HloInstruction* instruction,
                                LocTy name_loc) {
-  auto result = instruction_pool_.insert({name, instruction});
+  auto result = instruction_pool_.insert({name, {instruction, name_loc}});
   if (!result.second) {
-    return Error(name_loc, StrCat("instruction already exists: ", name));
+    Error(name_loc, StrCat("instruction already exists: ", name));
+    return Error(/*loc=*/result.first->second.second,
+                 "instruction previously defined here");
   }
   return true;
 }
 
 bool HloParser::AddComputation(const string& name, HloComputation* computation,
                                LocTy name_loc) {
-  auto result = computation_pool_.insert({name, computation});
+  auto result = computation_pool_.insert({name, {computation, name_loc}});
   if (!result.second) {
-    return Error(name_loc, StrCat("computation already exists: ", name));
+    Error(name_loc, StrCat("computation already exists: ", name));
+    return Error(/*loc=*/result.first->second.second,
+                 "computation previously defined here");
   }
   return true;
 }

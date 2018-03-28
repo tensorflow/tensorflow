@@ -40,6 +40,7 @@ from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+from tensorflow.contrib.distributions.python.ops.kumaraswamy import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
@@ -97,7 +98,6 @@ _allowed_symbols = [
     'Autoregressive',
     'Binomial',
     'Bernoulli',
-    'BernoulliWithSigmoidProbs',
     'Beta',
     'BetaWithSoftplusConcentration',
     'Categorical',
@@ -115,6 +115,7 @@ _allowed_symbols = [
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
+    'Kumaraswamy',
     'Laplace',
     'LaplaceWithSoftplusScale',
     'Logistic',

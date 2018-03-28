@@ -23,7 +23,7 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=FLOAT \
@@ -101,7 +101,7 @@ direction, let us just give an example of that:
 ```
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
-  --input_file=/tmp/foo.lite \
+  --input_file=/tmp/foo.tflite \
   --output_file=/tmp/foo.pb \
   --input_format=TFLITE \
   --output_format=TENSORFLOW_GRAPHDEF \
@@ -130,7 +130,7 @@ flatbuffer is done like this:
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/some_quantized_graph.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=QUANTIZED_UINT8 \
@@ -207,7 +207,7 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/inception_v1_2016_08_28_frozen.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=FLOAT \
@@ -235,7 +235,7 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/inception_v1_2016_08_28_frozen.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=FLOAT \
@@ -308,7 +308,7 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=FLOAT \
@@ -415,7 +415,7 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_
 bazel run --config=opt \
   //tensorflow/contrib/lite/toco:toco -- \
   --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.lite \
+  --output_file=/tmp/foo.tflite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
   --inference_type=FLOAT \

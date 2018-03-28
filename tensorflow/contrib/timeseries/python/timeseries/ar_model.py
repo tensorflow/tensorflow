@@ -70,7 +70,7 @@ class ARModel(model.TimeSeriesModel):
       input_window_size: Number of past time steps of data to look at when doing
         the regression.
       output_window_size: Number of future time steps to predict. Note that
-        setting it to > 1 empiricaly seems to give a better fit.
+        setting it to > 1 empirically seems to give a better fit.
       num_features: number of input features per time step.
       num_time_buckets: Number of buckets into which to divide (time %
         periodicity) for generating time based features.

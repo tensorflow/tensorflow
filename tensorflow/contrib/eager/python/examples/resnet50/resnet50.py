@@ -27,10 +27,11 @@ from __future__ import print_function
 import functools
 
 import tensorflow as tf
-import tensorflow.contrib.eager as tfe
+
+layers = tf.keras.layers
 
 
-class _IdentityBlock(tfe.Network):
+class _IdentityBlock(tf.keras.Model):
   """_IdentityBlock is the block that has no conv layer at shortcut.
 
   Args:
@@ -50,31 +51,24 @@ class _IdentityBlock(tfe.Network):
     bn_name_base = 'bn' + str(stage) + block + '_branch'
     bn_axis = 1 if data_format == 'channels_first' else 3
 
-    self.conv2a = self.track_layer(
-        tf.layers.Conv2D(
-            filters1, (1, 1),
-            name=conv_name_base + '2a',
-            data_format=data_format))
-    self.bn2a = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a'))
+    self.conv2a = layers.Conv2D(
+        filters1, (1, 1), name=conv_name_base + '2a', data_format=data_format)
+    self.bn2a = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2a')
 
-    self.conv2b = self.track_layer(
-        tf.layers.Conv2D(
-            filters2,
-            kernel_size,
-            padding='same',
-            data_format=data_format,
-            name=conv_name_base + '2b'))
-    self.bn2b = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b'))
+    self.conv2b = layers.Conv2D(
+        filters2,
+        kernel_size,
+        padding='same',
+        data_format=data_format,
+        name=conv_name_base + '2b')
+    self.bn2b = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2b')
 
-    self.conv2c = self.track_layer(
-        tf.layers.Conv2D(
-            filters3, (1, 1),
-            name=conv_name_base + '2c',
-            data_format=data_format))
-    self.bn2c = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c'))
+    self.conv2c = layers.Conv2D(
+        filters3, (1, 1), name=conv_name_base + '2c', data_format=data_format)
+    self.bn2c = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2c')
 
   def call(self, input_tensor, training=False):
     x = self.conv2a(input_tensor)
@@ -92,7 +86,7 @@ class _IdentityBlock(tfe.Network):
     return tf.nn.relu(x)
 
 
-class _ConvBlock(tfe.Network):
+class _ConvBlock(tf.keras.Model):
   """_ConvBlock is the block that has a conv layer at shortcut.
 
   Args:
@@ -121,41 +115,35 @@ class _ConvBlock(tfe.Network):
     bn_name_base = 'bn' + str(stage) + block + '_branch'
     bn_axis = 1 if data_format == 'channels_first' else 3
 
-    self.conv2a = self.track_layer(
-        tf.layers.Conv2D(
-            filters1, (1, 1),
-            strides=strides,
-            name=conv_name_base + '2a',
-            data_format=data_format))
-    self.bn2a = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a'))
+    self.conv2a = layers.Conv2D(
+        filters1, (1, 1),
+        strides=strides,
+        name=conv_name_base + '2a',
+        data_format=data_format)
+    self.bn2a = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2a')
 
-    self.conv2b = self.track_layer(
-        tf.layers.Conv2D(
-            filters2,
-            kernel_size,
-            padding='same',
-            name=conv_name_base + '2b',
-            data_format=data_format))
-    self.bn2b = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b'))
+    self.conv2b = layers.Conv2D(
+        filters2,
+        kernel_size,
+        padding='same',
+        name=conv_name_base + '2b',
+        data_format=data_format)
+    self.bn2b = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2b')
 
-    self.conv2c = self.track_layer(
-        tf.layers.Conv2D(
-            filters3, (1, 1),
-            name=conv_name_base + '2c',
-            data_format=data_format))
-    self.bn2c = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c'))
+    self.conv2c = layers.Conv2D(
+        filters3, (1, 1), name=conv_name_base + '2c', data_format=data_format)
+    self.bn2c = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '2c')
 
-    self.conv_shortcut = self.track_layer(
-        tf.layers.Conv2D(
-            filters3, (1, 1),
-            strides=strides,
-            name=conv_name_base + '1',
-            data_format=data_format))
-    self.bn_shortcut = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '1'))
+    self.conv_shortcut = layers.Conv2D(
+        filters3, (1, 1),
+        strides=strides,
+        name=conv_name_base + '1',
+        data_format=data_format)
+    self.bn_shortcut = layers.BatchNormalization(
+        axis=bn_axis, name=bn_name_base + '1')
 
   def call(self, input_tensor, training=False):
     x = self.conv2a(input_tensor)
@@ -176,7 +164,8 @@ class _ConvBlock(tfe.Network):
     return tf.nn.relu(x)
 
 
-class ResNet50(tfe.Network):
+# pylint: disable=not-callable
+class ResNet50(tf.keras.Model):
   """Instantiates the ResNet50 architecture.
 
   Args:
@@ -220,32 +209,28 @@ class ResNet50(tfe.Network):
     self.include_top = include_top
 
     def conv_block(filters, stage, block, strides=(2, 2)):
-      l = _ConvBlock(
+      return _ConvBlock(
           3,
           filters,
           stage=stage,
           block=block,
           data_format=data_format,
           strides=strides)
-      return self.track_layer(l)
 
     def id_block(filters, stage, block):
-      l = _IdentityBlock(
+      return _IdentityBlock(
           3, filters, stage=stage, block=block, data_format=data_format)
-      return self.track_layer(l)
 
-    self.conv1 = self.track_layer(
-        tf.layers.Conv2D(
-            64, (7, 7),
-            strides=(2, 2),
-            data_format=data_format,
-            padding='same',
-            name='conv1'))
+    self.conv1 = layers.Conv2D(
+        64, (7, 7),
+        strides=(2, 2),
+        data_format=data_format,
+        padding='same',
+        name='conv1')
     bn_axis = 1 if data_format == 'channels_first' else 3
-    self.bn_conv1 = self.track_layer(
-        tf.layers.BatchNormalization(axis=bn_axis, name='bn_conv1'))
-    self.max_pool = self.track_layer(
-        tf.layers.MaxPooling2D((3, 3), strides=(2, 2), data_format=data_format))
+    self.bn_conv1 = layers.BatchNormalization(axis=bn_axis, name='bn_conv1')
+    self.max_pool = layers.MaxPooling2D(
+        (3, 3), strides=(2, 2), data_format=data_format)
 
     self.l2a = conv_block([64, 64, 256], stage=2, block='a', strides=(1, 1))
     self.l2b = id_block([64, 64, 256], stage=2, block='b')
@@ -267,13 +252,12 @@ class ResNet50(tfe.Network):
     self.l5b = id_block([512, 512, 2048], stage=5, block='b')
     self.l5c = id_block([512, 512, 2048], stage=5, block='c')
 
-    self.avg_pool = self.track_layer(
-        tf.layers.AveragePooling2D(
-            (7, 7), strides=(7, 7), data_format=data_format))
+    self.avg_pool = layers.AveragePooling2D(
+        (7, 7), strides=(7, 7), data_format=data_format)
 
     if self.include_top:
-      self.fc1000 = self.track_layer(
-          tf.layers.Dense(classes, name='fc1000'))
+      self.flatten = layers.Flatten()
+      self.fc1000 = layers.Dense(classes, name='fc1000')
     else:
       reduction_indices = [1, 2] if data_format == 'channels_last' else [2, 3]
       reduction_indices = tf.constant(reduction_indices)
@@ -288,7 +272,7 @@ class ResNet50(tfe.Network):
       else:
         self.global_pooling = None
 
-  def call(self, input_tensor, training=False):
+  def call(self, input_tensor, training):
     x = self.conv1(input_tensor)
     x = self.bn_conv1(x, training=training)
     x = tf.nn.relu(x)
@@ -317,7 +301,7 @@ class ResNet50(tfe.Network):
     x = self.avg_pool(x)
 
     if self.include_top:
-      return self.fc1000(tf.layers.flatten(x))
+      return self.fc1000(self.flatten(x))
     elif self.global_pooling:
       return self.global_pooling(x)
     else:

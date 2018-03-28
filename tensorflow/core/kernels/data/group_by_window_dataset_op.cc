@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -510,10 +509,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return Status::OK();
     }
 
-    // A resource name for the temporary window dataset that is
-    // created as the input to the reduce function.
-    static constexpr const char* kWindowResourceName = "__window_dataset";
-
     const DatasetBase* const input_;
     const NameAttrList key_func_;
     const NameAttrList reduce_func_;
@@ -537,5 +532,4 @@ REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
                         GroupByWindowDatasetOp);
 
 }  // namespace
-
 }  // namespace tensorflow

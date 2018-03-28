@@ -26,16 +26,18 @@ import tempfile
 import time
 
 import numpy as np
-from six.moves import xrange
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 # pylint: disable=g-bad-import-order
 import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 from third_party.examples.eager.spinn import spinn
+from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
+from tensorflow.python.training import checkpoint_utils
 # pylint: enable=g-bad-import-order
 
 
@@ -66,13 +68,30 @@ def _generate_synthetic_snli_data_batch(sequence_length,
   return labels, prem, prem_trans, hypo, hypo_trans
 
 
-def _test_spinn_config(d_embed, d_out, logdir=None):
+def _test_spinn_config(d_embed, d_out, logdir=None, inference_sentences=None):
+  """Generate a config tuple for testing.
+
+  Args:
+    d_embed: Embedding dimensions.
+    d_out: Model output dimensions.
+    logdir: Optional logdir.
+    inference_sentences: A 2-tuple of strings representing the sentences (with
+      binary parsing result), e.g.,
+      ("( ( The dog ) ( ( is running ) . ) )", "( ( The dog ) ( moves . ) )").
+
+  Returns:
+    A config tuple.
+  """
   config_tuple = collections.namedtuple(
       "Config", ["d_hidden", "d_proj", "d_tracker", "predict",
                  "embed_dropout", "mlp_dropout", "n_mlp_layers", "d_mlp",
                  "d_out", "projection", "lr", "batch_size", "epochs",
                  "force_cpu", "logdir", "log_every", "dev_every", "save_every",
-                 "lr_decay_every", "lr_decay_by"])
+                 "lr_decay_every", "lr_decay_by", "inference_premise",
+                 "inference_hypothesis"])
+
+  inference_premise = inference_sentences[0] if inference_sentences else None
+  inference_hypothesis = inference_sentences[1] if inference_sentences else None
   return config_tuple(
       d_hidden=d_embed,
       d_proj=d_embed * 2,
@@ -86,14 +105,16 @@ def _test_spinn_config(d_embed, d_out, logdir=None):
       projection=True,
       lr=2e-2,
       batch_size=2,
-      epochs=10,
+      epochs=20,
       force_cpu=False,
       logdir=logdir,
       log_every=1,
       dev_every=2,
       save_every=2,
       lr_decay_every=1,
-      lr_decay_by=0.75)
+      lr_decay_by=0.75,
+      inference_premise=inference_premise,
+      inference_hypothesis=inference_hypothesis)
 
 
 class SpinnTest(test_util.TensorFlowTestCase):
@@ -152,7 +173,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
         right_in.append(tf.random_normal((1, size * 2)))
         tracking.append(tf.random_normal((1, tracker_size * 2)))
 
-      out = reducer(left_in, right_in, tracking=tracking)
+      out = reducer(left_in, right_in=right_in, tracking=tracking)
       self.assertEqual(batch_size, len(out))
       self.assertEqual(tf.float32, out[0].dtype)
       self.assertEqual((1, size * 2), out[0].shape)
@@ -206,7 +227,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       self.assertEqual((batch_size, size * 2), stacks[0][0].shape)
 
       for _ in range(2):
-        out1, out2 = tracker(bufs, stacks)
+        out1, out2 = tracker(bufs, stacks=stacks)
         self.assertIsNone(out2)
         self.assertEqual(batch_size, len(out1))
         self.assertEqual(tf.float32, out1[0].dtype)
@@ -239,7 +260,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       self.assertEqual(tf.int64, transitions.dtype)
       self.assertEqual((num_transitions, 1), transitions.shape)
 
-      out = s(buffers, transitions, training=True)
+      out = s(buffers, transitions=transitions, training=True)
       self.assertEqual(tf.float32, out.dtype)
       self.assertEqual((1, embedding_dims), out.shape)
 
@@ -265,12 +286,15 @@ class SpinnTest(test_util.TensorFlowTestCase):
                                                          vocab_size)
 
       # Invoke model under non-training mode.
-      logits = model(prem, prem_trans, hypo, hypo_trans, training=False)
+      logits = model(
+          prem, premise_transition=prem_trans, hypothesis=hypo,
+          hypothesis_transition=hypo_trans, training=False)
       self.assertEqual(tf.float32, logits.dtype)
       self.assertEqual((batch_size, d_out), logits.shape)
 
       # Invoke model under training model.
-      logits = model(prem, prem_trans, hypo, hypo_trans, training=True)
+      logits = model(prem, premise_transition=prem_trans, hypothesis=hypo,
+                     hypothesis_transition=hypo_trans, training=True)
       self.assertEqual(tf.float32, logits.dtype)
       self.assertEqual((batch_size, d_out), logits.shape)
 
@@ -288,11 +312,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       # Training on the batch should have led to a change in the loss value.
       self.assertNotEqual(loss1.numpy(), loss2.numpy())
 
-  def testTrainSpinn(self):
-    """Test with fake toy SNLI data and GloVe vectors."""
-
-    # 1. Create and load a fake SNLI data file and a fake GloVe embedding file.
-    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+  def _create_test_data(self, snli_1_0_dir):
     fake_train_file = os.path.join(snli_1_0_dir, "snli_1.0_train.txt")
     os.makedirs(snli_1_0_dir)
 
@@ -337,13 +357,52 @@ class SpinnTest(test_util.TensorFlowTestCase):
           else:
             f.write("\n")
 
+    return fake_train_file
+
+  def testInferSpinnWorks(self):
+    """Test inference with the spinn model."""
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    self._create_test_data(snli_1_0_dir)
+
+    vocab = data.load_vocabulary(self._temp_data_dir)
+    word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
+
+    config = _test_spinn_config(
+        data.WORD_VECTOR_LEN, 4,
+        logdir=os.path.join(self._temp_data_dir, "logdir"),
+        inference_sentences=("( foo ( bar . ) )", "( bar ( foo . ) )"))
+    logits = spinn.train_or_infer_spinn(
+        embed, word2index, None, None, None, config)
+    self.assertEqual(tf.float32, logits.dtype)
+    self.assertEqual((3,), logits.shape)
+
+  def testInferSpinnThrowsErrorIfOnlyOneSentenceIsSpecified(self):
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    self._create_test_data(snli_1_0_dir)
+
+    vocab = data.load_vocabulary(self._temp_data_dir)
+    word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
+
+    config = _test_spinn_config(
+        data.WORD_VECTOR_LEN, 4,
+        logdir=os.path.join(self._temp_data_dir, "logdir"),
+        inference_sentences=("( foo ( bar . ) )", None))
+    with self.assertRaises(ValueError):
+      spinn.train_or_infer_spinn(embed, word2index, None, None, None, config)
+
+  def testTrainSpinn(self):
+    """Test with fake toy SNLI data and GloVe vectors."""
+
+    # 1. Create and load a fake SNLI data file and a fake GloVe embedding file.
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    fake_train_file = self._create_test_data(snli_1_0_dir)
+
     vocab = data.load_vocabulary(self._temp_data_dir)
     word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
 
     train_data = data.SnliData(fake_train_file, word2index)
     dev_data = data.SnliData(fake_train_file, word2index)
     test_data = data.SnliData(fake_train_file, word2index)
-    print(embed)
 
     # 2. Create a fake config.
     config = _test_spinn_config(
@@ -351,7 +410,8 @@ class SpinnTest(test_util.TensorFlowTestCase):
         logdir=os.path.join(self._temp_data_dir, "logdir"))
 
     # 3. Test training of a SPINN model.
-    spinn.train_spinn(embed, train_data, dev_data, test_data, config)
+    trainer = spinn.train_or_infer_spinn(
+        embed, word2index, train_data, dev_data, test_data, config)
 
     # 4. Load train loss values from the summary files and verify that they
     #    decrease with training.
@@ -361,7 +421,21 @@ class SpinnTest(test_util.TensorFlowTestCase):
                     if event.summary.value
                     and event.summary.value[0].tag == "train/loss"]
     self.assertEqual(config.epochs, len(train_losses))
-    self.assertLess(train_losses[-1], train_losses[0])
+
+    # 5. Verify that checkpoints exist and contains all the expected variables.
+    self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
+    object_graph_string = checkpoint_utils.load_variable(
+        config.logdir, name="_CHECKPOINTABLE_OBJECT_GRAPH")
+    object_graph = checkpointable_object_graph_pb2.CheckpointableObjectGraph()
+    object_graph.ParseFromString(object_graph_string)
+    ckpt_variable_names = set()
+    for node in object_graph.nodes:
+      for attribute in node.attributes:
+        ckpt_variable_names.add(attribute.full_name)
+    self.assertIn("global_step", ckpt_variable_names)
+    for v in trainer.variables:
+      variable_name = v.name[:v.name.index(":")] if ":" in v.name else v.name
+      self.assertIn(variable_name, ckpt_variable_names)
 
 
 class EagerSpinnSNLIClassifierBenchmark(test.Benchmark):

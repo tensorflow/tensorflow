@@ -172,7 +172,7 @@ void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
     stats->AddAllocation(allocator_pair.first, allocator_pair.second);
   }
   auto* ms = stats->stats()->mutable_memory_stats();
-  ms->set_temp_memory_size(ctx->temp_memory_size());
+  ms->set_temp_memory_size(ctx->temp_memory_allocated());
   for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
     ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
   }
@@ -332,8 +332,8 @@ class GraphView {
 
 class ExecutorImpl : public Executor {
  public:
-  ExecutorImpl(const LocalExecutorParams& p, const Graph* g)
-      : params_(p), graph_(g), gview_() {
+  ExecutorImpl(const LocalExecutorParams& p, std::unique_ptr<const Graph> g)
+      : params_(p), graph_(std::move(g)), gview_() {
     CHECK(p.create_kernel != nullptr);
     CHECK(p.delete_kernel != nullptr);
   }
@@ -348,7 +348,6 @@ class ExecutorImpl : public Executor {
     for (auto fiter : frame_info_) {
       delete fiter.second;
     }
-    delete graph_;
   }
 
   Status Initialize();
@@ -412,7 +411,7 @@ class ExecutorImpl : public Executor {
 
   // Owned.
   LocalExecutorParams params_;
-  const Graph* graph_;
+  std::unique_ptr<const Graph> graph_;
   GraphView gview_;
 
   // A cached value of params_
@@ -605,11 +604,11 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
 }
 
 Status ExecutorImpl::Initialize() {
-  gview_.Initialize(graph_);
+  gview_.Initialize(graph_.get());
 
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_, &cf_info));
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_.get(), &cf_info));
 
   // Cache this value so we make this virtual function call once, rather
   // that O(# steps * # nodes per step) times.
@@ -676,9 +675,9 @@ Status ExecutorImpl::Initialize() {
 
   // Initialize PendingCounts only after item->pending_id is initialized for
   // all nodes.
-  InitializePending(graph_, cf_info);
+  InitializePending(graph_.get(), cf_info);
 
-  return gview_.SetAllocAttrs(graph_, params_.device);
+  return gview_.SetAllocAttrs(graph_.get(), params_.device);
 }
 
 Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
@@ -1415,7 +1414,7 @@ void ExecutorImpl::InitializePending(const Graph* graph,
 }
 
 void ExecutorState::RunAsync(Executor::DoneCallback done) {
-  const Graph* graph = impl_->graph_;
+  const Graph* graph = impl_->graph_.get();
   TaggedNodeSeq ready;
 
   // Ask the device to fill in the device context map.
@@ -1609,7 +1608,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsWrapper* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;  // Shorthand
+          Entry* first_input = state->first_input;     // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -1776,6 +1775,19 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         entry->ref_mu = nullptr;
 
         inp->tensor = entry->val.get();
+        // The dtype of entry->ref could have been changed by another operation
+        // that ran after the operation that "produced" it executed, so
+        // re-validate that the type of the dereferenced tensor matches the
+        // expected input type.
+        if (item.input_type(i) != inp->tensor->dtype()) {
+          return AttachDef(
+              errors::InvalidArgument(
+                  i, "-th input expects type ",
+                  DataTypeString(item.input_type(i)),
+                  " but automatically dereferenced input tensor has type ",
+                  DataTypeString(inp->tensor->dtype())),
+              item.kernel->def());
+        }
       }
     }
   }
@@ -2593,9 +2605,10 @@ void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
 
 }  // end namespace
 
-Status NewLocalExecutor(const LocalExecutorParams& params, const Graph* graph,
+Status NewLocalExecutor(const LocalExecutorParams& params,
+                        std::unique_ptr<const Graph> graph,
                         Executor** executor) {
-  ExecutorImpl* impl = new ExecutorImpl(params, graph);
+  ExecutorImpl* impl = new ExecutorImpl(params, std::move(graph));
   const Status s = impl->Initialize();
   if (s.ok()) {
     *executor = impl;

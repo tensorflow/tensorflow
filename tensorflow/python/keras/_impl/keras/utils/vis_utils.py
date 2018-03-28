@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
@@ -119,7 +120,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
     layer_id = str(id(layer))
     for i, node in enumerate(layer._inbound_nodes):
       node_key = layer.name + '_ib-' + str(i)
-      if node_key in model._container_nodes:
+      if node_key in model._network_nodes:  # pylint: disable=protected-access
         for inbound_layer in node.inbound_layers:
           inbound_layer_id = str(id(inbound_layer))
           layer_id = str(id(layer))
@@ -127,6 +128,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   return dot
 
 
+@tf_export('keras.utils.plot_model')
 def plot_model(model,
                to_file='model.png',
                show_shapes=False,

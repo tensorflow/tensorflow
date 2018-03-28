@@ -19,28 +19,32 @@ to models defined without using eager execution.
 
 ## Installation
 
-Eager execution is **not** included in the latest release (version 1.4) of
-TensorFlow. To use it, you will need to [build TensorFlow from
-source](https://www.tensorflow.org/install/install_sources) or install the
-nightly builds.
+Eager execution is included in TensorFlow versions 1.5 and above.
+Installation instructions at https://www.tensorflow.org/install/
 
-For example, the nightly builds can be installed using `pip`:
+The contents of this guide are compatible with TensorFlow 1.5. However, if you
+run into bugs that are fixed in source but not the release, you may want to
+either [build from source](https://www.tensorflow.org/install/install_sources)
+or try a nightly build. The nightly builds are available as:
 
--   `pip install tf-nightly` (for CPU-only TensorFlow)
--   `pip install tf-nightly-gpu` (for GPU-enabled TensorFlow)
+- [`pip` packages](https://github.com/tensorflow/tensorflow/blob/master/README.md#installation) and
 
-Or using `docker`, with [Jupyter Notebook](http://jupyter.org/) support:
+- [docker](https://hub.docker.com/r/tensorflow/tensorflow/) images.
+
+For example, to run the latest nightly docker image:
 
 ```sh
-# For CPU-only TensorFlow
+# If you have a GPU, use https://github.com/NVIDIA/nvidia-docker
+docker pull tensorflow/tensorflow:nightly-gpu
+docker run --runtime=nvidia -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
+
+# If you do not have a GPU, use the CPU-only image
 docker pull tensorflow/tensorflow:nightly
 docker run -it -p 8888:8888 tensorflow/tensorflow:nightly
-
-# For GPU-enabled TensorFlow:
-# (Requires https://github.com/NVIDIA/nvidia-docker)
-nvidia-docker pull tensorflow/tensorflow:nightly-gpu
-nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
 ```
+
+And then visit http://localhost:8888 in your browser for a Jupyter notebook
+environment.
 
 ## Getting Started
 
@@ -269,9 +273,9 @@ assert 6 == df(3.)[0].numpy()
 d2f = tfe.gradients_function(lambda x: df(x)[0])
 assert 2 == d2f(3.)[0].numpy()
 
-# Third order derivative.
+# Third order derivative: Will be None
 d3f = tfe.gradients_function(lambda x : d2f(x)[0])
-assert 0 == d3f(3.)[0].numpy()
+assert None == d3f(3.)[0]
 ```
 
 These functions can be used to train models. For example, consider the following
@@ -565,54 +569,50 @@ for i in range(20001):
 print("Loss on test set: %f" % loss(model, data.test.images, data.test.labels).numpy())
 ```
 
-For a more complete example, see
-[`tensorflow/contrib/eager/python/examples/mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
+For a more complete example, see [the example in the tensorflow/models
+repository](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 ### Checkpointing trained variables
 
-TensorFlow Variables (`tfe.Variable`) provides a way to represent shared,
-persistent state of your model. The `tfe.Saver` class (which is a thin wrapper
-over the
-[`tf.train.Saver`](https://www.tensorflow.org/api_docs/python/tf/train/Saver)
-class) provides a means to save and restore variables to and from _checkpoints_.
+TensorFlow Variables (`tfe.Variable`) provide a way to represent shared,
+persistent state of your model. The `tfe.Checkpoint` class provides a means to
+save and restore variables to and from _checkpoints_.
 
 For example:
 
 ```python
 # Create variables.
-x = tfe.Variable(10., name='x')
-y = tfe.Variable(5., name='y')
+x = tfe.Variable(10.)
+y = tfe.Variable(5.)
 
-# Create a Saver.
-saver = tfe.Saver([x, y])
+# Indicate that the variables should be saved as "x" and "y".
+checkpoint = tfe.Checkpoint(x=x, y=y)
 
 # Assign new values to the variables and save.
 x.assign(2.)
-saver.save('/tmp/ckpt')
+save_path = checkpoint.save('/tmp/ckpt')
 
 # Change the variable after saving.
 x.assign(11.)
 assert 16. == (x + y).numpy()  # 11 + 5
 
 # Restore the values in the checkpoint.
-saver.restore('/tmp/ckpt')
+checkpoint.restore(save_path)  # save_path='/tmp/ckpt-1'
 
 assert 7. == (x + y).numpy()  # 2 + 5
 ```
 
-### `tfe.Network`
+### `tf.keras.Model`
 
 You may often want to organize your models using classes, like the `MNISTModel`
-class described above. We recommend inheriting from the `tfe.Network` class as
-it provides conveniences like keeping track of all model variables and methods
-to save and restore from checkpoints.
+class described above. We recommend inheriting from the `tf.keras.Model` class
+as it provides conveniences like keeping track of all model variables.
 
-Sub-classes of `tfe.Network` may register `Layer`s (like classes in
-[`tf.layers`](https://www.tensorflow.org/api_docs/python/tf/layers),
-or [Keras
-layers](https://www.tensorflow.org/api_docs/python/tf/keras/layers))
-using a call to `self.track_layer()` and define the computation in an
-implementation of `call()`.
+Sub-classes of `tf.keras.Model` may register `Layer`s (like classes in
+[`tf.layers`](https://www.tensorflow.org/api_docs/python/tf/layers), or [Keras
+layers](https://www.tensorflow.org/api_docs/python/tf/keras/layers)) by
+assigning them to attributes (`self.name = layer_object`) and define the
+computation in an implementation of `call()`.
 
 Note that `tf.layers.Layer` objects (like `tf.layers.Dense`) create variables
 lazily, when the first input is encountered.
@@ -620,12 +620,11 @@ lazily, when the first input is encountered.
 For example, consider the following two-layer neural network:
 
 ```python
-class TwoLayerNet(tfe.Network):
+class TwoLayerNet(tf.keras.Model):
   def __init__(self):
     super(TwoLayerNet, self).__init__()
-    self.layer1 = self.track_layer(
-      tf.layers.Dense(2, activation=tf.nn.relu, use_bias=False))
-    self.layer2 = self.track_layer(tf.layers.Dense(3, use_bias=False))
+    self.layer1 = tf.layers.Dense(2, activation=tf.nn.relu, use_bias=False)
+    self.layer2 = tf.layers.Dense(3, use_bias=False)
 
   def call(self, x):
     return self.layer2(self.layer1(x))
@@ -649,15 +648,16 @@ assert [1, 2] == net.variables[0].shape.as_list()  # weights of layer1.
 assert [2, 3] == net.variables[1].shape.as_list()  # weights of layer2.
 ```
 
-The `tfe.Network` class is itself a sub-class of `tf.layers.Layer`. This allows
-instances of `tfe.Network` to be embedded in other networks. For example:
+The `tf.keras.Model` class is itself a sub-class of `tf.layers.Layer`. This
+allows instances of `tf.keras.Model` to be embedded in other models. For
+example:
 
 ```python
-class ThreeLayerNet(tfe.Network):
+class ThreeLayerNet(tf.keras.Model):
   def __init__(self):
     super(ThreeLayerNet, self).__init__()
-    self.a = self.track_layer(TwoLayerNet())
-    self.b = self.track_layer(tf.layers.Dense(4, use_bias=False))
+    self.a = TwoLayerNet()
+    self.b = tf.layers.Dense(4, use_bias=False)
 
   def call(self, x):
     return self.b(self.a(x))
@@ -674,9 +674,8 @@ assert [3, 4] == net.variables[2].shape.as_list()
 See more examples in
 [`tensorflow/contrib/eager/python/examples`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples).
 
-`tfe.Saver` in combination with `tfe.restore_variables_on_create` provides a
-convenient way to save and load checkpoints without changing the program once
-the checkpoint has been created. For example, we can set an objective for the
+`tfe.Checkpoint` provides a convenient way to save and load training
+checkpoints. Let's define something simple to train. We set an objective for the
 output of our network, choose an optimizer, and a location for the checkpoint:
 
 ```python
@@ -687,30 +686,27 @@ checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
 net = ThreeLayerNet()
 ```
 
-Note that variables have not been created yet. We want them to be restored from
-a checkpoint, if one exists, so we create them inside a
-`tfe.restore_variables_on_create` context manager. Then our training loop is the
-same whether starting training or resuming from a previous checkpoint:
+We group them in a `tfe.Checkpoint` and request that it be restored. This
+ensures that variables created by these objects are restored before their values
+are used. Our training loop is the same whether starting training or resuming
+from a previous checkpoint:
 
 ```python
-with tfe.restore_variables_on_create(
-    tf.train.latest_checkpoint(checkpoint_directory)):
-  global_step = tf.train.get_or_create_global_step()
-  for _ in range(100):
-    loss_fn = lambda: tf.norm(net(inp) - objective)
-    optimizer.minimize(loss_fn, global_step=global_step)
-    if tf.equal(global_step % 20, 0):
-      print("Step %d, output %s" % (global_step.numpy(),
-                                    net(inp).numpy()))
-      all_variables = (
-          net.variables
-          + optimizer.variables()
-          + [global_step])
-      # Save the checkpoint.
-      tfe.Saver(all_variables).save(checkpoint_prefix, global_step=global_step)
+global_step = tf.train.get_or_create_global_step()
+checkpoint = tfe.Checkpoint(
+    global_step=global_step, optimizer=optimizer, network=net)
+checkpoint.restore(tf.train.latest_checkpoint(checkpoint_directory))
+for _ in range(100):
+  loss_fn = lambda: tf.norm(net(inp) - objective)
+  optimizer.minimize(loss_fn, global_step=global_step)
+  if tf.equal(global_step % 20, 0):
+    print("Step %d, output %s" % (global_step.numpy(),
+                                  net(inp).numpy()))
+    # Save the checkpoint.
+    checkpoint.save(checkpoint_prefix)
 ```
 
-The first time it runs, `Network` variables are initialized randomly. Then the
+The first time it runs, `Model` variables are initialized randomly. Then the
 output is trained to match the objective we've set:
 
 ```
@@ -855,11 +851,9 @@ eagerly or constructing graphs. This means that you can iteratively develop your
 model with eager execution enabled and later, if needed, use the same code to
 reap the benefits of representing models as computational graphs.
 
-For example,
-[`mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
-defines a model that is eagerly executed. That same code is used to construct
-and execute a graph in
-[`mnist_graph_test.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist_graph_test.py).
+For example, the same model definition used to construct a graph in
+[mnist.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist.py)
+can be trained with eager execution enabled as in [`mnist_eager.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 Other models in the [examples
 directory](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/)

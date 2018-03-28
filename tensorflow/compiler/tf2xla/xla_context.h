@@ -44,7 +44,9 @@ class XlaContext : public ResourceBase {
 
   // Creates a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
-             bool allow_cpu_custom_calls, bool resolve_compile_time_constants);
+             bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+             const std::function<TensorShape(const TensorShape&, DataType)>*
+                 variable_representation_shape_fn);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
@@ -71,16 +73,25 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Creates a resource with resource `kind` and initial type `type` and
-  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Creates a resource with resource `kind` and initial value `handle`. `name`
+  // is a descriptive name for use in error messages. See the `XlaResource`
+  // constructor for a description of the remaining arguments.
   // Fails if the resource already exists.
   Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
-                        DataType type, const xla::ComputationDataHandle& handle,
+                        DataType type, TensorShape shape,
+                        const xla::ComputationDataHandle& handle,
+                        int64 tensor_array_size,
+                        const std::set<string>& tensor_array_gradients,
                         XlaResource** resource);
 
   const std::vector<std::unique_ptr<XlaResource>>& resources() {
     return resources_;
   }
+
+  // Returns the XLA shape to be used to represent a variable of TF `shape`
+  // and `type`.
+  TensorShape VariableRepresentationShape(const TensorShape& shape,
+                                          DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -128,6 +139,11 @@ class XlaContext : public ResourceBase {
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
+
+  // A function that describes how variable shapes should be represented
+  // in XLA. Variable values will be reshaped to this shape. Must be non-null.
+  const std::function<TensorShape(const TensorShape&, DataType)>*
+      variable_representation_shape_fn_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;

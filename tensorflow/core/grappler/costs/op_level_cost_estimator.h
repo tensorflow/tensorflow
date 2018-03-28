@@ -28,6 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto);
+
 class OpLevelCostEstimator {
  public:
   OpLevelCostEstimator();
@@ -48,10 +51,15 @@ class OpLevelCostEstimator {
   // Predict cost of an op for which no accurate estimator is defined.
   Costs PredictCostOfAnUnknownOp(const OpContext& op_context) const;
 
-  // Naive cost estimate based on operations divided by device ops/sec,
-  // and input/output tensor sizes.
-  Costs PredictOpCountBasedCost(double operations,
-                                const OpInfo& op_features) const;
+  // Naive cost estimate based on the given operations count and total
+  // input/output tensor sizes of the given op_info combined.
+  Costs PredictOpCountBasedCost(double operations, const OpInfo& op_info) const;
+
+  // Naive cost estimate based on the given operations count and the given total
+  // io size in bytes. Sizes of op_info inputs and outputs are not taken into
+  // consideration.
+  Costs PredictOpCountBasedCost(double operations, double total_io_bytes,
+                                const OpInfo& op_info) const;
 
   // This family of routines counts the number of operations to perform the
   // specified TensorFlow Op.
@@ -122,7 +130,7 @@ class OpLevelCostEstimator {
   // implementation just divides the operations to
   // perform the op (from the "Count" routines,
   // above) by the device peak operations per
-  // second. Override to supply a better estimate.
+  // second.
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
@@ -136,6 +144,7 @@ class OpLevelCostEstimator {
   Costs PredictVariable(const OpContext& op_context) const;
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
+  Costs PredictGatherOrSlice(const OpContext& op_context) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.

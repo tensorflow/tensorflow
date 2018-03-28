@@ -29,7 +29,7 @@ android_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_runtime",
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -42,7 +42,7 @@ android_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -58,7 +58,7 @@ java_library(
     deps = [
         ":libtensorflowlite_jni.so",
         "//tensorflow/contrib/lite/java/src/main/native",
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -103,6 +103,26 @@ java_test(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
+    deps = [
+        ":libtensorflowlite_jni.so",
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+# TODO: generate large models at runtime, instead of storing them.
+java_test(
+    name = "InterpreterTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
+    data = [
+        "src/testdata/add.bin",
+        "src/testdata/mobilenet.tflite.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.InterpreterTest",
+    visibility = ["//visibility:private"],
     deps = [
         ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",

@@ -26,6 +26,7 @@ from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.summary import summary
 
 
 def time_series_regression_head(model,
@@ -71,11 +73,34 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     self.input_statistics_generator = input_statistics_generator
     self._name = name
 
+  @property
+  def name(self):
+    return self._name
+
+  # TODO(terrytangyuan): consolidate `model_outputs` and `_Head.LossSpec`
+  # once `_Head.create_loss` becomes extendable
+  def create_loss(self, features, mode, logits=None, labels=None):
+    """See `_Head`."""
+    model_outputs = self.state_manager.define_loss(
+        self.model, features, mode)
+    summary.scalar(
+        head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
+        model_outputs.loss)
+    return model_outputs
+
+  @property
+  def logits_dimension(self):
+    """See `_Head`."""
+    return 1
+
   def _train_ops(self, features):
     """Add training ops to the graph."""
-    with variable_scope.variable_scope("model"):
-      model_outputs = self.state_manager.define_loss(
-          self.model, features, estimator_lib.ModeKeys.TRAIN)
+    mode = estimator_lib.ModeKeys.TRAIN
+    with variable_scope.variable_scope(
+        "model",
+        # Use ResourceVariables to avoid race conditions.
+        use_resource=True):
+      model_outputs = self.create_loss(features, mode)
 
     train_op = optimizers.optimize_loss(
         model_outputs.loss,
@@ -85,31 +110,14 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         learning_rate=None)
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
-        mode=estimator_lib.ModeKeys.TRAIN,
+        mode=mode,
         train_op=train_op)
-
-  # TODO(terrytangyuan): suffix summary and metrics keys by `"/" + name`
-  @property
-  def name(self):
-    return self._name
-
-  # TODO(terrytangyuan): unused for now. Need to decouple
-  # `state_manager.define_loss` to satisfy the extendable return signature of
-  # `_Head.create_loss`.
-  def create_loss(self, features, mode, logits, labels):
-    """See `_Head`."""
-    return None
-
-  # TODO(terrytangyuan): check label dimension
-  @property
-  def logits_dimension(self):
-    return None
 
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
-    with variable_scope.variable_scope("model"):
-      model_outputs = self.state_manager.define_loss(
-          self.model, features, estimator_lib.ModeKeys.EVAL)
+    mode = estimator_lib.ModeKeys.EVAL
+    with variable_scope.variable_scope("model", use_resource=True):
+      model_outputs = self.create_loss(features, mode)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
     for prediction_key, prediction_value in model_outputs.predictions.items():
@@ -122,13 +130,13 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                                 model_outputs.end_state))
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
-        mode=estimator_lib.ModeKeys.EVAL,
+        mode=mode,
         eval_metric_ops=metrics,
         predictions={})
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope("model", use_resource=True):
       prediction = self.model.predict(features=features)
     prediction[feature_keys.PredictionResults.TIMES] = features[
         feature_keys.PredictionFeatures.TIMES]
@@ -137,12 +145,17 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
-    with variable_scope.variable_scope("model"):
+    with variable_scope.variable_scope("model", use_resource=True):
       prediction_outputs = self.model.predict(features=features)
     with variable_scope.variable_scope("model", reuse=True):
-      filtering_outputs = self.state_manager.define_loss(
-          self.model, features, estimator_lib.ModeKeys.EVAL)
-
+      filtering_outputs = self.create_loss(
+          features, estimator_lib.ModeKeys.EVAL)
+    with variable_scope.variable_scope("model", reuse=True):
+      no_state_features = {
+          k: v for k, v in features.items()
+          if not k.startswith(feature_keys.State.STATE_PREFIX)}
+      cold_filtering_outputs = self.create_loss(
+          no_state_features, estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
@@ -150,7 +163,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
                 export_lib.PredictOutput(prediction_outputs),
             feature_keys.SavedModelLabels.FILTER:
                 export_lib.PredictOutput(
-                    state_to_dictionary(filtering_outputs.end_state))
+                    state_to_dictionary(filtering_outputs.end_state)),
+            feature_keys.SavedModelLabels.COLD_START_FILTER:
+                export_lib.PredictOutput(
+                    state_to_dictionary(cold_filtering_outputs.end_state))
         },
         # Likely unused, but it is necessary to return `predictions` to satisfy
         # the Estimator's error checking.
@@ -191,7 +207,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
-    with ops.name_scope("head"):
+    with ops.name_scope(self._name, "head"):
       if labels:
         raise ValueError(
             "The model received a `labels` dictionary, which is "

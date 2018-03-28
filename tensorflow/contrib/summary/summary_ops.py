@@ -26,7 +26,6 @@ import time
 
 import six
 
-from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -35,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
@@ -110,7 +110,7 @@ class SummaryWriter(object):
 
   def  __init__(self, resource):
     self._resource = resource
-    if context.in_eager_mode():
+    if context.executing_eagerly() and self._resource is not None:
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
 
@@ -154,10 +154,12 @@ def initialize(
       to @{tf.get_default_session}.
 
   Raises:
-    RuntimeError: If in eager mode, or if the current thread has no
-      default @{tf.contrib.summary.SummaryWriter}.
+    RuntimeError: If  the current thread has no default
+      @{tf.contrib.summary.SummaryWriter}.
     ValueError: If session wasn't passed and no default session.
   """
+  if context.executing_eagerly():
+    return
   if context.context().summary_writer_resource is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
@@ -202,7 +204,7 @@ def create_file_writer(logdir,
     if flush_millis is None:
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
-      filename_suffix = constant_op.constant("")
+      filename_suffix = constant_op.constant(".v2")
     return _make_summary_writer(
         name,
         gen_summary_ops.create_summary_file_writer,
@@ -267,7 +269,7 @@ def _make_summary_writer(name, factory, **kwargs):
   resource = gen_summary_ops.summary_writer(shared_name=name)
   # TODO(apassos): Consider doing this instead.
   # node = factory(resource, **kwargs)
-  # if not context.in_eager_mode():
+  # if not context.executing_eagerly():
   #   ops.get_default_session().run(node)
   ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME,
                         factory(resource, **kwargs))
@@ -292,13 +294,9 @@ def all_summary_ops():
 
   Returns:
     The summary ops.
-
-  Raises:
-    RuntimeError: If in Eager mode.
   """
-  if context.in_eager_mode():
-    raise RuntimeError(
-        "tf.contrib.summary.all_summary_ops is only supported in graph mode.")
+  if context.executing_eagerly():
+    return None
   return ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
 
 
@@ -311,7 +309,7 @@ def summary_writer_initializer_op():
   Raises:
     RuntimeError: If in Eager mode.
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError(
         "tf.contrib.summary.summary_writer_initializer_op is only "
         "supported in graph mode.")
@@ -330,8 +328,12 @@ def summary_writer_function(name, tensor, function, family=None):
   Returns:
     The result of writing the summary.
   """
+  name_scope = ops.get_name_scope()
+  if name_scope:
+    # Add a slash to allow reentering the name scope.
+    name_scope += "/"
   def record():
-    with summary_op_util.summary_scope(
+    with ops.name_scope(name_scope), summary_op_util.summary_scope(
         name, family, values=[tensor]) as (tag, scope):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
@@ -479,7 +481,7 @@ def graph(param, step=None, name=None):
   Raises:
     TypeError: If `param` isn't already a @{tf.Tensor} in graph mode.
   """
-  if not context.in_eager_mode() and not isinstance(param, ops.Tensor):
+  if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
     raise TypeError("graph() needs a tf.Tensor (e.g. tf.placeholder) in graph "
                     "mode, but was: %s" % type(param))
   writer = context.context().summary_writer_resource

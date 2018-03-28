@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities supporting export to SavedModel.
+"""Utilities supporting export to SavedModel (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Some contents of this file are moved to tensorflow/python/estimator/export.py:
 
@@ -52,8 +56,9 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import saver
-
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
+
 
 # A key for use in the input_alternatives dict indicating the default input.
 # This is the input that will be expected when a serving request does not
@@ -77,6 +82,7 @@ FEATURES_INPUT_ALTERNATIVE_KEY = 'features_input_alternative'
 _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def build_standardized_signature_def(input_tensors, output_tensors,
                                      problem_type):
   """Build a SignatureDef using problem type and input and output Tensors.
@@ -156,6 +162,7 @@ def _is_regression_problem(problem_type, input_tensors, output_tensors):
           len(input_tensors) == 1 and len(output_tensors) == 1)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_input_alternatives(input_ops):
   """Obtain all input alternatives using the input_fn output and heuristics."""
   input_alternatives = {}
@@ -181,6 +188,7 @@ def get_input_alternatives(input_ops):
   return input_alternatives, features
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_output_alternatives(model_fn_ops, default_output_alternative_key=None):
   """Obtain all output alternatives using the model_fn output and heuristics.
 
@@ -246,6 +254,7 @@ def get_output_alternatives(model_fn_ops, default_output_alternative_key=None):
                        sorted(output_alternatives.keys())))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def build_all_signature_defs(input_alternatives, output_alternatives,
                              actual_default_output_alternative_key):
   """Build `SignatureDef`s from all pairs of input and output alternatives."""
@@ -279,6 +288,7 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
 MAX_DIRECTORY_CREATION_ATTEMPTS = 10
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -317,6 +327,7 @@ def get_timestamped_export_dir(export_dir_base):
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_temp_export_dir(timestamped_export_dir):
   """Builds a directory name based on the argument but starting with 'temp-'.
 
@@ -344,6 +355,7 @@ def _export_version_parser(path):
   return path._replace(export_version=int(filename))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_most_recent_export(export_dir_base):
   """Locate the most recent SavedModel export in a directory of many exports.
 
@@ -363,6 +375,7 @@ def get_most_recent_export(export_dir_base):
   return next(iter(results or []), None)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def garbage_collect_exports(export_dir_base, exports_to_keep):
   """Deletes older exports, retaining only a given number of the most recent.
 
@@ -387,6 +400,7 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
       logging.warn('Can not delete %s recursively: %s', p.path, e)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def make_export_strategy(serving_input_fn,
                          default_output_alternative_key=None,
                          assets_extra=None,
@@ -400,7 +414,7 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -438,7 +452,7 @@ def make_export_strategy(serving_input_fn,
       The string path to the exported directory.
 
     Raises:
-      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified.
     """
     if isinstance(estimator, core_estimator.Estimator):
@@ -469,6 +483,8 @@ def make_export_strategy(serving_input_fn,
   return export_strategy.ExportStrategy('Servo', export_fn, strip_default_attrs)
 
 
+@deprecated(None,
+            'Use tf.estimator.export.build_parsing_serving_input_receiver_fn')
 def make_parsing_export_strategy(feature_columns,
                                  default_output_alternative_key=None,
                                  assets_extra=None,
@@ -487,7 +503,7 @@ def make_parsing_export_strategy(feature_columns,
       that must be provided at serving time (excluding labels!).
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -555,8 +571,14 @@ def _default_compare_fn(curr_best_eval_result, cand_eval_result):
 
 
 class BestModelSelector(object):
-  """A helper that keeps track of export selection candidates."""
+  """A helper that keeps track of export selection candidates.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
   def __init__(self, event_file_pattern=None, compare_fn=None):
     """Constructor of this class.
 
@@ -622,6 +644,7 @@ class BestModelSelector(object):
     return best_eval_result
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def make_best_model_export_strategy(
     serving_input_fn,
     exports_to_keep=1,
@@ -707,6 +730,7 @@ def make_best_model_export_strategy(
 
 # TODO(b/67013778): Revisit this approach when corresponding changes to
 # TF Core are finalized.
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def extend_export_strategy(base_export_strategy,
                            post_export_fn,
                            post_export_name=None):
@@ -741,7 +765,7 @@ def extend_export_strategy(base_export_strategy,
       The string path to the SavedModel indicated by post_export_fn.
 
     Raises:
-      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified or if post_export_fn
         does not return a valid directory.
       RuntimeError: If unable to create temporary or final export directory.
