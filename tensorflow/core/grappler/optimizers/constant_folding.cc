@@ -1534,6 +1534,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* optimized_graph,
 
     // Remove Shuffle or Reverse op over scalar values.
     if (use_shape_info &&
+        !properties->GetInputProperties(node->name()).empty() &&
         (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
       const auto& shape =
           properties->GetInputProperties(node->name())[0].shape();
