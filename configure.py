@@ -1414,7 +1414,7 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
                 'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
-                'with_kafka_support', False, 'kafka')
+                'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
