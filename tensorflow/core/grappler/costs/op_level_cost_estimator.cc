@@ -171,9 +171,12 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
+      // TODO(76227186): re-enable with output size check & test
+      /*
       {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      */
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
