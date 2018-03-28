@@ -369,10 +369,12 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
     }
     c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                 [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
-                        ShapeInference::InferCallShape(
-                            operand_shape_ptrs,
-                            /*to_apply=*/computation.GetProgramShape()));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferCallShape(operand_shape_ptrs,
+                                       /*to_apply=*/called_program_shape));
 
     // Add called computation.
     instr.add_called_computation_ids(

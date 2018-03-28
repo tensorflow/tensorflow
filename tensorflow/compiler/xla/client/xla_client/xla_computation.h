@@ -40,7 +40,8 @@ class XlaComputation {
 
   // Returns the "program shape" (parameter and return shapes) for this
   // computation.
-  const ProgramShape& GetProgramShape() const;
+  StatusOr<ProgramShape> GetProgramShape() const;
+
   const HloModuleProto& proto() const { return proto_; }
 
  private:
