@@ -543,13 +543,12 @@ def norm(tensor,
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
-        axis = functional_ops.map_fn(
-            lambda i: control_flow_ops.cond(i >= 0, lambda: i,
-                                            lambda: i + rank),
+        positive_axis = functional_ops.map_fn(
+            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat(
-            [array_ops.setdiff1d(axes, axis)[0], axis], axis=0)
+            [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis], axis=0)
         perm_after = functional_ops.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
@@ -557,8 +556,11 @@ def norm(tensor,
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
         matrix_2_norm = array_ops.expand_dims(
-            math_ops.reduce_max(gen_linalg_ops.svd(permed, compute_uv=False)[0],
-                                axis=-1, keepdims=True), axis=-1)
+            math_ops.reduce_max(
+                gen_linalg_ops.svd(permed, compute_uv=False)[0],
+                axis=-1,
+                keepdims=True),
+            axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
         result = math_ops.sqrt(
