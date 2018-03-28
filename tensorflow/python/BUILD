@@ -1065,7 +1065,7 @@ py_test(
 
 py_test(
     name = "framework_importer_test",
-    size = "large",
+    size = "medium",
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     srcs_version = "PY2AND3",

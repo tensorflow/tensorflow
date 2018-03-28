@@ -1,7 +1,7 @@
 # Data files for kernel tests.
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow:internal"],
 )
 
 licenses(["notice"])  # Apache 2.0

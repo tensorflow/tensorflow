@@ -265,15 +265,9 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
-// Shape function for binary operators that broadcast their inputs
-// and with output to output_index.
-Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index);
-
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
-inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
-  return BroadcastBinaryOpOutputShapeFn(c, 0);
-}
+Status BroadcastBinaryOpShapeFn(InferenceContext* c);
 
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);

@@ -131,7 +131,6 @@ enum BuiltinOperator : byte {
   BIDIRECTIONAL_SEQUENCE_LSTM = 52,
   CAST = 53,
   PRELU = 54,
-  MAXIMUM = 55,
 }
 
 // Options for the builtin operators.
@@ -174,7 +173,6 @@ union BuiltinOptions {
   LogSoftmaxOptions,
   CastOptions,
   DequantizeOptions,
-  MaximumOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -384,9 +382,6 @@ table CastOptions {
 }
 
 table DequantizeOptions {
-}
-
-table MaximumOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

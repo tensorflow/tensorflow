@@ -1210,7 +1210,7 @@ Status ConcatV2Shape(InferenceContext* c) {
                            c->num_inputs() - 1 /* dim_index */);
 }
 
-Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
+Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   ShapeHandle shape_x = c->input(0);
   ShapeHandle shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
@@ -1272,7 +1272,7 @@ Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index) {
     }
   }
 
-  c->set_output(output_index, c->MakeShape(dims));
+  c->set_output(0, c->MakeShape(dims));
   return Status::OK();
 }
 

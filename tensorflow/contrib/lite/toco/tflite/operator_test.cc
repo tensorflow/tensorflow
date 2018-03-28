@@ -109,8 +109,6 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
   CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
                                           OperatorType::kLogSoftmax);
-  CheckSimpleOperator<TensorFlowMaximumOperator>(
-      "MAXIMUM", OperatorType::kTensorFlowMaximum);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

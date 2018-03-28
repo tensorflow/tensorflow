@@ -79,7 +79,6 @@ typedef enum {
   kTfLiteBuiltinBidirectionalSequenceLstm = 52,
   kTfLiteBuiltinCast = 53,
   kTfLiteBuiltinPrelu = 54,
-  kTfLiteBuiltinMaximum = 55,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

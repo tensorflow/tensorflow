@@ -34,7 +34,7 @@ TEST_F(SparseColumnIterableTest, Empty) {
 }
 
 TEST_F(SparseColumnIterableTest, Iterate) {
-  // 8 examples having 7 sparse features with the 3rd and 7th multivalent.
+  // 8 examples having 7 sparse features with the 3rd and 7th multi-valent.
   // This can be visualized like the following:
   // Instance | Sparse |
   // 0        |  x     |

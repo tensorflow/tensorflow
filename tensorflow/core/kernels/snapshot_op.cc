@@ -22,26 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
-
-template <typename Device, typename Scalar>
-class SnapshotOp : public OpKernel {
- public:
-  explicit SnapshotOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    Tensor* output = nullptr;
-    // Try to use buffer forwarding to avoid an explicit copy.
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, input.shape(), &output));
-    if (!output->SharesBufferWith(input)) {
-      functor::Snapshot<Device, Scalar> functor;
-      functor(context->eigen_device<Device>(), input.flat<Scalar>(),
-              output->flat<Scalar>());
-    }
-  }
-};
 
 #define REGISTER_KERNEL(TYPE)                                        \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -50,16 +30,6 @@ class SnapshotOp : public OpKernel {
 
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
-
-#if GOOGLE_CUDA
-#define REGISTER_KERNEL(TYPE)                                        \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("Snapshot").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      SnapshotOp<GPUDevice, TYPE>);
-
-TF_CALL_POD_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
-#endif
 
 #if TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SyclDevice;

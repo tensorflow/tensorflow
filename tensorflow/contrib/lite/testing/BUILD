@@ -36,7 +36,6 @@ gen_zipped_test_files(
         "local_response_norm.zip",
         "log_softmax.zip",
         "max_pool.zip",
-        "maximum.zip",
         "mean.zip",
         "mul.zip",
         "pad.zip",
