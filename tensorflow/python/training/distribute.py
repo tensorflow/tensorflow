@@ -557,9 +557,14 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def colocate_vars_with(self, colocate_with_variable):
-    """Controls which devices variables will be created on.
+    """Scope that controls which devices variables will be created on.
 
-    Note this may only be used inside `self.scope()`.
+    No operations should be added to the graph inside this scope, it
+    should only be used when creating variables (some implementations
+    work by changing variable creation, others work by using a
+    tf.colocate_with() scope).
+
+    This may only be used inside `self.scope()`.
 
     Example usage:
 
@@ -1032,13 +1037,8 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
-    def create_colocated_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope(self)
-      with ops.colocate_with(colocate_with_variable):
-        return next_creator(*args, **kwargs)
-
     _require_distribution_strategy_scope(self)
-    return variable_scope.variable_creator_scope(create_colocated_variable)
+    return ops.colocate_with(colocate_with_variable)
 
   def distribute_dataset(self, dataset):
     # TODO(josh11b): Support for this when executing eagerly is currently only
