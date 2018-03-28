@@ -126,6 +126,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   RewriterConfig::Toggle opt_level_;
   ArithmeticOptimizerOptions options_;
 
+  bool can_use_shapes_ = false;
   bool fetch_nodes_known_ = false;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;

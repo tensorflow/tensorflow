@@ -42,6 +42,10 @@ Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
 Status GetTensorProperties(const GraphOptimizerContext& ctx,
                            const string& tensor,
                            OpInfo::TensorProperties* properties) {
+  if (ctx.graph_properties == nullptr) {
+    return errors::InvalidArgument("Graph properties are unknown.");
+  }
+
   int port;
   string tensor_node_name = ParseNodeName(tensor, &port);
   if (port < 0) {
