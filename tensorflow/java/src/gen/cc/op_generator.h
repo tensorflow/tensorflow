@@ -17,34 +17,42 @@ limitations under the License.
 #define TENSORFLOW_JAVA_SRC_GEN_CC_OP_GENERATOR_H_
 
 #include <string>
+#include <vector>
 
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace java {
 
-/// \brief A generator of Java operation wrappers.
-///
-/// Such generator is normally ran only once per executable, outputting
-/// wrappers for the all registered operations it has been compiled with.
-/// Nonetheless, it is designed to support multiple runs, giving a different
-/// list of operations on each cycle.
+// A generator of Java operation wrappers.
+//
+// Such generator is normally ran only once per executable, outputting
+// wrappers for the all registered operations it has been compiled with.
+// Nonetheless, it is designed to support multiple runs, giving a different
+// list of operations on each cycle.
 class OpGenerator {
  public:
-  OpGenerator();
-  virtual ~OpGenerator();
+  OpGenerator(const string& base_package, const string& output_dir,
+      const std::vector<string>& api_dirs, Env* env = Env::Default());
+  virtual ~OpGenerator() = default;
 
-  /// \brief Generates wrappers for the given list of 'ops'.
-  ///
-  /// Output files are generated in <output_dir>/<base_package>/<lib_package>,
-  /// where 'lib_package' is derived from 'lib_name'.
-  Status Run(const OpList& ops, const string& lib_name,
-             const string& base_package, const string& output_dir);
+  // Generates wrappers for the given list of 'ops'.
+  //
+  // Output files are generated in <output_dir>/<base_package>/<lib_package>,
+  // where 'lib_package' is derived from 'lib_name'.
+  Status Run(const OpList& op_list, const string& lib_name);
 
  private:
-  Env* env;
+  string base_package_;
+  string output_dir_;
+  std::vector<string> api_dirs_;
+  Env* env_;
+
+  Status GenerateOp(const OpDef& op_def, const ApiDef& api_def,
+    const string& lib_name);
 };
 
 }  // namespace java
