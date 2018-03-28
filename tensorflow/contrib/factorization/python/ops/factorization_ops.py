@@ -52,7 +52,7 @@ class WALSModel(object):
 
   It minimizes the following loss function over U, V:
   $$
-   \|\sqrt W \odot (A - U V^T) \|_F^2 + \lambda (\|U\|_F^2 + \|V\|_F^2)
+   \|\sqrt W \odot (A - U V^T)\|_F^2 + \lambda (\|U\|_F^2 + \|V\|_F^2)
   $$
     where,
     A: input matrix,
