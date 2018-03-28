@@ -117,9 +117,6 @@ class GraphOptimizerStage {
       : optimizer_name_(optimizer_name), stage_name_(stage_name), ctx_(ctx) {}
   virtual ~GraphOptimizerStage() = default;
 
-  const string& stage_name() const { return stage_name_; }
-  const string& optimizer_name() const { return optimizer_name_; }
-
   // Check if we should try to simplify node. Returning true doesn't
   // guarantee that node will be simplified.
   //
