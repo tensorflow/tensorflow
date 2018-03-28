@@ -2109,7 +2109,7 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
 
   def call(self, inputs, state, scope=None):
     cell, hidden = state
-    new_hidden = _conv([inputs, hidden], self._kernel_shape,
+    new_hidden = _conv((inputs, hidden), self._kernel_shape,
                        4 * self._output_channels, self._use_bias)
     gates = array_ops.split(
         value=new_hidden, num_or_size_splits=4, axis=self._conv_ndims + 1)
