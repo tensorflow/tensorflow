@@ -91,6 +91,9 @@ std::map<string, string> kBrokenTests = {
 
     // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
     {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
+
+    // No support for axis!=0 in GatherV2.
+    {R"(^\/gather.*axis=1)", "76910444"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -244,7 +247,7 @@ INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(exp)
 INSTANTIATE_TESTS(fully_connected)
 INSTANTIATE_TESTS(fused_batch_norm)
-// INSTANTIATE_TESTS(gather)  //TODO(b/76437794)
+INSTANTIATE_TESTS(gather)
 INSTANTIATE_TESTS(global_batch_norm)
 INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(l2norm)

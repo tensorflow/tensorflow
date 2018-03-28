@@ -29,7 +29,7 @@ gen_zipped_test_files(
         "exp.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
-        # "gather.zip",  #TODO(b/76437794)
+        "gather.zip",
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",
