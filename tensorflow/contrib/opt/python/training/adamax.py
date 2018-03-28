@@ -31,7 +31,8 @@ from tensorflow.python.training import training_ops
 class AdaMaxOptimizer(adam.AdamOptimizer):
   """Optimizer that implements the AdaMax algorithm.
 
-  See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
+  Adamax is sometimes superior to adam, specially in models with embeddings,
+  see [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
