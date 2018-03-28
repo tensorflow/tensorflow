@@ -29,6 +29,8 @@ namespace xla {
 // TODO(b/74197823): Replace xla::Computation with this one.
 class XlaComputation {
  public:
+  XlaComputation() : unique_id_(-1) {}
+
   XlaComputation(const XlaComputation&) = delete;
   XlaComputation& operator=(const XlaComputation&) = delete;
 

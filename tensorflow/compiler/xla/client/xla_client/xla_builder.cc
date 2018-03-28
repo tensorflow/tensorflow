@@ -128,6 +128,18 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape() {
   return GetProgramShape(&root_id);
 }
 
+XlaComputation XlaBuilder::BuildAndNoteError() {
+  DCHECK(parent_builder_ != nullptr);
+  auto build_status = Build();
+  if (!build_status.ok()) {
+    parent_builder_->NoteError(
+        AddStatus(build_status.status(),
+                  tensorflow::strings::StrCat("error from: ", name_)));
+    return {};
+  }
+  return build_status.ConsumeValueOrDie();
+}
+
 StatusOr<XlaComputation> XlaBuilder::Build() {
   if (!first_error_.ok()) {
     string backtrace;
@@ -945,6 +957,99 @@ XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return UnimplementedOp();
 }
 
+StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand,
+                                      int64 num_parameters) {
+  return Unimplemented("IsConstant is not implemented.");
+}
+
+StatusOr<std::unique_ptr<Literal>> XlaBuilder::ComputeConstant(
+    const XlaOp& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
+  return Unimplemented("ComputeConstant is not implemented");
+}
+
+std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
+    const string& computation_name) {
+  auto sub_builder = MakeUnique<XlaBuilder>(computation_name);
+  sub_builder->parent_builder_ = this;
+  sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
+  return sub_builder;
+}
+
+Status XlaBuilder::SetReturnValue(const XlaOp& operand) {
+  return Unimplemented("SetReturnValue is not implemented.");
+}
+
+/* static */ ConvolutionDimensionNumbers
+XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
+  ConvolutionDimensionNumbers dimension_numbers;
+  dimension_numbers.set_input_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_input_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_output_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_output_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_kernel_output_feature_dimension(
+      kConvKernelOutputDimension);
+  dimension_numbers.set_kernel_input_feature_dimension(
+      kConvKernelInputDimension);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    dimension_numbers.add_input_spatial_dimensions(i + 2);
+    dimension_numbers.add_kernel_spatial_dimensions(i + 2);
+    dimension_numbers.add_output_spatial_dimensions(i + 2);
+  }
+  return dimension_numbers;
+}
+
+/* static */ Status XlaBuilder::Validate(
+    const ConvolutionDimensionNumbers& dnum) {
+  if (dnum.input_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("input spacial dimension < 2: %d",
+                              dnum.input_spatial_dimensions_size());
+  }
+  if (dnum.kernel_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("kernel spacial dimension < 2: %d",
+                              dnum.kernel_spatial_dimensions_size());
+  }
+  if (dnum.output_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("output spacial dimension < 2: %d",
+                              dnum.output_spatial_dimensions_size());
+  }
+
+  if (std::set<int64>(
+          {dnum.input_batch_dimension(), dnum.input_feature_dimension(),
+           dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.input_batch_dimension(), dnum.input_feature_dimension(),
+        dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1));
+  }
+  if (std::set<int64>({dnum.kernel_output_feature_dimension(),
+                       dnum.kernel_input_feature_dimension(),
+                       dnum.kernel_spatial_dimensions(0),
+                       dnum.kernel_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the weight are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.kernel_output_feature_dimension(),
+        dnum.kernel_input_feature_dimension(),
+        dnum.kernel_spatial_dimensions(0), dnum.kernel_spatial_dimensions(1));
+  }
+  if (std::set<int64>({dnum.output_batch_dimension(),
+                       dnum.output_feature_dimension(),
+                       dnum.output_spatial_dimensions(0),
+                       dnum.output_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.output_batch_dimension(), dnum.output_feature_dimension(),
+        dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
+  }
+  return Status::OK();
+}
+
 StatusOr<XlaOp> XlaBuilder::AddInstruction(
     HloInstructionProto&& instr, HloOpcode opcode,
     tensorflow::gtl::ArraySlice<XlaOp> operands) {
@@ -986,7 +1091,7 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
 }
 
 XlaOp XlaBuilder::UnimplementedOp() {
-  NoteError(Unimplemented("Op not yet implemented"));
+  NoteError(Unimplemented("Op not implemented"));
   return {};
 }
 
