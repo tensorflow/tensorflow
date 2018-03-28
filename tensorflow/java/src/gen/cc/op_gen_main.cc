@@ -48,8 +48,11 @@ const char kUsageHeader[] =
     "through\n"
     "the 'org.tensorflow.op.Ops' API as a group until the generated classes "
     "are compiled using an appropriate annotation processor.\n\n"
-    "Finally, the '--base_package' overrides the default parent package "
-    "under which the generated subpackage and classes are to be located.\n\n";
+    "The '--base_package' overrides the default parent package under which "
+    "the generated subpackage and classes are to be located.\n\n"
+    "Finally, a list of directories of API proto definitions can be provided "
+    "to override default values found in the ops definitions, ordered by\n"
+    "priority (the last having precedence over the first).\n\n";
 
 }  // namespace java
 }  // namespace tensorflow
@@ -60,7 +63,7 @@ int main(int argc, char* argv[]) {
   tensorflow::string base_package = "org.tensorflow.op";
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("output_dir", &output_dir,
-                       "Root directory into which output files are generated"),
+          "Root directory into which output files are generated"),
       tensorflow::Flag(
           "lib_name", &lib_name,
           "A name, in snake_case, used to classify this set of operations"),
@@ -72,12 +75,15 @@ int main(int argc, char* argv[]) {
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parsed_flags_ok && !lib_name.empty() && !output_dir.empty()) << usage;
-
-  tensorflow::java::OpGenerator generator;
+  std::vector<tensorflow::string> api_dirs;
+  if (argc > 1) {
+    api_dirs = tensorflow::str_util::Split(argv[1], ",",
+        tensorflow::str_util::SkipEmpty());
+  }
+  tensorflow::java::OpGenerator generator(base_package, output_dir, api_dirs);
   tensorflow::OpList ops;
-  tensorflow::OpRegistry::Global()->Export(true, &ops);
-  tensorflow::Status status =
-      generator.Run(ops, lib_name, base_package, output_dir);
+  tensorflow::OpRegistry::Global()->Export(false, &ops);
+  tensorflow::Status status = generator.Run(ops, lib_name);
   TF_QCHECK_OK(status);
 
   return 0;

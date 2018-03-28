@@ -1,9 +1,11 @@
 # -*- Python -*-
 
-load("//tensorflow:tensorflow.bzl",
-     "tf_binary_additional_srcs",
-     "tf_cc_binary",
-     "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_binary_additional_srcs",
+    "tf_cc_binary",
+    "tf_copts",
+)
 
 # Given a list of "ops_libs" (a list of files in the core/ops directory
 # without their .cc extensions), generate Java wrapper code for all operations
@@ -27,15 +29,30 @@ def tf_java_op_gen_srcjar(name,
                           ops_libs_pkg="//tensorflow/core",
                           out_dir="ops/",
                           out_src_dir="src/main/java/",
+                          api_def_srcs=[],
                           visibility=["//tensorflow/java:__pkg__"]):
 
   gen_tools = []
   gen_cmds = ["rm -rf $(@D)"]  # Always start from fresh when generating source files
+  srcs = api_def_srcs[:]
 
   # Construct an op generator binary for each ops library.
   for ops_lib in ops_libs:
     gen_lib = ops_lib[:ops_lib.rfind("_")]
     out_gen_tool = out_dir + ops_lib + "_gen_tool"
+
+    if not api_def_srcs:
+      api_def_args_str = ","
+    else:
+      api_def_args = []
+      for api_def_src in api_def_srcs:
+        # Add directory of the first ApiDef source to args.
+        # We are assuming all ApiDefs in a single api_def_src are in the
+        # same directory.
+        api_def_args.append(
+            " $$(dirname $$(echo $(locations " + api_def_src +
+            ") | cut -d\" \" -f1))")
+      api_def_args_str = ",".join(api_def_args)
 
     tf_cc_binary(
         name=out_gen_tool,
@@ -48,7 +65,8 @@ def tf_java_op_gen_srcjar(name,
     gen_cmds += ["$(location :" + out_gen_tool + ")" +
                  " --output_dir=$(@D)/" + out_src_dir +
                  " --lib_name=" + gen_lib +
-                 " --base_package=" + gen_base_package]
+                 " --base_package=" + gen_base_package +
+                 " " + api_def_args_str]
 
   # Generate a source archive containing generated code for these ops.
   gen_srcjar = out_dir + name + ".srcjar"
@@ -57,6 +75,7 @@ def tf_java_op_gen_srcjar(name,
   gen_tools += tf_binary_additional_srcs()
   native.genrule(
       name=name,
+      srcs=srcs,
       outs=[gen_srcjar],
       tools=gen_tools,
       cmd="&&".join(gen_cmds))
