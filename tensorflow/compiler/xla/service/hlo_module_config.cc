@@ -40,7 +40,7 @@ void HloModuleConfig::SetDefaultComputationLayout(
 
 string HloModuleConfig::compilation_cache_key() const {
   string key =
-      tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled_);
+      tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :

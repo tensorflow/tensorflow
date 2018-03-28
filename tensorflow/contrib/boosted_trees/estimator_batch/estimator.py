@@ -81,7 +81,8 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=False,
-        loss_fn=loss_fn)
+        loss_fn=loss_fn,
+        label_keys=label_keys)
     if learner_config.num_classes == 0:
       learner_config.num_classes = n_classes
     elif learner_config.num_classes != n_classes:

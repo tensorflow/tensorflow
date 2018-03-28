@@ -840,6 +840,17 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   }
 }
 
+Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
+                                             int64 step_id) {
+  if (attr.scope_id > 0) {
+    return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
+        attr.scope_id);
+  }
+  LOG(FATAL) << "Unexpected call to BaseGPUDevice::GetScopedAllocator "
+             << "attr.scope_id = " << attr.scope_id;
+  return gpu_allocator_;
+}
+
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 

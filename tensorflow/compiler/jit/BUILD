@@ -29,7 +29,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        "//learning/tfx:__subpackages__",
+    ],
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
@@ -73,6 +76,7 @@ cc_library(
         ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
+        "//tensorflow/compiler/jit/legacy_flags:xla_device_flags",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
@@ -102,22 +106,44 @@ cc_library(
 cc_library(
     name = "xla_interpreter_device",
     srcs = ["xla_interpreter_device.cc"],
+    visibility = [":friends"],
     deps = [
+        ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",  # buildcleaner: keep
+        "//tensorflow/core:lib",
     ],
-    alwayslink = True,
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_tensor_info",
+    srcs = ["xla_tensor_info.cc"],
+    hdrs = ["xla_tensor_info.h"],
+    deps = [
+        ":common",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 cc_library(
     name = "xla_device",
     srcs = [
+        "xla_compile_on_demand_op.cc",
         "xla_device.cc",
         "xla_device_context.cc",
         "xla_device_ops.cc",
     ],
     hdrs = [
+        "xla_compile_on_demand_op.h",
         "xla_device.h",
         "xla_device_context.h",
         "xla_device_ops.h",
@@ -127,6 +153,8 @@ cc_library(
     deps = [
         ":common",
         ":jit_compilation_passes",
+        ":xla_launch_util",
+        ":xla_tensor_info",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -167,6 +195,29 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_launch_util",
+    srcs = ["xla_launch_util.cc"],
+    hdrs = ["xla_launch_util.h"],
+    deps = [
+        ":common",
+        ":xla_compilation_cache",
+        ":xla_tensor_info",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
+)
+
+cc_library(
     name = "xla_compilation_cache",
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
@@ -200,6 +251,7 @@ cc_library(
     name = "graph_to_functiondef",
     srcs = ["graph_to_functiondef.cc"],
     hdrs = ["graph_to_functiondef.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -296,6 +348,7 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

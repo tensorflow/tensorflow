@@ -49,7 +49,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
+         type == OperatorType::kStridedSlice ||
+         type == OperatorType::kDepthToSpace ||
+         type == OperatorType::kLstmCell || type == OperatorType::kGather ||
+         type == OperatorType::kTranspose;
 }
 
 template <ArrayDataType A>
@@ -62,8 +65,6 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
       static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
   auto* quantized_buffer = new Buffer<A>;
   quantized_buffer->data.resize(float_buffer.data.size());
-  const auto qmin = static_cast<int32>(std::numeric_limits<DataType<A>>::min());
-  const auto qmax = static_cast<int32>(std::numeric_limits<DataType<A>>::max());
   for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
     const float src_val = float_buffer.data[i];
     double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
@@ -75,9 +76,8 @@ std::unique_ptr<GenericBuffer> QuantizeBuffer(
     } else {
       scaled_val = quantization_params.zero_point + inverse_scale * src_val;
     }
-    const auto rounded_val = static_cast<int32>(std::round(scaled_val));
-    const auto clamped_val = std::min(qmax, std::max(qmin, rounded_val));
-    quantized_buffer->data[i] = static_cast<DataType<A>>(clamped_val);
+    quantized_buffer->data[i] =
+        tflite::SafeCast<DataType<A>>(std::round(scaled_val));
   }
   return std::unique_ptr<GenericBuffer>(quantized_buffer);
 }
@@ -222,7 +222,49 @@ ArrayDataType GetQuantizedDataType(const Array& array,
     default:
       LOG(FATAL) << "Unhandled final quantization type "
                  << static_cast<int>(array.final_data_type);
-      return default_type;
+  }
+}
+
+void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
+                           QuantizationParams* quantization_params) {
+  switch (data_type) {
+    case ArrayDataType::kInt8:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt8>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kUint8:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kInt16:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kUint16:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kUint16>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kInt32:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt32>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kUint32:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kUint32>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kInt64:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt64>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kUint64:
+      GetQuantizationParamsFromMinMax<ArrayDataType::kUint64>(
+          minmax, quantization_params);
+      break;
+    case ArrayDataType::kFloat:
+    case ArrayDataType::kNone:
+    default:
+      LOG(FATAL) << "Unhandled final quantization type "
+                 << static_cast<int>(data_type);
   }
 }
 
@@ -284,16 +326,14 @@ bool ChooseQuantizationForOperatorInput(
 
   if (op.type == OperatorType::kLstmCell) {
     if (input_index == LstmCellOperator::PREV_STATE_INPUT) {
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          model->flags, minmax, quantization_params);
       *quantized_data_type = ArrayDataType::kInt16;
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
 
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
-                                                         quantization_params);
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
       "For input array %s with min=%g"
       ", max=%g"
@@ -416,15 +456,13 @@ bool ChooseQuantizationForOperatorOutput(
   if (op.type == OperatorType::kLstmCell) {
     if (output_index == LstmCellOperator::STATE_OUTPUT ||
         output_index == LstmCellOperator::ACTIV_TEMP) {
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          model->flags, minmax, quantization_params);
       *quantized_data_type = ArrayDataType::kInt16;
+      GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
       return true;
     }
   }
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
-                                                         quantization_params);
   *quantized_data_type = GetQuantizedDataType(array, ArrayDataType::kUint8);
+  GetQuantizationParams(*quantized_data_type, minmax, quantization_params);
   transformation->AddMessageF(
       "For output array %s with min=%g, max=%g"
       ", chose to quantize as %s with zero_point=%d"
@@ -472,9 +510,11 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   //
   // Let us just guard this assumption by the following assertion:
   for (const auto& input : op.inputs) {
-    if (IsInputArray(*model, input)) {
-      const auto& input_array = model->GetArray(input);
-      CHECK(input_array.quantization_params);
+    const auto& input_array = model->GetArray(input);
+    if (IsInputArray(*model, input) &&
+        input_array.data_type == ArrayDataType::kFloat) {
+      CHECK(input_array.quantization_params)
+          << "Input array " << input << " is missing quantization_params";
     }
   }
   if (!SupportsQuantization(op)) {

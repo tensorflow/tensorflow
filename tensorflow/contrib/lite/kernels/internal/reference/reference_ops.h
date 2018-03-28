@@ -404,6 +404,7 @@ inline void DepthToSpace(const T* input_data, const Dims<4>& input_dims,
           const int in_d =
               out_d + ((out_h % block_size) * block_size + out_w % block_size) *
                           output_depth;
+
           const int in_w = out_w / block_size;
           const int in_h = out_h / block_size;
           const int in_b = out_b;
@@ -547,6 +548,55 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
       output_data[out_c + output_depth * b] = static_cast<uint8>(acc);
+    }
+  }
+}
+
+inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
+                           int32 input_offset, const uint8* filter_data,
+                           const Dims<4>& filter_dims, int32 filter_offset,
+                           const int32* bias_data, const Dims<4>& bias_dims,
+                           int32 output_offset, int32 output_multiplier,
+                           int output_shift, int32 output_activation_min,
+                           int32 output_activation_max, int16* output_data,
+                           const Dims<4>& output_dims,
+                           gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_EQ(output_offset, 0);
+  // TODO(benoitjacob): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int batches = ArraySize(output_dims, 1) * ArraySize(output_dims, 2) *
+                      ArraySize(output_dims, 3);
+  const int output_depth = MatchingArraySize(filter_dims, 1, output_dims, 0);
+  const int accum_depth = ArraySize(filter_dims, 0);
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum = bias_data[out_c];
+      // Accumulation loop.
+      for (int d = 0; d < accum_depth; ++d) {
+        int16 input_val = input_data[b * accum_depth + d] + input_offset;
+        int16 filter_val = filter_data[out_c * accum_depth + d] + filter_offset;
+        accum += filter_val * input_val;
+      }
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, typically 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
+                                            -output_shift);
+      // Saturate, cast to int16, and store to output array.
+      accum = std::max(accum, output_activation_min - output_offset);
+      accum = std::min(accum, output_activation_max - output_offset);
+      accum += output_offset;
+      output_data[out_c + output_depth * b] = accum;
     }
   }
 }
@@ -903,6 +953,49 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 }
 
+template <FusedActivationFunctionType Ac>
+inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16* input2_data,
+                const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
+                int16* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  TFLITE_DCHECK(input1_shift == 0 || input2_shift == 0);
+  TFLITE_DCHECK_GE(input1_shift, 0);
+  TFLITE_DCHECK_GE(input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_shift = input1_shift == 0 ? input2_shift : input1_shift;
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+    F0 scaled_input =
+        F0::FromRaw(gemmlowp::RoundingDivideByPOT(shift_input[i], input_shift));
+    F0 result = gemmlowp::SaturatingAdd(scaled_input, input_ready_scaled);
+    const int16 raw_output = result.raw();
+    const int16 clamped_output = std::min(
+        output_activation_max, std::max(output_activation_min, raw_output));
+    output_data[i] = clamped_output;
+  }
+}
+
 // TODO(jiawen): We can implement BroadcastAdd on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -1184,6 +1277,53 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
+                const int16* input2_data, const Dims<4>& input2_dims,
+                int16* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/Int16");
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 unclamped_result =
+        F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
+    output_data[i] = unclamped_result.raw();
+  }
+}
+
+inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
+                const int16* input2_data, const Dims<4>& input2_dims,
+                int32 output_offset, int32 output_activation_min,
+                int32 output_activation_max, uint8* output_data,
+                const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+
+    F0 unclamped_result =
+        F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
+    int16 rescaled_result =
+        gemmlowp::RoundingDivideByPOT(unclamped_result.raw(), 8);
+    int16 clamped_result =
+        std::min<int16>(output_activation_max - output_offset, rescaled_result);
+    clamped_result =
+        std::max<int16>(output_activation_min - output_offset, clamped_result);
+    output_data[i] = output_offset + clamped_result;
+  }
+}
+
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
 inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
@@ -1197,6 +1337,47 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                input2_dims, input2_offset, output_offset, output_multiplier,
                output_shift, output_activation_min, output_activation_max,
                output_data, output_dims);
+}
+
+// TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
+// dimensionality if the runtime code does a single loop over one dimension
+// that handles broadcasting as the base case. The code generator would then
+// generate max(D1, D2) nested for loops.
+template <typename T>
+void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastDiv");
+
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] /
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
 }
 
 inline void Div(const float* input1_data, const Dims<4>& input1_dims,
@@ -1425,10 +1606,10 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
           const int32 scaled_input2_val =
               MultiplyByQuantizedMultiplierSmallerThanOne(
                   shifted_input2_val, input2_multiplier, input2_shift);
-          const int32 raw_sum = scaled_input1_val - scaled_input2_val;
+          const int32 raw_sub = scaled_input1_val - scaled_input2_val;
           const int32 raw_output =
               MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+                  raw_sub, output_multiplier, output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1439,34 +1620,6 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
       }
     }
   }
-}
-
-template <FusedActivationFunctionType Ac>
-inline void BroadcastSub(int left_shift, const uint8* input1_data,
-                         const Dims<4>& input1_dims, int32 input1_offset,
-                         int32 input1_multiplier, int input1_shift,
-                         const uint8* input2_data, const Dims<4>& input2_dims,
-                         int32 input2_offset, int32 input2_multiplier,
-                         int input2_shift, int32 output_offset,
-                         int32 output_multiplier, int output_shift,
-                         int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
-                         const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  BroadcastSub(left_shift, input1_data, input1_dims, input1_offset,
-               input1_multiplier, input1_shift, input2_data, input2_dims,
-               input2_offset, input2_multiplier, input2_shift, output_offset,
-               output_multiplier, output_shift, output_activation_min,
-               output_activation_max, output_data, output_dims);
 }
 
 template <FusedActivationFunctionType Ac, typename Scalar>
@@ -2533,11 +2686,13 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
             const FixedPoint4 input_val_f4 =
                 FixedPoint4::FromRaw(input_val_rescaled);
             const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
+            // Convert from Q0.31 to Q23.8.
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
             if (output_val_s32 == 256) {
               output_val_s32 = 255;
             }
+            // Reinterpret as U0.8.
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);
             output_val = static_cast<uint8>(output_val_s32);
@@ -2546,6 +2701,25 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
+                     int16* output_data, const Dims<4>& output_dims) {
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+
+  for (int i = 0; i < flat_size; i++) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+    const F3 input = F3::FromRaw(input_data[i]);
+    F0 output = gemmlowp::logistic(input);
+    output_data[i] = output.raw();
   }
 }
 
@@ -2598,13 +2772,14 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
             const FixedPoint4 input_val_f4 =
                 FixedPoint4::FromRaw(input_val_rescaled);
             const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-
+            // Convert from Q0.31 to Q24.7.
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
             output_val_s32 += output_zero_point;
             if (output_val_s32 == 256) {
               output_val_s32 = 255;
             }
+            // Reinterpret as Q0.7, encoded in uint8.
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);
             output_val = static_cast<uint8>(output_val_s32);
@@ -2612,6 +2787,40 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
           output_data[Offset(output_dims, c, x, y, b)] = output_val;
         }
       }
+    }
+  }
+}
+
+inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
+                 int input_left_shift, int16* output_data,
+                 const Dims<4>& output_dims) {
+  // Support for shifts is limited until we have a parameterized version of
+  // SaturatingRoundingMultiplyByPOT().
+  TFLITE_DCHECK_GE(input_left_shift, 0);
+  TFLITE_DCHECK_LE(input_left_shift, 1);
+
+  const int flat_size = RequiredBufferSizeForDims(output_dims);
+  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input_dims), flat_size);
+
+  // F0 uses 0 integer bits, range [-1, 1].
+  // This is the return type of math functions such as tanh, logistic,
+  // whose range is in [-1, 1].
+  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+  // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+  using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+
+  if (input_left_shift == 0) {
+    for (int i = 0; i < flat_size; i++) {
+      F3 input = F3::FromRaw(input_data[i]);
+      F0 output = gemmlowp::tanh(input);
+      output_data[i] = output.raw();
+    }
+  } else {
+    for (int i = 0; i < flat_size; i++) {
+      F3 input = F3::FromRaw(
+          gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data[i]));
+      F0 output = gemmlowp::tanh(input);
+      output_data[i] = output.raw();
     }
   }
 }
@@ -3115,9 +3324,11 @@ inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
   }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
-                                      num_elements_in_axis);
+  if (num_elements_in_axis > 0) {
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                        num_elements_in_axis);
+    }
   }
 }
 
@@ -3235,6 +3446,30 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+template <typename T>
+void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       T* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          auto out_idx = Offset(output_dims, c, x, y, b);
+          auto in1_idx = SubscriptToIndex(desc1, c, x, y, b);
+          auto in2_idx = SubscriptToIndex(desc2, c, x, y, b);
+          auto in1_val = input1_data[in1_idx];
+          auto in2_val = input2_data[in2_idx];
+          output_data[out_idx] = in1_val > in2_val ? in1_val : in2_val;
+        }
+      }
+    }
+  }
+}
+
 template <typename T1, typename T2, typename T3>
 void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
             T2* output_data, const Dims<4>& output_dims) {
@@ -3292,6 +3527,67 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
         for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
           i[permuted_axes[0]] = o[0];
           output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
+        }
+      }
+    }
+  }
+}
+
+inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
+                          const float* filter_data, const Dims<4>& filter_dims,
+                          int stride_width, int stride_height, int pad_width,
+                          int pad_height, float* output_data,
+                          const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
+  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+
+  // Although transpose convolution simplifies to convolution with transposed
+  // weights for strides of 1, non-unitary striding complicates matters. To
+  // keep this reference implementation as clear as possible, we use a "scatter"
+  // access pattern, where we loop through all the input elements, computing
+  // their influence on the output, rather than looping through the output
+  // elements in the typical "gather" access pattern of a conv. We therefore
+  // must initialize the output array to zero.
+  for (int i = 0; i < RequiredBufferSizeForDims(output_dims); i++) {
+    output_data[i] = 0.0f;
+  }
+
+  // Loop through input elements one at a time.
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int in_y = 0; in_y < input_height; ++in_y) {
+      for (int in_x = 0; in_x < input_width; ++in_x) {
+        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+          // Loop through the output elements it will influence
+          const int out_x_origin = (in_x * stride_width) - pad_width;
+          const int out_y_origin = (in_y * stride_height) - pad_height;
+          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              for (int out_channel = 0; out_channel < output_depth;
+                   ++out_channel) {
+                // Compute output element location
+                const int out_x = out_x_origin + filter_x;
+                const int out_y = out_y_origin + filter_y;
+                // We cannot accumulate out of bounds
+                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
+                    (out_y < output_height)) {
+                  float input_value = input_data[Offset(input_dims, in_channel,
+                                                        in_x, in_y, batch)];
+                  float filter_value =
+                      filter_data[Offset(filter_dims, out_channel, filter_x,
+                                         filter_y, in_channel)];
+                  output_data[Offset(output_dims, out_channel, out_x, out_y,
+                                     batch)] += input_value * filter_value;
+                }
+              }
+            }
+          }
         }
       }
     }

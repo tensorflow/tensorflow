@@ -53,7 +53,7 @@ def from_contrib_estimator(estimator,
       `Estimator`.
   """
   if isinstance(estimator, core_estimator.Estimator):
-    raise TypeError('Espected estimator to be of type '
+    raise TypeError('Expected estimator to be of type '
                     'tf.contrib.learn.Estimator, but got type '
                     'tf.python.estimator.Estimator. You likely want to call '
                     'from_estimator.')
@@ -88,7 +88,7 @@ def from_estimator(estimator,
       `Estimator`.
   """
   if isinstance(estimator, contrib_estimator.Estimator):
-    raise TypeError('Espected estimator to be of type '
+    raise TypeError('Expected estimator to be of type '
                     'tf.python.estimator.Estimator, but got type '
                     'tf.contrib.learn.Estimator. You likely want to call '
                     'from_contrib_estimator.')

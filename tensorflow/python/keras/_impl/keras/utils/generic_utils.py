@@ -490,8 +490,8 @@ def slice_arrays(arrays, start=None, stop=None):
   if arrays is None:
     return [None]
   if isinstance(start, list) and stop is not None:
-    raise ValueError('The stop argument has to be None if the value of start is'
-                     'a list.')
+    raise ValueError('The stop argument has to be None if the value of start '
+                     'is a list.')
   elif isinstance(arrays, list):
     if hasattr(start, '__len__'):
       # hdf5 datasets only support list objects as indices
@@ -509,3 +509,20 @@ def slice_arrays(arrays, start=None, stop=None):
       return arrays[start:stop]
     else:
       return [None]
+
+
+def to_list(x):
+  """Normalizes a list/tensor into a list.
+
+  If a tensor is passed, we return
+  a list of size 1 containing the tensor.
+
+  Arguments:
+      x: target object to be normalized.
+
+  Returns:
+      A list.
+  """
+  if isinstance(x, list):
+    return x
+  return [x]

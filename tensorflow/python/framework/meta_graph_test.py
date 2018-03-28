@@ -537,6 +537,21 @@ class ScopedMetaGraphTest(test.TestCase):
         self.assertEqual(list(imported_variables.values())[0].name,
                          "foo/bar/myvar:0")
 
+  def testScopedImportUnderNameScopeNoVarScope(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      variables.Variable(initial_value=1.0, trainable=True, name="myvar")
+    meta_graph_def, _ = meta_graph.export_scoped_meta_graph(graph=graph)
+
+    graph = ops.Graph()
+    with graph.as_default():
+      with ops.name_scope("foo"):
+        imported_variables = meta_graph.import_scoped_meta_graph(
+            meta_graph_def)
+        self.assertEqual(len(imported_variables), 1)
+        self.assertEqual(list(imported_variables.values())[0].name,
+                         "foo/myvar:0")
+
   def testImportsUsingSameScopeName(self):
     with ops.Graph().as_default():
       variables.Variable(0, name="v")
@@ -904,20 +919,6 @@ class ExportImportAcrossScopesTest(test.TestCase):
     with ops.Graph().as_default() as expected_graph:
       with variable_scope.variable_scope("importA/keepA"):
         graph_fn(use_resource=use_resource)
-
-      if use_resource:
-        # Bringing in collections that contain ResourceVariables will adds ops
-        # to the graph the first time a variable is encountered, so mimic the
-        # same behavior.
-        seen_variables = set()
-        for collection_key in sorted([
-            ops.GraphKeys.GLOBAL_VARIABLES,
-            ops.GraphKeys.TRAINABLE_VARIABLES,
-        ]):
-          for var in expected_graph.get_collection(collection_key):
-            if var not in seen_variables:
-              var._read_variable_op()
-              seen_variables.add(var)
 
     result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]

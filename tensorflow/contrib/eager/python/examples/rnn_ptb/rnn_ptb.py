@@ -38,22 +38,26 @@ import tensorflow as tf
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.eager.python import tfe
 
+layers = tf.keras.layers
 
-class RNN(tfe.Network):
+
+class RNN(tf.keras.Model):
   """A static RNN.
 
-  Similar to tf.nn.static_rnn, implemented as a tf.layer.Layer.
+  Similar to tf.nn.static_rnn, implemented as a class.
   """
 
   def __init__(self, hidden_dim, num_layers, keep_ratio):
     super(RNN, self).__init__()
     self.keep_ratio = keep_ratio
-    for _ in range(num_layers):
-      self.track_layer(tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim))
+    self.cells = self._add_cells([
+        tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim)
+        for _ in range(num_layers)
+    ])
 
   def call(self, input_seq, training):
     batch_size = int(input_seq.shape[1])
-    for c in self.layers:
+    for c in self.cells:
       state = c.zero_state(batch_size, tf.float32)
       outputs = []
       input_seq = tf.unstack(input_seq, num=int(input_seq.shape[0]), axis=0)
@@ -64,10 +68,22 @@ class RNN(tfe.Network):
       input_seq = tf.stack(outputs, axis=0)
       if training:
         input_seq = tf.nn.dropout(input_seq, self.keep_ratio)
-    return input_seq, None
+    # Returning a list instead of a single tensor so that the line:
+    # y = self.rnn(y, ...)[0]
+    # in PTBModel.call works for both this RNN and CudnnLSTM (which returns a
+    # tuple (output, output_states).
+    return [input_seq]
+
+  def _add_cells(self, cells):
+    # "Magic" required for keras.Model classes to track all the variables in
+    # a list of Layer objects.
+    # TODO(ashankar): Figure out API so user code doesn't have to do this.
+    for i, c in enumerate(cells):
+      setattr(self, "cell-%d" % i, c)
+    return cells
 
 
-class Embedding(tf.layers.Layer):
+class Embedding(layers.Layer):
   """An Embedding layer."""
 
   def __init__(self, vocab_size, embedding_dim, **kwargs):
@@ -87,7 +103,8 @@ class Embedding(tf.layers.Layer):
     return tf.nn.embedding_lookup(self.embedding, x)
 
 
-class PTBModel(tfe.Network):
+# pylint: disable=not-callable
+class PTBModel(tf.keras.Model):
   """LSTM for word language modeling.
 
   Model described in:
@@ -109,19 +126,16 @@ class PTBModel(tfe.Network):
 
     self.keep_ratio = 1 - dropout_ratio
     self.use_cudnn_rnn = use_cudnn_rnn
-    self.embedding = self.track_layer(Embedding(vocab_size, embedding_dim))
+    self.embedding = Embedding(vocab_size, embedding_dim)
 
     if self.use_cudnn_rnn:
       self.rnn = cudnn_rnn.CudnnLSTM(
           num_layers, hidden_dim, dropout=dropout_ratio)
     else:
       self.rnn = RNN(hidden_dim, num_layers, self.keep_ratio)
-    self.track_layer(self.rnn)
 
-    self.linear = self.track_layer(
-        tf.layers.Dense(
-            vocab_size,
-            kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1)))
+    self.linear = layers.Dense(
+        vocab_size, kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1))
     self._output_shape = [-1, embedding_dim]
 
   def call(self, input_seq, training):
@@ -136,7 +150,7 @@ class PTBModel(tfe.Network):
     y = self.embedding(input_seq)
     if training:
       y = tf.nn.dropout(y, self.keep_ratio)
-    y, _ = self.rnn(y, training=training)
+    y = self.rnn(y, training=training)[0]
     return self.linear(tf.reshape(y, self._output_shape))
 
 
@@ -148,7 +162,7 @@ def clip_gradients(grads_and_vars, clip_ratio):
 
 def loss_fn(model, inputs, targets, training):
   labels = tf.reshape(targets, [-1])
-  outputs = model(inputs, training)
+  outputs = model(inputs, training=training)
   return tf.reduce_mean(
       tf.nn.sparse_softmax_cross_entropy_with_logits(
           labels=labels, logits=outputs))

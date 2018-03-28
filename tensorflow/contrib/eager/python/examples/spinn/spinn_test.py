@@ -33,6 +33,7 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 from third_party.examples.eager.spinn import spinn
+from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
@@ -172,7 +173,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
         right_in.append(tf.random_normal((1, size * 2)))
         tracking.append(tf.random_normal((1, tracker_size * 2)))
 
-      out = reducer(left_in, right_in, tracking=tracking)
+      out = reducer(left_in, right_in=right_in, tracking=tracking)
       self.assertEqual(batch_size, len(out))
       self.assertEqual(tf.float32, out[0].dtype)
       self.assertEqual((1, size * 2), out[0].shape)
@@ -226,7 +227,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       self.assertEqual((batch_size, size * 2), stacks[0][0].shape)
 
       for _ in range(2):
-        out1, out2 = tracker(bufs, stacks)
+        out1, out2 = tracker(bufs, stacks=stacks)
         self.assertIsNone(out2)
         self.assertEqual(batch_size, len(out1))
         self.assertEqual(tf.float32, out1[0].dtype)
@@ -259,7 +260,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       self.assertEqual(tf.int64, transitions.dtype)
       self.assertEqual((num_transitions, 1), transitions.shape)
 
-      out = s(buffers, transitions, training=True)
+      out = s(buffers, transitions=transitions, training=True)
       self.assertEqual(tf.float32, out.dtype)
       self.assertEqual((1, embedding_dims), out.shape)
 
@@ -285,12 +286,15 @@ class SpinnTest(test_util.TensorFlowTestCase):
                                                          vocab_size)
 
       # Invoke model under non-training mode.
-      logits = model(prem, prem_trans, hypo, hypo_trans, training=False)
+      logits = model(
+          prem, premise_transition=prem_trans, hypothesis=hypo,
+          hypothesis_transition=hypo_trans, training=False)
       self.assertEqual(tf.float32, logits.dtype)
       self.assertEqual((batch_size, d_out), logits.shape)
 
       # Invoke model under training model.
-      logits = model(prem, prem_trans, hypo, hypo_trans, training=True)
+      logits = model(prem, premise_transition=prem_trans, hypothesis=hypo,
+                     hypothesis_transition=hypo_trans, training=True)
       self.assertEqual(tf.float32, logits.dtype)
       self.assertEqual((batch_size, d_out), logits.shape)
 
@@ -417,12 +421,17 @@ class SpinnTest(test_util.TensorFlowTestCase):
                     if event.summary.value
                     and event.summary.value[0].tag == "train/loss"]
     self.assertEqual(config.epochs, len(train_losses))
-    self.assertLess(train_losses[-1], train_losses[0])
 
     # 5. Verify that checkpoints exist and contains all the expected variables.
     self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
-    ckpt_variable_names = [
-        item[0] for item in checkpoint_utils.list_variables(config.logdir)]
+    object_graph_string = checkpoint_utils.load_variable(
+        config.logdir, name="_CHECKPOINTABLE_OBJECT_GRAPH")
+    object_graph = checkpointable_object_graph_pb2.CheckpointableObjectGraph()
+    object_graph.ParseFromString(object_graph_string)
+    ckpt_variable_names = set()
+    for node in object_graph.nodes:
+      for attribute in node.attributes:
+        ckpt_variable_names.add(attribute.full_name)
     self.assertIn("global_step", ckpt_variable_names)
     for v in trainer.variables:
       variable_name = v.name[:v.name.index(":")] if ":" in v.name else v.name

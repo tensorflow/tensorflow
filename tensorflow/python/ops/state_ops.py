@@ -63,6 +63,8 @@
 @@scatter_nd_update
 @@scatter_sub
 @@scatter_update
+@@scatter_min
+@@scatter_max
 @@sparse_mask
 @@tables_initializer
 @@trainable_variables
@@ -99,8 +101,8 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   """Deprecated. Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
-  ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
-                                container=container, shared_name=shared_name)
+  ret = gen_state_ops.variable(shape=shape, dtype=dtype, name=name,
+                               container=container, shared_name=shared_name)
   # TODO(mrry): Move this to where it is used, so we can get rid of this op
   #   wrapper?
   if set_shape:
@@ -127,11 +129,12 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
   Returns:
     A variable tensor.
   """
-  return gen_state_ops._variable_v2(shape=shape,
-                                    dtype=dtype,
-                                    name=name,
-                                    container=container,
-                                    shared_name=shared_name)
+  return gen_state_ops.variable_v2(
+      shape=shape,
+      dtype=dtype,
+      name=name,
+      container=container,
+      shared_name=shared_name)
 
 
 def init_variable(v, init, name="init"):
@@ -185,7 +188,7 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if context.in_eager_mode() or ref.op.type == "VarHandleOp":
+  if context.executing_eagerly() or ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
 

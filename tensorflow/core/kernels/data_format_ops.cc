@@ -67,14 +67,8 @@ class DataFormatVecPermuteOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context,
-                (src_format == "NHWC" && dst_format == "NCHW") ||
-                    (src_format == "NCHW" && dst_format == "NHWC"),
-                errors::InvalidArgument(strings::StrCat(
-                    "Current implementation only supports NCHW-to-NHWC and "
-                    "NHWC-to-NCHW format conversion; got source format ",
-                    src_format, " and destination format ", dst_format)));
-    nhwc_to_nchw_ = (src_format == "NHWC") ? true : false;
+    src_format_ = src_format;
+    dst_format_ = dst_format;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -104,13 +98,34 @@ class DataFormatVecPermuteOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
-    functor::DataFormatVecPermute<Device, T>()(
-        context->eigen_device<Device>(), input.flat<T>(), output->flat<T>(),
-        nhwc_to_nchw_);
+    // Support 1D and 2D cases.
+    Eigen::DSizes<Eigen::DenseIndex, 8> dst_idx;
+    ComputeDstIndex(input.dims(), &dst_idx);
+
+    functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
+                                               input.flat<T>(),
+                                               output->flat<T>(), dst_idx);
   }
 
  private:
-  bool nhwc_to_nchw_;
+  // Finds out the destination index. Support 1D and 2D cases.
+  // Example: HWNC --> NHWC
+  // 1D: dst = [1, 2, 0, 3],
+  // 2D: dst = [2, 3, 4, 5, 0, 1, 6, 7]
+  void ComputeDstIndex(int num_dim, Eigen::DSizes<Eigen::DenseIndex, 8>* dst) {
+    for (int i = 0; i < src_format_.size(); ++i) {
+      for (int j = 0; j < dst_format_.size(); ++j) {
+        if (dst_format_[j] != src_format_[i]) continue;
+        // Found the dst index. Set output based on the number of dims.
+        for (int k = 0; k < num_dim; ++k) {
+          (*dst)[i * num_dim + k] = j * num_dim + k;
+        }
+      }
+    }
+  }
+
+  string src_format_;
+  string dst_format_;
 };
 
 #define REGISTER_KERNEL(T)                                                \
@@ -147,7 +162,8 @@ TF_CALL_int64(DECLARE_GPU_SPECS);
   template <>                                              \
   void DataFormatVecPermute<GPUDevice, T>::operator()(     \
       const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
-      typename TTypes<T>::Vec y, bool nhwc_to_nchw);       \
+      typename TTypes<T>::Vec y,                           \
+      const Eigen::DSizes<Eigen::DenseIndex, 8>& dst_idx); \
   extern template struct DataFormatVecPermute<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);

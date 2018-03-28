@@ -51,6 +51,8 @@ Europe:
 TensorFlow provides multiple communication paths.  To pick the right path,
 please read the following list carefully:
 
+  * For new release announcements and security updates, subscribe to
+    [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
   * To ask or answer technical questions about TensorFlow, use
     [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).
     For example, ask or search Stack Overflow about a particular error message
@@ -65,5 +67,5 @@ please read the following list carefully:
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
   * To report vulnerabilities, please follow our
-    [vulnerability disclosure guidelines](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md).
+    [vulnerability disclosure guidelines](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
 

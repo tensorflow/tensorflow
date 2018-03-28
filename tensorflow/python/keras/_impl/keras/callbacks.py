@@ -778,16 +778,24 @@ class TensorBoard(Callback):
         while i < val_size:
           step = min(self.batch_size, val_size - i)
           batch_val = []
-          batch_val.append(val_data[0][i:i + step])
-          batch_val.append(val_data[1][i:i + step])
-          batch_val.append(val_data[2][i:i + step])
+          batch_val.append(val_data[0][i:i + step]
+                           if val_data[0] is not None else None)
+          batch_val.append(val_data[1][i:i + step]
+                           if val_data[1] is not None else None)
+          batch_val.append(val_data[2][i:i + step]
+                           if val_data[2] is not None else None)
           if self.model.uses_learning_phase:
             # do not slice the learning phase
-            batch_val = [x[i:i + step] for x in val_data[:-1]]
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data[:-1]]
             batch_val.append(val_data[-1])
           else:
-            batch_val = [x[i:i + step] for x in val_data]
-          feed_dict = dict(zip(tensors, batch_val))
+            batch_val = [x[i:i + step] if x is not None else None
+                         for x in val_data]
+          feed_dict = {}
+          for key, val in zip(tensors, batch_val):
+            if val is not None:
+              feed_dict[key] = val
           result = self.sess.run([self.merged], feed_dict=feed_dict)
           summary_str = result[0]
           self.writer.add_summary(summary_str, epoch)

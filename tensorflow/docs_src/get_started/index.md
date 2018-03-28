@@ -1,5 +1,12 @@
 # Getting Started
 
+If you are new to machine learning, we recommend taking the following online
+course prior to diving into TensorFlow documentation:
+
+  * [Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course/),
+    which introduces machine learning concepts and encourages experimentation
+    with existing TensorFlow code.
+
 TensorFlow is a tool for machine learning. While it contains a wide range of
 functionality, TensorFlow is mainly designed for deep neural network models.
 

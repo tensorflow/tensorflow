@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
@@ -53,6 +54,21 @@ class Client {
   //   will be filled with profile data from the execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const Computation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
+
+  // Executes the computation with the given arguments and returns the global
+  // data that was produced from the execution.
+  // * If execution_options is not nullptr, these options are passed to the
+  //   service to affect how it compiles our computation.  (The pointer does not
+  //   need to live beyond this call.)
+  // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
+  //   will be filled with profile data from the execution.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<GlobalData>> Execute(
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);
@@ -133,6 +149,17 @@ class Client {
   // Execute() and Transfer().
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       const Computation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
+
+  // Executes the computation with the given arguments and transfers the result
+  // to the client as a literal. Parameters are defined the same as for
+  // Execute() and Transfer().
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const XlaComputation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const ExecutionOptions* execution_options = nullptr,
       ExecutionProfile* execution_profile = nullptr);

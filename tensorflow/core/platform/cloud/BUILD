@@ -38,11 +38,22 @@ cc_library(
 
 cc_library(
     name = "file_block_cache",
-    srcs = ["file_block_cache.cc"],
     hdrs = ["file_block_cache.h"],
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "ram_file_block_cache",
+    srcs = ["ram_file_block_cache.cc"],
+    hdrs = ["ram_file_block_cache.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_block_cache",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -83,6 +94,7 @@ cc_library(
         ":gcs_throttle",
         ":google_auth_provider",
         ":http_request",
+        ":ram_file_block_cache",
         ":retrying_file_system",
         ":retrying_utils",
         ":time_util",
@@ -245,12 +257,12 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "file_block_cache_test",
+    name = "ram_file_block_cache_test",
     size = "small",
-    srcs = ["file_block_cache_test.cc"],
+    srcs = ["ram_file_block_cache_test.cc"],
     deps = [
-        ":file_block_cache",
         ":now_seconds_env",
+        ":ram_file_block_cache",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

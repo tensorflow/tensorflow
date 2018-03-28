@@ -18,7 +18,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -27,8 +30,8 @@ namespace {
 class TfToCudaGpuIdMap {
  public:
   static TfToCudaGpuIdMap* singleton() {
-    static auto* manager = new TfToCudaGpuIdMap;
-    return manager;
+    static auto* id_map = new TfToCudaGpuIdMap;
+    return id_map;
   }
 
   void InsertOrDie(TfGpuId tf_gpu_id, CudaGpuId cuda_gpu_id)
@@ -47,18 +50,41 @@ class TfToCudaGpuIdMap {
     }
   }
 
-  int32 FindOrDie(TfGpuId tf_gpu_id) const LOCKS_EXCLUDED(mu_) {
+  CudaGpuId FindOrDie(TfGpuId tf_gpu_id) const LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    auto result = id_map_.find(tf_gpu_id.value());
-    CHECK(result != id_map_.end())
-        << "Could not find the mapping for TfGpuId: " << tf_gpu_id;
-    return result->second;
+    return FindOrDieLocked(tf_gpu_id);
+  }
+
+  bool Find(TfGpuId tf_gpu_id, CudaGpuId* cuda_gpu_id) const
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    if (id_map_.count(tf_gpu_id.value()) == 0) return false;
+    *cuda_gpu_id = FindOrDieLocked(tf_gpu_id);
+    return true;
   }
 
  private:
+  TfToCudaGpuIdMap() = default;
+
+  CudaGpuId FindOrDieLocked(TfGpuId tf_gpu_id) const
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    auto result = id_map_.find(tf_gpu_id.value());
+    CHECK(result != id_map_.end())
+        << "Could not find the mapping for TfGpuId: " << tf_gpu_id;
+    return CudaGpuId(result->second);
+  }
+
+  void TestOnlyReset() LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    id_map_.clear();
+  }
+
   using IdMapType = std::unordered_map<int32, int32>;
   mutable mutex mu_;
   IdMapType id_map_ GUARDED_BY(mu_);
+
+  friend class ::tensorflow::GpuIdManager;
+  TF_DISALLOW_COPY_AND_ASSIGN(TfToCudaGpuIdMap);
 };
 }  // namespace
 
@@ -67,8 +93,20 @@ void GpuIdManager::InsertTfCudaGpuIdPair(TfGpuId tf_gpu_id,
   TfToCudaGpuIdMap::singleton()->InsertOrDie(tf_gpu_id, cuda_gpu_id);
 }
 
+Status GpuIdManager::TfToCudaGpuId(TfGpuId tf_gpu_id, CudaGpuId* cuda_gpu_id) {
+  if (TfToCudaGpuIdMap::singleton()->Find(tf_gpu_id, cuda_gpu_id)) {
+    return Status::OK();
+  }
+  return errors::NotFound("TF GPU device with id ", tf_gpu_id.value(),
+                          " was not registered");
+}
+
 CudaGpuId GpuIdManager::TfToCudaGpuId(TfGpuId tf_gpu_id) {
-  return CudaGpuId(TfToCudaGpuIdMap::singleton()->FindOrDie(tf_gpu_id));
+  return TfToCudaGpuIdMap::singleton()->FindOrDie(tf_gpu_id);
+}
+
+void GpuIdManager::TestOnlyReset() {
+  TfToCudaGpuIdMap::singleton()->TestOnlyReset();
 }
 
 }  // namespace tensorflow

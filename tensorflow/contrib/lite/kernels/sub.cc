@@ -78,10 +78,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <KernelType kernel_type>
-void EvalSubFloat(TfLiteContext* context, TfLiteNode* node,
-                  TfLiteSubParams* params, const OpData* data,
-                  TfLiteTensor* input1, TfLiteTensor* input2,
-                  TfLiteTensor* output) {
+void EvalFloat(TfLiteContext* context, TfLiteNode* node,
+               TfLiteSubParams* params, const OpData* data,
+               TfLiteTensor* input1, TfLiteTensor* input2,
+               TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
@@ -107,10 +107,10 @@ void EvalSubFloat(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-void EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
-                      TfLiteSubParams* params, const OpData* data,
-                      TfLiteTensor* input1, TfLiteTensor* input2,
-                      TfLiteTensor* output) {
+void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                   TfLiteSubParams* params, const OpData* data,
+                   TfLiteTensor* input1, TfLiteTensor* input2,
+                   TfLiteTensor* output) {
   auto input1_offset = -input1->params.zero_point;
   auto input2_offset = -input2->params.zero_point;
   auto output_offset = output->params.zero_point;
@@ -169,11 +169,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
-    EvalSubFloat<kernel_type>(context, node, params, data, input1, input2,
-                              output);
+    EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8) {
-    EvalSubQuantized<kernel_type>(context, node, params, data, input1, input2,
-                                  output);
+    EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
+                               output);
   } else {
     context->ReportError(context,
                          "Inputs and outputs not all float|unit8 types.");
