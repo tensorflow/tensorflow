@@ -379,13 +379,13 @@ cc_library(
 )
 
 cc_library(
-    name = "session_message",
-    srcs = ["util/session_message.cc"],
-    hdrs = ["util/session_message.h"],
+    name = "stacktrace",
+    srcs = glob(["platform/*/stacktrace.h"]),
+    hdrs = ["platform/stacktrace.h"],
     deps = [
-        ":framework",
-        ":lib",
-        ":protos_all_cc",
+        ":abi",
+        ":lib_platform",
+        "//tensorflow/core/platform/default/build_config:stacktrace",
     ],
 )
 
@@ -394,8 +394,20 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":lib",
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
+    ],
+)
+
+cc_library(
+    name = "session_message",
+    srcs = ["util/session_message.cc"],
+    hdrs = ["util/session_message.h"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":protos_all_cc",
     ],
 )
 
@@ -1624,6 +1636,7 @@ cc_library(
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
+            "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ],
@@ -1635,6 +1648,7 @@ cc_library(
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
+            "platform/abi.cc",
             "platform/variant_coding.cc",
             "platform/**/variant_cord_coding.cc",
         ] +
@@ -1648,6 +1662,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
+        ":abi",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
