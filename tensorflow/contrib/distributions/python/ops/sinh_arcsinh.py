@@ -174,13 +174,12 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
             skewness=skewness.dtype.as_numpy_dtype(0.),
             tailweight=tailweight, event_ndims=0)
 
-      # Make the Affine bijector, Z --> loc + scale * Z (2 / F_0(2))
+      # Make the AffineScalar bijector, Z --> loc + scale * Z (2 / F_0(2))
       c = 2 * scale / f_noskew.forward(ops.convert_to_tensor(2, dtype=dtype))
-      affine = bijectors.Affine(
+      affine = bijectors.AffineScalar(
           shift=loc,
-          scale_identity_multiplier=c,
-          validate_args=validate_args,
-          event_ndims=0)
+          scale=c,
+          validate_args=validate_args)
 
       bijector = bijectors.Chain([affine, f])
 

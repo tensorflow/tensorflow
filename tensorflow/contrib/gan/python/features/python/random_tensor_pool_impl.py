@@ -17,7 +17,7 @@
 We use this to keep a history of values created by a generator, such that
 a discriminator can randomly be trained on some older samples, not just the
 current one. This can help to not let the discriminator get too far ahead of the
-generator and also to keep the system from oscilating, if the discriminator
+generator and also to keep the system from oscillating, if the discriminator
 forgets too fast what past samples from the generator looked like.
 
 See the following papers for more details.
@@ -97,7 +97,7 @@ def tensor_pool(input_values,
         dtypes=[v.dtype for v in input_values],
         shapes=None)
 
-    # In pseudeo code this code does the following:
+    # In pseudo code this code does the following:
     # if not pool_full:
     #   enqueue(input_values)
     #   return input_values

@@ -103,10 +103,11 @@ class ListScheduler {
     for (auto* instruction : computation.instructions()) {
       tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
-        for (const LogicalBuffer* buffer :
-             points_to_analysis.GetBuffersDefinedByInstruction(operand)) {
-          instr_uses.insert(buffer);
-        }
+        points_to_analysis.GetPointsToSet(operand).ForEachElement(
+            [&](const ShapeIndex& /*index*/,
+                const PointsToSet::BufferList& buffers) {
+              instr_uses.insert(buffers.begin(), buffers.end());
+            });
       }
       buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
           instr_uses.begin(), instr_uses.end());
@@ -339,7 +340,33 @@ int64 SumLogicalBufferSizes(
   return size;
 }
 
-StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm) {
+    return algorithm(computation, points_to_analysis, size_function);
+  }
+  return DefaultMemoryScheduler(computation, points_to_analysis, size_function);
+}
+
+}  // namespace
+
+StatusOr<std::vector<const HloInstruction*>> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function) {
@@ -348,6 +375,7 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   // simply users-1 for each instruction.  By subtracting 1, we're saying that
   // instructions with no users or a single user don't count; instructions with
   // lots of fan-out will be visited earlier.
+  int64 cumulative_total_size = 0;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
@@ -357,14 +385,17 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
       continue;
     }
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
-    total_sizes[hlo] = SumLogicalBufferSizes(
+    int64 logical_buffer_size = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
+    total_sizes[hlo] = logical_buffer_size;
+    cumulative_total_size += logical_buffer_size;
     tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];
       total_sizes[hlo] += total_sizes[operand];
     }
+    total_sizes[hlo] = std::min(total_sizes[hlo], cumulative_total_size);
   }
   CHECK_EQ(extra_users.size(), computation.instruction_count());
   CHECK_EQ(total_sizes.size(), computation.instruction_count());
@@ -392,32 +423,17 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   return sequence;
 }
 
-StatusOr<int64> MinimumMemoryForComputation(
+StatusOr<std::vector<const HloInstruction*>> ListMemoryScheduler(
     const HloComputation& computation,
-    const std::vector<const HloInstruction*>& sequence,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function) {
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
-                         sequence, points_to_analysis, size_function));
-  return result.heap_size;
+  return ListScheduler::Run(computation, points_to_analysis, size_function);
 }
 
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm) {
-  VLOG(2) << "Computation: " << computation.name();
-  if (algorithm == SchedulerAlgorithm::kListSchedule) {
-    return ListScheduler::Run(computation, points_to_analysis, size_function);
-  }
-  if (algorithm == SchedulerAlgorithm::kDfsSchedule) {
-    return RunDFSMemoryScheduler(computation, points_to_analysis,
-                                 size_function);
-  }
-
+    const LogicalBuffer::SizeFunction& size_function) {
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -427,7 +443,7 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   // within the caller's context. But it's good enough for now.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
-      ListScheduler::Run(computation, points_to_analysis, size_function));
+      ListMemoryScheduler(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 list_memory,
       MinimumMemoryForComputation(computation, list_sequence,
@@ -436,7 +452,7 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> dfs_sequence,
-      RunDFSMemoryScheduler(computation, points_to_analysis, size_function));
+      DFSMemoryScheduler(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 dfs_memory,
       MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
@@ -454,12 +470,10 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   }
 }
 
-}  // namespace
-
 StatusOr<SequentialHloOrdering::HloModuleSequence>
 CreateMemoryMinimizingSequence(const HloModule& module,
                                const LogicalBuffer::SizeFunction& size_function,
-                               SchedulerAlgorithm algorithm) {
+                               const MemorySchedulerAlgorithm& algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
@@ -475,7 +489,7 @@ CreateMemoryMinimizingSequence(const HloModule& module,
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const LogicalBuffer::SizeFunction& size_function,
-    SchedulerAlgorithm algorithm) {
+    const MemorySchedulerAlgorithm& algorithm) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));

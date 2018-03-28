@@ -47,7 +47,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-
     // Add only supports float32. (and "constant" tests use Add)
     {R"(^\/adda.*int32)", "68808744"},
     {R"(^\/constant.*int32)", "68808744"},
@@ -89,6 +88,9 @@ std::map<string, string> kBrokenTests = {
 
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
+
+    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
+    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -248,13 +250,14 @@ INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(local_response_norm)
 INSTANTIATE_TESTS(log_softmax)
-INSTANTIATE_TESTS(lstm)
+INSTANTIATE_TESTS(maximum)
 INSTANTIATE_TESTS(max_pool)
 INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(mul)
 INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
+INSTANTIATE_TESTS(prelu)
 INSTANTIATE_TESTS(relu6)
 INSTANTIATE_TESTS(reshape)
 INSTANTIATE_TESTS(resize_bilinear)

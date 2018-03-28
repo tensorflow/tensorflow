@@ -13,7 +13,6 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
-    go_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

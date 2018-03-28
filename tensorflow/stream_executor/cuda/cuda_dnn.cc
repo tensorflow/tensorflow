@@ -274,7 +274,8 @@ CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 // clang-format off
 #if CUDNN_VERSION >= 7000
 #define CUDNN_DNN_ROUTINE_EACH_R7(__macro)                    \
-  __macro(cudnnSetConvolutionMathType)
+  __macro(cudnnSetConvolutionMathType)                        \
+  __macro(cudnnSetRNNMatrixMathType)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R7(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
@@ -580,6 +581,19 @@ static bool TensorOpMathEnabled() {
     bool is_disabled = false;
     TF_CHECK_OK(
         tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
+                                       /*default_val=*/false, &is_disabled));
+    return !is_disabled;
+  }();
+  return is_enabled;
+}
+
+// A helper function to decide whether to enable the TENSOR_OP_MATH math type
+// for RNNs.
+static bool RnnTensorOpMathEnabled() {
+  static bool is_enabled = [] {
+    bool is_disabled = false;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH",
                                        /*default_val=*/false, &is_disabled));
     return !is_disabled;
   }();
@@ -1124,6 +1138,9 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
       SetFailure(cudnn_params_desc_->Status());
       return;
     }
+    if (data_type == CUDNN_DATA_HALF) {
+      set_use_tensor_op_math(true);
+    }
   }
   ~CudnnRnnDescriptor() override {
     if (rnn_desc_) {
@@ -1131,6 +1148,20 @@ class CudnnRnnDescriptor : public CudnnDescriptorCommon<dnn::RnnDescriptor> {
           wrap::cudnnDestroyRNNDescriptor(parent_, rnn_desc_);
       CUDNN_RETURN_IF_FAIL(status, "Unable to destroy RNN descriptor");
     }
+  }
+  void set_use_tensor_op_math(bool use_tensor_op_math) {
+#if CUDNN_VERSION >= 7000
+    cudnnMathType_t math_type =
+        (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
+    if (RnnTensorOpMathEnabled()) {
+      cudnnStatus_t status =
+          wrap::cudnnSetRNNMatrixMathType(parent_, rnn_desc_, math_type);
+      if (status != CUDNN_STATUS_SUCCESS) {
+        LOG(FATAL) << "could not set cudnn RNN math type: "
+                   << ToString(status);
+      }
+    }
+#endif
   }
   cudnnRNNDescriptor_t handle() const {
     if (!ok()) return nullptr;
@@ -2281,7 +2312,6 @@ struct ConvDoFP32ComputationFP16Input {
 
 // A group of helper functions to return the internal compute type for
 // convolutions in cudnn.
-// TODO(yangzihao): Add support for float64.
 template <typename T>
 cudnnDataType_t GetConvComputeType() {
   return CUDNN_DATA_FLOAT;
@@ -2294,6 +2324,11 @@ cudnnDataType_t GetConvComputeType<Eigen::half>() {
   } else {
     return CUDNN_DATA_HALF;
   }
+}
+
+template <>
+cudnnDataType_t GetConvComputeType<double>() {
+  return CUDNN_DATA_DOUBLE;
 }
 
 }  // namespace
@@ -2324,9 +2359,15 @@ bool CudnnSupport::DoConvolveImpl(
     LOG(FATAL) << "failed to set stream for cudnn handle: " << ToString(status);
   }
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  float falpha = 1.0;
+  double dalpha = 1.0;
+  void* alpha = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dalpha)
+                                                : static_cast<void*>(&falpha);
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  float fbeta = 0.0;
+  double dbeta = 0.0;
+  void* beta = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dbeta)
+                                               : static_cast<void*>(&fbeta);
 
   const bool is_profiling = output_profile_result != nullptr;
   cudnnConvolutionFwdAlgo_t algo;
@@ -2464,11 +2505,11 @@ bool CudnnSupport::DoConvolveImpl(
   }
   status = wrap::cudnnConvolutionForward(
       parent_, ToHandle(dnn_handle_),
-      /*alpha=*/&alpha, /*srcDesc=*/input_nd.handle(),
+      /*alpha=*/alpha, /*srcDesc=*/input_nd.handle(),
       /*srcData=*/input_data.opaque(), /*filterDesc=*/filter.handle(),
       /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
       /*algo=*/algo, /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size(), /*beta=*/&beta,
+      /*workSpaceSizeInBytes=*/scratch.size(), /*beta=*/beta,
       /*destDesc=*/output_nd.handle(), /*destData=*/output_data->opaque());
 
   if (is_profiling) {
@@ -2943,10 +2984,14 @@ bool CudnnSupport::DoConvolve(
     const FilterDescriptor& filter_descriptor,
     const DeviceMemory<double>& filter_data,
     const ConvolutionDescriptor& convolution_descriptor,
-    const BatchDescriptor& output_descriptor,
-    DeviceMemory<double>* output_data) {
-  LOG(ERROR) << "double-based DNN not yet implemented";
-  return false;
+    const BatchDescriptor& output_descriptor, DeviceMemory<double>* output_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  return DoConvolveImpl<double>(
+      stream, batch_descriptor, input_data, filter_descriptor, filter_data,
+      convolution_descriptor, output_descriptor, output_data, scratch_allocator,
+      algorithm_config, output_profile_result);
 }
 
 bool CudnnSupport::DoConvolve(
@@ -3112,12 +3157,18 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
                                      dnn::DataType output_type, float scale,
                                      DeviceMemoryBase* output_data) {
   mutex_lock lock{dnn_handle_mutex_};
+  cudnnStatus_t status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                              AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(FATAL) << "failed to set stream for cudnn handle: " << ToString(status);
+  }
+
   float beta = 0.0f;
   ScopedTensorDescriptor input_tensor_desc(
       parent_, input_desc, ToCudnnDataType(input_type, input_desc.layout()));
   ScopedTensorDescriptor output_tensor_desc(
       parent_, output_desc, ToCudnnDataType(output_type, output_desc.layout()));
-  cudnnStatus_t status = wrap::cudnnTransformTensor(
+  status = wrap::cudnnTransformTensor(
       parent_, ToHandle(dnn_handle_), &scale, input_tensor_desc.handle(),
       input_data.opaque(), &beta, output_tensor_desc.handle(),
       output_data->opaque());
@@ -3151,10 +3202,17 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
     LOG(FATAL) << "failed to set stream for cudnn handle: " << ToString(status);
   }
 
+  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  float falpha = 1.0;
+  double dalpha = 1.0;
+  void* alpha = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dalpha)
+                                                : static_cast<void*>(&falpha);
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  float fbeta = 0.0;
+  double dbeta = 0.0;
+  void* beta = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dbeta)
+                                               : static_cast<void*>(&fbeta);
 
   // TBD(keveman): remove once cuDNN supports kBatchYXDepth for backward pass.
   BatchDescriptor output_descriptor;
@@ -3163,7 +3221,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   backward_output_data = MaybeTransformLayout(
       stream, &output_descriptor, backward_output_data, &transform_scratch);
 
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
   ScopedTensorDescriptor out_back_nd{parent_, output_descriptor, cudnn_type};
   ScopedTensorDescriptor in_back_nd{parent_, input_descriptor, cudnn_type};
   ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
@@ -3310,7 +3367,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   status = wrap::cudnnConvolutionBackwardData_v3(
 #endif
       parent_, ToHandle(dnn_handle_),
-      /*alpha=*/&alpha,
+      /*alpha=*/alpha,
       /*filterDesc=*/filter.handle(),
       /*filterData=*/filter_data.opaque(),
       /*diffDesc=*/out_back_nd.handle(),
@@ -3319,7 +3376,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       /*algo=*/algo,
       /*workSpace=*/scratch.opaque(),
       /*workSpaceSizeInBytes=*/scratch.size(),
-      /*beta=*/&beta,
+      /*beta=*/beta,
       /*gradDesc=*/in_back_nd.handle(),
       /*gradData=*/backward_input_data->opaque());
   if (is_profiling) {
@@ -3346,8 +3403,26 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
 
 bool CudnnSupport::DoConvolveBackwardData(
     Stream* stream, const FilterDescriptor& filter_descriptor,
+    const DeviceMemory<double>& filter_data,
+    const BatchDescriptor& output_descriptor,
+    DeviceMemory<double> backward_output_data,
+    const ConvolutionDescriptor& convolution_descriptor,
+    const BatchDescriptor& input_descriptor,
+    DeviceMemory<double>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  return DoConvolveBackwardDataImpl(stream, filter_descriptor, filter_data,
+                                    output_descriptor, backward_output_data,
+                                    convolution_descriptor, input_descriptor,
+                                    backward_input_data, scratch_allocator,
+                                    algorithm_config, output_profile_result);
+}
+
+bool CudnnSupport::DoConvolveBackwardData(
+    Stream* stream, const FilterDescriptor& filter_descriptor,
     const DeviceMemory<float>& filter_data,
-    const BatchDescriptor& output_descriptor_in,
+    const BatchDescriptor& output_descriptor,
     DeviceMemory<float> backward_output_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
@@ -3356,7 +3431,7 @@ bool CudnnSupport::DoConvolveBackwardData(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardDataImpl(stream, filter_descriptor, filter_data,
-                                    output_descriptor_in, backward_output_data,
+                                    output_descriptor, backward_output_data,
                                     convolution_descriptor, input_descriptor,
                                     backward_input_data, scratch_allocator,
                                     algorithm_config, output_profile_result);
@@ -3365,7 +3440,7 @@ bool CudnnSupport::DoConvolveBackwardData(
 bool CudnnSupport::DoConvolveBackwardData(
     Stream* stream, const FilterDescriptor& filter_descriptor,
     const DeviceMemory<Eigen::half>& filter_data,
-    const BatchDescriptor& output_descriptor_in,
+    const BatchDescriptor& output_descriptor,
     DeviceMemory<Eigen::half> backward_output_data,
     const ConvolutionDescriptor& convolution_descriptor,
     const BatchDescriptor& input_descriptor,
@@ -3374,7 +3449,7 @@ bool CudnnSupport::DoConvolveBackwardData(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return DoConvolveBackwardDataImpl(stream, filter_descriptor, filter_data,
-                                    output_descriptor_in, backward_output_data,
+                                    output_descriptor, backward_output_data,
                                     convolution_descriptor, input_descriptor,
                                     backward_input_data, scratch_allocator,
                                     algorithm_config, output_profile_result);
@@ -3398,10 +3473,17 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
     LOG(FATAL) << "failed to set stream for cudnn handle: " << ToString(status);
   }
 
+  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  float falpha = 1.0;
+  double dalpha = 1.0;
+  void* alpha = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dalpha)
+                                                : static_cast<void*>(&falpha);
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  float fbeta = 0.0;
+  double dbeta = 0.0;
+  void* beta = cudnn_type == CUDNN_DATA_DOUBLE ? static_cast<void*>(&dbeta)
+                                               : static_cast<void*>(&fbeta);
 
   // TBD(keveman): remove once cuDNN supports kBatchYXDepth for backward pass.
   BatchDescriptor output_descriptor;
@@ -3410,7 +3492,6 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
   backward_output_data = MaybeTransformLayout(
       stream, &output_descriptor, backward_output_data, &transform_scratch);
 
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
   ScopedTensorDescriptor out_back_nd{parent_, output_descriptor, cudnn_type};
   ScopedTensorDescriptor input_nd{parent_, input_descriptor, cudnn_type};
   ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
@@ -3557,7 +3638,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
 #else
   status = wrap::cudnnConvolutionBackwardFilter_v3(
 #endif
-      parent_, ToHandle(dnn_handle_), /*alpha=*/&alpha,
+      parent_, ToHandle(dnn_handle_), /*alpha=*/alpha,
       /*srcDesc=*/input_nd.handle(),
       /*srcData=*/input_data.opaque(),
       /*diffDesc=*/out_back_nd.handle(),
@@ -3566,7 +3647,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       /*algo=*/algo,
       /*workSpace=*/scratch.opaque(),
       /*workSpaceSizeInBytes=*/scratch.size(),
-      /*beta=*/&beta,
+      /*beta=*/beta,
       /*gradDesc=*/filter.handle(),
       /*gradData=*/backward_filter_data->opaque());
 
@@ -3594,8 +3675,26 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
 
 bool CudnnSupport::DoConvolveBackwardFilter(
     Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<double> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<double>* backward_filter_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  return DoConvolveBackwardFilterImpl(stream, input_descriptor, input_data,
+                                      output_descriptor, backward_output_data,
+                                      convolution_descriptor, filter_descriptor,
+                                      backward_filter_data, scratch_allocator,
+                                      algorithm_config, output_profile_result);
+}
+
+bool CudnnSupport::DoConvolveBackwardFilter(
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_descriptor_in,
+    const dnn::BatchDescriptor& output_descriptor,
     DeviceMemory<float> backward_output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3603,17 +3702,17 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  return DoConvolveBackwardFilterImpl(
-      stream, input_descriptor, input_data, output_descriptor_in,
-      backward_output_data, convolution_descriptor, filter_descriptor,
-      backward_filter_data, scratch_allocator, algorithm_config,
-      output_profile_result);
+  return DoConvolveBackwardFilterImpl(stream, input_descriptor, input_data,
+                                      output_descriptor, backward_output_data,
+                                      convolution_descriptor, filter_descriptor,
+                                      backward_filter_data, scratch_allocator,
+                                      algorithm_config, output_profile_result);
 }
 
 bool CudnnSupport::DoConvolveBackwardFilter(
     Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_descriptor_in,
+    const dnn::BatchDescriptor& output_descriptor,
     DeviceMemory<Eigen::half> backward_output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -3621,11 +3720,11 @@ bool CudnnSupport::DoConvolveBackwardFilter(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  return DoConvolveBackwardFilterImpl(
-      stream, input_descriptor, input_data, output_descriptor_in,
-      backward_output_data, convolution_descriptor, filter_descriptor,
-      backward_filter_data, scratch_allocator, algorithm_config,
-      output_profile_result);
+  return DoConvolveBackwardFilterImpl(stream, input_descriptor, input_data,
+                                      output_descriptor, backward_output_data,
+                                      convolution_descriptor, filter_descriptor,
+                                      backward_filter_data, scratch_allocator,
+                                      algorithm_config, output_profile_result);
 }
 
 template <class T>

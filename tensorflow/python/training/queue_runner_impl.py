@@ -89,7 +89,7 @@ class QueueRunner(object):
         restoring from `queue_runner_def`.
       RuntimeError: If eager execution is enabled.
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError(
           "QueueRunners are not supported when eager execution is enabled. "
           "Instead, please use tf.data to get data into your model.")
@@ -441,7 +441,7 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
   use the `tf.data` API instead.
   @end_compatibility
   """
-  if context.in_eager_mode():
+  if context.executing_eagerly():
     raise RuntimeError("Queues are not compatible with eager execution.")
   if sess is None:
     sess = ops.get_default_session()

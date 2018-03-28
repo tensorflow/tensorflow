@@ -190,6 +190,116 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
   }
 }
 
+void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
+  // TransposeConv is unique in that it is specifically given the output shape
+  // as a 1D array on it's 1st input. Theoretically then, resolving the output
+  // shape is as easy as waiting for this input to be resolved. However, we also
+  // have to calculate the padding which requires the weights shape. So, we
+  // might as well calculate the output shape and ensure it matches the
+  // specified one
+
+  // Check if we have already run.
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    return;
+  }
+
+  // SPECIFIED OUTPUT SHAPE
+  // The below is the specified, or prescribed output shape, _given_ to the
+  // operator as an input.
+  auto& specified_output_shape_array =
+      model->GetArray(op->inputs[TransposeConvOperator::OUTPUT_SHAPE]);
+  if (!specified_output_shape_array.has_shape() ||
+      !specified_output_shape_array.buffer) {
+    // Yield until the specified output shape is resolved as a constant
+    return;
+  }
+
+  CHECK(specified_output_shape_array.data_type == ArrayDataType::kInt32)
+      << "TransposeConv input_dims must be int32";
+
+  CHECK(specified_output_shape_array.shape().dimensions_count() == 1 &&
+        specified_output_shape_array.shape().dims(0) == 4)
+      << "TransposeConv requires a 1D, 4 element array on it's 0th input "
+         "specifying the output shape. \""
+      << op->inputs[TransposeConvOperator::OUTPUT_SHAPE] << "\" had shape "
+      << toco::ShapeToString(specified_output_shape_array.shape());
+
+  // COMPUTE PADDING
+  // We require the weights shape to calculate padding.
+  const auto& weights_array =
+      model->GetArray(op->inputs[TransposeConvOperator::WEIGHTS]);
+  if (!weights_array.has_shape()) {
+    // Yield until weights dims have been resolved.
+    return;
+  }
+  const auto& weights_shape = weights_array.shape();
+  CHECK_EQ(weights_shape.dimensions_count(), 4)
+      << "TransposeConv weights must have 4 input dimensions. Input weights \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  CHECK(weights_shape.dims(0) == 1 && weights_shape.dims(3) == 1)
+      << "TransposeConv weights dimensions must begin and end with 1. Input "
+         "weights \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  // Compute padding
+  const int kheight = weights_shape.dims(1);
+  const int kwidth = weights_shape.dims(2);
+  op->padding.GetOrCreateFixedPadding();
+  if (op->padding.type == PaddingType::kValid) {
+    op->padding.fixed->height = 0;
+    op->padding.fixed->width = 0;
+  } else if (op->padding.type == PaddingType::kSame) {
+    op->padding.fixed->height = (kheight - 1) / 2;
+    op->padding.fixed->width = (kwidth - 1) / 2;
+  } else {
+    LOG(FATAL) << "TransposeConv only supports SAME or VALID padding";
+  }
+
+  // VALIDATE OUTPUT SHAPE
+  // Compute the output shape from the input and weights shapes to verify it
+  // agrees with the specified output shape.
+  const auto& input_array =
+      model->GetArray(op->inputs[TransposeConvOperator::DATA_INPUT]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  CHECK_EQ(input_shape.dimensions_count(), 4)
+      << "TransposeConv input shape must have 4 dimensions. Input \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  // Compute output shape
+  const int input_width = input_shape.dims(2);
+  const int input_height = input_shape.dims(1);
+  int output_height = op->stride_height * (input_height - 1);
+  int output_width = op->stride_width * (input_width - 1);
+  if (op->padding.type == PaddingType::kValid) {
+    output_height += kheight;
+    output_width += kwidth;
+  } else if (op->padding.type == PaddingType::kSame) {
+    output_height += 1;
+    output_width += 1;
+  }
+
+  CHECK(specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data ==
+        std::vector<int32>({input_shape.dims(0), output_height, output_width,
+                            weights_shape.dims(3)}))
+      << "Specified output shape: " << ShapeToString(output_array.shape())
+      << ", does not agree with shape computed from input data and weights: ["
+      << input_shape.dims(0) << ", " << output_height << ", " << output_width
+      << ", " << weights_shape.dims(3) << "].";
+
+  // SUCCESS: Set the op's output shape according to the specified output shape.
+  *(output_array.mutable_shape()->mutable_dims()) =
+      specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+}
+
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   if (!EnsureBiasVectorShape(model, op)) {
     return;
@@ -1300,7 +1410,7 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   std::vector<int32> const& perm =
       perm_array.GetBuffer<ArrayDataType::kInt32>().data;
   CHECK_EQ(perm.size(), input_shape.dimensions_count())
-      << "Transpose permutation input " << op->inputs[0]
+      << "Transpose permutation input " << op->inputs[1]
       << " must be same length as input dimensions";
   std::vector<int>* output_dims = output_array.mutable_shape()->mutable_dims();
   for (int i = 0; i < perm.size(); i++) {
@@ -1357,6 +1467,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
+    case OperatorType::kPRelu:
     case OperatorType::kSoftmax:
     case OperatorType::kLogSoftmax:
     case OperatorType::kLogistic:
@@ -1402,8 +1513,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));
       break;
     case OperatorType::kTransposeConv:
-      // Unimplemented, hopefully another graph transformation will drop it or
-      // rewrite it.
+      ProcessTransposeConvOperator(model,
+                                   static_cast<TransposeConvOperator*>(op));
       break;
     case OperatorType::kDepthwiseConv:
       ProcessDepthwiseConvOperator(model,
@@ -1541,6 +1652,12 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kTranspose:
       ProcessTransposeOperator(model, static_cast<TransposeOperator*>(op));
+      break;
+    case OperatorType::kDynamicPartition:
+    case OperatorType::kDynamicStitch:
+      // DynamicPartition/DynamicStitch are currently only supported for
+      // transforms that remove them, so we avoid propagating shapes through
+      // them and let things settle once they've been removed.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

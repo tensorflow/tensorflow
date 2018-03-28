@@ -106,7 +106,7 @@ class WALSModel(object):
       # the prep_gramian_op for row(column) can be run.
       worker_init_op = model.worker_init
 
-      # To be run once per interation sweep before the row(column) update
+      # To be run once per integration sweep before the row(column) update
       # initialize ops can be run. Note that in the distributed training
       # situations, this should only be run by the chief trainer. All other
       # trainers need to block until this is done.
@@ -118,9 +118,9 @@ class WALSModel(object):
       init_row_update_op = model.initialize_row_update_op
       init_col_update_op = model.initialize_col_update_op
 
-      # Ops to upate row(column). This can either take the entire sparse tensor
-      # or slices of sparse tensor. For distributed trainer, each trainer
-      # handles just part of the matrix.
+      # Ops to update row(column). This can either take the entire sparse
+      # tensor or slices of sparse tensor. For distributed trainer, each
+      # trainer handles just part of the matrix.
       _, row_update_op, unreg_row_loss, row_reg, _ = model.update_row_factors(
            sp_input=matrix_slices_from_queue_for_worker_shard)
       row_loss = unreg_row_loss + row_reg
@@ -220,7 +220,7 @@ class WALSModel(object):
         in the form of [[w_0, w_1, ...], [w_k, ... ], [...]], with the number of
         inner lists matching the number of row factor shards and the elements in
         each inner list are the weights for the rows of the corresponding row
-        factor shard. In this case,  w_ij = unonbserved_weight +
+        factor shard. In this case,  w_ij = unobserved_weight +
                                             row_weights[i] * col_weights[j].
         - If this is a single non-negative real number, this value is used for
         all row weights and w_ij = unobserved_weight + row_weights *
@@ -435,7 +435,7 @@ class WALSModel(object):
       gramian: Variable storing the gramian calculated from the factors.
 
     Returns:
-      A op that updates the gramian with the calcuated value from the factors.
+      A op that updates the gramian with the calculated value from the factors.
     """
     partial_gramians = []
     for f in factors:
@@ -564,7 +564,7 @@ class WALSModel(object):
 
     Note that specifically this initializes the cache of the row and column
     weights on workers when `use_factors_weights_cache` is True. In this case,
-    if these weights are being calcualted and reset after the object is created,
+    if these weights are being calculated and reset after the object is created,
     it is important to ensure this ops is run afterwards so the cache reflects
     the correct values.
     """

@@ -37,6 +37,14 @@ REGISTER_OP("UniqueDataset")
 Creates a dataset that contains the unique elements of `input_dataset`.
 )doc");
 
+REGISTER_OP("IteratorGetDevice")
+    .Input("resource: resource")
+    .Output("device: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns the name of the device on which `resource` has been placed.
+)doc");
+
 REGISTER_OP("FunctionBufferingResource")
     .Input("string_arg: string")
     .Input("target_device: string")
@@ -73,6 +81,15 @@ Gets the next element from a FunctionBufferingResource.
 function_buffer_resource: The FunctionBufferingResource handle.
 output: A list of return values.
 output_types: The type list for the return values.
+)doc");
+
+REGISTER_OP("FunctionBufferingResourceReset")
+    .Input("function_buffer_resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Resets the FunctionBufferingResource.
+
+function_buffer_resource: The FunctionBufferingResource handle.
 )doc");
 
 REGISTER_OP("ThreadPoolDataset")

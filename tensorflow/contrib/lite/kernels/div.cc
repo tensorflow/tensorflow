@@ -106,43 +106,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 #undef TF_LITE_DIV
 }
 
-template <KernelType kernel_type>
-void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                   TfLiteDivParams* params, const OpData* data,
-                   TfLiteTensor* input1, TfLiteTensor* input2,
-                   TfLiteTensor* output) {
-  auto input1_offset = -input1->params.zero_point;
-  auto input2_offset = -input2->params.zero_point;
-  auto output_offset = output->params.zero_point;
 
-  int32_t output_multiplier;
-  int output_shift;
-
-  double real_multiplier =
-      input1->params.scale * input2->params.scale / output->params.scale;
-  QuantizeMultiplierSmallerThanOne(real_multiplier, &output_multiplier,
-                                   &output_shift);
-
-  int32 output_activation_min, output_activation_max;
-  CalculateActivationRangeUint8(params->activation, output,
-                                &output_activation_min, &output_activation_max);
-
-#define TF_LITE_DIV(type, opname)                                      \
-  type::opname(GetTensorData<uint8_t>(input1), GetTensorDims(input1),  \
-               input1_offset, GetTensorData<uint8_t>(input2),          \
-               GetTensorDims(input2), input2_offset, output_offset,    \
-               output_multiplier, output_shift, output_activation_min, \
-               output_activation_max, GetTensorData<uint8_t>(output),  \
-               GetTensorDims(output));
-  // The quantized version of Div doesn't support activations, so we
-  // always use BroadcastDiv.
-  if (kernel_type == kReference) {
-    TF_LITE_DIV(reference_ops, BroadcastDiv);
-  } else {
-    TF_LITE_DIV(optimized_ops, BroadcastDiv);
-  }
-#undef TF_LITE_DIV
-}
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -155,9 +119,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteFloat32) {
     EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
-  } else if (output->type == kTfLiteUInt8) {
-    EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
-                               output);
   } else {
     context->ReportError(context,
                          "Div only supports FLOAT32 and quantized UINT8 now.");

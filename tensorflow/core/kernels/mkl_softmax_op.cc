@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "mkldnn.h"
 #include "mkldnn_types.h"
-#include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 #include "mkldnn.hpp"

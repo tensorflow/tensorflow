@@ -52,23 +52,6 @@ class FloatDivOpModel : public BaseDivOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
-// For quantized Div, the error shouldn't exceed (2*step + step^2).
-// The param min=-1.0 & max=1.0 is used in the following tests.
-// The tolerance value is ~0.0157.
-const float kQuantizedStep = 2.0 / 255.0;
-const float kQuantizedTolerance =
-    2.0 * kQuantizedStep + kQuantizedStep * kQuantizedStep;
-
-class QuantizedDivOpModel : public BaseDivOpModel {
- public:
-  using BaseDivOpModel::BaseDivOpModel;
-
-  std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
-  }
-};
-
 TEST(FloatDivOpTest, NoActivation) {
   FloatDivOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -121,46 +104,6 @@ TEST(FloatDivOpTest, WithBroadcast) {
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-2.0, 2.0, 0.7, 0.8, 1.1, -1.23})))
-        << "With shape number " << i;
-  }
-}
-
-TEST(QuantizedDivOpTest, NoActivation) {
-  QuantizedDivOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                        {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                        {TensorType_UINT8, {}, -1.0, 1.0},
-                        ActivationFunctionType_NONE);
-  m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.6, 0.2, 0.9, -0.7});
-  m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.8, 0.4, 0.9, -0.8});
-  m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({-0.75, 0.5, 1.0, 0.875},
-                                              kQuantizedTolerance)));
-}
-
-// for quantized Div, the error shouldn't exceed 2*step
-float GetTolerance(int min, int max) {
-  float kQuantizedStep = (max - min) / 255.0;
-  float kQuantizedTolerance = 2.0 * kQuantizedStep;
-  return kQuantizedTolerance;
-}
-
-TEST(QuantizedDivOpTest, WithBroadcast) {
-  float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
-  std::vector<std::initializer_list<int>> test_shapes = {
-      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedDivOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
-                          {TensorType_UINT8, {}, -3.0, 3.0},  // always a scalar
-                          {TensorType_UINT8, {}, -3.0, 3.0},
-                          ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.2,  0.2,   0.07,
-                                                0.08, 0.11, -0.123});
-    m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.1});
-    m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput(),
-                ElementsAreArray(ArrayFloatNear(
-                    {-2.0, 2.0, 0.7, 0.8, 1.1, -1.23}, kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }

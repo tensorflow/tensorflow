@@ -36,12 +36,14 @@ namespace tensorflow {
 // This class is only meant for internal use where one needs to
 // partially evaluate inexpensive nodes in a graph, such as for shape
 // inference or for constant folding.  Because of its limited, simple
-// use-cases, it executes all computation on the CPU and is not meant
-// to be particularly lightweight, fast, or efficient.
+// use-cases, it executes all computation on the given device (CPU by default)
+// and is not meant to be particularly lightweight, fast, or efficient.
 class GraphRunner {
  public:
   // REQUIRES: `env` is not nullptr.
   GraphRunner(Env* env);
+  // REQUIRES: 'device' is not nullptr. Not owned.
+  GraphRunner(Device* device);
   ~GraphRunner();
 
   // Function semantics for `inputs`, `output_names` and `outputs`
@@ -59,7 +61,8 @@ class GraphRunner {
              std::vector<Tensor>* outputs);
 
  private:
-  std::unique_ptr<Device> cpu_device_;
+  std::unique_ptr<Device> device_deleter_;
+  Device* const device_;
 };
 
 }  // namespace tensorflow

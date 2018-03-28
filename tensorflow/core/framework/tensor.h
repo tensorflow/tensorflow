@@ -482,6 +482,9 @@ class Tensor {
   friend class AutoReloadVariableOp;  // For access to set_shape
   friend class TensorTestHelper;      // For access to set_shape
   friend class OpKernelContext;       // For access to RefCountIsOne().
+  friend class ScopedAllocator;       // For access to buf_.
+  friend class XlaTensorBuffer;  // For access to the private constructor taking
+                                 // the buffer
   template <typename Device, typename T>
   friend class AssignVariableOp;  // For access to RefCountIsOne().
   template <typename Device, typename T>

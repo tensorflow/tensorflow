@@ -130,10 +130,8 @@ class KumaraswamyTest(test.TestCase):
       dist.prob([.1, .3, .6]).eval()
       dist.prob([.2, .3, .5]).eval()
       # Either condition can trigger.
-      with self.assertRaisesOpError("sample must be positive"):
+      with self.assertRaisesOpError("sample must be non-negative"):
         dist.prob([-1., 0.1, 0.5]).eval()
-      with self.assertRaisesOpError("sample must be positive"):
-        dist.prob([0., 0.1, 0.5]).eval()
       with self.assertRaisesOpError("sample must be no larger than `1`"):
         dist.prob([.1, .2, 1.2]).eval()
 
@@ -249,13 +247,13 @@ class KumaraswamyTest(test.TestCase):
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
       dist = kumaraswamy_lib.Kumaraswamy(a, b, allow_nan_stats=False)
-      with self.assertRaisesOpError("Condition x < y.*"):
+      with self.assertRaisesOpError("Mode undefined for concentration1 <= 1."):
         dist.mode().eval()
 
       a = np.array([2., 2, 3])
       b = np.array([1., 4, 1.2])
       dist = kumaraswamy_lib.Kumaraswamy(a, b, allow_nan_stats=False)
-      with self.assertRaisesOpError("Condition x < y.*"):
+      with self.assertRaisesOpError("Mode undefined for concentration0 <= 1."):
         dist.mode().eval()
 
   def testKumaraswamyModeEnableAllowNanStats(self):

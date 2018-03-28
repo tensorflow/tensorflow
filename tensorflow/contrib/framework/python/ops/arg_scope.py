@@ -142,7 +142,7 @@ def arg_scope(list_ops_or_scope, **kwargs):
   else:
     # Assumes that list_ops_or_scope is a list/tuple of ops with kwargs.
     if not isinstance(list_ops_or_scope, (list, tuple)):
-      raise TypeError('list_ops_or_scope must either be a list/tuple or reused'
+      raise TypeError('list_ops_or_scope must either be a list/tuple or reused '
                       'scope (i.e. dict)')
     try:
       current_scope = current_arg_scope().copy()

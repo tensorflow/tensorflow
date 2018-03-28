@@ -168,8 +168,10 @@ py_test(
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_oss",
         "no_pip",
+        "notap",
     ],
     deps = [
         ":dataset_serialization_test",
@@ -295,6 +297,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -476,7 +479,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "no_oss",  # b/68785503
+        "no_oss",
+        "notap",
     ],
     deps = [
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
@@ -490,6 +494,23 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+    ],
+)
+
+tf_py_test(
+    name = "slide_dataset_op_test",
+    size = "small",
+    srcs = ["slide_dataset_op_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//third_party/py/numpy",
     ],
 )
 

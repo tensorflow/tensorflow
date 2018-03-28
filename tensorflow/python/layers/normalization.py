@@ -319,7 +319,6 @@ class BatchNormalization(base.Layer):
           initializer=self.moving_variance_initializer,
           trainable=False)
 
-      self._one_minus_decay = 1.0 - self.momentum
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
         # These are used in training and thus are different from the moving
@@ -338,8 +337,9 @@ class BatchNormalization(base.Layer):
           return var
 
         with ops.device(None):
-          device = ((lambda _: self.moving_mean.device)
-                    if context.in_graph_mode() else self.moving_mean.device)
+          device = (
+              self.moving_mean.device if context.executing_eagerly() else
+              (lambda _: self.moving_mean.device))
           with ops.device(device):
             self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
             self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
@@ -347,8 +347,9 @@ class BatchNormalization(base.Layer):
           # renorm_stddev_weight. This allows us to (1) mix the average
           # stddev with the minibatch stddev early in training, and (2) compute
           # the unbiased average stddev by dividing renorm_stddev by the weight.
-          device = ((lambda _: self.moving_variance.device)
-                    if context.in_graph_mode() else self.moving_variance.device)
+          device = (
+              self.moving_variance.device if context.executing_eagerly() else
+              (lambda _: self.moving_variance.device))
           with ops.device(device):
             self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
             self.renorm_stddev_weight = _renorm_variable(
@@ -358,20 +359,15 @@ class BatchNormalization(base.Layer):
         self._scope.set_partitioner(partitioner)
     self.built = True
 
-  def _assign_moving_average(self, variable, value, one_minus_decay):
+  def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
-                        [variable, value, one_minus_decay]) as scope:
+                        [variable, value, momentum]) as scope:
       with ops.colocate_with(variable):
-        update_delta = math_ops.multiply(
-            math_ops.subtract(variable.read_value(), value),
-            one_minus_decay)
-        if isinstance(variable, resource_variable_ops.ResourceVariable):
-          # state_ops.assign_sub does an extra read_variable_op after the
-          # assign. We avoid that here.
-          return gen_resource_variable_ops.assign_sub_variable_op(
-              variable.handle, update_delta, name=scope)
-        else:
-          return state_ops.assign_sub(variable, update_delta, name=scope)
+        decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
+        if decay.dtype != variable.dtype.base_dtype:
+          decay = math_ops.cast(decay, variable.dtype.base_dtype)
+        update_delta = (variable - value) * decay
+        return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -410,22 +406,16 @@ class BatchNormalization(base.Layer):
 
     training_value = utils.constant_value(training)
     if training_value is None:
-      one_minus_decay = utils.smart_cond(training,
-                                         lambda: self._one_minus_decay,
-                                         lambda: 0.)
+      momentum = utils.smart_cond(training, lambda: self.momentum, lambda: 1.0)
     else:
-      one_minus_decay = ops.convert_to_tensor(self._one_minus_decay)
+      momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
       mean_update = self._assign_moving_average(self.moving_mean, mean,
-                                                one_minus_decay)
+                                                momentum)
       variance_update = self._assign_moving_average(self.moving_variance,
-                                                    variance, one_minus_decay)
-      if context.in_graph_mode():
-        # Note that in Eager mode, the updates are already executed when running
-        # assign_moving_averages. So we do not need to put them into
-        # collections.
-        self.add_update(mean_update, inputs=inputs)
-        self.add_update(variance_update, inputs=inputs)
+                                                    variance, momentum)
+      self.add_update(mean_update, inputs=inputs)
+      self.add_update(variance_update, inputs=inputs)
 
     return output
 
@@ -462,6 +452,7 @@ class BatchNormalization(base.Layer):
       """Updates a moving average and weight, returns the unbiased value."""
       value = array_ops.identity(value)
       def _do_update():
+        """Updates the var and weight, returns their updated ratio."""
         # Update the variables without zero debiasing. The debiasing will be
         # accomplished by dividing the exponential moving average by the weight.
         # For example, after a single update, the moving average would be
@@ -470,11 +461,14 @@ class BatchNormalization(base.Layer):
         # Make sure the weight is not updated until before r and d computation.
         with ops.control_dependencies([value]):
           weight_value = array_ops.constant(1., dtype=weight.dtype)
-        new_var = moving_averages.assign_moving_average(
-            var, value, self.renorm_momentum, zero_debias=False)
-        new_weight = moving_averages.assign_moving_average(
-            weight, weight_value, self.renorm_momentum, zero_debias=False)
+        new_var = self._assign_moving_average(var, value, self.renorm_momentum)
+        new_weight = self._assign_moving_average(weight, weight_value,
+                                                 self.renorm_momentum)
+        # TODO(yuefengz): the updates to var and weighted can not be batched
+        # together if we fetch their updated values here. Consider calculating
+        # new values and delaying the updates.
         return new_var / new_weight
+
       def _fake_update():
         return array_ops.identity(var)
       return utils.smart_cond(training, _do_update, _fake_update)
@@ -493,7 +487,7 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
-    in_eager_mode = context.in_eager_mode()
+    in_eager_mode = context.executing_eagerly()
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -599,8 +593,7 @@ class BatchNormalization(base.Layer):
         if in_eager_mode and not self.trainable:
           return
 
-        return moving_averages.assign_moving_average(
-            var, value, self.momentum, zero_debias=False)
+        return self._assign_moving_average(var, value, self.momentum)
 
       mean_update = utils.smart_cond(
           training,
@@ -610,7 +603,7 @@ class BatchNormalization(base.Layer):
           training,
           lambda: _do_update(self.moving_variance, new_variance),
           lambda: self.moving_variance)
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         self.add_update(mean_update, inputs=inputs)
         self.add_update(variance_update, inputs=inputs)
 
@@ -671,9 +664,16 @@ def batch_normalization(inputs,
 
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
-  need to be added as a dependency to the `train_op`. For example:
+  need to be added as a dependency to the `train_op`. Also, be sure to add
+  any batch_normalization ops before getting the update_ops collection.
+  Otherwise, update_ops will be empty, and training/inference will not work
+  properly. For example:
 
   ```python
+    x_norm = tf.layers.batch_normalization(x, training=training)
+
+    # ...
+
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss)

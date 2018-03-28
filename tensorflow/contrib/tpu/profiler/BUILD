@@ -18,7 +18,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_profiler_proto",
     srcs = ["tpu_profiler.proto"],
     has_services = 1,
@@ -98,16 +98,36 @@ tf_cc_test(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "op_profile_proto",
     srcs = ["op_profile.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tf_op_stats_proto",
     srcs = ["tf_op_stats.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "tpu_profiler_analysis_proto",
+    srcs = ["tpu_profiler_analysis.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    protodeps = [":tpu_profiler_proto"] + tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "tpu_profiler_analysis_pb2_grpc",
+    srcs = ["tpu_profiler_analysis_pb2_grpc.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_profiler_analysis_proto_py",
+    ],
 )
