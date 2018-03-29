@@ -1,8 +1,9 @@
 index.md
 
 ### High Level APIs
-estimators.md
+eager.md
 datasets.md
+estimators.md
 
 ### Low Level APIs
 low_level_intro.md
