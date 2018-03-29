@@ -129,6 +129,11 @@ cc_library(
 )
 
 cc_library(
+    name = "stacktrace",
+    srcs = [],
+)
+
+cc_library(
     name = "gif",
     copts = tf_copts(),
     deps = [
@@ -217,16 +222,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

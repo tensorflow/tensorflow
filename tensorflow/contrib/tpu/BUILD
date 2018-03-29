@@ -119,6 +119,8 @@ py_library(
     srcs = ["python/profiler/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_pb2_grpc",
+        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_proto_py",
         "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
         "//tensorflow/python:util",
     ],
@@ -280,17 +282,4 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

@@ -309,6 +309,8 @@ bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
 
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
 
+bool IsSquare(const NodeDef& node) { return node.op() == "Square"; }
+
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
 }

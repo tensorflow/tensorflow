@@ -50,6 +50,12 @@ constexpr char kPreventGradient[] = "PreventGradient";
 constexpr char kGather[] = "Gather";
 constexpr char kGatherV2[] = "GatherV2";
 constexpr char kSlice[] = "Slice";
+constexpr char kMaxPool[] = "MaxPool";
+constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
+constexpr char kAvgPool[] = "AvgPool";
+constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
+constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
+constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -71,11 +77,36 @@ Padding GetPadding(const OpInfo& op_features) {
   return Padding::SAME;  // Default padding.
 }
 
+bool IsTraining(const OpInfo& op_info) {
+  if (op_info.attr().find("is_training") != op_info.attr().end() &&
+      op_info.attr().at("is_training").b()) {
+    return true;
+  }
+  return false;
+}
+
+// TODO(dyoon): support non-4D tensors in the c ost functions of convolution
+// related ops (Conv, Pool, BatchNorm, and their backprops) and the related
+// helper functions.
 std::vector<int64> GetStrides(const OpInfo& op_features) {
   if (op_features.attr().find("strides") != op_features.attr().end()) {
     const auto strides = op_features.attr().at("strides").list().i();
+    CHECK(strides.size() == 4) << "Attr strides is not a length-4 vector: "
+                               << op_features.DebugString();
     return {strides[0], strides[1], strides[2], strides[3]};
   }
+  return {1, 1, 1, 1};
+}
+
+std::vector<int64> GetKernelSize(const OpInfo& op_info) {
+  if (op_info.attr().find("ksize") != op_info.attr().end()) {
+    const auto ksize = op_info.attr().at("ksize").list().i();
+    CHECK(ksize.size() == 4)
+        << "Attr ksize is not a length-4 vector: " << op_info.DebugString();
+    return {ksize[0], ksize[1], ksize[2], ksize[3]};
+  }
+  // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
+  // {1, 1, 1, 1} in that case.
   return {1, 1, 1, 1};
 }
 
@@ -171,9 +202,12 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
+      // TODO(76227186): re-enable with output size check & test
+      /*
       {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
       {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      */
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
@@ -190,7 +224,15 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
+      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kMaxPool, wrap(&OpLevelCostEstimator::PredictMaxPool)},
+      {kMaxPoolGrad, wrap(&OpLevelCostEstimator::PredictMaxPoolGrad)},
+      {kAvgPool, wrap(&OpLevelCostEstimator::PredictAvgPool)},
+      {kAvgPoolGrad, wrap(&OpLevelCostEstimator::PredictAvgPoolGrad)},
+      {kFusedBatchNorm, wrap(&OpLevelCostEstimator::PredictFusedBatchNorm)},
+      {kFusedBatchNormGrad,
+       wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad)},
+  };
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
 
@@ -255,6 +297,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                       {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
                       {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
                       {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
+                      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
                       {"SquareDifference", 1},
                       {"Sub", EIGEN_COST(scalar_difference_op<float>)},
                       {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
@@ -1038,6 +1081,270 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
   costs.inaccurate = unknown_shapes;
   costs.max_memory = output_size;
 
+  return costs;
+}
+
+/* static */
+OpLevelCostEstimator::ConvolutionDimensions
+OpLevelCostEstimator::OpDimensionsFromInputs(
+    const TensorShapeProto& original_image_shape, const OpInfo& op_info,
+    bool* found_unknown_shapes) {
+  VLOG(2) << "op features: " << op_info.DebugString();
+  VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  auto image_shape =
+      MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+
+  int x_index, y_index, channel_index;
+  const string& data_format = GetDataFormat(op_info);
+  if (data_format == "NCHW") {
+    x_index = 2;
+    y_index = 3;
+    channel_index = 1;
+  } else {
+    x_index = 1;
+    y_index = 2;
+    channel_index = 3;
+  }
+  int64 batch = image_shape.dim(0).size();
+  int64 ix = image_shape.dim(x_index).size();
+  int64 iy = image_shape.dim(y_index).size();
+  int64 iz = image_shape.dim(channel_index).size();
+
+  // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
+  // {1, 1, 1, 1} in that case.
+  std::vector<int64> ksize = GetKernelSize(op_info);
+  int64 kx = ksize[x_index];
+  int64 ky = ksize[y_index];
+
+  std::vector<int64> strides = GetStrides(op_info);
+  int64 sx = strides[x_index];
+  int64 sy = strides[y_index];
+  const auto padding = GetPadding(op_info);
+
+  int64 ox = GetOutputSize(ix, kx, sx, padding);
+  int64 oy = GetOutputSize(iy, ky, sy, padding);
+  int64 oz = iz;
+
+  OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
+      batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
+  return conv_dims;
+}
+
+Costs OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  // kx * ky - 1 comparisons per output (kx * xy > 1)
+  // or 1 copy per output (kx * k1 = 1).
+  int per_output_ops = dims.kx * dims.ky == 1 ? 1 : dims.kx * dims.ky - 1;
+  int64 ops = dims.batch * dims.ox * dims.oy * dims.oz * per_output_ops;
+
+  double total_input_size = 0;
+  if (dims.ky >= dims.sy) {
+    total_input_size =
+        CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  } else {  // dims.ky < dims.sy
+    // Vertical stride is larger than vertical kernel; assuming row-major
+    // format, skip unnecessary rows (or read every kx rows per sy rows, as the
+    // others are not used for output).
+    const auto data_size = DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+    total_input_size =
+        data_size * dims.batch * dims.ix * dims.ky * dims.oy * dims.iz;
+  }
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictMaxPoolGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  // y: op_info.inputs(1)
+  // y_grad: op_info.inputs(2)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  if (dims.kx == 1 && dims.ky == 1) {
+    // 1x1 window. No need to know which input was max.
+    ops = dims.batch * dims.ix * dims.iy * dims.iz;
+  } else if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
+    // Non-overlapping window: re-run maxpool, then assign zero or y_grad.
+    ops = dims.batch * dims.iz *
+          (dims.ox * dims.oy * (dims.kx * dims.ky - 1) + dims.ix * dims.iy);
+  } else {
+    // Overlapping window: initialize with zeros, re-run maxpool, then
+    // accumulate y_gad to proper x_grad locations.
+    ops = dims.batch * dims.iz *
+          (dims.ox * dims.oy * (dims.kx * dims.ky - 1) + dims.ix * dims.iy * 2);
+  }
+
+  // Just read x and y_grad; no need to read y as we assume MaxPoolGrad re-run
+  // MaxPool internally.
+  double total_input_size =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  total_input_size +=
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+  // Write x_grad; size equal to x.
+  const double total_output_size =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+
+  // kx * ky - 1 additions and 1 multiplication per output.
+  int64 ops = dims.batch * dims.ox * dims.oy * dims.oz * dims.kx * dims.ky;
+
+  double total_input_size = 0;
+  if (dims.ky >= dims.sy) {
+    total_input_size =
+        CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  } else {  // dims.ky < dims.sy
+    // vertical stride is larger than vertical kernel; assuming row-major
+    // format, skip unnecessary rows (or read every kx rows per sy rows, as the
+    // others are not used for output).
+    const auto data_size = DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+    total_input_size =
+        data_size * dims.batch * dims.ix * dims.ky * dims.oy * dims.iz;
+  }
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictAvgPoolGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  // y_grad: op_info.inputs(1)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
+    // Non-overlapping window.
+    ops = dims.batch * dims.iz * (dims.ix * dims.iy + dims.ox * dims.oy);
+  } else {
+    // Overlapping window.
+    ops = dims.batch * dims.iz *
+          (dims.ix * dims.iy + dims.ox * dims.oy * (dims.kx * dims.ky + 1));
+  }
+
+  const double total_input_size =
+      CalculateInputSize(op_info, &found_unknown_shapes);
+  const double total_output_size =
+      CalculateOutputSize(op_info, &found_unknown_shapes);
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedBatchNorm(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // x: op_info.inputs(0)
+  // scale: op_info.inputs(1)
+  // offset: op_info.inputs(2)
+  // mean: op_info.inputs(3)  --> only for inference
+  // variance: op_info.inputs(4) --> only for inference
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  const bool is_training = IsTraining(op_info);
+
+  int64 ops = 0;
+  const auto rsqrt_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_rsqrt_op<float>>::Cost;
+  if (is_training) {
+    ops = dims.iz * (dims.batch * dims.ix * dims.iy * 4 + 6 + rsqrt_cost);
+  } else {
+    ops = dims.batch * dims.ix * dims.iy * dims.iz * 2;
+  }
+
+  const double size_nhwc =
+      CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
+  const double size_c =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  double total_input_size = 0.0;
+  double total_internal_read_size = 0.0;
+  double total_output_size = 0.0;
+  if (is_training) {
+    total_input_size = size_nhwc + size_c * 2;
+    total_output_size = size_nhwc + size_c * 4;
+    total_internal_read_size = size_nhwc;
+  } else {
+    total_input_size = size_nhwc + size_c * 4;
+    total_output_size = size_nhwc;
+  }
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size + total_internal_read_size,
+      op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
+    const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const auto& op_info = op_context.op_info;
+  // y_backprop: op_info.inputs(0)
+  // x: op_info.inputs(1)
+  // scale: op_info.inputs(2)
+  // mean: op_info.inputs(3)
+  // variance or inverse of variance: op_info.inputs(4)
+  ConvolutionDimensions dims = OpDimensionsFromInputs(
+      op_info.inputs(1).shape(), op_info, &found_unknown_shapes);
+
+  int64 ops = 0;
+  const auto rsqrt_cost = Eigen::internal::functor_traits<
+      Eigen::internal::scalar_rsqrt_op<float>>::Cost;
+  ops = dims.iz * (dims.batch * dims.ix * dims.iy * 11 + 5 + rsqrt_cost);
+
+  const double size_nhwc =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  const double size_c =
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+  double total_input_size = size_nhwc * 2 + size_c * 2;
+  double total_internal_read_size = size_nhwc;
+  double total_output_size = size_nhwc * 1 + size_c * 2;
+
+  Costs costs = PredictOpCountBasedCost(
+      ops, total_input_size + total_output_size + total_internal_read_size,
+      op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
   return costs;
 }
 

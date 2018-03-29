@@ -299,6 +299,11 @@ message ComputationStatsRequest {
   DebugOptions debug_options = 2;
 }
 
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
+  DebugOptions debug_options = 2;
+}
+
 message ComputationStatsResponse {
   ComputationStats stats = 1;
 }
@@ -353,6 +358,10 @@ message ExecuteGraphRequest {
 
 message ExecuteParallelRequest {
   repeated ExecuteRequest requests = 1;
+}
+
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
 }
 
 message ExecuteResponse {

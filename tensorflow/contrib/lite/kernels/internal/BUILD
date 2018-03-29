@@ -431,15 +431,3 @@ cc_library(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

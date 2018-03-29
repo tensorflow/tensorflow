@@ -688,7 +688,7 @@ class RunConfig(object):
 
     Only the properties in the following list are allowed to be replaced:
 
-      - `model_dir`.
+      - `model_dir`,
       - `tf_random_seed`,
       - `save_summary_steps`,
       - `save_checkpoints_steps`,
@@ -697,6 +697,7 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
+      - `distribute`.
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

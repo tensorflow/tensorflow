@@ -28,7 +28,59 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class ConstantFoldingTest : public GrapplerTest {};
+class ConstantFoldingTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void SimpleNeutralElementTest() {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output x = ops::Placeholder(s.WithOpName("x"), DTYPE,
+                                ops::Placeholder::Shape(TensorShape({2, 2})));
+    Tensor zeros_t(DTYPE, TensorShape({2, 2}));
+    Tensor ones_t(DTYPE, TensorShape({2, 2}));
+    Tensor x_t(DTYPE, TensorShape({2, 2}));
+    for (int i = 0; i < 4; ++i) {
+      zeros_t.flat<T>()(i) = T(0);
+      ones_t.flat<T>()(i) = T(1);
+      x_t.flat<T>()(i) = T(i + 1);
+    }
+    Output zeros = ops::Const(s.WithOpName("zeros"), zeros_t);
+    Output ones = ops::Const(s.WithOpName("ones"), ones_t);
+    Output mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
+    Output mul2 = ops::Mul(s.WithOpName("mul2"), x, ones);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"mul1", "mul2"};
+    ConstantFolding optimizer(nullptr /* cpu_device */);
+    GraphDef output;
+    Status status = optimizer.Optimize(nullptr, item, &output);
+    TF_EXPECT_OK(status);
+    LOG(INFO) << output.DebugString();
+    EXPECT_EQ(5, output.node_size());
+    for (int i = 0; i < output.node_size(); ++i) {
+      const NodeDef& node = output.node(i);
+      const string& name = node.name();
+      if (name == "mul1") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "mul2") {
+        EXPECT_EQ("Snapshot", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+      }
+    }
+    auto tensors_expected =
+        EvaluateNodes(item.graph, {"mul1", "mul2"}, {{"x", x_t}});
+    auto tensors = EvaluateNodes(output, {"mul1", "mul2"}, {{"x", x_t}});
+    EXPECT_EQ(2, tensors_expected.size());
+    EXPECT_EQ(2, tensors.size());
+    for (int i = 0; i < 2; ++i) {
+      test::ExpectTensorEqual<T>(tensors_expected[i], tensors[i]);
+    }
+  }
+};
 
 TEST_F(ConstantFoldingTest, SimpleFolding) {
   // Build a simple graph with a few trivially prunable ops.
@@ -320,6 +372,11 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
       }
     }
   }
+}
+
+TEST_F(ConstantFoldingTest, NeutralElement_ShortFloats) {
+  SimpleNeutralElementTest<DT_HALF>();
+  SimpleNeutralElementTest<DT_BFLOAT16>();
 }
 
 TEST_F(ConstantFoldingTest, StrengthReduce_Reciprocal) {
@@ -614,7 +671,8 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   GrapplerItem item;
   item.fetch.push_back("e");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -641,6 +699,9 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
     }
   }
   EXPECT_EQ(1, found);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, ControlDependenciesEmptyFetch) {
@@ -714,7 +775,8 @@ TEST_F(ConstantFoldingTest, ControlDependenciesDeduplicate) {
   GrapplerItem item;
   item.fetch.push_back("i2");
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -733,6 +795,9 @@ TEST_F(ConstantFoldingTest, ControlDependenciesDeduplicate) {
       EXPECT_EQ("^p2", node.input(1));
     }
   }
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
@@ -1742,6 +1807,12 @@ TEST_F(ConstantFoldingTest, LargeConstant) {
   EXPECT_EQ(2, found);
 
   EXPECT_GT(1024 * 1024, output.ByteSizeLong());
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {

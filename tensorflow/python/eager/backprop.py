@@ -646,6 +646,13 @@ _default_vspace = imperative_grad.VSpace(
     ones=_ones)
 
 
+def _handle_or_self(x):
+  """If x is ResourceVariable, return its handle, else x."""
+  if isinstance(x, resource_variable_ops.ResourceVariable):
+    x = x.handle
+  return x
+
+
 @tf_export("GradientTape")
 class GradientTape(object):
   """Record operations for automatic differentiation.
@@ -723,9 +730,7 @@ class GradientTape(object):
       tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
-      if isinstance(t, resource_variable_ops.ResourceVariable):
-        t = t.handle
-      tape.watch(t)
+      tape.watch(_handle_or_self(t))
 
   def watched_variables(self):
     # Sorting variables by id, which is monotonically increasing in construction
@@ -739,14 +744,15 @@ class GradientTape(object):
 
     Args:
       target: Tensor to be differentiated.
-      sources: a list of Tensors or Variables. `target` will be differentiated
-        against elements in `sources`.
+      sources: a list or nested structure of Tensors or Variables. `target`
+        will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
         target. Defaults to None.
 
     Returns:
-      a list of Tensors (or IndexedSlices, or None), one for each element in
-      `sources`.
+      a list or nested structure of Tensors (or IndexedSlices, or None),
+      one for each element in `sources`. Returned structure is the same as
+      the structure of `sources`.
 
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
@@ -756,12 +762,15 @@ class GradientTape(object):
       raise RuntimeError("GradientTape.gradient can only be called once "
                          "on non-persistent tapes, and "
                          "only when the context manager has exited.")
-    sources = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
-               else x
-               for x in sources]
-    grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], sources,
+    flat_sources = nest.flatten(sources)
+    flat_sources = [_handle_or_self(x) for x in flat_sources]
+
+    flat_grad = imperative_grad.imperative_grad(
+        _default_vspace, self._tape, [target], flat_sources,
         output_gradients=output_gradients)
+
     if not self._persistent:
       self._tape = None
+
+    grad = nest.pack_sequence_as(sources, flat_grad)
     return grad

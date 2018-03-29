@@ -1836,8 +1836,10 @@ def softmax_cross_entropy_with_logits_v2(
                       [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
+    convert_to_float32 = (
+        logits.dtype == dtypes.float16 or logits.dtype == dtypes.bfloat16)
     precise_logits = math_ops.cast(
-        logits, dtypes.float32) if (logits.dtype == dtypes.float16) else logits
+        logits, dtypes.float32) if convert_to_float32 else logits
     # labels and logits must be of the same type
     labels = math_ops.cast(labels, precise_logits.dtype)
     input_rank = array_ops.rank(precise_logits)
@@ -1883,8 +1885,8 @@ def softmax_cross_entropy_with_logits_v2(
       del shape[dim]
       cost.set_shape(shape)
 
-    if logits.dtype == dtypes.float16:
-      return math_ops.cast(cost, dtypes.float16)
+    if convert_to_float32:
+      return math_ops.cast(cost, logits.dtype)
     else:
       return cost
 

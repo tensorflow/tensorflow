@@ -1071,7 +1071,12 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
       }
       TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
 
-      if (!c->RankKnown(c->output(1)) || c->Rank(c->output(1)) != 2) {
+      if (!c->RankKnown(c->output(1))) {
+        return errors::InvalidArgument(
+            "Shape must be broadcasted with rank 2, but is rank is unknown.");
+      }
+
+      if (c->Rank(c->output(1)) != 2) {
         return errors::InvalidArgument(
             "Shape must be broadcasted with rank 2, but is rank ",
             c->Rank(c->output(1)));

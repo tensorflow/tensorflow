@@ -232,7 +232,7 @@ class Context(object):
             pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
                 opts, self._device_policy)
           if self._execution_mode == ASYNC:
-            pywrap_tensorflow.TFE_ContextOptionsSetAsync(True)
+            pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
           self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)

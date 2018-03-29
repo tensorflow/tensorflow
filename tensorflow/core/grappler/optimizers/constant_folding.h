@@ -83,7 +83,7 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceOperationWithSnapshot(int input_to_forward, NodeDef* node,
                                     GraphDef* graph);
   void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
-  Status ReplaceOperationWithConstant(double value,
+  Status ReplaceOperationWithConstant(double value, const AttrValue& dtype_attr,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
