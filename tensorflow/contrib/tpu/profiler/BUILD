@@ -127,7 +127,5 @@ py_library(
     srcs = ["tpu_profiler_analysis_pb2_grpc.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_profiler_analysis_proto_py",
-    ],
+    deps = [":tpu_profiler_analysis_proto_py"],
 )

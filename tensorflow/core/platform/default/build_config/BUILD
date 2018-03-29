@@ -129,6 +129,11 @@ cc_library(
 )
 
 cc_library(
+    name = "stacktrace",
+    srcs = [],
+)
+
+cc_library(
     name = "gif",
     copts = tf_copts(),
     deps = [

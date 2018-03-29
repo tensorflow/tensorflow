@@ -60,6 +60,10 @@ class ServiceInterface {
   virtual tensorflow::Status ExecuteParallel(
       const ExecuteParallelRequest* arg, ExecuteParallelResponse* result) = 0;
 
+  virtual tensorflow::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg,
+      ExecuteParallelResponse* result) = 0;
+
   virtual tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
                                           ExecuteAsyncResponse* result) = 0;
 
@@ -71,6 +75,10 @@ class ServiceInterface {
 
   virtual tensorflow::Status GetComputationStats(
       const ComputationStatsRequest* arg, ComputationStatsResponse* result) = 0;
+
+  virtual tensorflow::Status GetComputationGraphStats(
+      const ComputationGraphStatsRequest* arg,
+      ComputationStatsResponse* result) = 0;
 
   virtual tensorflow::Status GetComputationShape(
       const GetComputationShapeRequest* arg,

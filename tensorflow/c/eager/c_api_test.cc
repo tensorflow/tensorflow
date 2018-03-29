@@ -688,12 +688,12 @@ TEST(CAPI, Execute_Min_CPU) {
   TFE_DeleteOp(minOp);
   TFE_DeleteTensorHandle(input);
   TFE_DeleteTensorHandle(axis);
-  TFE_DeleteContext(ctx, status);
-  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   ASSERT_EQ(1, num_retvals);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteTensorHandle(retvals[0]);
+  TFE_DeleteContext(ctx, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   float output[2] = {0};
   EXPECT_EQ(sizeof(output), TF_TensorByteSize(t));

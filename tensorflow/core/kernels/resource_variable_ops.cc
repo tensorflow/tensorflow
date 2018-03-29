@@ -503,6 +503,7 @@ class ResourceGatherOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref su(v);
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
