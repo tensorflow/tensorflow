@@ -1077,12 +1077,12 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
                cell,
                attention_mechanism,
                attention_layer_size=None,
-               attention_layer=None,
                alignment_history=False,
                cell_input_fn=None,
                output_attention=True,
                initial_cell_state=None,
-               name=None):
+               name=None,
+               attention_layer=None):
     """Construct the `AttentionWrapper`.
 
     **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
@@ -1127,12 +1127,6 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         attention at each time step. If attention_mechanism is a list,
         attention_layer_size must be a list of the same length. If
         attention_layer is set, this must be None.
-      attention_layer: A list of `tf.layers.Layer` instances or a
-        single `tf.layers.Layer` instance taking the context and cell output as
-        inputs to generate attention at each time step. If None (default), use
-        the context as attention at each time step. If attention_mechanism is a
-        list, attention_layer must be a list of the same length. If
-        attention_layers_size is set, this must be None.
       alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
         time major `TensorArray` on which you must call `stack()`).
@@ -1152,6 +1146,12 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         does not match the batch size of `initial_cell_state`, proper
         behavior is not guaranteed.
       name: Name to use when creating ops.
+      attention_layer: A list of `tf.layers.Layer` instances or a
+        single `tf.layers.Layer` instance taking the context and cell output as
+        inputs to generate attention at each time step. If None (default), use
+        the context as attention at each time step. If attention_mechanism is a
+        list, attention_layer must be a list of the same length. If
+        attention_layers_size is set, this must be None.
 
     Raises:
       TypeError: `attention_layer_size` is not None and (`attention_mechanism`

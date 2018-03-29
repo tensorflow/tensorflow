@@ -197,8 +197,8 @@ class AttentionWrapperTest(test.TestCase):
             cell,
             attention_mechanisms if is_multi else attention_mechanisms[0],
             attention_layer_size=attention_layer_size,
-            attention_layer=attention_layer,
-            alignment_history=alignment_history)
+            alignment_history=alignment_history,
+            attention_layer=attention_layer)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
         my_decoder = basic_decoder.BasicDecoder(
