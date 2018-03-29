@@ -33,7 +33,7 @@ from tensorflow.python.util import compat
 
 
 def _time_resampling(
-        test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
+    test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
   dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
   dataset = dataset.repeat(100)
 
@@ -41,11 +41,11 @@ def _time_resampling(
   apply_fn = (resampling.rejection_resample_v2 if use_v2 else
               resampling.rejection_resample)
   dataset = dataset.apply(
-    apply_fn(
-      class_func=lambda x: x,
-      target_dist=target_dist,
-      initial_dist=init_dist,
-      seed=142))
+      apply_fn(
+          class_func=lambda x: x,
+          target_dist=target_dist,
+          initial_dist=init_dist,
+          seed=142))
 
   iterator = dataset.make_initializable_iterator()
   get_next = iterator.get_next()
@@ -80,15 +80,15 @@ class ResampleTest(test.TestCase):
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
-      200, seed=21).map(lambda c: (c, string_ops.as_string(c)))
+        200, seed=21).map(lambda c: (c, string_ops.as_string(c)))
     apply_fn = (resampling.rejection_resample_v2 if use_v2 else
                 resampling.rejection_resample)
     iterator = dataset.apply(
-      apply_fn(
-        target_dist=target_dist,
-        initial_dist=initial_dist,
-        class_func=lambda c, _: c,
-        seed=27)).make_initializable_iterator()
+        apply_fn(
+            target_dist=target_dist,
+            initial_dist=initial_dist,
+            class_func=lambda c, _: c,
+            seed=27)).make_initializable_iterator()
     get_next = iterator.get_next()
     initializer = iterator.initializer
 
@@ -159,8 +159,6 @@ class ResampleTest(test.TestCase):
 
     fast_time = _time_resampling(self, data_np, target_dist, init_dist,
                                  use_v2=True, num_to_sample=num_to_sample)
-    slow_time = _time_resampling(self, data_np, target_dist, init_dist,
-                                 use_v2=False, num_to_sample=num_to_sample)
 
     self.assertLess(fast_time, slow_time)
 
@@ -188,12 +186,10 @@ class MapDatasetBenchmark(test.Benchmark):
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     resample_time = _time_resampling(
-      self, data_np, target_dist, init_dist, use_v2=False,
-      num_to_sample=1000)
+        self, data_np, target_dist, init_dist, use_v2=False, num_to_sample=1000)
 
     self.report_benchmark(
-      iters=1000, wall_time=resample_time,
-      name="benchmark_resample")
+        iters=1000, wall_time=resample_time, name="benchmark_resample")
 
   def benchmarkResampleAndBatchPerformance(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
@@ -204,12 +200,10 @@ class MapDatasetBenchmark(test.Benchmark):
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     resample_time = _time_resampling(
-      self, data_np, target_dist, init_dist, use_v2=True,
-      num_to_sample=1000)
+        self, data_np, target_dist, init_dist, use_v2=True, num_to_sample=1000)
 
     self.report_benchmark(
-      iters=1000, wall_time=resample_time,
-      name="benchmark_resample_v2")
+        iters=1000, wall_time=resample_time, name="benchmark_resample_v2")
 
 
 if __name__ == "__main__":

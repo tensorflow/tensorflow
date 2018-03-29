@@ -57,19 +57,19 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
     # Get initial distribution.
     if initial_dist is not None:
-        initial_dist_t = ops.convert_to_tensor(
-            initial_dist, name="initial_dist")
-        acceptance_dist = _calculate_acceptance_probs(initial_dist_t,
-                                                      target_dist_t)
-        initial_dist_ds = dataset_ops.Dataset.from_tensors(
-            initial_dist_t).repeat()
-        acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
+      initial_dist_t = ops.convert_to_tensor(
+          initial_dist, name="initial_dist")
+      acceptance_dist = _calculate_acceptance_probs(initial_dist_t,
+                                                    target_dist_t)
+      initial_dist_ds = dataset_ops.Dataset.from_tensors(
+          initial_dist_t).repeat()
+      acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
           acceptance_dist).repeat()
     else:
-        initial_dist_ds = _estimate_initial_dist_ds(
-            target_dist_t, class_values_ds)
-        acceptance_dist_ds = initial_dist_ds.map(
-            lambda initial: _calculate_acceptance_probs(initial, target_dist_t))
+      initial_dist_ds = _estimate_initial_dist_ds(
+          target_dist_t, class_values_ds)
+      acceptance_dist_ds = initial_dist_ds.map(
+          lambda initial: _calculate_acceptance_probs(initial, target_dist_t))
     return _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
                       class_values_ds, seed)
 
@@ -111,27 +111,27 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None,
 
     # Get initial distribution.
     if initial_dist is not None:
-        initial_dist_t = ops.convert_to_tensor(
-            initial_dist, name="initial_dist")
-        acceptance_dist, prob_of_original = (
-            _calculate_acceptance_probs_with_mixing(initial_dist_t,
-                                                    target_dist_t))
-        initial_dist_ds = dataset_ops.Dataset.from_tensors(
-            initial_dist_t).repeat()
-        acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
-            acceptance_dist).repeat()
-        prob_of_original_ds = dataset_ops.Dataset.from_tensors(
-            prob_of_original).repeat()
+      initial_dist_t = ops.convert_to_tensor(
+          initial_dist, name="initial_dist")
+      acceptance_dist, prob_of_original = (
+          _calculate_acceptance_probs_with_mixing(initial_dist_t,
+                                                  target_dist_t))
+      initial_dist_ds = dataset_ops.Dataset.from_tensors(
+          initial_dist_t).repeat()
+      acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
+          acceptance_dist).repeat()
+      prob_of_original_ds = dataset_ops.Dataset.from_tensors(
+          prob_of_original).repeat()
     else:
-        initial_dist_ds = _estimate_initial_dist_ds(
-            target_dist_t, class_values_ds)
-        acceptance_and_original_prob_ds = initial_dist_ds.map(
-            lambda initial: _calculate_acceptance_probs_with_mixing(
+      initial_dist_ds = _estimate_initial_dist_ds(
+          target_dist_t, class_values_ds)
+      acceptance_and_original_prob_ds = initial_dist_ds.map(
+          lambda initial: _calculate_acceptance_probs_with_mixing(
               initial, target_dist_t))
-        acceptance_dist_ds = acceptance_and_original_prob_ds.map(
-            lambda accept_prob, _: accept_prob)
-        prob_of_original_ds = acceptance_and_original_prob_ds.map(
-            lambda _, prob_original: prob_original)
+      acceptance_dist_ds = acceptance_and_original_prob_ds.map(
+          lambda accept_prob, _: accept_prob)
+      prob_of_original_ds = acceptance_and_original_prob_ds.map(
+          lambda _, prob_original: prob_original)
     filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
                              class_values_ds, seed)
 
@@ -168,16 +168,15 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
     A dataset of (class value, data) after filtering.
   """
   def maybe_warn_on_large_rejection(accept_dist, initial_dist):
-      proportion_rejected = math_ops.reduce_sum(
-          (1 - accept_dist) * initial_dist)
-      return control_flow_ops.cond(
-          math_ops.less(proportion_rejected, .5),
-          lambda: accept_dist,
-          lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
-              accept_dist, [proportion_rejected, initial_dist, accept_dist],
-              message="Proportion of examples rejected by sampler is high: ",
-              summarize=100,
-              first_n=10))
+    proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
+    return control_flow_ops.cond(
+        math_ops.less(proportion_rejected, .5),
+        lambda: accept_dist,
+        lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
+            accept_dist, [proportion_rejected, initial_dist, accept_dist],
+            message="Proportion of examples rejected by sampler is high: ",
+            summarize=100,
+            first_n=10))
 
   acceptance_dist_ds = (dataset_ops.Dataset.zip((acceptance_dist_ds,
                                                  initial_dist_ds))
