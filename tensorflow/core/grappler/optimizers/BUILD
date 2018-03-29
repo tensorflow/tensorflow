@@ -361,6 +361,7 @@ tf_kernel_library(
     srcs = [
         "gpu_swapping_kernels.cc",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -373,6 +374,7 @@ cc_library(
     srcs = [
         "gpu_swapping_ops.cc",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -406,10 +408,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
-    ] + if_cuda([
-        ":gpu_swapping_kernels",
-        ":gpu_swapping_ops",
-    ]),
+    ],
 )
 
 tf_cuda_only_cc_test(
@@ -417,6 +416,8 @@ tf_cuda_only_cc_test(
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.
     deps = [
+        ":gpu_swapping_kernels",
+        ":gpu_swapping_ops",
         ":memory_optimizer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:ops",

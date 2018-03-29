@@ -144,6 +144,7 @@ load(
     "tf_cuda_tests_tags",
     "if_static",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -939,6 +940,9 @@ cc_library(
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
+    ]) + if_cuda([
+        "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
+        "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]),
 )
 
