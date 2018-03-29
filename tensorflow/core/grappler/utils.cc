@@ -33,8 +33,8 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > std::numeric_limits<RealType>::max() ||
-      value < std::numeric_limits<RealType>::min()) {
+  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
+      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -473,8 +473,8 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    // TODO(rmlarsen): Handle DT_HALF.
-    //    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_HALF);
+    HANDLE_CASE(DT_BFLOAT16);
     HANDLE_CASE(DT_BOOL);
     HANDLE_CASE(DT_FLOAT);
     HANDLE_CASE(DT_DOUBLE);

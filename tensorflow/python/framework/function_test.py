@@ -1227,6 +1227,15 @@ class FunctionsFromProtos(test.TestCase):
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
       function._from_library(library)
 
+  def testExperimentalAttrs(self):
+
+    @function.Defun(dtypes.int32, experimental_tag="tag_value")
+    def FunctionWithAttr(i):
+      return array_ops.identity(i)
+    self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
+    self.assertEqual(
+        FunctionWithAttr.definition.attr["experimental_tag"].s, b"tag_value")
+
 
 @test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):

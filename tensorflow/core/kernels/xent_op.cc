@@ -52,8 +52,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
       OP_REQUIRES(context, bcast.IsValid(),
                   errors::InvalidArgument(
                       "logits and labels must be broadcastable: logits_size=",
-                      logits_in.shape().DebugString(), " labels_size=",
-                      labels_in.shape().DebugString()));
+                      logits_in.shape().DebugString(),
+                      " labels_size=", labels_in.shape().DebugString()));
       shape_in = BCast::ToShape(bcast.output_shape());
     }
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(shape_in),
