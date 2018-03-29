@@ -29,10 +29,10 @@ problem and share your benchmarks.
 
 ## Setup and basic usage
 
-Install TensorFlow 1.7 to include the updates for eager execution:
+Upgrade to TensorFlow 1.7 to include updates for eager execution:
 
 ```
-$ pip install --pre --upgrade tensorflow
+$ pip install --upgrade tensorflow
 ```
 
 To start eager execution, add `tf.enable_eager_execution()` to the beginning of
@@ -322,14 +322,13 @@ grad_log1pexp(0.)  # => [0.5]
 grad_log1pexp(100.)  # => [nan]
 ```
 
-
 Here, the `log1pexp` function can be analytically simplified with a custom
 gradient. The implementation below reuses the value for `tf.exp(x)` that is
 computed during the forward pass—making it more efficient by eliminating
 redundant calculations:
 
 ```py
-@tfe.custom_gradient
+@tf.custom_gradient
 def log1pexp(x):
   e = tf.exp(x)
   def grad(dy):
@@ -605,7 +604,7 @@ print(x)  # => 2.0
 ```
 
 To save and load models, `tfe.Checkpoint` stores the internal state of objects,
-without requiring hiiden variables. To record the state of a `model`,
+without requiring hidden variables. To record the state of a `model`,
 an `optimizer`, and a global step, pass them to a `tfe.Checkpoint`:
 
 ```py
@@ -649,9 +648,8 @@ inserted during model construction. For example, to record summaries once every
 100 global steps:
 
 ```py
-tf.train.get_or_create_global_step()  # return global step var
 writer = tf.contrib.summary.create_file_writer(logdir)
-global_step=tf.train.get_or_create_global_step()
+global_step=tf.train.get_or_create_global_step()  # return global step var
 
 writer.set_as_default()
 
@@ -662,197 +660,6 @@ for _ in range(iterations):
     # your model code goes here
     tf.contrib.summary.scalar('loss', loss)
      ...
-```
-
-## Performance
-
-Computation is not automatically offloaded to GPUs during eager execution. To
-explicitly direct a computation to a GPU, enclose it in a
-`tf.device('/gpu:0')` block:
-
-```py
-import time
-
-def measure(x, steps):
-  # TensorFlow initializes a GPU the first time it's used, exclude from timing.
-  tf.matmul(x, x)
-  start = time.time()
-  for i in range(steps):
-    x = tf.matmul(x, x)
-    _ = x.numpy()  # Make sure to execute op and not just enqueue it
-  end = time.time()
-  return end - start
-
-shape = (1000, 1000)
-steps = 200
-print("Time to multiply a {} matrix by itself {} times:".format(shape, steps))
-
-# Run on CPU:
-with tf.device("/cpu:0"):
-  print("CPU: {} secs".format(measure(tf.random_normal(shape), steps)))
-
-# Run on GPU, if available:
-if tfe.num_gpus() > 0:
-  with tf.device("/gpu:0"):
-    print("GPU: {} secs".format(measure(tf.random_normal(shape), steps)))
-else:
-  print("GPU: not found")
-```
-
-Output (exact numbers depend on hardware):
-
-```
-Time to multiply a (1000, 1000) matrix by itself 200 times:
-CPU: 4.614904403686523 secs
-GPU: 0.5581181049346924 secs
-```
-
-A `tf.Tensor` object can be copied to a different device to execute its
-operations:
-
-```py
-x = tf.random_normal([10, 10])
-
-x_gpu0 = x.gpu()
-x_cpu = x.cpu()
-
-_ = tf.matmul(x_cpu, x_cpu)    # Runs on CPU
-_ = tf.matmul(x_gpu0, x_gpu0)  # Runs on GPU:0
-
-if tfe.num_gpus() > 1:
-  x_gpu1 = x.gpu(1)
-  _ = tf.matmul(x_gpu1, x_gpu1)  # Runs on GPU:1
-```
-
-### Benchmarks
-
-For compute-heavy models, such as
-[ResNet50](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples/resnet50)
-training on a GPU, eager execution performance is comparable to graph execution.
-But this gap grows larger for models with less computation and there is work to
-be done for optimizing hot code paths for models with lots of small operations.
-
-
-## Work with graphs
-
-While eager execution makes development and debugging more interactive,
-TensorFlow graph execution has advantages for distributed training, performance
-optimizations, and production deployment. However, writing graph code can feel
-different than writing regular Python code and more difficult to debug.
-
-For building and training graph-constructed models, the Python program first
-builds a graph representing the computation, then invokes `Session.run` to send
-the graph for execution on the C++-based runtime.  This provides:
-
-* Automatic differentiation using static autodiff.
-* Simple deployment to a platform independent server.
-* Graph-based optimizations (common subexpression elimination, constant-folding, etc.).
-* Compilation and kernel fusion.
-* Automatic distribution and replication (placing nodes on the distributed system).
-
-Deploying code written for eager execution is more difficult: either generate a
-graph from the model, or run the Python runtime and code directly on the server.
-
-### Write compatible code
-
-The same code written for eager execution will also build a graph during graph
-execution. Do this by simply running the same code in a new Python session where
-eager execution is not enabled.
-
-Most TensorFlow operations work during eager execution, but there are some things
-to keep in mind:
-
-* Use `tf.data` for input processing instead of queues. It's faster and easier.
-* Use object-oriented layer APIs—like `tf.keras.layers` and
-  `tf.keras.Model`—since they have explicit storage for variables.
-* Most model code works the same during eager and graph execution, but there are
-  exceptions. (For example, dynamic models using Python control flow to change the
-  computation based on inputs.)
-* Once eager execution is enabled with `tf.enable_eager_execution`, it
-  cannot be turned off. Start a new Python session to return to graph execution.
-
-It's best to write code for both eager execution *and* graph execution. This
-gives you eager's interactive experimentation and debuggability with the
-distributed performance benefits of graph execution.
-
-Write, debug, and iterate in eager execution, then import the model graph for
-production deployment. Use `tfe.Checkpoint` to save and restore model
-variables, this allows movement between eager and graph execution environments.
-See the examples in:
-[tensorflow/contrib/eager/python/examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples).
-
-### Use eager execution in a graph environment
-
-Selectively enable eager execution in a TensorFlow graph environment using
-`tfe.py_func`. This is used when `tf.enable_eager_execution()` has *not*
-been called.
-
-```py
-def my_py_func(x):
-  x = tf.matmul(x, x)  # You can use tf ops
-  print(x)  # but it's eager!
-  return x
-
-with tf.Session() as sess:
-  x = tf.placeholder(dtype=tf.float32)
-  # Call eager function in graph!
-  pf = tfe.py_func(my_py_func, [x], tf.float32)
-  sess.run(pf, feed_dict={x: [[2.0]]})  # [[4.0]]
-```
-
-
-A `tfe.Checkpoint` stores the complete internal state of the objects passed to it. Nothing else is implicitly included. To record the state of a `model`, an `optimizer`, and a global step pass each one to the checkpoint's constructor:
-
-```py
-model = MyModel()
-optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
-checkpoint_dir = ‘/path/to/model_dir’
-checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-root = tfe.Checkpoint(optimizer=optimizer,
-                      model=model,
-                      optimizer_step=tf.train.get_or_create_global_step())
-
-root.save(file_prefix=checkpoint_prefix)
-# or
-root.restore(tf.train.latest_checkpoint(checkpoint_dir))
-```
-
-### Object-oriented metrics
-
-`tfe.metrics` are stored as objects. Update a metric by passing the new data to
-the callable, and retrieve the result using the `tfe.metrics.result` method,
-for example:
-
-```py
-m = tfe.metrics.Mean("loss")
-m(0)
-m(5)
-m.result()  # => 2.5
-m([8, 9])
-m.result()  # => 5.5
-```
-
-#### Summaries and TensorBoard
-
-@{$summaries_and_tensorboard$TensorBoard} is a visualization tool for
-understanding, debugging and optimizing the model training process. It uses
-summary events that are written while executing the program.
-
-`tf.contrib.summary` is compatible with both eager and graph execution
-environments. Summary operations, such as `tf.contrib.summary.scalar`, are
-inserted during model construction. For example, to record summaries once every
-100 global steps:
-
-```py
-tf.train.get_or_create_global_step()  # return global step var
-writer = tf.contrib.summary.create_file_writer(logdir)
-
-for _ in range(iterations):
-  with writer.as_default():
-    with tf.contrib.summary.record_summaries_every_n_global_steps(100):
-      # your model code goes here
-      tf.contrib.summary.scalar('loss', loss)
-      ...
 ```
 
 ## Performance
