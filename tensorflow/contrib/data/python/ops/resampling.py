@@ -57,7 +57,8 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
 
     # Get initial distribution.
     if initial_dist is not None:
-        initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
+        initial_dist_t = ops.convert_to_tensor(
+            initial_dist, name="initial_dist")
         acceptance_dist = _calculate_acceptance_probs(initial_dist_t,
                                                       target_dist_t)
         initial_dist_ds = dataset_ops.Dataset.from_tensors(
@@ -65,22 +66,27 @@ def rejection_resample(class_func, target_dist, initial_dist=None, seed=None):
         acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
           acceptance_dist).repeat()
     else:
-        initial_dist_ds = _estimate_initial_dist_ds(target_dist_t, class_values_ds)
+        initial_dist_ds = _estimate_initial_dist_ds(
+            target_dist_t, class_values_ds)
         acceptance_dist_ds = initial_dist_ds.map(
             lambda initial: _calculate_acceptance_probs(initial, target_dist_t))
-    return _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds, seed)
+    return _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
+                      class_values_ds, seed)
 
   return _apply_fn
 
 
-def rejection_resample_v2(class_func, target_dist, initial_dist=None, seed=None):
+def rejection_resample_v2(class_func, target_dist, initial_dist=None,
+                          seed=None):
   """A transformation that resamples a dataset to achieve a target distribution.
 
-  This differs from v1 in that it will also sample from the original dataset with some probability,
-  so it makes strictly fewer data rejections. Due to an implementation detail it must initialize
-  a separate dataset initializer, so the dataset becomes stateful after this transformation is applied
-  (`make_one_shot_iterator` won't work; users must use `make_initializable_iterator`). This
-  transformation is faster than the original, except for overhead.
+  This differs from v1 in that it will also sample from the original dataset
+  with some probability, so it makes strictly fewer data rejections. Due to an
+  implementation detail it must initialize a separate dataset initializer, so
+  the dataset becomes stateful after this transformation is applied
+  (`make_one_shot_iterator` won't work; users must use
+  `make_initializable_iterator`). This transformation is faster than the
+  original, except for overhead.
 
   **NOTE** Resampling is performed via rejection sampling; some fraction
   of the input values will be dropped.
@@ -105,44 +111,56 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None, seed=None)
 
     # Get initial distribution.
     if initial_dist is not None:
-        initial_dist_t = ops.convert_to_tensor(initial_dist, name="initial_dist")
-        acceptance_dist, prob_of_original = _calculate_acceptance_probs_with_mixing(
-          initial_dist_t, target_dist_t)
+        initial_dist_t = ops.convert_to_tensor(
+            initial_dist, name="initial_dist")
+        acceptance_dist, prob_of_original = (
+            _calculate_acceptance_probs_with_mixing(initial_dist_t,
+                                                    target_dist_t))
         initial_dist_ds = dataset_ops.Dataset.from_tensors(
             initial_dist_t).repeat()
-        acceptance_dist_ds = dataset_ops.Dataset.from_tensors(acceptance_dist).repeat()
-        prob_of_original_ds = dataset_ops.Dataset.from_tensors(prob_of_original).repeat()
+        acceptance_dist_ds = dataset_ops.Dataset.from_tensors(
+            acceptance_dist).repeat()
+        prob_of_original_ds = dataset_ops.Dataset.from_tensors(
+            prob_of_original).repeat()
     else:
-        initial_dist_ds = _estimate_initial_dist_ds(target_dist_t, class_values_ds)
+        initial_dist_ds = _estimate_initial_dist_ds(
+            target_dist_t, class_values_ds)
         acceptance_and_original_prob_ds = initial_dist_ds.map(
             lambda initial: _calculate_acceptance_probs_with_mixing(
               initial, target_dist_t))
-        acceptance_dist_ds = acceptance_and_original_prob_ds.map(lambda accept_prob, _: accept_prob)
-        prob_of_original_ds = acceptance_and_original_prob_ds.map(lambda _, prob_original: prob_original)
-    filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds, seed)
+        acceptance_dist_ds = acceptance_and_original_prob_ds.map(
+            lambda accept_prob, _: accept_prob)
+        prob_of_original_ds = acceptance_and_original_prob_ds.map(
+            lambda _, prob_original: prob_original)
+    filtered_ds = _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds,
+                             class_values_ds, seed)
 
-    # We need to carefully combine `filtered_ds` and the original `dataset` so that we don't
-    # needlessly compute the filtering.
+    # We need to carefully combine `filtered_ds` and the original `dataset` so
+    # that we don't needlessly compute the filtering.
     num_filtered_to_prefetch = 3
     filtered_ds = filtered_ds.prefetch(num_filtered_to_prefetch)
     filtered_iterator = filtered_ds.make_one_shot_iterator()
-    combined_ds = dataset_ops.Dataset.zip((class_values_ds, dataset, prob_of_original_ds)).map(
-      lambda original_class, original_data, prob_of_original: control_flow_ops.cond(
-        random_ops.random_uniform([], seed=seed) < prob_of_original,
-        lambda: (original_class, original_data),
-        filtered_iterator.get_next))
+    combined_ds = (dataset_ops.Dataset
+        .zip((class_values_ds, dataset, prob_of_original_ds))
+        .map(lambda original_class, original_data, prob_of_original:
+             control_flow_ops.cond(
+                 random_ops.random_uniform([], seed=seed) < prob_of_original,
+                 lambda: (original_class, original_data),
+                 filtered_iterator.get_next)))
     return combined_ds
 
   return _apply_fn
 
 
-def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds, seed):
+def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
+               seed):
   """Filters a dataset based on per-class acceptance probabilities.
 
   Args:
     dataset: The dataset to be filtered.
     acceptance_dist_ds: A dataset of acceptance probabilities.
-    initial_dist_ds: A dataset of the initial probability distribution, given or estimated.
+    initial_dist_ds: A dataset of the initial probability distribution, given or
+        estimated.
     class_values_ds: A dataset of the corresponding classes.
     seed: (Optional.) Python integer seed for the resampler.
 
@@ -176,7 +194,9 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds, se
   return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
 
-def _estimate_initial_dist_ds(target_dist_t, class_values_ds, dist_estimation_batch_size=32, smoothing_constant=10):
+def _estimate_initial_dist_ds(
+        target_dist_t, class_values_ds, dist_estimation_batch_size=32,
+        smoothing_constant=10):
     num_classes = (target_dist_t.shape[0].value or
                    array_ops.shape(target_dist_t)[0])
     initial_examples_per_class_seen = array_ops.fill(
@@ -279,10 +299,11 @@ def _estimate_data_distribution(c, num_examples_per_class_seen):
 def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
     """Calculates the acceptance probabilities and mixing ratio.
 
-    In this case, we assume that we can *either* sample from the original data distribution
-    with probability `m`, or sample from a reshaped distribution that comes from rejection
-    sampling on the original distribution. This rejection sampling is done on a per-class basis,
-    with `a_i` representing the probability of accepting data from class `i`.
+    In this case, we assume that we can *either* sample from the original data
+    distribution with probability `m`, or sample from a reshaped distribution
+    that comes from rejection sampling on the original distribution. This
+    rejection sampling is done on a per-class basis, with `a_i` representing the
+    probability of accepting data from class `i`.
 
     If we try to minimize the amount of data rejected, we get the following:
 
@@ -293,20 +314,21 @@ def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
 
     a_i = (t_i/p_i - m) / (M_max - m)
 
-    The desired probability of pulling a data element from the original dataset, rather than the filtered
-    one:
+    The desired probability of pulling a data element from the original dataset,
+    rather than the filtered one:
 
     m = M_min
 
     See the docstring for `_calculate_acceptance_probs` for more details.
 
     Args:
-      init_probs: A Tensor of the initial probability distribution, given or estimated.
+      init_probs: A Tensor of the initial probability distribution, given or
+        estimated.
       target_probs: A Tensor of the corresponding classes.
 
     Returns:
-      (A 1D Tensor with the per-class acceptance probabilities, the desired probability of pull from
-       the original distribution.)
+      (A 1D Tensor with the per-class acceptance probabilities, the desired
+      probability of pull from the original distribution.)
     """
     ratio_l = _get_target_to_initial_ratio(initial_probs, target_probs)
     max_ratio = math_ops.reduce_max(ratio_l)

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import time
 import numpy as np
 
@@ -31,12 +32,14 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-def _time_resampling(test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
+def _time_resampling(
+        test_obj, data_np, target_dist, init_dist, use_v2, num_to_sample):
   dataset = dataset_ops.Dataset.from_tensor_slices(data_np)
   dataset = dataset.repeat(100)
 
   # Reshape distribution via rejection sampling.
-  apply_fn = resampling.rejection_resample_v2 if use_v2 else resampling.rejection_resample
+  apply_fn = (resampling.rejection_resample_v2 if use_v2 else
+              resampling.rejection_resample)
   dataset = dataset.apply(
     apply_fn(
       class_func=lambda x: x,
@@ -78,7 +81,8 @@ class ResampleTest(test.TestCase):
     initial_dist = [0.2] * 5 if initial_known else None
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
       200, seed=21).map(lambda c: (c, string_ops.as_string(c)))
-    apply_fn = resampling.rejection_resample_v2 if use_v2 else resampling.rejection_resample
+    apply_fn = (resampling.rejection_resample_v2 if use_v2 else
+                resampling.rejection_resample)
     iterator = dataset.apply(
       apply_fn(
         target_dist=target_dist,
@@ -153,10 +157,10 @@ class ResampleTest(test.TestCase):
     num_samples = 1000
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
-    fast_time = _time_resampling(
-      self, data_np, target_dist, init_dist, use_v2=True, num_to_sample=num_to_sample)
-    slow_time = _time_resampling(
-      self, data_np, target_dist, init_dist, use_v2=False, num_to_sample=num_to_sample)
+    fast_time = _time_resampling(self, data_np, target_dist, init_dist,
+                                 use_v2=True, num_to_sample=num_to_sample)
+    slow_time = _time_resampling(self, data_np, target_dist, init_dist,
+                                 use_v2=False, num_to_sample=num_to_sample)
 
     self.assertLess(fast_time, slow_time)
 
