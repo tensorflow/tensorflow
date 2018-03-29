@@ -414,8 +414,9 @@ TEST_F(FunctionOptimizerTest, SymbolicGradients) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out1", "out2"});
-  std::vector<Tensor> optimized = EvaluateNodes(output, {"out1", "out2"});
+  std::vector<Tensor> expected =
+      EvaluateNodes(item.graph, {"out1", "out2"}, {});
+  std::vector<Tensor> optimized = EvaluateNodes(output, {"out1", "out2"}, {});
   test::ExpectTensorEqual<float>(expected[0], optimized[0]);
   test::ExpectTensorEqual<float>(expected[1], optimized[1]);
 }
@@ -478,8 +479,8 @@ TEST_F(FunctionOptimizerTest, SymbolicGradientsIdentity) {
     EXPECT_EQ("Identity", output.node(i).op());
   }
 
-  std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out"});
-  std::vector<Tensor> optimized = EvaluateNodes(output, {"out"});
+  std::vector<Tensor> expected = EvaluateNodes(item.graph, {"out"}, {});
+  std::vector<Tensor> optimized = EvaluateNodes(output, {"out"}, {});
   test::ExpectTensorEqual<float>(expected[0], optimized[0]);
 }
 

@@ -267,16 +267,22 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      // The caller must give us a buffer for ShapeIndex {} of every parameter.
-      // It can optionally give us a buffer for other ShapeIndices, but we
-      // ignore them: Because we can't rely on these sub-buffers' addresses
-      // being available, our generated code can't use them.  Instead, it must
-      // chase pointers starting at the tuple root.
-      if (allocation.param_shape_index().empty()) {
-        auto param_no = allocation.parameter_number();
-        buffer_allocations_builder.RegisterBuffer(
-            i, arguments[param_no]->root_buffer());
+      auto param_no = allocation.parameter_number();
+      se::DeviceMemoryBase buffer =
+          arguments[param_no]->buffer(allocation.param_shape_index());
+
+      // All top-level buffers and sub-buffers must have an explicit, non-null
+      // pointer, except for zero-sized buffers, which may be null.
+      if (buffer.is_null() && buffer.size() > 0) {
+        return FailedPrecondition(
+            "Cannot run XLA computation because pointer to (sub-)buffer at "
+            "index %s of parameter %lld was null.  All pointers to "
+            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
+            "elements.",
+            allocation.param_shape_index().ToString().c_str(), param_no);
       }
+
+      buffer_allocations_builder.RegisterBuffer(i, buffer);
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();

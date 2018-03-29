@@ -1924,12 +1924,22 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   else:
     meta_graph_def = meta_graph_or_file
 
-  meta_graph.import_scoped_meta_graph(meta_graph_def,
-                                      clear_devices=clear_devices,
-                                      import_scope=import_scope,
-                                      **kwargs)
+  imported_vars = meta_graph.import_scoped_meta_graph(
+      meta_graph_def,
+      clear_devices=clear_devices,
+      import_scope=import_scope,
+      **kwargs)
+
   if meta_graph_def.HasField("saver_def"):
-    return Saver(saver_def=meta_graph_def.saver_def, name=import_scope)
+    # Infer the scope that is prepended by `import_scoped_meta_graph`.
+    scope = import_scope
+    var_names = list(imported_vars.keys())
+    if var_names:
+      sample_key = var_names[0]
+      sample_var = imported_vars[sample_key]
+      scope = sample_var.name[:-len(sample_key)]
+
+    return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
     if variables._all_saveable_objects():  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.

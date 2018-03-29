@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 
@@ -220,7 +221,7 @@ struct ParsedTocoFlags {
   Arg<string> output_file;
   Arg<string> input_format = Arg<string>("TENSORFLOW_GRAPHDEF");
   Arg<string> output_format = Arg<string>("TFLITE");
-  Arg<string> savedmodel_tagset;
+  Arg<string> savedmodel_tagset = Arg<string>(tensorflow::kSavedModelTagServe);
   // TODO(aselle): command_line_flags  doesn't support doubles
   Arg<float> default_ranges_min = Arg<float>(0.);
   Arg<float> default_ranges_max = Arg<float>(0.);

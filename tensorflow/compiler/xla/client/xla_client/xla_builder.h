@@ -335,6 +335,26 @@ class XlaBuilder {
   XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
                    const DotDimensionNumbers& dimension_numbers);
 
+  // Default dimension numbers used for a 2D convolution.
+  static constexpr int64 kConvBatchDimension = 0;
+  static constexpr int64 kConvFeatureDimension = 1;
+  static constexpr int64 kConvFirstSpatialDimension = 2;
+  static constexpr int64 kConvSecondSpatialDimension = 3;
+  static constexpr int64 kConvKernelOutputDimension = 0;
+  static constexpr int64 kConvKernelInputDimension = 1;
+  static constexpr int64 kConvKernelFirstSpatialDimension = 2;
+  static constexpr int64 kConvKernelSecondSpatialDimension = 3;
+
+  // Creates a default ConvolutionDimensionNumbers. For a 2D convolution, for
+  // the input operand {batch, feature, height, width} = {0, 1, 2, 3} and for
+  // the kernel operand
+  // {output_feature, input_feature, height, width} = {0, 1, 2, 3}.
+  static ConvolutionDimensionNumbers CreateDefaultConvDimensionNumbers(
+      int num_spatial_dims = 2);
+
+  // Returns an error if the convolution dimension numbers have conflicts.
+  static Status Validate(const ConvolutionDimensionNumbers& dnum);
+
   // Enqueues a convolution instruction onto the computation, which uses the
   // default convolution dimension numbers.
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
@@ -711,9 +731,58 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
+  // Computes the value of a constant indicated by a XlaOp using a non-optimized
+  // interpreter on the host.
+  //
+  // The operand must represent a constant value, which in this case
+  // means that it must not statically depend on any parameter of the
+  // computation that is being built other then the ones specified on the
+  // parameter list. The parameters in the list will be indexed by their
+  // parameter id property so the number of parameters specified should be at
+  // least as many as the largest used parameter index.
+  //
+  // `IsConstant` can be used to test whether a computation is a compile-time
+  // constant without evaluation it. `ComputeConstant` only succeeds for
+  // computations where `IsConstant` returns true.
+  //
+  // This functionality can be useful when translating a computation
+  // into XLA where something that looked dynamic is required by
+  // XLA to be specified as a constant. E.g. the source
+  // computation (outside of XLA) may include a dynamic
+  // computation of the shape of something and ComputeConstant lets
+  // you determine what the value of that computation is in the case
+  // where the value can be determined at compile time.
+  //
+  // If output_layout is non-null, then the output of the computation
+  // will be stored using that layout.
+  StatusOr<std::unique_ptr<Literal>> ComputeConstant(
+      const XlaOp& operand, const Layout* output_layout = nullptr,
+      tensorflow::gtl::ArraySlice<Literal> parameters = {});
+
+  // Returns a new XlaBuilder whose resultant Computation is used only by this
+  // XlaBuilder. The sub-XlaBuilder has the same die_immediately_on_error
+  // behavior as the parent.
+  std::unique_ptr<XlaBuilder> CreateSubBuilder(const string& computation_name);
+
+  // Modifies the computation being built so that executions of it will return
+  // the value associated with operand, rather than the last expression enqueued
+  // on the XlaBuilder. Any subsequent operations added to the XlaBuilder will
+  // not have any effect unless SetReturnValue is called again.
+  Status SetReturnValue(const XlaOp& operand);
+
   // Builds the computation with the requested operations, or returns a non-ok
   // status.
   StatusOr<XlaComputation> Build();
+
+  // Builds the computation with the requested operations, or notes an error in
+  // the parent XlaBuilder and returns an empty computation if building failed.
+  // This function is intended to be used where the returned XlaComputation is
+  // only used by the parent XlaBuilder and hence further operation on the
+  // returned XlaComputation will simply be error'ed out if an error occurred
+  // while building this computation. If the built computation is to be used by
+  // a XlaBuilder other than the parent XlaBuilder then Build() should be used
+  // instead.
+  XlaComputation BuildAndNoteError();
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -814,6 +883,8 @@ class XlaBuilder {
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;
+
+  XlaBuilder* parent_builder_{nullptr};
 };
 
 template <typename NativeT>

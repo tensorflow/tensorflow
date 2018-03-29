@@ -190,6 +190,22 @@ class DistributionTest(test.TestCase):
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
 
+  def testNameScopeWorksCorrectly(self):
+    x = tfd.Normal(loc=0., scale=1., name="x")
+    x_duplicate = tfd.Normal(loc=0., scale=1., name="x")
+    with ops.name_scope("y") as name:
+      y = tfd.Bernoulli(logits=0., name=name)
+    x_sample = x.sample(name="custom_sample")
+    x_sample_duplicate = x.sample(name="custom_sample")
+    x_log_prob = x.log_prob(0., name="custom_log_prob")
+
+    self.assertEqual(x.name, "x")
+    self.assertEqual(x_duplicate.name, "x_1")
+    self.assertEqual(y.name, "y")
+    self.assertTrue(x_sample.name.startswith("x/custom_sample"))
+    self.assertTrue(x_sample_duplicate.name.startswith("x/custom_sample_1"))
+    self.assertTrue(x_log_prob.name.startswith("x/custom_log_prob"))
+
   def testStrWorksCorrectlyScalar(self):
     normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
     self.assertEqual(

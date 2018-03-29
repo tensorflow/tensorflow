@@ -97,6 +97,14 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  def testAsyncBasic(self):
+    ctx = context.Context(execution_mode=context.ASYNC)
+    has_cpu_device = False
+    for x in ctx.devices():
+      has_cpu_device = has_cpu_device or 'CPU' in x
+    self.assertTrue(has_cpu_device)
+    del ctx
+
   def testRunMetadata(self):
     context.enable_run_metadata()
     t = constant_op.constant(1.0)
