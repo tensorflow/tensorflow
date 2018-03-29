@@ -126,6 +126,15 @@ class Service : public ServiceInterface {
   tensorflow::Status ExecuteParallel(const ExecuteParallelRequest* arg,
                                      ExecuteParallelResponse* result) override;
 
+  // Executes one or more computations in parallel with the provided global data
+  // passed as immutable arguments. Returns global data output for each
+  // computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  tensorflow::Status ExecuteGraphParallel(
+      const ExecuteGraphParallelRequest* arg,
+      ExecuteParallelResponse* result) override;
+
   // Requests one or more device handles from the target.
   //
   // When N device handles are requested and the number of replicas is R, at
@@ -222,6 +231,13 @@ class Service : public ServiceInterface {
   // Retrieves the statistics of a computation.
   tensorflow::Status GetComputationStats(
       const ComputationStatsRequest* arg,
+      ComputationStatsResponse* result) override;
+
+  // Retrieves the statistics of a computation.
+  //
+  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
+  tensorflow::Status GetComputationGraphStats(
+      const ComputationGraphStatsRequest* arg,
       ComputationStatsResponse* result) override;
 
   // Snapshots the current state of a computation handle into a serializable

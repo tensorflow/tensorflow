@@ -91,7 +91,7 @@ class NegativeBinomial(distribution.Distribution):
     """
 
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
       with ops.control_dependencies(

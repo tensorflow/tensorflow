@@ -128,6 +128,18 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape() {
   return GetProgramShape(&root_id);
 }
 
+XlaComputation XlaBuilder::BuildAndNoteError() {
+  DCHECK(parent_builder_ != nullptr);
+  auto build_status = Build();
+  if (!build_status.ok()) {
+    parent_builder_->NoteError(
+        AddStatus(build_status.status(),
+                  tensorflow::strings::StrCat("error from: ", name_)));
+    return {};
+  }
+  return build_status.ConsumeValueOrDie();
+}
+
 StatusOr<XlaComputation> XlaBuilder::Build() {
   if (!first_error_.ok()) {
     string backtrace;
@@ -357,10 +369,12 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
     }
     c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                 [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
-                        ShapeInference::InferCallShape(
-                            operand_shape_ptrs,
-                            /*to_apply=*/computation.GetProgramShape()));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferCallShape(operand_shape_ptrs,
+                                       /*to_apply=*/called_program_shape));
 
     // Add called computation.
     instr.add_called_computation_ids(
@@ -491,11 +505,40 @@ XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
 }
 
 XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    std::vector<const Shape*> operand_shape_ptrs;
+    std::vector<Shape> operand_shapes;
+    for (const XlaOp& e : elements) {
+      TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(e));
+      operand_shapes.push_back(shape);
+    }
+    c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferVariadicOpShape(
+                            HloOpcode::kTuple, operand_shape_ptrs));
+    return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
+  }());
 }
 
 XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
-  return UnimplementedOp();
+  return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& tuple_shape, GetShape(tuple_data));
+    if (!ShapeUtil::IsTuple(tuple_shape)) {
+      return InvalidArgument(
+          "Operand to GetTupleElement() is not a tuple; got %s",
+          ShapeUtil::HumanString(tuple_shape).c_str());
+    }
+    *instr.mutable_shape() =
+        ShapeUtil::GetTupleElementShape(tuple_shape, index);
+
+    instr.set_tuple_index(index);
+
+    return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
+                          {tuple_data});
+  }());
 }
 
 XlaOp XlaBuilder::Eq(const XlaOp& lhs, const XlaOp& rhs,
@@ -916,6 +959,99 @@ XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return UnimplementedOp();
 }
 
+StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand,
+                                      int64 num_parameters) {
+  return Unimplemented("IsConstant is not implemented.");
+}
+
+StatusOr<std::unique_ptr<Literal>> XlaBuilder::ComputeConstant(
+    const XlaOp& operand, const Layout* output_layout,
+    tensorflow::gtl::ArraySlice<Literal> parameters) {
+  return Unimplemented("ComputeConstant is not implemented");
+}
+
+std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
+    const string& computation_name) {
+  auto sub_builder = MakeUnique<XlaBuilder>(computation_name);
+  sub_builder->parent_builder_ = this;
+  sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
+  return sub_builder;
+}
+
+Status XlaBuilder::SetReturnValue(const XlaOp& operand) {
+  return Unimplemented("SetReturnValue is not implemented.");
+}
+
+/* static */ ConvolutionDimensionNumbers
+XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
+  ConvolutionDimensionNumbers dimension_numbers;
+  dimension_numbers.set_input_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_input_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_output_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_output_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_kernel_output_feature_dimension(
+      kConvKernelOutputDimension);
+  dimension_numbers.set_kernel_input_feature_dimension(
+      kConvKernelInputDimension);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    dimension_numbers.add_input_spatial_dimensions(i + 2);
+    dimension_numbers.add_kernel_spatial_dimensions(i + 2);
+    dimension_numbers.add_output_spatial_dimensions(i + 2);
+  }
+  return dimension_numbers;
+}
+
+/* static */ Status XlaBuilder::Validate(
+    const ConvolutionDimensionNumbers& dnum) {
+  if (dnum.input_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("input spacial dimension < 2: %d",
+                              dnum.input_spatial_dimensions_size());
+  }
+  if (dnum.kernel_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("kernel spacial dimension < 2: %d",
+                              dnum.kernel_spatial_dimensions_size());
+  }
+  if (dnum.output_spatial_dimensions_size() < 2) {
+    return FailedPrecondition("output spacial dimension < 2: %d",
+                              dnum.output_spatial_dimensions_size());
+  }
+
+  if (std::set<int64>(
+          {dnum.input_batch_dimension(), dnum.input_feature_dimension(),
+           dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.input_batch_dimension(), dnum.input_feature_dimension(),
+        dnum.input_spatial_dimensions(0), dnum.input_spatial_dimensions(1));
+  }
+  if (std::set<int64>({dnum.kernel_output_feature_dimension(),
+                       dnum.kernel_input_feature_dimension(),
+                       dnum.kernel_spatial_dimensions(0),
+                       dnum.kernel_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the weight are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.kernel_output_feature_dimension(),
+        dnum.kernel_input_feature_dimension(),
+        dnum.kernel_spatial_dimensions(0), dnum.kernel_spatial_dimensions(1));
+  }
+  if (std::set<int64>({dnum.output_batch_dimension(),
+                       dnum.output_feature_dimension(),
+                       dnum.output_spatial_dimensions(0),
+                       dnum.output_spatial_dimensions(1)})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        dnum.output_batch_dimension(), dnum.output_feature_dimension(),
+        dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
+  }
+  return Status::OK();
+}
+
 StatusOr<XlaOp> XlaBuilder::AddInstruction(
     HloInstructionProto&& instr, HloOpcode opcode,
     tensorflow::gtl::ArraySlice<XlaOp> operands) {
@@ -957,7 +1093,7 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
 }
 
 XlaOp XlaBuilder::UnimplementedOp() {
-  NoteError(Unimplemented("Op not yet implemented"));
+  NoteError(Unimplemented("Op not implemented"));
   return {};
 }
 

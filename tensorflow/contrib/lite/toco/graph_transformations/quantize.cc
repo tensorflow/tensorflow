@@ -52,7 +52,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose;
+         type == OperatorType::kTranspose || type == OperatorType::kMean;
 }
 
 template <ArrayDataType A>

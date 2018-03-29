@@ -154,8 +154,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       no_state_features = {
           k: v for k, v in features.items()
           if not k.startswith(feature_keys.State.STATE_PREFIX)}
-      cold_filtering_outputs = self.create_loss(
-          no_state_features, estimator_lib.ModeKeys.EVAL)
+      # Ignore any state management when cold-starting. The model's default
+      # start state is replicated across the batch.
+      cold_filtering_outputs = self.model.define_loss(
+          features=no_state_features, mode=estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={

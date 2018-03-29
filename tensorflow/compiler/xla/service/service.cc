@@ -837,6 +837,11 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteGraphParallel(
+    const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result) {
+  return Unimplemented("execute-graph-parallel is not yet implemented");
+}
+
 tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                              GetDeviceHandlesResponse* result) {
   const int64 available_device_count = execute_backend_->device_count();
@@ -1443,6 +1448,11 @@ tensorflow::Status Service::GetComputationStats(
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status Service::GetComputationGraphStats(
+    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
+  return Unimplemented("get-computation-graph-stats is not yet implemented");
 }
 
 template <typename RequestT, typename ResponseT>
