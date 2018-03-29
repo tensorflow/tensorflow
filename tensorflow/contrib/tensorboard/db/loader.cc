@@ -112,11 +112,10 @@ int main(int argc, char* argv[]) {
   }
   uint64 elapsed = env->NowMicros() - start;
   LOG(INFO) << "Loaded " << AddCommas(offset) << " bytes with "
-            << AddCommas(records) << " records";
-  if (elapsed > 0) {
-    LOG(INFO) << "bps=" << (uint64)(offset / (elapsed / 1000000.0));
-  }
-
+            << AddCommas(records) << " records at "
+            << (elapsed == 0 ? offset : static_cast<uint64>(
+                                            offset / (elapsed / 1000000.0)))
+            << " bps";
   return 0;
 }
 
