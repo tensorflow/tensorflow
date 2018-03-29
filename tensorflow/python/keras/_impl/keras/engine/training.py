@@ -874,6 +874,11 @@ class Model(Network):
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
     """
+    if not getattr(self, '_uses_inputs_arg', True):
+      raise NotImplementedError(
+          'Subclassed Models without "inputs" in their call() signatures do '
+          'not yet support shape inference. File a feature request if this '
+          'limitation bothers you.')
     if self.__class__.__name__ == 'Sequential':
       # Note: we can't test whether the model is `Sequential` via `isinstance`
       # since `Sequential` depends on `Model`.

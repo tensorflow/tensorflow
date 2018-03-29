@@ -1089,7 +1089,8 @@ namespace {
 
 bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
   const std::unordered_set<string> op_types_to_traverse = {
-      node.op(), "Identity", "IdentityN", "Reshape"};
+      node.op(),    "Identity", "IdentityN", "Reshape",
+      "ExpandDims", "Enter",    "Switch",    "Merge"};
   int node_idx = graph_view.index(node.name());
   std::set<int> node_fanout;
   graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);

@@ -314,6 +314,7 @@ class FunctionBufferResourceHandleOp : public OpKernel {
                     source_device, target_device, func_args, thread_pool_size_);
                 return Status::OK();
               }));
+      core::ScopedUnref s(buffer);
       OP_REQUIRES_OK(ctx, buffer->Instantiate());
       initialized_ = true;
     }

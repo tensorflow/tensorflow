@@ -740,6 +740,61 @@ def generate_per_host_enqueue_ops_fn_for_host(
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
+def generate_per_host_v2_enqueue_ops_fn_for_host(
+    ctx, input_fn, inputs_structure_recorder, device, host_id):
+  """Generates infeed enqueue ops for per-host input_fn on a single host."""
+  del host_id  # unused
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+
+  with ops.device(device):
+    inputs = _Inputs.from_input_fn(input_fn())
+
+    is_dataset = inputs.is_dataset
+    if not is_dataset:
+      raise TypeError('`input_fn` must return a `Dataset` for the PER_HOST_V2 '
+                      'input pipeline configuration.')
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      # TODO(b/XXX): Add predict support for PER_HOST_V2
+      raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
+
+    hooks.append(inputs.dataset_initializer_hook())
+
+  def enqueue_ops_fn():
+    """Generates the per_host enqueue ops."""
+    control_deps = []
+    per_host_sharded_inputs = []
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+    with ops.device(device):
+      if not inputs.is_dataset:
+        raise TypeError('`input_fn` must return a `Dataset` for this mode.')
+      for _ in range(num_replicas_per_host):
+        # Use control dependencies to ensure a deterministic ordering.
+        with ops.control_dependencies(control_deps):
+          features, labels = inputs.features_and_labels()  # Calls get_next()
+
+        inputs_structure_recorder.validate_and_record_structure(
+            features, labels)
+        flattened_inputs = (
+            inputs_structure_recorder.flatten_features_and_labels(
+                features, labels))
+
+        control_deps.extend(flattened_inputs)
+        per_host_sharded_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(per_host_sharded_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    infeed_queue.set_configuration_from_sharded_input_tensors(
+        per_host_sharded_inputs)
+
+    per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+    return per_host_enqueue_ops
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
 class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
@@ -975,10 +1030,17 @@ class _InputPipeline(object):
         host_device = tpu_host_placement_fn(host_id=host_id)
         with ops.device(host_device):
           with ops.name_scope('input_pipeline_task%d' % (host_id)):
-            enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
-                generate_per_host_enqueue_ops_fn_for_host(
-                    self._ctx, self._input_fn, self._inputs_structure_recorder,
-                    self._batch_axis, host_device, host_id))
+            if self._ctx.is_input_per_host_with_iterators():
+              enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+                  generate_per_host_v2_enqueue_ops_fn_for_host(
+                      self._ctx, self._input_fn,
+                      self._inputs_structure_recorder, host_device, host_id))
+            else:
+              enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+                  generate_per_host_enqueue_ops_fn_for_host(
+                      self._ctx, self._input_fn,
+                      self._inputs_structure_recorder, self._batch_axis,
+                      host_device, host_id))
             all_hooks.extend(hooks)
 
             # NOTE(xiejw): We dispatch here based on the return type of the
@@ -1724,7 +1786,7 @@ class TPUEstimator(estimator_lib.Estimator):
         labels to match up with the corresponding images. If None is supplied,
         and per_host_input_for_training is True, batches will be sharded based
         on the major dimension. If tpu_config.per_host_input_for_training is
-        False, batch_axis is ignored.
+        False or `PER_HOST_V2`, batch_axis is ignored.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -1744,7 +1806,8 @@ class TPUEstimator(estimator_lib.Estimator):
         raise ValueError('`train_batch_size` cannot be `None`')
       util_lib.check_positive_integer(train_batch_size, 'train_batch_size')
 
-      if (not config.tpu_config.per_host_input_for_training and
+      if (config.tpu_config.per_host_input_for_training is
+          tpu_config.InputPipelineConfig.PER_SHARD_V1 and
           config.tpu_config.computation_shape):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
@@ -2362,6 +2425,10 @@ class _Inputs(object):
   def features_and_labels(self):
     """Gets `features` and `labels`."""
     if self.is_dataset:
+      if self._iterator is None:
+        raise RuntimeError('Internal error: Must call dataset_initializer_hook '
+                           'before calling features_and_labels(). Please file '
+                           'a bug!')
       return _Inputs._parse_inputs(self._iterator.get_next())
 
     return (self._features, self._labels)

@@ -560,6 +560,7 @@ class CheckpointableBase(object):
       checkpointable: The Checkpointable object to restore (inheriting from
         `CheckpointableBase`).
     """
+    self._maybe_initialize_checkpointable()
     deferred_dependencies_list = self._deferred_dependencies.pop(name, ())
     for checkpoint_position in sorted(
         deferred_dependencies_list,

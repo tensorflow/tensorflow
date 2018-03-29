@@ -241,13 +241,10 @@ See also
 
 Clamps an operand to within the range between a minimum and maximum value.
 
-<b> `Clamp(computation, args...)` </b>
+<b> `Clamp(min, operand, max)` </b>
 
 | Arguments     | Type                    | Semantics                        |
 | ------------- | ----------------------- | -------------------------------- |
-| `computation` | `Computation`           | computation of type `T_0, T_1,   |
-:               :                         : ..., T_N -> S` with N parameters :
-:               :                         : of arbitrary type                :
 | `min`         | `ComputationDataHandle` | array of type T                  |
 | `operand`     | `ComputationDataHandle` | array of type T                  |
 | `max`         | `ComputationDataHandle` | array of type T                  |

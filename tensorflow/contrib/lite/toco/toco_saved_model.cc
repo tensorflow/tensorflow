@@ -35,9 +35,12 @@ const tensorflow::SavedModelBundle* LoadSavedModel(
       << "Model is not saved in the supported SavedModel format.\n";
 
   // Gets the tags identifying the MetaGraphDef from the command line arguments.
-  QCHECK(parsed_toco_flags.savedmodel_tagset.specified())
-      << "Missing required flag --savedmodel_tagset.\n";
-  const string tags_str = parsed_toco_flags.savedmodel_tagset.value();
+  string tags_str;
+  if (parsed_toco_flags.savedmodel_tagset.specified()) {
+    tags_str = parsed_toco_flags.savedmodel_tagset.value();
+  } else {
+    tags_str = parsed_toco_flags.savedmodel_tagset.default_value();
+  }
   auto tags = absl::StrSplit(tags_str, ',');
 
   // Loads MetaGraphDef.
