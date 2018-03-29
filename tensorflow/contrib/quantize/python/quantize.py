@@ -305,7 +305,8 @@ def _FindLayersToQuantize(graph):
   # the output of the final BiasAdd must be quantized. So we treat the BiasAdd
   # as the 'activation_op' in the _LayerMatch, to ensure that it's output is
   # quantized.
-  final_layer_matcher = graph_matcher.GraphMatcher(bias_add_pattern)
+  final_layer_matcher = graph_matcher.GraphMatcher(
+      graph_matcher.OneofPattern([bias_add_pattern, folded_bias_add_pattern]))
   for match_result in final_layer_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_identity_pattern)
@@ -463,11 +464,16 @@ def _InsertQuantOp(context,
         lambda: inputs,
         name=name_prefix + '/delayed_quant')
 
-  nodes_modified_count = graph_editor.reroute_ts(
-      [quant], [inputs], can_modify=consumers)
-  if nodes_modified_count != len(consumers):
-    raise ValueError('Some inputs not quantized for ops: [%s]' % ', '.join(
-        [consumer.name for consumer in consumers]))
+  if consumers:
+    tensors_modified_count = graph_editor.reroute_ts(
+        [quant], [inputs], can_modify=consumers)
+    # Some operations can have multiple output tensors going to the same
+    # consumer. Since consumers is a set, we need to ensure that
+    # tensors_modified_count is greater than or equal to the length of the set
+    # of consumers.
+    if tensors_modified_count < len(consumers):
+      raise ValueError('No inputs quantized for ops: [%s]' % ', '.join(
+          [consumer.name for consumer in consumers]))
 
 
 def _GetContextFromOp(op):

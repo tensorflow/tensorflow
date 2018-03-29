@@ -271,18 +271,3 @@ cc_test(
 #        ],
 #    }),
 #)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "downloads",
-            "examples",
-            "gen",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

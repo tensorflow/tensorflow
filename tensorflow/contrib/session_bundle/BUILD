@@ -17,18 +17,6 @@ load(
     "tf_cc_test",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-)
-
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
     name = "session_bundle_half_plus_two",

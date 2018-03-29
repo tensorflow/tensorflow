@@ -1320,6 +1320,406 @@ func PadV2(scope *Scope, input tf.Output, paddings tf.Output, constant_values tf
 	return op.Output(0)
 }
 
+// Return the reduction indices for computing gradients of s0 op s1 with broadcast.
+//
+// This is typically used by gradient computations for a broadcasting operation.
+func BroadcastGradientArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output, r1 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BroadcastGradientArgs",
+		Input: []tf.Input{
+			s0, s1,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Returns the gradient of `Tile`.
+//
+// DEPRECATED at GraphDef version 3: TileGrad has been replaced with reduce_sum
+//
+// Since `Tile` takes an input and repeats the input `multiples` times
+// along each dimension, `TileGrad` takes in `multiples` and aggregates
+// each repeated tile of `input` into `output`.
+func TileGrad(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TileGrad",
+		Input: []tf.Input{
+			input, multiples,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Constructs a tensor by tiling a given tensor.
+//
+// This operation creates a new tensor by replicating `input` `multiples` times.
+// The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
+// and the values of `input` are replicated `multiples[i]` times along the 'i'th
+// dimension. For example, tiling `[a b c d]` by `[2]` produces
+// `[a b c d a b c d]`.
+//
+// Arguments:
+//	input: 1-D or higher.
+//	multiples: 1-D. Length must be the same as the number of dimensions in `input`
+func Tile(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Tile",
+		Input: []tf.Input{
+			input, multiples,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StridedSliceGradAttr is an optional argument to StridedSliceGrad.
+type StridedSliceGradAttr func(optionalAttr)
+
+// StridedSliceGradBeginMask sets the optional begin_mask attribute to value.
+// If not specified, defaults to 0
+func StridedSliceGradBeginMask(value int64) StridedSliceGradAttr {
+	return func(m optionalAttr) {
+		m["begin_mask"] = value
+	}
+}
+
+// StridedSliceGradEndMask sets the optional end_mask attribute to value.
+// If not specified, defaults to 0
+func StridedSliceGradEndMask(value int64) StridedSliceGradAttr {
+	return func(m optionalAttr) {
+		m["end_mask"] = value
+	}
+}
+
+// StridedSliceGradEllipsisMask sets the optional ellipsis_mask attribute to value.
+// If not specified, defaults to 0
+func StridedSliceGradEllipsisMask(value int64) StridedSliceGradAttr {
+	return func(m optionalAttr) {
+		m["ellipsis_mask"] = value
+	}
+}
+
+// StridedSliceGradNewAxisMask sets the optional new_axis_mask attribute to value.
+// If not specified, defaults to 0
+func StridedSliceGradNewAxisMask(value int64) StridedSliceGradAttr {
+	return func(m optionalAttr) {
+		m["new_axis_mask"] = value
+	}
+}
+
+// StridedSliceGradShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
+// If not specified, defaults to 0
+func StridedSliceGradShrinkAxisMask(value int64) StridedSliceGradAttr {
+	return func(m optionalAttr) {
+		m["shrink_axis_mask"] = value
+	}
+}
+
+// Returns the gradient of `StridedSlice`.
+//
+// Since `StridedSlice` cuts out pieces of its `input` which is size
+// `shape`, its gradient will have the same shape (which is passed here
+// as `shape`). The gradient will be zero in any element that the slice
+// does not select.
+//
+// Arguments are the same as StridedSliceGrad with the exception that
+// `dy` is the input gradient to be propagated and `shape` is the
+// shape of `StridedSlice`'s `input`.
+func StridedSliceGrad(scope *Scope, shape tf.Output, begin tf.Output, end tf.Output, strides tf.Output, dy tf.Output, optional ...StridedSliceGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StridedSliceGrad",
+		Input: []tf.Input{
+			shape, begin, end, strides, dy,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StridedSliceAttr is an optional argument to StridedSlice.
+type StridedSliceAttr func(optionalAttr)
+
+// StridedSliceBeginMask sets the optional begin_mask attribute to value.
+//
+// value: a bitmask where a bit i being 1 means to ignore the begin
+// value and instead use the largest interval possible. At runtime
+// begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
+// `[-1, n-1]` if `stride[i] < 0`
+// If not specified, defaults to 0
+func StridedSliceBeginMask(value int64) StridedSliceAttr {
+	return func(m optionalAttr) {
+		m["begin_mask"] = value
+	}
+}
+
+// StridedSliceEndMask sets the optional end_mask attribute to value.
+//
+// value: analogous to `begin_mask`
+// If not specified, defaults to 0
+func StridedSliceEndMask(value int64) StridedSliceAttr {
+	return func(m optionalAttr) {
+		m["end_mask"] = value
+	}
+}
+
+// StridedSliceEllipsisMask sets the optional ellipsis_mask attribute to value.
+//
+// value: a bitmask where bit `i` being 1 means the `i`th
+// position is actually an ellipsis. One bit at most can be 1.
+// If `ellipsis_mask == 0`, then an implicit ellipsis mask of `1 << (m+1)`
+// is provided. This means that `foo[3:5] == foo[3:5, ...]`. An ellipsis
+// implicitly creates as many range specifications as necessary to fully
+// specify the sliced range for every dimension. For example for a 4-dimensional
+// tensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`.
+// If not specified, defaults to 0
+func StridedSliceEllipsisMask(value int64) StridedSliceAttr {
+	return func(m optionalAttr) {
+		m["ellipsis_mask"] = value
+	}
+}
+
+// StridedSliceNewAxisMask sets the optional new_axis_mask attribute to value.
+//
+// value: a bitmask where bit `i` being 1 means the `i`th
+// specification creates a new shape 1 dimension. For example
+// `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
+// If not specified, defaults to 0
+func StridedSliceNewAxisMask(value int64) StridedSliceAttr {
+	return func(m optionalAttr) {
+		m["new_axis_mask"] = value
+	}
+}
+
+// StridedSliceShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
+//
+// value: a bitmask where bit `i` implies that the `i`th
+// specification should shrink the dimensionality. begin and end
+// must imply a slice of size 1 in the dimension. For example in
+// python one might do `foo[:, 3, :]` which would result in
+// `shrink_axis_mask` being 2.
+// If not specified, defaults to 0
+func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
+	return func(m optionalAttr) {
+		m["shrink_axis_mask"] = value
+	}
+}
+
+// Return a strided slice from `input`.
+//
+// Note, most python users will want to use the Python `Tensor.__getitem__`
+// or `Variable.__getitem__` rather than this op directly.
+//
+// The goal of this op is to produce a new tensor with a subset of
+// the elements from the `n` dimensional `input` tensor. The subset is chosen using
+// a sequence of `m` sparse range specifications encoded into the arguments
+// of this function. Note, in some cases
+// `m` could be equal to `n`, but this need not be the case. Each
+// range specification entry can be one of the following:
+//
+// - An ellipsis (...). Ellipses are used to imply zero or more
+//   dimensions of full-dimension selection and are produced using
+//   `ellipsis_mask`. For example, `foo[...]` is the identity slice.
+//
+// - A new axis. This is used to insert a new shape=1 dimension and is
+//   produced using `new_axis_mask`. For example, `foo[:, ...]` where
+//   `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.
+//
+//
+// - A range `begin:end:stride`. This is used to specify how much to choose from
+//   a given dimension. `stride` can be any integer but 0.  `begin` is an integer
+//   which represents the index of the first value to select while `end` represents
+//   the index of the last value to select. The number of values selected in each
+//   dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.
+//   `begin` and `end` can be negative where `-1` is the last element, `-2` is
+//   the second to last. `begin_mask` controls whether to replace the explicitly
+//   given `begin` with an implicit effective value of `0` if `stride > 0` and
+//   `-1` if `stride < 0`. `end_mask` is analogous but produces the number
+//   required to create the largest open interval. For example, given a shape
+//   `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do
+//   not assume this is equivalent to `foo[0:-1]` which has an effective `begin`
+//   and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the
+//   first dimension of a tensor while dropping the last two (in the original
+//   order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.
+//
+// - A single index. This is used to keep only elements that have a given
+//   index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a
+//   shape `(6,)` tensor. This is encoded in `begin` and `end` and
+//   `shrink_axis_mask`.
+//
+// Each conceptual range specification is encoded in the op's argument. This
+// encoding is best understand by considering a non-trivial example. In
+// particular,
+// `foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
+//
+// ```
+// begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
+// end = [2, 4, x, x, -3, x]
+// strides = [1, 1, x, x, -1, 1]
+// begin_mask = 1<<4 | 1 << 5 = 48
+// end_mask = 1<<5 = 32
+// ellipsis_mask = 1<<3 = 8
+// new_axis_mask = 1<<2 4
+// shrink_axis_mask = 1<<0
+// ```
+//
+// In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
+// the slice becomes (2, 1, 5, 5, 2, 5).
+// Let us walk step by step through each argument specification.
+//
+// 1.  The first argument in the example slice is turned into `begin = 1` and
+// `end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we
+// also set the appropriate bit in `shrink_axis_mask`.
+//
+// 2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have
+// zero bits contributed.
+//
+// 3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1
+// dimension in the final shape. Dummy values are contributed to begin,
+// end and stride, while the new_axis_mask bit is set.
+//
+// 4. `...` grab the full ranges from as many dimensions as needed to
+// fully specify a slice for every dimension of the input shape.
+//
+// 5. `:-3:-1` shows the use of negative indices. A negative index `i` associated
+// with a dimension that has shape `s` is converted to a positive index
+// `s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion
+// is done internally so begin, end and strides receive x, -3, and -1.
+// The appropriate begin_mask bit is set to indicate the start range is the
+// full range (ignoring the x).
+//
+// 6. `:` indicates that the entire contents of the corresponding dimension
+// is selected. This is equivalent to `::` or `0::1`. begin, end, and strides
+// receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
+// `end_mask` are also set.
+//
+// *Requirements*:
+//   `0 != strides[i] for i in [0, m)`
+//   `ellipsis_mask must be a power of two (only one ellipsis)`
+//
+// Arguments:
+//
+//	begin: `begin[k]` specifies the offset into the `k`th range specification.
+// The exact dimension this corresponds to will be determined by context.
+// Out-of-bounds values will be silently clamped. If the `k`th bit of
+// `begin_mask` then `begin[k]` is ignored and the full range of the
+// appropriate dimension is used instead. Negative values causes indexing
+// to start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`.
+//	end: `end[i]` is like `begin` with the exception that `end_mask` is
+// used to determine full ranges.
+//	strides: `strides[i]` specifies the increment in the `i`th specification
+// after extracting a given element. Negative indices will reverse
+// the original order. Out or range values are
+// clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`
+func StridedSlice(scope *Scope, input tf.Output, begin tf.Output, end tf.Output, strides tf.Output, optional ...StridedSliceAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StridedSlice",
+		Input: []tf.Input{
+			input, begin, end, strides,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Return a slice from 'input'.
+//
+// The output tensor is a tensor with dimensions described by 'size'
+// whose values are extracted from 'input' starting at the offsets in
+// 'begin'.
+//
+// *Requirements*:
+//   0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
+//
+// Arguments:
+//
+//	begin: begin[i] specifies the offset into the 'i'th dimension of
+// 'input' to slice from.
+//	size: size[i] specifies the number of elements of the 'i'th dimension
+// of 'input' to slice. If size[i] is -1, all remaining elements in dimension
+// i are included in the slice (i.e. this is equivalent to setting
+// size[i] = input.dim_size(i) - begin[i]).
+func Slice(scope *Scope, input tf.Output, begin tf.Output, size tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Slice",
+		Input: []tf.Input{
+			input, begin, size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SizeAttr is an optional argument to Size.
+type SizeAttr func(optionalAttr)
+
+// SizeOutType sets the optional out_type attribute to value.
+// If not specified, defaults to DT_INT32
+func SizeOutType(value tf.DataType) SizeAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Returns the size of a tensor.
+//
+// This operation returns an integer representing the number of elements in
+// `input`.
+//
+// For example:
+//
+// ```
+// # 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+// size(t) ==> 12
+// ```
+func Size(scope *Scope, input tf.Output, optional ...SizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Size",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns the complex conjugate of a complex number.
 //
 // Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -1791,6 +2191,116 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 		Input: []tf.Input{
 			data, segment_ids, num_segments,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceStridedSliceAssignAttr is an optional argument to ResourceStridedSliceAssign.
+type ResourceStridedSliceAssignAttr func(optionalAttr)
+
+// ResourceStridedSliceAssignBeginMask sets the optional begin_mask attribute to value.
+// If not specified, defaults to 0
+func ResourceStridedSliceAssignBeginMask(value int64) ResourceStridedSliceAssignAttr {
+	return func(m optionalAttr) {
+		m["begin_mask"] = value
+	}
+}
+
+// ResourceStridedSliceAssignEndMask sets the optional end_mask attribute to value.
+// If not specified, defaults to 0
+func ResourceStridedSliceAssignEndMask(value int64) ResourceStridedSliceAssignAttr {
+	return func(m optionalAttr) {
+		m["end_mask"] = value
+	}
+}
+
+// ResourceStridedSliceAssignEllipsisMask sets the optional ellipsis_mask attribute to value.
+// If not specified, defaults to 0
+func ResourceStridedSliceAssignEllipsisMask(value int64) ResourceStridedSliceAssignAttr {
+	return func(m optionalAttr) {
+		m["ellipsis_mask"] = value
+	}
+}
+
+// ResourceStridedSliceAssignNewAxisMask sets the optional new_axis_mask attribute to value.
+// If not specified, defaults to 0
+func ResourceStridedSliceAssignNewAxisMask(value int64) ResourceStridedSliceAssignAttr {
+	return func(m optionalAttr) {
+		m["new_axis_mask"] = value
+	}
+}
+
+// ResourceStridedSliceAssignShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
+// If not specified, defaults to 0
+func ResourceStridedSliceAssignShrinkAxisMask(value int64) ResourceStridedSliceAssignAttr {
+	return func(m optionalAttr) {
+		m["shrink_axis_mask"] = value
+	}
+}
+
+// Assign `value` to the sliced l-value reference of `ref`.
+//
+// The values of `value` are assigned to the positions in the variable
+// `ref` that are selected by the slice parameters. The slice parameters
+// `begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
+//
+// NOTE this op currently does not support broadcasting and so `value`'s
+// shape must be exactly the shape produced by the slice of `ref`.
+//
+// Returns the created operation.
+func ResourceStridedSliceAssign(scope *Scope, ref tf.Output, begin tf.Output, end tf.Output, strides tf.Output, value tf.Output, optional ...ResourceStridedSliceAssignAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceStridedSliceAssign",
+		Input: []tf.Input{
+			ref, begin, end, strides, value,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// ArgMaxAttr is an optional argument to ArgMax.
+type ArgMaxAttr func(optionalAttr)
+
+// ArgMaxOutputType sets the optional output_type attribute to value.
+// If not specified, defaults to DT_INT64
+func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
+	return func(m optionalAttr) {
+		m["output_type"] = value
+	}
+}
+
+// Returns the index with the largest value across dimensions of a tensor.
+//
+// Note that in case of ties the identity of the return value is not guaranteed.
+//
+// Arguments:
+//
+//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+// Describes which dimension of the input Tensor to reduce across. For vectors,
+// use dimension = 0.
+func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ArgMax",
+		Input: []tf.Input{
+			input, dimension,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -7514,6 +8024,75 @@ func ResourceApplyAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.O
 	return scope.AddOperation(opspec)
 }
 
+// Return the shape of s0 op s1 with broadcast.
+//
+// Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+// broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
+func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BroadcastArgs",
+		Input: []tf.Input{
+			s0, s1,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DataFormatDimMapAttr is an optional argument to DataFormatDimMap.
+type DataFormatDimMapAttr func(optionalAttr)
+
+// DataFormatDimMapSrcFormat sets the optional src_format attribute to value.
+//
+// value: source data format.
+// If not specified, defaults to "NHWC"
+func DataFormatDimMapSrcFormat(value string) DataFormatDimMapAttr {
+	return func(m optionalAttr) {
+		m["src_format"] = value
+	}
+}
+
+// DataFormatDimMapDstFormat sets the optional dst_format attribute to value.
+//
+// value: destination data format.
+// If not specified, defaults to "NCHW"
+func DataFormatDimMapDstFormat(value string) DataFormatDimMapAttr {
+	return func(m optionalAttr) {
+		m["dst_format"] = value
+	}
+}
+
+// Returns the dimension index in the destination data format given the one in
+//
+// the source data format.
+//
+// Arguments:
+//	x: A Tensor with each element as a dimension index in source data format.
+// Must be in the range [-4, 4).
+//
+// Returns A Tensor with each element as a dimension index in destination data format.
+func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAttr) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DataFormatDimMap",
+		Input: []tf.Input{
+			x,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResourceApplyPowerSignAttr is an optional argument to ResourceApplyPowerSign.
 type ResourceApplyPowerSignAttr func(optionalAttr)
 
@@ -8468,47 +9047,6 @@ func ResourceApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom tf.Out
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// SizeAttr is an optional argument to Size.
-type SizeAttr func(optionalAttr)
-
-// SizeOutType sets the optional out_type attribute to value.
-// If not specified, defaults to DT_INT32
-func SizeOutType(value tf.DataType) SizeAttr {
-	return func(m optionalAttr) {
-		m["out_type"] = value
-	}
-}
-
-// Returns the size of a tensor.
-//
-// This operation returns an integer representing the number of elements in
-// `input`.
-//
-// For example:
-//
-// ```
-// # 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
-// size(t) ==> 12
-// ```
-func Size(scope *Scope, input tf.Output, optional ...SizeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Size",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // ResourceScatterNdUpdateAttr is an optional argument to ResourceScatterNdUpdate.
@@ -13934,124 +14472,6 @@ func QuantizedReluX(scope *Scope, features tf.Output, max_value tf.Output, min_f
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// WholeFileReaderV2Attr is an optional argument to WholeFileReaderV2.
-type WholeFileReaderV2Attr func(optionalAttr)
-
-// WholeFileReaderV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this reader is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// WholeFileReaderV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this reader is named in the given bucket
-// with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to ""
-func WholeFileReaderV2SharedName(value string) WholeFileReaderV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// A Reader that outputs the entire contents of a file as a value.
-//
-// To use, enqueue filenames in a Queue.  The output of ReaderRead will
-// be a filename (key) and the contents of that file (value).
-//
-// Returns The handle to reference the Reader.
-func WholeFileReaderV2(scope *Scope, optional ...WholeFileReaderV2Attr) (reader_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "WholeFileReaderV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Transforms a tf.Example proto (as a string) into typed tensors.
-//
-// Arguments:
-//	serialized: A vector containing a batch of binary serialized Example protos.
-//	dense_defaults: A list of Tensors (some may be empty), whose length matches
-// the length of `dense_keys`. dense_defaults[j] provides default values
-// when the example's feature_map lacks dense_key[j].  If an empty Tensor is
-// provided for dense_defaults[j], then the Feature dense_keys[j] is required.
-// The input type is inferred from dense_defaults[j], even when it's empty.
-// If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
-// then the shape of dense_defaults[j] must match that of dense_shapes[j].
-// If dense_shapes[j] has an undefined major dimension (variable strides dense
-// feature), dense_defaults[j] must contain a single element:
-// the padding element.
-//	num_sparse: The number of sparse features to be parsed from the example. This
-// must match the lengths of `sparse_keys` and `sparse_types`.
-//	sparse_keys: A list of `num_sparse` strings.
-// The keys expected in the Examples' features associated with sparse values.
-//	dense_keys: The keys expected in the Examples' features associated with dense
-// values.
-//	sparse_types: A list of `num_sparse` types; the data types of data in each
-// Feature given in sparse_keys.
-// Currently the ParseSingleExample op supports DT_FLOAT (FloatList),
-// DT_INT64 (Int64List), and DT_STRING (BytesList).
-//	dense_shapes: The shapes of data in each Feature given in dense_keys.
-// The length of this list must match the length of `dense_keys`.  The
-// number of elements in the Feature corresponding to dense_key[j] must
-// always equal dense_shapes[j].NumEntries().  If dense_shapes[j] ==
-// (D0, D1, ..., DN) then the shape of output Tensor dense_values[j]
-// will be (D0, D1, ..., DN): In the case dense_shapes[j] = (-1, D1,
-// ..., DN), the shape of the output Tensor dense_values[j] will be (M,
-// D1, .., DN), where M is the number of blocks of elements of length
-// D1 * .... * DN, in the input.
-func ParseSingleExample(scope *Scope, serialized tf.Output, dense_defaults []tf.Output, num_sparse int64, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape) (sparse_indices []tf.Output, sparse_values []tf.Output, sparse_shapes []tf.Output, dense_values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_sparse": num_sparse, "sparse_keys": sparse_keys, "dense_keys": dense_keys, "sparse_types": sparse_types, "dense_shapes": dense_shapes}
-	opspec := tf.OpSpec{
-		Type: "ParseSingleExample",
-		Input: []tf.Input{
-			serialized, tf.OutputList(dense_defaults),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if sparse_indices, idx, err = makeOutputList(op, idx, "sparse_indices"); err != nil {
-		scope.UpdateErr("ParseSingleExample", err)
-		return
-	}
-	if sparse_values, idx, err = makeOutputList(op, idx, "sparse_values"); err != nil {
-		scope.UpdateErr("ParseSingleExample", err)
-		return
-	}
-	if sparse_shapes, idx, err = makeOutputList(op, idx, "sparse_shapes"); err != nil {
-		scope.UpdateErr("ParseSingleExample", err)
-		return
-	}
-	if dense_values, idx, err = makeOutputList(op, idx, "dense_values"); err != nil {
-		scope.UpdateErr("ParseSingleExample", err)
-		return
-	}
-	return sparse_indices, sparse_values, sparse_shapes, dense_values
-}
-
 // QuantizedConv2DAttr is an optional argument to QuantizedConv2D.
 type QuantizedConv2DAttr func(optionalAttr)
 
@@ -15278,31 +15698,6 @@ func SparseSparseMinimum(scope *Scope, a_indices tf.Output, a_values tf.Output, 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Constructs a tensor by tiling a given tensor.
-//
-// This operation creates a new tensor by replicating `input` `multiples` times.
-// The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
-// and the values of `input` are replicated `multiples[i]` times along the 'i'th
-// dimension. For example, tiling `[a b c d]` by `[2]` produces
-// `[a b c d a b c d]`.
-//
-// Arguments:
-//	input: 1-D or higher.
-//	multiples: 1-D. Length must be the same as the number of dimensions in `input`
-func Tile(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Tile",
-		Input: []tf.Input{
-			input, multiples,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // TakeManySparseFromTensorsMapAttr is an optional argument to TakeManySparseFromTensorsMap.
@@ -16727,6 +17122,203 @@ func RandomGamma(scope *Scope, shape tf.Output, alpha tf.Output, optional ...Ran
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
+type QuantizeAndDequantizeAttr func(optionalAttr)
+
+// QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
+// If not specified, defaults to true
+func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["signed_input"] = value
+	}
+}
+
+// QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
+// If not specified, defaults to false
+func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["range_given"] = value
+	}
+}
+
+// QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
+// If not specified, defaults to 0
+func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["input_min"] = value
+	}
+}
+
+// QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
+// If not specified, defaults to 0
+func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["input_max"] = value
+	}
+}
+
+// Use QuantizeAndDequantizeV2 instead.
+//
+// DEPRECATED at GraphDef version 22: Replaced by QuantizeAndDequantizeV2
+func QuantizeAndDequantize(scope *Scope, input tf.Output, optional ...QuantizeAndDequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantize",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns locations of nonzero / true values in a tensor.
+//
+// This operation returns the coordinates of true elements in `condition`. The
+// coordinates are returned in a 2-D tensor where the first dimension (rows)
+// represents the number of true elements, and the second dimension (columns)
+// represents the coordinates of the true elements. Keep in mind, the shape of
+// the output tensor can vary depending on how many true values there are in
+// `condition`. Indices are output in row-major order.
+//
+// For example:
+//
+// ```
+// # 'input' tensor is [[True, False]
+// #                    [True, False]]
+// # 'input' has two true values, so output has two coordinates.
+// # 'input' has rank of 2, so coordinates have two indices.
+// where(input) ==> [[0, 0],
+//                   [1, 0]]
+//
+// # `condition` tensor is [[[True, False]
+// #                     [True, False]]
+// #                    [[False, True]
+// #                     [False, True]]
+// #                    [[False, False]
+// #                     [False, True]]]
+// # 'input' has 5 true values, so output has 5 coordinates.
+// # 'input' has rank of 3, so coordinates have three indices.
+// where(input) ==> [[0, 0, 0],
+//                   [0, 1, 0],
+//                   [1, 0, 1],
+//                   [1, 1, 1],
+//                   [2, 1, 1]]
+//
+// # `condition` tensor is [[[1.5,  0.0]
+// #                     [-0.5, 0.0]]
+// #                    [[0.0,  0.25]
+// #                     [0.0,  0.75]]
+// #                    [[0.0,  0.0]
+// #                     [0.0,  0.01]]]
+// # 'input' has 5 nonzero values, so output has 5 coordinates.
+// # 'input' has rank of 3, so coordinates have three indices.
+// where(input) ==> [[0, 0, 0],
+//                   [0, 1, 0],
+//                   [1, 0, 1],
+//                   [1, 1, 1],
+//                   [2, 1, 1]]
+//
+// # `condition` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
+// #                     [0.0 + 0.5j, 0.0  + 0.0j]]
+// #                    [[0.0 + 0.0j, 0.25 + 1.5j]
+// #                     [0.0 + 0.0j, 0.75 + 0.0j]]
+// #                    [[0.0 + 0.0j, 0.0  + 0.0j]
+// #                     [0.0 + 0.0j, 0.01 + 0.0j]]]
+// # 'input' has 5 nonzero magnitude values, so output has 5 coordinates.
+// # 'input' has rank of 3, so coordinates have three indices.
+// where(input) ==> [[0, 0, 0],
+//                   [0, 1, 0],
+//                   [1, 0, 1],
+//                   [1, 1, 1],
+//                   [2, 1, 1]]
+// ```
+func Where(scope *Scope, condition tf.Output) (index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Where",
+		Input: []tf.Input{
+			condition,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QueueDequeueV2Attr is an optional argument to QueueDequeueV2.
+type QueueDequeueV2Attr func(optionalAttr)
+
+// QueueDequeueV2TimeoutMs sets the optional timeout_ms attribute to value.
+//
+// value: If the queue is empty, this operation will block for up to
+// timeout_ms milliseconds.
+// Note: This option is not supported yet.
+// If not specified, defaults to -1
+func QueueDequeueV2TimeoutMs(value int64) QueueDequeueV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_ms"] = value
+	}
+}
+
+// Dequeues a tuple of one or more tensors from the given queue.
+//
+// This operation has k outputs, where k is the number of components
+// in the tuples stored in the given queue, and output i is the ith
+// component of the dequeued tuple.
+//
+// N.B. If the queue is empty, this operation will block until an element
+// has been dequeued (or 'timeout_ms' elapses, if specified).
+//
+// Arguments:
+//	handle: The handle to a queue.
+//	component_types: The type of each component in a tuple.
+//
+// Returns One or more tensors that were dequeued as a tuple.
+func QueueDequeueV2(scope *Scope, handle tf.Output, component_types []tf.DataType, optional ...QueueDequeueV2Attr) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"component_types": component_types}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueDequeueV2",
+		Input: []tf.Input{
+			handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("QueueDequeueV2", err)
+		return
+	}
+	return components
 }
 
 // RandomUniformIntAttr is an optional argument to RandomUniformInt.
@@ -22891,199 +23483,6 @@ func InvGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// StridedSliceAttr is an optional argument to StridedSlice.
-type StridedSliceAttr func(optionalAttr)
-
-// StridedSliceBeginMask sets the optional begin_mask attribute to value.
-//
-// value: a bitmask where a bit i being 1 means to ignore the begin
-// value and instead use the largest interval possible. At runtime
-// begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
-// `[-1, n-1]` if `stride[i] < 0`
-// If not specified, defaults to 0
-func StridedSliceBeginMask(value int64) StridedSliceAttr {
-	return func(m optionalAttr) {
-		m["begin_mask"] = value
-	}
-}
-
-// StridedSliceEndMask sets the optional end_mask attribute to value.
-//
-// value: analogous to `begin_mask`
-// If not specified, defaults to 0
-func StridedSliceEndMask(value int64) StridedSliceAttr {
-	return func(m optionalAttr) {
-		m["end_mask"] = value
-	}
-}
-
-// StridedSliceEllipsisMask sets the optional ellipsis_mask attribute to value.
-//
-// value: a bitmask where bit `i` being 1 means the `i`th
-// position is actually an ellipsis. One bit at most can be 1.
-// If `ellipsis_mask == 0`, then an implicit ellipsis mask of `1 << (m+1)`
-// is provided. This means that `foo[3:5] == foo[3:5, ...]`. An ellipsis
-// implicitly creates as many range specifications as necessary to fully
-// specify the sliced range for every dimension. For example for a 4-dimensional
-// tensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`.
-// If not specified, defaults to 0
-func StridedSliceEllipsisMask(value int64) StridedSliceAttr {
-	return func(m optionalAttr) {
-		m["ellipsis_mask"] = value
-	}
-}
-
-// StridedSliceNewAxisMask sets the optional new_axis_mask attribute to value.
-//
-// value: a bitmask where bit `i` being 1 means the `i`th
-// specification creates a new shape 1 dimension. For example
-// `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
-// If not specified, defaults to 0
-func StridedSliceNewAxisMask(value int64) StridedSliceAttr {
-	return func(m optionalAttr) {
-		m["new_axis_mask"] = value
-	}
-}
-
-// StridedSliceShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
-//
-// value: a bitmask where bit `i` implies that the `i`th
-// specification should shrink the dimensionality. begin and end
-// must imply a slice of size 1 in the dimension. For example in
-// python one might do `foo[:, 3, :]` which would result in
-// `shrink_axis_mask` being 2.
-// If not specified, defaults to 0
-func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
-	return func(m optionalAttr) {
-		m["shrink_axis_mask"] = value
-	}
-}
-
-// Return a strided slice from `input`.
-//
-// Note, most python users will want to use the Python `Tensor.__getitem__`
-// or `Variable.__getitem__` rather than this op directly.
-//
-// The goal of this op is to produce a new tensor with a subset of
-// the elements from the `n` dimensional `input` tensor. The subset is chosen using
-// a sequence of `m` sparse range specifications encoded into the arguments
-// of this function. Note, in some cases
-// `m` could be equal to `n`, but this need not be the case. Each
-// range specification entry can be one of the following:
-//
-// - An ellipsis (...). Ellipses are used to imply zero or more
-//   dimensions of full-dimension selection and are produced using
-//   `ellipsis_mask`. For example, `foo[...]` is the identity slice.
-//
-// - A new axis. This is used to insert a new shape=1 dimension and is
-//   produced using `new_axis_mask`. For example, `foo[:, ...]` where
-//   `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.
-//
-//
-// - A range `begin:end:stride`. This is used to specify how much to choose from
-//   a given dimension. `stride` can be any integer but 0.  `begin` is an integer
-//   which represents the index of the first value to select while `end` represents
-//   the index of the last value to select. The number of values selected in each
-//   dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.
-//   `begin` and `end` can be negative where `-1` is the last element, `-2` is
-//   the second to last. `begin_mask` controls whether to replace the explicitly
-//   given `begin` with an implicit effective value of `0` if `stride > 0` and
-//   `-1` if `stride < 0`. `end_mask` is analogous but produces the number
-//   required to create the largest open interval. For example, given a shape
-//   `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do
-//   not assume this is equivalent to `foo[0:-1]` which has an effective `begin`
-//   and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the
-//   first dimension of a tensor while dropping the last two (in the original
-//   order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.
-//
-// - A single index. This is used to keep only elements that have a given
-//   index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a
-//   shape `(6,)` tensor. This is encoded in `begin` and `end` and
-//   `shrink_axis_mask`.
-//
-// Each conceptual range specification is encoded in the op's argument. This
-// encoding is best understand by considering a non-trivial example. In
-// particular,
-// `foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
-//
-// ```
-// begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
-// end = [2, 4, x, x, -3, x]
-// strides = [1, 1, x, x, -1, 1]
-// begin_mask = 1<<4 | 1 << 5 = 48
-// end_mask = 1<<5 = 32
-// ellipsis_mask = 1<<3 = 8
-// new_axis_mask = 1<<2 4
-// shrink_axis_mask = 1<<0
-// ```
-//
-// In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
-// the slice becomes (2, 1, 5, 5, 2, 5).
-// Let us walk step by step through each argument specification.
-//
-// 1.  The first argument in the example slice is turned into `begin = 1` and
-// `end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we
-// also set the appropriate bit in `shrink_axis_mask`.
-//
-// 2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have
-// zero bits contributed.
-//
-// 3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1
-// dimension in the final shape. Dummy values are contributed to begin,
-// end and stride, while the new_axis_mask bit is set.
-//
-// 4. `...` grab the full ranges from as many dimensions as needed to
-// fully specify a slice for every dimension of the input shape.
-//
-// 5. `:-3:-1` shows the use of negative indices. A negative index `i` associated
-// with a dimension that has shape `s` is converted to a positive index
-// `s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion
-// is done internally so begin, end and strides receive x, -3, and -1.
-// The appropriate begin_mask bit is set to indicate the start range is the
-// full range (ignoring the x).
-//
-// 6. `:` indicates that the entire contents of the corresponding dimension
-// is selected. This is equivalent to `::` or `0::1`. begin, end, and strides
-// receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
-// `end_mask` are also set.
-//
-// *Requirements*:
-//   `0 != strides[i] for i in [0, m)`
-//   `ellipsis_mask must be a power of two (only one ellipsis)`
-//
-// Arguments:
-//
-//	begin: `begin[k]` specifies the offset into the `k`th range specification.
-// The exact dimension this corresponds to will be determined by context.
-// Out-of-bounds values will be silently clamped. If the `k`th bit of
-// `begin_mask` then `begin[k]` is ignored and the full range of the
-// appropriate dimension is used instead. Negative values causes indexing
-// to start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`.
-//	end: `end[i]` is like `begin` with the exception that `end_mask` is
-// used to determine full ranges.
-//	strides: `strides[i]` specifies the increment in the `i`th specification
-// after extracting a given element. Negative indices will reverse
-// the original order. Out or range values are
-// clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`
-func StridedSlice(scope *Scope, input tf.Output, begin tf.Output, end tf.Output, strides tf.Output, optional ...StridedSliceAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StridedSlice",
-		Input: []tf.Input{
-			input, begin, end, strides,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // PriorityQueueV2Attr is an optional argument to PriorityQueueV2.
 type PriorityQueueV2Attr func(optionalAttr)
 
@@ -23231,116 +23630,6 @@ func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (value
 		return
 	}
 	return values
-}
-
-// ArgMaxAttr is an optional argument to ArgMax.
-type ArgMaxAttr func(optionalAttr)
-
-// ArgMaxOutputType sets the optional output_type attribute to value.
-// If not specified, defaults to DT_INT64
-func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
-	return func(m optionalAttr) {
-		m["output_type"] = value
-	}
-}
-
-// Returns the index with the largest value across dimensions of a tensor.
-//
-// Note that in case of ties the identity of the return value is not guaranteed.
-//
-// Arguments:
-//
-//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
-// Describes which dimension of the input Tensor to reduce across. For vectors,
-// use dimension = 0.
-func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ArgMax",
-		Input: []tf.Input{
-			input, dimension,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceStridedSliceAssignAttr is an optional argument to ResourceStridedSliceAssign.
-type ResourceStridedSliceAssignAttr func(optionalAttr)
-
-// ResourceStridedSliceAssignBeginMask sets the optional begin_mask attribute to value.
-// If not specified, defaults to 0
-func ResourceStridedSliceAssignBeginMask(value int64) ResourceStridedSliceAssignAttr {
-	return func(m optionalAttr) {
-		m["begin_mask"] = value
-	}
-}
-
-// ResourceStridedSliceAssignEndMask sets the optional end_mask attribute to value.
-// If not specified, defaults to 0
-func ResourceStridedSliceAssignEndMask(value int64) ResourceStridedSliceAssignAttr {
-	return func(m optionalAttr) {
-		m["end_mask"] = value
-	}
-}
-
-// ResourceStridedSliceAssignEllipsisMask sets the optional ellipsis_mask attribute to value.
-// If not specified, defaults to 0
-func ResourceStridedSliceAssignEllipsisMask(value int64) ResourceStridedSliceAssignAttr {
-	return func(m optionalAttr) {
-		m["ellipsis_mask"] = value
-	}
-}
-
-// ResourceStridedSliceAssignNewAxisMask sets the optional new_axis_mask attribute to value.
-// If not specified, defaults to 0
-func ResourceStridedSliceAssignNewAxisMask(value int64) ResourceStridedSliceAssignAttr {
-	return func(m optionalAttr) {
-		m["new_axis_mask"] = value
-	}
-}
-
-// ResourceStridedSliceAssignShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
-// If not specified, defaults to 0
-func ResourceStridedSliceAssignShrinkAxisMask(value int64) ResourceStridedSliceAssignAttr {
-	return func(m optionalAttr) {
-		m["shrink_axis_mask"] = value
-	}
-}
-
-// Assign `value` to the sliced l-value reference of `ref`.
-//
-// The values of `value` are assigned to the positions in the variable
-// `ref` that are selected by the slice parameters. The slice parameters
-// `begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
-//
-// NOTE this op currently does not support broadcasting and so `value`'s
-// shape must be exactly the shape produced by the slice of `ref`.
-//
-// Returns the created operation.
-func ResourceStridedSliceAssign(scope *Scope, ref tf.Output, begin tf.Output, end tf.Output, strides tf.Output, value tf.Output, optional ...ResourceStridedSliceAssignAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceStridedSliceAssign",
-		Input: []tf.Input{
-			ref, begin, end, strides, value,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // QueueEnqueueV2Attr is an optional argument to QueueEnqueueV2.
@@ -26224,6 +26513,124 @@ func FixedUnigramCandidateSampler(scope *Scope, true_classes tf.Output, num_true
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// WholeFileReaderV2Attr is an optional argument to WholeFileReaderV2.
+type WholeFileReaderV2Attr func(optionalAttr)
+
+// WholeFileReaderV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this reader is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// WholeFileReaderV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this reader is named in the given bucket
+// with this shared_name. Otherwise, the node name is used instead.
+// If not specified, defaults to ""
+func WholeFileReaderV2SharedName(value string) WholeFileReaderV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// A Reader that outputs the entire contents of a file as a value.
+//
+// To use, enqueue filenames in a Queue.  The output of ReaderRead will
+// be a filename (key) and the contents of that file (value).
+//
+// Returns The handle to reference the Reader.
+func WholeFileReaderV2(scope *Scope, optional ...WholeFileReaderV2Attr) (reader_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WholeFileReaderV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Transforms a tf.Example proto (as a string) into typed tensors.
+//
+// Arguments:
+//	serialized: A vector containing a batch of binary serialized Example protos.
+//	dense_defaults: A list of Tensors (some may be empty), whose length matches
+// the length of `dense_keys`. dense_defaults[j] provides default values
+// when the example's feature_map lacks dense_key[j].  If an empty Tensor is
+// provided for dense_defaults[j], then the Feature dense_keys[j] is required.
+// The input type is inferred from dense_defaults[j], even when it's empty.
+// If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
+// then the shape of dense_defaults[j] must match that of dense_shapes[j].
+// If dense_shapes[j] has an undefined major dimension (variable strides dense
+// feature), dense_defaults[j] must contain a single element:
+// the padding element.
+//	num_sparse: The number of sparse features to be parsed from the example. This
+// must match the lengths of `sparse_keys` and `sparse_types`.
+//	sparse_keys: A list of `num_sparse` strings.
+// The keys expected in the Examples' features associated with sparse values.
+//	dense_keys: The keys expected in the Examples' features associated with dense
+// values.
+//	sparse_types: A list of `num_sparse` types; the data types of data in each
+// Feature given in sparse_keys.
+// Currently the ParseSingleExample op supports DT_FLOAT (FloatList),
+// DT_INT64 (Int64List), and DT_STRING (BytesList).
+//	dense_shapes: The shapes of data in each Feature given in dense_keys.
+// The length of this list must match the length of `dense_keys`.  The
+// number of elements in the Feature corresponding to dense_key[j] must
+// always equal dense_shapes[j].NumEntries().  If dense_shapes[j] ==
+// (D0, D1, ..., DN) then the shape of output Tensor dense_values[j]
+// will be (D0, D1, ..., DN): In the case dense_shapes[j] = (-1, D1,
+// ..., DN), the shape of the output Tensor dense_values[j] will be (M,
+// D1, .., DN), where M is the number of blocks of elements of length
+// D1 * .... * DN, in the input.
+func ParseSingleExample(scope *Scope, serialized tf.Output, dense_defaults []tf.Output, num_sparse int64, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape) (sparse_indices []tf.Output, sparse_values []tf.Output, sparse_shapes []tf.Output, dense_values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_sparse": num_sparse, "sparse_keys": sparse_keys, "dense_keys": dense_keys, "sparse_types": sparse_types, "dense_shapes": dense_shapes}
+	opspec := tf.OpSpec{
+		Type: "ParseSingleExample",
+		Input: []tf.Input{
+			serialized, tf.OutputList(dense_defaults),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if sparse_indices, idx, err = makeOutputList(op, idx, "sparse_indices"); err != nil {
+		scope.UpdateErr("ParseSingleExample", err)
+		return
+	}
+	if sparse_values, idx, err = makeOutputList(op, idx, "sparse_values"); err != nil {
+		scope.UpdateErr("ParseSingleExample", err)
+		return
+	}
+	if sparse_shapes, idx, err = makeOutputList(op, idx, "sparse_shapes"); err != nil {
+		scope.UpdateErr("ParseSingleExample", err)
+		return
+	}
+	if dense_values, idx, err = makeOutputList(op, idx, "dense_values"); err != nil {
+		scope.UpdateErr("ParseSingleExample", err)
+		return
+	}
+	return sparse_indices, sparse_values, sparse_shapes, dense_values
+}
+
 // Elementwise computes the bitwise AND of `x` and `y`.
 //
 // The result will have those bits set, that are set in both `x` and `y`. The
@@ -27476,413 +27883,6 @@ func UniqueV2(scope *Scope, x tf.Output, axis tf.Output, optional ...UniqueV2Att
 			x, axis,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Return a slice from 'input'.
-//
-// The output tensor is a tensor with dimensions described by 'size'
-// whose values are extracted from 'input' starting at the offsets in
-// 'begin'.
-//
-// *Requirements*:
-//   0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
-//
-// Arguments:
-//
-//	begin: begin[i] specifies the offset into the 'i'th dimension of
-// 'input' to slice from.
-//	size: size[i] specifies the number of elements of the 'i'th dimension
-// of 'input' to slice. If size[i] is -1, all remaining elements in dimension
-// i are included in the slice (i.e. this is equivalent to setting
-// size[i] = input.dim_size(i) - begin[i]).
-func Slice(scope *Scope, input tf.Output, begin tf.Output, size tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Slice",
-		Input: []tf.Input{
-			input, begin, size,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StridedSliceGradAttr is an optional argument to StridedSliceGrad.
-type StridedSliceGradAttr func(optionalAttr)
-
-// StridedSliceGradBeginMask sets the optional begin_mask attribute to value.
-// If not specified, defaults to 0
-func StridedSliceGradBeginMask(value int64) StridedSliceGradAttr {
-	return func(m optionalAttr) {
-		m["begin_mask"] = value
-	}
-}
-
-// StridedSliceGradEndMask sets the optional end_mask attribute to value.
-// If not specified, defaults to 0
-func StridedSliceGradEndMask(value int64) StridedSliceGradAttr {
-	return func(m optionalAttr) {
-		m["end_mask"] = value
-	}
-}
-
-// StridedSliceGradEllipsisMask sets the optional ellipsis_mask attribute to value.
-// If not specified, defaults to 0
-func StridedSliceGradEllipsisMask(value int64) StridedSliceGradAttr {
-	return func(m optionalAttr) {
-		m["ellipsis_mask"] = value
-	}
-}
-
-// StridedSliceGradNewAxisMask sets the optional new_axis_mask attribute to value.
-// If not specified, defaults to 0
-func StridedSliceGradNewAxisMask(value int64) StridedSliceGradAttr {
-	return func(m optionalAttr) {
-		m["new_axis_mask"] = value
-	}
-}
-
-// StridedSliceGradShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
-// If not specified, defaults to 0
-func StridedSliceGradShrinkAxisMask(value int64) StridedSliceGradAttr {
-	return func(m optionalAttr) {
-		m["shrink_axis_mask"] = value
-	}
-}
-
-// Returns the gradient of `StridedSlice`.
-//
-// Since `StridedSlice` cuts out pieces of its `input` which is size
-// `shape`, its gradient will have the same shape (which is passed here
-// as `shape`). The gradient will be zero in any element that the slice
-// does not select.
-//
-// Arguments are the same as StridedSliceGrad with the exception that
-// `dy` is the input gradient to be propagated and `shape` is the
-// shape of `StridedSlice`'s `input`.
-func StridedSliceGrad(scope *Scope, shape tf.Output, begin tf.Output, end tf.Output, strides tf.Output, dy tf.Output, optional ...StridedSliceGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StridedSliceGrad",
-		Input: []tf.Input{
-			shape, begin, end, strides, dy,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the gradient of `Tile`.
-//
-// DEPRECATED at GraphDef version 3: TileGrad has been replaced with reduce_sum
-//
-// Since `Tile` takes an input and repeats the input `multiples` times
-// along each dimension, `TileGrad` takes in `multiples` and aggregates
-// each repeated tile of `input` into `output`.
-func TileGrad(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TileGrad",
-		Input: []tf.Input{
-			input, multiples,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
-type QuantizeAndDequantizeAttr func(optionalAttr)
-
-// QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
-// If not specified, defaults to true
-func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["signed_input"] = value
-	}
-}
-
-// QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to 8
-func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["num_bits"] = value
-	}
-}
-
-// QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
-// If not specified, defaults to false
-func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["range_given"] = value
-	}
-}
-
-// QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
-// If not specified, defaults to 0
-func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["input_min"] = value
-	}
-}
-
-// QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
-// If not specified, defaults to 0
-func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["input_max"] = value
-	}
-}
-
-// Use QuantizeAndDequantizeV2 instead.
-//
-// DEPRECATED at GraphDef version 22: Replaced by QuantizeAndDequantizeV2
-func QuantizeAndDequantize(scope *Scope, input tf.Output, optional ...QuantizeAndDequantizeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizeAndDequantize",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// QueueDequeueV2Attr is an optional argument to QueueDequeueV2.
-type QueueDequeueV2Attr func(optionalAttr)
-
-// QueueDequeueV2TimeoutMs sets the optional timeout_ms attribute to value.
-//
-// value: If the queue is empty, this operation will block for up to
-// timeout_ms milliseconds.
-// Note: This option is not supported yet.
-// If not specified, defaults to -1
-func QueueDequeueV2TimeoutMs(value int64) QueueDequeueV2Attr {
-	return func(m optionalAttr) {
-		m["timeout_ms"] = value
-	}
-}
-
-// Dequeues a tuple of one or more tensors from the given queue.
-//
-// This operation has k outputs, where k is the number of components
-// in the tuples stored in the given queue, and output i is the ith
-// component of the dequeued tuple.
-//
-// N.B. If the queue is empty, this operation will block until an element
-// has been dequeued (or 'timeout_ms' elapses, if specified).
-//
-// Arguments:
-//	handle: The handle to a queue.
-//	component_types: The type of each component in a tuple.
-//
-// Returns One or more tensors that were dequeued as a tuple.
-func QueueDequeueV2(scope *Scope, handle tf.Output, component_types []tf.DataType, optional ...QueueDequeueV2Attr) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"component_types": component_types}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueDequeueV2",
-		Input: []tf.Input{
-			handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("QueueDequeueV2", err)
-		return
-	}
-	return components
-}
-
-// Returns locations of nonzero / true values in a tensor.
-//
-// This operation returns the coordinates of true elements in `condition`. The
-// coordinates are returned in a 2-D tensor where the first dimension (rows)
-// represents the number of true elements, and the second dimension (columns)
-// represents the coordinates of the true elements. Keep in mind, the shape of
-// the output tensor can vary depending on how many true values there are in
-// `condition`. Indices are output in row-major order.
-//
-// For example:
-//
-// ```
-// # 'input' tensor is [[True, False]
-// #                    [True, False]]
-// # 'input' has two true values, so output has two coordinates.
-// # 'input' has rank of 2, so coordinates have two indices.
-// where(input) ==> [[0, 0],
-//                   [1, 0]]
-//
-// # `condition` tensor is [[[True, False]
-// #                     [True, False]]
-// #                    [[False, True]
-// #                     [False, True]]
-// #                    [[False, False]
-// #                     [False, True]]]
-// # 'input' has 5 true values, so output has 5 coordinates.
-// # 'input' has rank of 3, so coordinates have three indices.
-// where(input) ==> [[0, 0, 0],
-//                   [0, 1, 0],
-//                   [1, 0, 1],
-//                   [1, 1, 1],
-//                   [2, 1, 1]]
-//
-// # `condition` tensor is [[[1.5,  0.0]
-// #                     [-0.5, 0.0]]
-// #                    [[0.0,  0.25]
-// #                     [0.0,  0.75]]
-// #                    [[0.0,  0.0]
-// #                     [0.0,  0.01]]]
-// # 'input' has 5 nonzero values, so output has 5 coordinates.
-// # 'input' has rank of 3, so coordinates have three indices.
-// where(input) ==> [[0, 0, 0],
-//                   [0, 1, 0],
-//                   [1, 0, 1],
-//                   [1, 1, 1],
-//                   [2, 1, 1]]
-//
-// # `condition` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
-// #                     [0.0 + 0.5j, 0.0  + 0.0j]]
-// #                    [[0.0 + 0.0j, 0.25 + 1.5j]
-// #                     [0.0 + 0.0j, 0.75 + 0.0j]]
-// #                    [[0.0 + 0.0j, 0.0  + 0.0j]
-// #                     [0.0 + 0.0j, 0.01 + 0.0j]]]
-// # 'input' has 5 nonzero magnitude values, so output has 5 coordinates.
-// # 'input' has rank of 3, so coordinates have three indices.
-// where(input) ==> [[0, 0, 0],
-//                   [0, 1, 0],
-//                   [1, 0, 1],
-//                   [1, 1, 1],
-//                   [2, 1, 1]]
-// ```
-func Where(scope *Scope, condition tf.Output) (index tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Where",
-		Input: []tf.Input{
-			condition,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DataFormatDimMapAttr is an optional argument to DataFormatDimMap.
-type DataFormatDimMapAttr func(optionalAttr)
-
-// DataFormatDimMapSrcFormat sets the optional src_format attribute to value.
-//
-// value: source data format.
-// If not specified, defaults to "NHWC"
-func DataFormatDimMapSrcFormat(value string) DataFormatDimMapAttr {
-	return func(m optionalAttr) {
-		m["src_format"] = value
-	}
-}
-
-// DataFormatDimMapDstFormat sets the optional dst_format attribute to value.
-//
-// value: destination data format.
-// If not specified, defaults to "NCHW"
-func DataFormatDimMapDstFormat(value string) DataFormatDimMapAttr {
-	return func(m optionalAttr) {
-		m["dst_format"] = value
-	}
-}
-
-// Returns the dimension index in the destination data format given the one in
-//
-// the source data format.
-//
-// Arguments:
-//	x: A Tensor with each element as a dimension index in source data format.
-// Must be in the range [-4, 4).
-//
-// Returns A Tensor with each element as a dimension index in destination data format.
-func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAttr) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DataFormatDimMap",
-		Input: []tf.Input{
-			x,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Return the shape of s0 op s1 with broadcast.
-//
-// Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
-// broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
-func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BroadcastArgs",
-		Input: []tf.Input{
-			s0, s1,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Return the reduction indices for computing gradients of s0 op s1 with broadcast.
-//
-// This is typically used by gradient computations for a broadcasting operation.
-func BroadcastGradientArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output, r1 tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BroadcastGradientArgs",
-		Input: []tf.Input{
-			s0, s1,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)

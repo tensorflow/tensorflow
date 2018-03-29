@@ -10,15 +10,6 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "init_py",
     srcs = ["__init__.py"],

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 import six
 
 from tensorflow.contrib.autograph.utils import py_func
@@ -97,7 +99,13 @@ def dynamic_print(*values):
 
   if all(map(is_tf_print_compatible, values)):
     return logging_ops.Print(1, values)
-  return py_func.wrap_py_func(print, None, values, use_dummy_return=True)
+
+  def flushed_print(*vals):
+    print(*vals)
+    sys.stdout.flush()
+
+  return py_func.wrap_py_func(
+      flushed_print, None, values, use_dummy_return=True)
 
 
 def dynamic_dataset(iterated):

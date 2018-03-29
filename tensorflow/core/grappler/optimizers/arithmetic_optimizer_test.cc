@@ -158,7 +158,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
   EXPECT_EQ(1, tensors_expected.size());
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -176,7 +176,7 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ("c1", new_div.input(0));
   EXPECT_EQ("c1", new_div.input(1));
 
-  auto tensors = EvaluateNodes(output, item.fetch);
+  auto tensors = EvaluateNodes(output, item.fetch, {});
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<double>(tensors_expected[0], tensors[0], 1e-6);
 }
