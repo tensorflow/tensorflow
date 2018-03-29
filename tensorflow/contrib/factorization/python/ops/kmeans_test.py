@@ -413,7 +413,7 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     self.assertAllClose(score, self.true_score, atol=1e-2)
 
   def test_predict_kmeans_plus_plus(self):
-    # Most points are concetrated near one center. KMeans++ is likely to find
+    # Most points are concentrated near one center. KMeans++ is likely to find
     # the less populated centers.
     points = np.array(
         [[2.5, 3.5], [2.5, 3.5], [-2, 3], [-2, 3], [-3, -3], [-3.1, -3.2],
@@ -604,7 +604,7 @@ class KMeansTestQueues(test.TestCase):
     return _fn
 
   # This test makes sure that there are no deadlocks when using a QueueRunner.
-  # Note that since cluster initialization is dependendent on inputs, if input
+  # Note that since cluster initialization is dependent on inputs, if input
   # is generated using a QueueRunner, one has to make sure that these runners
   # are started before the initialization.
   def test_queues(self):
