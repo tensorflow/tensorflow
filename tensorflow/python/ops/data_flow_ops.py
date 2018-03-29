@@ -1769,9 +1769,9 @@ class StagingArea(BaseStagingArea):
     its capacity.
 
     Args:
-      values: A single tensor, a tuple or list of Tensors. The number of 
-        elements must match the length of the list provided to the dtypes
-        argument when creating the StagingArea.
+      values: A single tensor, a list or tuple of tensors, or a dictionary with
+        tensor values. The number of elements must match the length of the
+        list provided to the dtypes argument when creating the StagingArea.
       name: A name for the operation (optional).
 
     Returns:
@@ -1783,7 +1783,7 @@ class StagingArea(BaseStagingArea):
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
       
-      if not isinstance(values, (list, tuple)):
+      if not isinstance(values, (list, tuple, dict)):
         values = [values]
 
       # Hard-code indices for this staging area
