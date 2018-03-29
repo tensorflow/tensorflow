@@ -112,6 +112,7 @@ bool TensorList::Decode(const VariantTensorData& data) {
       dims.push_back(scratch);
     }
   }
+  element_shape = PartialTensorShape(dims);
   return true;
 }
 

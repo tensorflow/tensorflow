@@ -441,8 +441,9 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   EXPECT_EQ(expected, actual->GetR1U8AsString());
 }
 
+template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareTuple(
-    ComputationBuilder* builder, const Literal& expected,
+    BuilderT* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -453,8 +454,9 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
   LiteralTestUtil::ExpectEqual(expected, *actual);
 }
 
+template <typename BuilderT>
 void ClientLibraryTestBase::ComputeAndCompareTuple(
-    ComputationBuilder* builder, const Literal& expected,
+    BuilderT* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   auto actual_status = ExecuteAndTransfer(builder, arguments);
   EXPECT_IS_OK(actual_status.status());
@@ -618,5 +620,21 @@ template void ClientLibraryTestBase::ComputeAndCompareLiteral(
     XlaBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout);
+
+template void ClientLibraryTestBase::ComputeAndCompareTuple(
+    ComputationBuilder* builder, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+
+template void ClientLibraryTestBase::ComputeAndCompareTuple(
+    XlaBuilder* builder, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+
+template void ClientLibraryTestBase::ComputeAndCompareTuple(
+    ComputationBuilder* builder, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
+
+template void ClientLibraryTestBase::ComputeAndCompareTuple(
+    XlaBuilder* builder, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
 
 }  // namespace xla

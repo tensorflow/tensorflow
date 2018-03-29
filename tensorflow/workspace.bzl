@@ -99,11 +99,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/6913f0cf7d06.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/6913f0cf7d06.tar.gz",
       ],
-      sha256 = "0cadb31a35b514bf2dfd6b5d38205da94ef326ec6908fc3fd7c269948467214f",
-      strip_prefix = "eigen-eigen-2355b229ea4c",
+      sha256 = "791b836cacd03e20bae5bdd25f1c4a5505a0a9975ba94a61eb4e2631fbd1d53a",
+      strip_prefix = "eigen-eigen-6913f0cf7d06",
       build_file = clean_dep("//third_party:eigen.BUILD"),
       patch_file = clean_dep("//third_party:eigen_fix_cuda_compilation.patch")
   )
@@ -430,12 +430,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
-          "https://github.com/grpc/grpc/archive/575bda39755b98d1f7099406bb57a6e3b2074874.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
+          "https://github.com/grpc/grpc/archive/bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2.tar.gz",
       ],
-      sha256 = "f08a5c8e265191b39cc74915b1bc1fd380d86cd0176c92b7cce30b6ac50514ad",
-      strip_prefix = "grpc-575bda39755b98d1f7099406bb57a6e3b2074874",
+      sha256 = "0a05bd355e4571b01d813dddffa38e57e689ac41b264dc9b1bd6ec66463ef5d6",
+      strip_prefix = "grpc-bd6bdf93279a39a8cd92978fd7c9d14eccd98fc2",
   )
+
 
   tf_http_archive(
       name = "linenoise",

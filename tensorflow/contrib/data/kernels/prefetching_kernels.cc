@@ -314,6 +314,7 @@ class FunctionBufferResourceHandleOp : public OpKernel {
                     source_device, target_device, func_args, thread_pool_size_);
                 return Status::OK();
               }));
+      core::ScopedUnref s(buffer);
       OP_REQUIRES_OK(ctx, buffer->Instantiate());
       initialized_ = true;
     }
@@ -373,25 +374,27 @@ class FunctionBufferingResourceGetNextOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource<FunctionBufferingResource>(ctx, handle, &buffer),
         done);
-    core::ScopedUnref s(buffer);
 
     if (buffer->Finished()) {
+      buffer->Unref();
       ctx->SetStatus(errors::OutOfRange("end_of_sequence"));
       done();
       return;
     }
 
     FunctionBufferCallback callback =
-        [ctx, done](const BufferElement& buffer_element) {
+        [ctx, buffer, done](const BufferElement& buffer_element) {
           Status s = buffer_element.status;
           if (!s.ok()) {
             ctx->SetStatus(s);
+            buffer->Unref();
             done();
             return;
           }
           for (size_t i = 0; i < buffer_element.value.size(); ++i) {
             ctx->set_output(i, buffer_element.value[i]);
           }
+          buffer->Unref();
           done();
         };
     buffer->MaybeGet(std::move(callback));

@@ -837,6 +837,11 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status Service::ExecuteGraphParallel(
+    const ExecuteGraphParallelRequest* arg, ExecuteParallelResponse* result) {
+  return Unimplemented("execute-graph-parallel is not yet implemented");
+}
+
 tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                              GetDeviceHandlesResponse* result) {
   const int64 available_device_count = execute_backend_->device_count();
@@ -1428,6 +1433,29 @@ tensorflow::Status Service::GetComputationStats(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, config));
+
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
+
+  // Run HLO analysis to get the computation statistics.
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
+
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
+
+  ComputationStats stats;
+  stats.set_flop_count(analysis.flop_count());
+  stats.set_transcendental_count(analysis.transcendental_count());
+  *result->mutable_stats() = stats;
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status Service::GetComputationGraphStats(
+    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
 
   hlo_graph_dumper::MaybeDumpHloModule(*module,
                                        "computation statistics subject");

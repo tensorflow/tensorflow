@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -251,8 +252,7 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 }
 
 bool IsQueue(const Node& node) {
-  StringPiece type(node.type_string());
-  return type.ends_with("QueueV2");
+  return str_util::EndsWith(node.type_string(), "QueueV2");
 }
 
 // Returns true if the node is an Enter op AND its input is a Queue.

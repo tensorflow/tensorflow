@@ -229,7 +229,7 @@ class FunctionalOpsTest(test.TestCase):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
       with self.assertRaisesRegexp(
-          TypeError, r"two structures don't have the same sequence type."):
+          TypeError, r"two structures don't have the same nested structure"):
         # lambda emits tuple, but dtype is a list
         functional_ops.map_fn(
             lambda x: ((x + 3) * 2, -(x + 3) * 2),
@@ -316,7 +316,7 @@ class FunctionalOpsTest(test.TestCase):
       initializer = np.array(1.0)
       # Multiply a * 1 each time
       with self.assertRaisesRegexp(
-          ValueError, "two structures don't have the same number of elements"):
+          ValueError, "two structures don't have the same nested structure"):
         functional_ops.scan(lambda a, x: (a, -a), elems, initializer)
 
   def testScan_Scoped(self):
