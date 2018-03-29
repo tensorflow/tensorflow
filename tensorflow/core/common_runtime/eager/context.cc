@@ -17,24 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-ContextDevicePlacementPolicy PlacementPolicy(
-    bool soft_placement, ContextDevicePlacementPolicy original_policy) {
-  if (!soft_placement) {
-    return original_policy;
-  }
-  if (original_policy == DEVICE_PLACEMENT_EXPLICIT ||
-      original_policy == DEVICE_PLACEMENT_SILENT_FOR_INT32) {
-    return DEVICE_PLACEMENT_SILENT;
-  }
-  return original_policy;
-}
-
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
                            bool async, std::unique_ptr<DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
-    : soft_placement_(opts.config.allow_soft_placement()),
-      policy_(PlacementPolicy(soft_placement_, default_policy)),
+    : policy_(default_policy),
       device_manager_(std::move(device_mgr)),
       devices_(device_manager_->ListDevices()),
       rendezvous_(rendezvous),

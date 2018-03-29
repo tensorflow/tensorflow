@@ -43,22 +43,17 @@ namespace tensorflow {
 
 // Note: there's a copy enum in eager/c_api.h. It should be kept in sync.
 enum ContextDevicePlacementPolicy {
-  // Running operations with input tensors on the wrong device will fail. When
-  // soft placement is enabled acts like TFE_DEVICE_PLACEMENT_SILENT.
+  // Running operations with input tensors on the wrong device will fail.
   DEVICE_PLACEMENT_EXPLICIT = 0,
   // Copy the tensor to the right device but log a warning.
   DEVICE_PLACEMENT_WARN = 1,
-  // Silently copy the tensor, which has a performance cost since the
-  // operation will be blocked till the copy completes.
+  // Silently copy the tensor, which has a performance cost since the operation
+  // will be blocked till the copy completes. This is the default policy.
   DEVICE_PLACEMENT_SILENT = 2,
   // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.  When soft placement is enabled acts like
-  // TFE_DEVICE_PLACEMENT_SILENT.
+  // dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
-
-ContextDevicePlacementPolicy PlacementPolicy(
-    bool soft_placement, ContextDevicePlacementPolicy original_policy);
 
 class EagerContext {
  public:
@@ -116,8 +111,6 @@ class EagerContext {
 
   Device* HostCPU() { return devices_[0]; }
 
-  bool SoftPlacement() { return soft_placement_; }
-
   uint64 NextId() { return executor_.NextId(); }
 
   void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
@@ -148,7 +141,6 @@ class EagerContext {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
  private:
-  const bool soft_placement_;
   const ContextDevicePlacementPolicy policy_;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a

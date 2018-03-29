@@ -96,6 +96,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
+    tags = [
+        "no_gpu",
+        "nogpu",
+    ],
 )
 
 cuda_py_test(
