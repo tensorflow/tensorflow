@@ -80,6 +80,7 @@ cuda_py_test(
         "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
     ],
+    tags = ["noguitar"],
 )
 
 py_library(
