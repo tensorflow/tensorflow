@@ -8,9 +8,9 @@ go_library(
         "scope.go",
         "wrappers.go",
     ],
-    importpath = "github.com/tensorflow/tensorflow/go/op",
+    importpath = "github.com/tensorflow/tensorflow/tensorflow/go/op",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/tensorflow/go:go_default_library"],
+    deps = ["//tensorflow/go:go_default_library"],
 )
 
 go_test(
@@ -19,7 +19,6 @@ go_test(
         "op_test.go",
         "scope_test.go",
     ],
-    importpath = "github.com/tensorflow/tensorflow/go/op",
     embed = [":go_default_library"],
-    deps = ["//tensorflow/tensorflow/go:go_default_library"],
+    deps = ["//tensorflow/go:go_default_library"],
 )

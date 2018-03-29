@@ -61,6 +61,9 @@ go_test(
         "tensor_test.go",
         "util_test.go",
     ],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",  # Testdata for LoadSavedModel
+    ],
     embed = [":go_default_library"],
 )
 
@@ -68,7 +71,7 @@ go_test(
     name = "go_default_xtest",
     srcs = ["example_inception_inference_test.go"],
     deps = [
-        "//tensorflow/tensorflow/go:go_default_library",
-        "//tensorflow/tensorflow/go/op:go_default_library",
+        "//tensorflow/go:go_default_library",
+        "//tensorflow/go/op:go_default_library",
     ],
 )
