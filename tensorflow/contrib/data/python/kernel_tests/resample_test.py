@@ -159,6 +159,8 @@ class ResampleTest(test.TestCase):
 
     fast_time = _time_resampling(self, data_np, target_dist, init_dist,
                                  use_v2=True, num_to_sample=num_to_sample)
+    slow_time = _time_resampling(self, data_np, target_dist, init_dist,
+                                 use_v2=False, num_to_sample=num_to_sample)
 
     self.assertLess(fast_time, slow_time)
 
