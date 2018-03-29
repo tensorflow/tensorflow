@@ -63,7 +63,7 @@ def get_test_random_mask(train_samples,
     input_shape: Tuple of integers, shape of the inputs.
 
   Returns:
-    A tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+    A tuple of Numpy arrays: `x_train, x_test`.
   """
   num_sample = train_samples + test_samples
 

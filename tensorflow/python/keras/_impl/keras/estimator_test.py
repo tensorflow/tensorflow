@@ -29,6 +29,7 @@ from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.applications import mobilenet
 from tensorflow.python.platform import gfile
@@ -143,18 +144,21 @@ def multi_inputs_multi_outputs_model():
   # test multi-input layer
   a = keras.layers.Input(shape=(16,), name='input_a')
   b = keras.layers.Input(shape=(16,), name='input_b')
-  mask = keras.layers.Input(shape=(8,), name='mask_a', dtype='bool')
-  dense_1 = keras.layers.Dense(8, name='dense_1')
-  masked_dense = keras.layers.Lambda(lambda k:
-                                     keras.backend.switch(k[0],
-                                                          k[1], 0))([mask,
-                                                                     dense_1])
-  a_2 = masked_dense(a)
-  b_2 = masked_dense(b)
-  merged = keras.layers.concatenate([a_2, b_2], name='merge')
+  mask = keras.layers.Input(shape=(8,), dtype='bool', name='mask_a')
+  dense = keras.layers.Dense(8, name='dense_1')
+  a_2 = dense(a)
+  # We masked a_2 following a Input mask.
+  masked_a2 = keras.layers.Lambda(lambda k:
+                                  K.switch(k[0],
+                                           k[1],
+                                           K.zeros_like(
+                                               k[1])))([mask,
+                                                        a_2])
+  b_2 = dense(b)
+  merged = keras.layers.concatenate([masked_a2, b_2], name='merge')
   c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
   d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
-  model = keras.models.Model(inputs=[a, b], outputs=[c, d])
+  model = keras.models.Model(inputs=[a, b, mask], outputs=[c, d])
   model.compile(
       loss='categorical_crossentropy',
       optimizer='rmsprop',
