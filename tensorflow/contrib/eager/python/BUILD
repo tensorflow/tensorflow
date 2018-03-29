@@ -272,16 +272,3 @@ cuda_py_test(
     ],
     tags = ["notsan"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

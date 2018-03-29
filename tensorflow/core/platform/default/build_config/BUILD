@@ -223,15 +223,3 @@ alias(
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

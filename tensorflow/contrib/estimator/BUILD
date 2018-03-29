@@ -9,18 +9,6 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "estimator_py",
     srcs = ["__init__.py"],

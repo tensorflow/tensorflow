@@ -287,18 +287,3 @@ tf_cuda_library(
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

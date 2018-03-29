@@ -140,17 +140,3 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

@@ -7,18 +7,6 @@ load(
 )
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "graph_properties_testdata",
     srcs = glob([
         "graph_properties_testdata/*.pbtxt",

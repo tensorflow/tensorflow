@@ -283,16 +283,3 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

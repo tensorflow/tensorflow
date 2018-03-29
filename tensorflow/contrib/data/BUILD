@@ -44,17 +44,3 @@ tf_custom_op_library(
 tf_gen_op_libs(
     op_lib_names = ["dataset_ops"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
