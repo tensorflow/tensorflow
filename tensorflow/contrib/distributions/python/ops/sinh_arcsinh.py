@@ -134,8 +134,7 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
     """
     parameters = locals()
 
-    with ops.name_scope(name,
-                        values=[loc, scale, skewness, tailweight]) as name:
+    with ops.name_scope(name, values=[loc, scale, skewness, tailweight]):
       loc = ops.convert_to_tensor(loc, name="loc")
       dtype = loc.dtype
       scale = ops.convert_to_tensor(scale, name="scale", dtype=dtype)

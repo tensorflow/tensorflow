@@ -151,7 +151,7 @@ class Beta(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
+    with ops.name_scope(name, values=[concentration1, concentration0]):
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -323,7 +323,7 @@ class BetaWithSoftplusConcentration(Beta):
                name="BetaWithSoftplusConcentration"):
     parameters = locals()
     with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as name:
+                                      concentration0]) as ns:
       super(BetaWithSoftplusConcentration, self).__init__(
           concentration1=nn.softplus(concentration1,
                                      name="softplus_concentration1"),
@@ -331,7 +331,7 @@ class BetaWithSoftplusConcentration(Beta):
                                      name="softplus_concentration0"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=name)
+          name=ns)
     self._parameters = parameters
 
 
