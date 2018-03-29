@@ -1372,11 +1372,15 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
   }
   if (!result.empty()) {
     PyObject* py_result = PyList_New(result.size());
+    tensorflow::gtl::FlatSet<PyObject*> seen_results(result.size());
     for (int i = 0; i < result.size(); ++i) {
       if (result[i] == nullptr) {
         Py_INCREF(Py_None);
         result[i] = Py_None;
+      } else if (seen_results.find(result[i]) != seen_results.end()) {
+        Py_INCREF(result[i]);
       }
+      seen_results.insert(result[i]);
       PyList_SET_ITEM(py_result, i, reinterpret_cast<PyObject*>(result[i]));
     }
     return py_result;
