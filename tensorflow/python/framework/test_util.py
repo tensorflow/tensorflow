@@ -487,7 +487,13 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       gc.collect()
       # There should be no new Python objects hanging around.
       new_count = len(gc.get_objects())
-      self.assertEqual(previous_count, new_count)
+      # In some cases (specifacally on MacOS), new_count is somehow
+      # smaller than previous_count.
+      # Using plain assert because not all classes using this decorator
+      # have assertLessEqual
+      assert new_count <= previous_count, (
+          "new_count(%d) is not less than or equal to previous_count(%d)" % (
+              new_count, previous_count))
       gc.enable()
 
   return decorator
