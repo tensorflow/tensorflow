@@ -27,11 +27,12 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import argparse
 import json
 import os
-import subprocess
 import shutil
+import subprocess
 
 
 def parse_branch_ref(filename):
@@ -160,7 +161,7 @@ def get_git_version(git_base_path):
     val = bytes(subprocess.check_output([
         "git", str("--git-dir=%s/.git" % git_base_path),
         str("--work-tree=" + git_base_path), "describe", "--long", "--tags"
-    ]).strip())
+    ], shell=True).strip())
     return val if val else unknown_label
   except subprocess.CalledProcessError:
     return unknown_label
