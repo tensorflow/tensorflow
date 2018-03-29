@@ -154,14 +154,18 @@ class InterfaceTests(test.TestCase):
     self.assertAllEqual([1., 1., 1.], self.evaluate(v2))
 
 
-class _MirroringSaveable(
-    core_saver.BaseSaverBuilder.ResourceVariableSaveable):
+class _MirroringSaveable(core_saver.BaseSaverBuilder.SaveableObject):
 
   def __init__(self, primary_variable, mirrored_variable, name):
     self._primary_variable = primary_variable
     self._mirrored_variable = mirrored_variable
+    tensor = self._primary_variable.read_value()
+    spec = core_saver.BaseSaverBuilder.SaveSpec(
+        tensor=tensor,
+        slice_spec="",
+        name=name)
     super(_MirroringSaveable, self).__init__(
-        self._primary_variable, "", name)
+        tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into both variables."""
@@ -316,6 +320,12 @@ class CheckpointingTests(test.TestCase):
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(42., self.evaluate(v.non_dep_variable))
     self.assertEqual(42., self.evaluate(v.mirrored))
+    self.evaluate(v.non_dep_variable.assign(44.))
+    save_path = checkpoint.save(prefix)
+    self.evaluate(v.non_dep_variable.assign(45.))
+    checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+    self.assertEqual(44., self.evaluate(v.non_dep_variable))
+    self.assertEqual(44., self.evaluate(v.mirrored))
 
   @test_util.run_in_graph_and_eager_modes()
   def testMoreComplexSaveableReturnedWithGlobalName(self):
@@ -368,7 +378,11 @@ class CheckpointingTests(test.TestCase):
     if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(0.001)
+    on_create_optimizer = adam.AdamOptimizer(
+        0.001,
+        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # test that they've been restored correctly.
+        beta1=1.0, beta2=1.0)
     on_create_root = checkpointable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -385,8 +399,8 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
     self.assertAllEqual(optimizer_variables[2:],
                         self.evaluate(on_create_optimizer.variables()))
-    on_create_optimizer._create_slots(
-        [resource_variable_ops.ResourceVariable([1.])])
+    dummy_var = resource_variable_ops.ResourceVariable([1.])
+    on_create_optimizer.minimize(loss=dummy_var.read_value)
     status.assert_consumed()
     beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
     self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))

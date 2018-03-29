@@ -1541,7 +1541,9 @@ void ConvertMeanOperator(const NodeDef& node,
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
+  if (HasAttr(node, "keepdims")) {
+    op->keep_dims = GetBoolAttr(node, "keepdims");
+  } else if (HasAttr(node, "keep_dims")) {
     op->keep_dims = GetBoolAttr(node, "keep_dims");
   }
 }

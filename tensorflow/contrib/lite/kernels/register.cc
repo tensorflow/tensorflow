@@ -75,6 +75,8 @@ TfLiteRegistration* Register_TOPK_V2();
 TfLiteRegistration* Register_LOG_SOFTMAX();
 TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_DEQUANTIZE();
+TfLiteRegistration* Register_PRELU();
+TfLiteRegistration* Register_MAXIMUM();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -131,6 +133,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE());
+  AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

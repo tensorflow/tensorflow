@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
   tensorflow::string session_id =
       tensorflow::tpu::GetCurrentTimeStampAsString();
   constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  string repository_root =
+  tensorflow::string repository_root =
       ::tensorflow::io::JoinPath(FLAGS_logdir, kProfilePluginDirectory);
   while (true) {
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "

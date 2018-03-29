@@ -48,6 +48,8 @@ constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 constexpr char kGather[] = "Gather";
+constexpr char kGatherV2[] = "GatherV2";
+constexpr char kSlice[] = "Slice";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -169,7 +171,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
 
-      {kGather, wrap(&OpLevelCostEstimator::PredictGather)},
+      {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+      {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
 
       {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
@@ -188,121 +192,75 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
 
+#define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
+
   // Quantize = apply min and max bounds, multiply by scale factor and round.
   const int quantize_v2_cost =
-      Eigen::internal::functor_traits<
-          Eigen::internal::scalar_product_op<float>>::Cost +
-      Eigen::internal::functor_traits<
-          Eigen::internal::scalar_max_op<float>>::Cost +
-      Eigen::internal::functor_traits<
-          Eigen::internal::scalar_min_op<float>>::Cost +
-      Eigen::internal::functor_traits<
-          Eigen::internal::scalar_round_op<float>>::Cost;
+      EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
+      EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
 
-  elementwise_ops_ = {
-      // Unary ops alphabetically sorted
-      {"Acos", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_acos_op<float>>::Cost},
-      {"Asin", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_asin_op<float>>::Cost},
-      {"Atan", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_atan_op<float>>::Cost},
-      {"Atan2", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_quotient_op<float>>::Cost +
-                    Eigen::internal::functor_traits<
-                        Eigen::internal::scalar_atan_op<float>>::Cost},
-      {"Ceil", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_ceil_op<float>>::Cost},
-      {"Cos", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_cos_op<float>>::Cost},
-      {"Dequantize", Eigen::internal::functor_traits<
-                         Eigen::internal::scalar_product_op<float>>::Cost},
-      {"Erf", 1},
-      {"Erfc", 1},
-      {"Exp", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_exp_op<float>>::Cost},
-      {"Expm1", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_expm1_op<float>>::Cost},
-      {"Floor", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_floor_op<float>>::Cost},
-      {"Inv", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_inverse_op<float>>::Cost},
-      {"InvGrad", 1},
-      {"Lgamma", 1},
-      {"Log", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_log_op<float>>::Cost},
-      {"Log1p", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_log1p_op<float>>::Cost},
-      {"Neg", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_opposite_op<float>>::Cost},
-      {"QuantizeV2", quantize_v2_cost},
-      {"Reciprocal", Eigen::internal::functor_traits<
-                         Eigen::internal::scalar_inverse_op<float>>::Cost},
-      {"Rint", 1},
-      {"Round", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_round_op<float>>::Cost},
-      {"Rsqrt", Eigen::internal::functor_traits<
-                    Eigen::internal::scalar_rsqrt_op<float>>::Cost},
-      {"Sqrt", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_sqrt_op<float>>::Cost},
-      {"Square", Eigen::internal::functor_traits<
-                     Eigen::internal::scalar_square_op<float>>::Cost},
-      {"Tanh", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_tanh_op<float>>::Cost},
-      {"Relu", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_max_op<float>>::Cost},
-      {"Sigmoid", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_sigmoid_op<float>>::Cost},
-      {"Sign", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_sign_op<float>>::Cost},
-      {"Sin", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_sin_op<float>>::Cost},
-      {"Tan", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_tan_op<float>>::Cost},
-      // Binary ops alphabetically sorted
-      {"Add", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_sum_op<float>>::Cost},
-      {"ApproximateEqual", 1},
-      {"BiasAdd", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_sum_op<float>>::Cost},
-      {"Div", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"Equal", 1},
-      {"FloorDiv", Eigen::internal::functor_traits<
-                       Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"FloorMod", Eigen::internal::functor_traits<
-                       Eigen::internal::scalar_mod_op<float>>::Cost},
-      {"Greater", 1},
-      {"GreaterEqual", 1},
-      {"Less", 1},
-      {"LessEqual", 1},
-      {"LogicalAnd", Eigen::internal::functor_traits<
-                         Eigen::internal::scalar_boolean_and_op>::Cost},
-      {"LogicalNot", 1},
-      {"LogicalOr", Eigen::internal::functor_traits<
-                        Eigen::internal::scalar_boolean_or_op>::Cost},
-      {"Maximum", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_max_op<float>>::Cost},
-      {"Minimum", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_min_op<float>>::Cost},
-      {"Mod", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_mod_op<float>>::Cost},
-      {"Mul", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_product_op<float>>::Cost},
-      {"NotEqual", 1},
-      {"QuantizedAdd", Eigen::internal::functor_traits<
-                           Eigen::internal::scalar_sum_op<float>>::Cost},
-      {"QuantizedMul", Eigen::internal::functor_traits<
-                           Eigen::internal::scalar_product_op<float>>::Cost},
-      {"RealDiv", Eigen::internal::functor_traits<
-                      Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"SquareDifference", 1},
-      {"Sub", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_difference_op<float>>::Cost},
-      {"TruncateDiv", Eigen::internal::functor_traits<
-                          Eigen::internal::scalar_quotient_op<float>>::Cost},
-      {"TruncateMod", Eigen::internal::functor_traits<
-                          Eigen::internal::scalar_mod_op<float>>::Cost}};
+  elementwise_ops_ = {// Unary ops alphabetically sorted
+                      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
+                      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
+                      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
+                      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
+                                    EIGEN_COST(scalar_atan_op<float>)},
+                      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
+                      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
+                      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
+                      {"Erf", 1},
+                      {"Erfc", 1},
+                      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
+                      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
+                      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
+                      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
+                      {"InvGrad", 1},
+                      {"Lgamma", 1},
+                      {"Log", EIGEN_COST(scalar_log_op<float>)},
+                      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
+                      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
+                      {"QuantizeV2", quantize_v2_cost},
+                      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
+                      {"Rint", 1},
+                      {"Round", EIGEN_COST(scalar_round_op<float>)},
+                      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
+                      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
+                      {"Square", EIGEN_COST(scalar_square_op<float>)},
+                      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
+                      {"Relu", EIGEN_COST(scalar_max_op<float>)},
+                      {"Sigmoid", EIGEN_COST(scalar_sigmoid_op<float>)},
+                      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
+                      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
+                      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
+                      // Binary ops alphabetically sorted
+                      {"Add", EIGEN_COST(scalar_sum_op<float>)},
+                      {"ApproximateEqual", 1},
+                      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+                      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
+                      {"Equal", 1},
+                      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
+                      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
+                      {"Greater", 1},
+                      {"GreaterEqual", 1},
+                      {"Less", 1},
+                      {"LessEqual", 1},
+                      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
+                      {"LogicalNot", 1},
+                      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
+                      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
+                      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
+                      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
+                      {"Mul", EIGEN_COST(scalar_product_op<float>)},
+                      {"NotEqual", 1},
+                      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
+                      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
+                      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
+                      {"SquareDifference", 1},
+                      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
+                      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
+                      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
+
+#undef EIGEN_COST
 
   // By default, use sum of memory_time and compute_time for execution_time.
   compute_memory_overlap_ = false;
@@ -1049,17 +1007,33 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   return costs;
 }
 
-Costs OpLevelCostEstimator::PredictGather(const OpContext& op_context) const {
-  // Gather op can have a very large input, but only the size of the output
-  // matters, because indices may select only a very small subset of input.
-
+Costs OpLevelCostEstimator::PredictGatherOrSlice(
+    const OpContext& op_context) const {
+  // Gather & Slice ops can have a very large input, but only access a small
+  // part of it. For these op the size of the output determines the memory cost.
   const auto& op_info = op_context.op_info;
 
   bool unknown_shapes = false;
+
+  // Each output element is a copy of some element from input.
+  // For roofline estimate we assume each copy has a unit cost.
   const int64 op_count =
       CalculateTensorElementCount(op_info.outputs(0), &unknown_shapes);
+
   const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
-  const double total_io = 2 * output_size;
+  double input_size = output_size;
+  if (op_info.op() == "Slice") {
+    // Add 'begin' & 'size' tensors sizes.
+    input_size +=
+        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes) +
+        CalculateTensorElementCount(op_info.inputs(2), &unknown_shapes);
+  } else {
+    // Assuming this is "Gather" or "GatherV2" op, add 'indices' size.
+    input_size +=
+        CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes);
+  }
+
+  const double total_io = input_size + output_size;
   Costs costs = PredictOpCountBasedCost(op_count, total_io, op_info);
   costs.inaccurate = unknown_shapes;
   costs.max_memory = output_size;

@@ -72,6 +72,12 @@ bool ParseModelFlagsFromCommandLineFlags(
            "Shapes corresponding to --input_arrays, colon-separated. For "
            "many models each shape takes the form batch size, input array "
            "height, input array width, input array depth."),
+      Flag("batch_size", parsed_flags.batch_size.bind(),
+           parsed_flags.batch_size.default_value(),
+           "Batch size for the model. Replaces the first dimension of an "
+           "input size array if undefined. Use only with SavedModels when "
+           "--input_shapes flag is not specified. Always use --input_shapes "
+           "flag with frozen graphs."),
       Flag("input_data_type", parsed_flags.input_data_type.bind(),
            parsed_flags.input_data_type.default_value(),
            "Deprecated: use --input_data_types instead. Input array type, if "

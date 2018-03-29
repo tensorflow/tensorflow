@@ -126,6 +126,9 @@ The above pre-trained models have been trained on the ImageNet data set, which c
 
 The [TensorFlow for Poets](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/) codelab walks through this process step-by-step. The retraining code supports retraining for both floating point and quantized inference.
 
+# Getting started with RaspberryPi
+
+Using RaspberryPi can be accomplished by following the [Makefile instructions](g3doc/rpi.md). That will give a you a static library (.a) that you can build your app against. Python bindings will be coming soon as well as a demo app.
 
 ### Train a custom model
 A developer may choose to train a custom model using Tensorflow. TensorFlow documentation has [several tutorials](https://www.tensorflow.org/tutorials/) for building and training models. If the user has written a model using TensorFlow's Slim Framework the first step is to export this to a GraphDef file. This is necessary because Slim does not store the model structure outside the code, so to communicate with other parts of the framework it needs to be exported. Documentation for the export can be found [here](https://github.com/tensorflow/models/tree/master/research/slim#Export). The output of this step will be a .pb file for the custom model.

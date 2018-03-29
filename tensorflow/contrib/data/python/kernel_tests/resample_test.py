@@ -114,7 +114,7 @@ class ResampleTest(test.TestCase):
     target_dist = [0.0, 0.0, 0.0, 1.0]
     num_classes = len(init_dist)
     # We don't need many samples to test a dirac-delta target distribution
-    num_samples = 1000
+    num_samples = 100
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     dataset = dataset_ops.Dataset.from_tensor_slices(data_np)

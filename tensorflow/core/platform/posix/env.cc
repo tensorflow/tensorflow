@@ -118,6 +118,9 @@ class PosixEnv : public Env {
                                const string& version) override {
     return tensorflow::internal::FormatLibraryFileName(name, version);
   }
+
+ private:
+  void GetLocalTempDirectories(std::vector<string>* list) override;
 };
 
 }  // namespace
@@ -131,7 +134,7 @@ Env* Env::Default() {
 }
 #endif
 
-void Env::GetLocalTempDirectories(std::vector<string>* list) {
+void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
   list->clear();
   // Directories, in order of preference. If we find a dir that
   // exists, we stop adding other less-preferred dirs

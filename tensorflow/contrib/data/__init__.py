@@ -36,6 +36,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@map_and_batch
 @@padded_batch_and_drop_remainder
 @@parallel_interleave
+@@prefetch_to_device
 @@read_batch_features
 @@rejection_resample
 @@scan
@@ -67,6 +68,7 @@ from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.readers import make_batched_features_dataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset

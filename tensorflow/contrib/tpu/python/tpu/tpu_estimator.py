@@ -931,8 +931,7 @@ class _InputPipeline(object):
       # In the model-parallel case, both the host-side and device-side
       # computations must agree on the core on which infeed takes place. We
       # choose to perform infeed on logical core 0 of each replica.
-      with ops.device(tpu.core(0)):
-        values = self._infeed_queue.generate_dequeue_op()
+      values = self._infeed_queue.generate_dequeue_op(tpu_device=0)
       # The unflatten process uses the structure information recorded above.
       return self._inputs_structure_recorder.unflatten_features_and_labels(
           values)
@@ -2109,8 +2108,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_eval_step, [_ZERO_LOSS],
-        name='loop')
+        single_tpu_eval_step, [_ZERO_LOSS])
 
   (loss,) = tpu.shard(
       multi_tpu_eval_steps_on_single_shard,
@@ -2133,8 +2131,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_train_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_train_step, [_INITIAL_LOSS],
-        name=b'loop')
+        single_tpu_train_step, [_INITIAL_LOSS])
 
   (loss,) = tpu.shard(
       multi_tpu_train_steps_on_single_shard,

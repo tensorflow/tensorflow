@@ -736,7 +736,7 @@ class _BaseMonotonicAttentionMechanism(_BaseAttentionMechanism):
   """Base attention mechanism for monotonic attention.
 
   Simply overrides the initial_alignments function to provide a dirac
-  distribution,which is needed in order for the monotonic attention
+  distribution, which is needed in order for the monotonic attention
   distributions to have the correct behavior.
   """
 
@@ -763,7 +763,7 @@ class _BaseMonotonicAttentionMechanism(_BaseAttentionMechanism):
 class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
   """Monotonic attention mechanism with Bahadanau-style energy function.
 
-  This type of attention encorces a monotonic constraint on the attention
+  This type of attention enforces a monotonic constraint on the attention
   distributions; that is once the model attends to a given point in the memory
   it can't attend to any prior points at subsequence output timesteps.  It
   achieves this by using the _monotonic_probability_fn instead of softmax to
@@ -867,7 +867,7 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
 class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
   """Monotonic attention mechanism with Luong-style energy function.
 
-  This type of attention encorces a monotonic constraint on the attention
+  This type of attention enforces a monotonic constraint on the attention
   distributions; that is once the model attends to a given point in the memory
   it can't attend to any prior points at subsequence output timesteps.  It
   achieves this by using the _monotonic_probability_fn instead of softmax to
@@ -1133,7 +1133,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       output_attention: Python bool.  If `True` (default), the output at each
         time step is the attention value.  This is the behavior of Luong-style
         attention mechanisms.  If `False`, the output at each time step is
-        the output of `cell`.  This is the beahvior of Bhadanau-style
+        the output of `cell`.  This is the behavior of Bhadanau-style
         attention mechanisms.  In both cases, the `attention` tensor is
         propagated to the next time step via the state and is used there.
         This flag only controls whether the attention mechanism is propagated

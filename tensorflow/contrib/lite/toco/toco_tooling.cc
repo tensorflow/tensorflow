@@ -94,6 +94,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
+  transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);

@@ -1089,6 +1089,7 @@ cuda_py_test(
     tags = [
         "no_windows",
         "noasan",
+        "noguitar",
         "notap",
     ],
 )
@@ -1910,7 +1911,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "softmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["softmax_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2723,6 +2724,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
+    data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
 )
 

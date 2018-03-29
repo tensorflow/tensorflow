@@ -45,9 +45,6 @@ py_binary(
     name = "toco_wrapper",
     srcs = ["toco_wrapper.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
 )
 
 tf_py_test(

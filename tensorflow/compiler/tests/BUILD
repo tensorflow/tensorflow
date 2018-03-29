@@ -542,7 +542,6 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
     shard_count = 3,
-    tags = ["notsan"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

@@ -105,6 +105,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:resource_variable_ops",

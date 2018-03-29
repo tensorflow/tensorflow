@@ -854,6 +854,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new SimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1));
   ops.emplace_back(
       new SimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6));
+  ops.emplace_back(
+      new SimpleOperator<Relu1Operator>("PRELU", OperatorType::kPRelu));
   ops.emplace_back(new SimpleOperator<LogisticOperator>(
       "LOGISTIC", OperatorType::kLogistic));
   ops.emplace_back(
@@ -861,6 +863,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
   ops.emplace_back(new SimpleOperator<LogSoftmaxOperator>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
+  ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
+      "MAXIMUM", OperatorType::kTensorFlowMaximum));
 
   return ops;
 }

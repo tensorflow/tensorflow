@@ -98,6 +98,12 @@ class HloTestBase : public ::testing::Test {
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);
 
+  // Same as above, except the module will be executed without running any HLO
+  // passes on it.
+  StatusOr<std::unique_ptr<Literal>> ExecuteNoHloPasses(
+      std::unique_ptr<HloModule> module,
+      tensorflow::gtl::ArraySlice<Literal*> arguments);
+
   std::unique_ptr<Literal> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<Literal*> arguments);

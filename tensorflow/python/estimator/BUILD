@@ -265,7 +265,6 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:summary",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
@@ -617,6 +616,7 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
@@ -929,5 +929,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_gpu",
+        "noasan",  # flaky time outs
     ],
 )

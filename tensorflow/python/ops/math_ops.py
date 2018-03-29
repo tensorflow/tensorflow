@@ -167,6 +167,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.platform import tf_logging as logging
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -180,6 +181,8 @@ linspace = gen_math_ops.lin_space
 
 arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+tf_export("arg_max")(arg_max)
+tf_export("arg_min")(arg_min)
 
 
 # This is set by resource_variable_ops.py. It is included in this way since
@@ -773,16 +776,18 @@ def cast(x, dtype, name=None):
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
-      return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
+      x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype == base_type:
-        return x
-      return gen_math_ops.cast(x, base_type, name=name)
+      if x.dtype.base_dtype != base_type:
+        x = gen_math_ops.cast(x, base_type, name=name)
+    if x.dtype.is_complex and base_type.is_floating:
+      logging.warn("Casting complex to real discards imaginary part.")
+    return x
 
 
 @tf_export("saturate_cast")
@@ -1196,7 +1201,7 @@ tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
 tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
-tf_export("floormod")(floormod)
+tf_export("floormod", "mod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):

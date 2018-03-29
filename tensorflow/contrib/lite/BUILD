@@ -133,10 +133,10 @@ cc_library(
         ":schema_fbs_version",
         ":simple_memory_arena",
         ":util",
+        "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-        "//tensorflow/core:lib_platform",
     ],
 )
 

@@ -631,7 +631,12 @@ class CheckpointableSaver(object):
     named_variables[_OBJECT_GRAPH_PROTO_KEY] = _NoRestoreSaveable(
         tensor=object_graph_tensor,
         name=_OBJECT_GRAPH_PROTO_KEY)
-    if self._last_save_object_graph != graph_proto:
+    if (self._last_save_object_graph != graph_proto
+        # When executing eagerly, we need to re-create SaveableObjects each time
+        # save() is called so they pick up new Tensors passed to their
+        # constructors. That means the Saver needs to be copied with a new
+        # var_list.
+        or context.executing_eagerly()):
       if self._last_save_object_graph is not None:
         self._last_save_saver = _copy_saver_with_new_var_list(
             old_saver=self._last_save_saver, new_var_list=named_variables)
