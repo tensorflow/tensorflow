@@ -1665,6 +1665,9 @@ class Operation(object):
       self._control_inputs_val = control_input_ops
       self._node_def_val = copy.deepcopy(node_def)
       self._op_def_val = op_def
+    else:
+      # This will be set by self.inputs.
+      self._inputs_val = None
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
@@ -1938,6 +1941,8 @@ class Operation(object):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
     if self._c_op:
+      # Reset cached inputs.
+      self._inputs_val = None
       with errors.raise_exception_on_not_ok_status() as status:
         c_api.UpdateEdge(
             self._graph._c_graph,  # pylint: disable=protected-access
@@ -2054,15 +2059,18 @@ class Operation(object):
   def inputs(self):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
-      # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
-      # pylint: enable=protected-access
-      return Operation._InputList(retval)
-    return Operation._InputList(self._inputs_val)
+      if self._inputs_val is None:
+        tf_outputs = c_api.GetOperationInputs(self._c_op)
+        # pylint: disable=protected-access
+        retval = [
+            self.graph._get_tensor_by_tf_output(tf_output)
+            for tf_output in tf_outputs
+        ]
+        # pylint: enable=protected-access
+        self._inputs_val = Operation._InputList(retval)
+      return self._inputs_val
+    else:
+      return Operation._InputList(self._inputs_val)
 
   @property
   def _inputs(self):
