@@ -1082,6 +1082,16 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator))
 
+  def tower_local_var_scope(self, reduce_method):
+    """Does not set to resource variables."""
+    def create_tower_local_variable(next_creator, *args, **kwargs):
+      _require_distribution_strategy_scope(self)
+      kwargs["tower_local_reduce_method"] = reduce_method
+      return next_creator(*args, **kwargs)
+
+    _require_distribution_strategy_scope(self)
+    return variable_scope.variable_creator_scope(create_tower_local_variable)
+
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
     _require_distribution_strategy_scope(self)
