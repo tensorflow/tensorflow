@@ -89,8 +89,8 @@ combining and applying gradients.
 
 The model and input functions do not have to change because we have changed the
 underlying components of TensorFlow (such as
-optimizer, batch norm and summaries) to become distribution-aware. 
-That means those components learn how to
+optimizer, batch norm and summaries) to become distribution-aware.
+That means those components know how to
 combine their state across devices. Further, saving and checkpointing works
 seamlessly, so you can save with one or no distribution strategy and resume with
 another.
@@ -133,6 +133,7 @@ instead.
 on GPUs is turned on. (If you need to use dictionaries in the dataset, turn off
 prefetching on GPUs by passing param `prefetch_on_device=False` to
 `MirroredStrategy`)
+* PartitionedVariables are not supported yet.
 
 ## What's next?
 
