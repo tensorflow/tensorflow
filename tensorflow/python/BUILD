@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":array_ops",
         ":bitwise_ops",
+        ":boosted_trees_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
@@ -1375,6 +1376,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "boosted_trees_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:boosted_trees_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -1620,6 +1629,19 @@ py_library(
         ":bitwise_ops_gen",
         ":framework",
         ":util",
+    ],
+)
+
+py_library(
+    name = "boosted_trees_ops",
+    srcs = ["ops/boosted_trees_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":boosted_trees_ops_gen",
+        ":framework",
+        ":ops",
+        ":training",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
 )
 

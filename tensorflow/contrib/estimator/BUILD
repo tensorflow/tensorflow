@@ -14,6 +14,7 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
         ":extenders",
@@ -23,6 +24,36 @@ py_library(
         ":multi_head",
         ":replicate_model_fn",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "boosted_trees",
+    srcs = ["python/estimator/boosted_trees.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:boosted_trees",
+    ],
+)
+
+py_test(
+    name = "boosted_trees_test",
+    size = "medium",
+    srcs = ["python/estimator/boosted_trees_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":boosted_trees",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
     ],
 )
 

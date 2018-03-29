@@ -21,6 +21,8 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long,wildcard-import
 from tensorflow.python.estimator.canned.baseline import BaselineClassifier
 from tensorflow.python.estimator.canned.baseline import BaselineRegressor
+from tensorflow.python.estimator.canned.boosted_trees import BoostedTreesClassifier
+from tensorflow.python.estimator.canned.boosted_trees import BoostedTreesRegressor
 from tensorflow.python.estimator.canned.dnn import DNNClassifier
 from tensorflow.python.estimator.canned.dnn import DNNRegressor
 from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedClassifier
@@ -52,6 +54,8 @@ _allowed_symbols = [
     # Canned Estimators
     'BaselineClassifier',
     'BaselineRegressor',
+    'BoostedTreesClassifier',
+    'BoostedTreesRegressor',
     'DNNClassifier',
     'DNNRegressor',
     'DNNLinearCombinedClassifier',
