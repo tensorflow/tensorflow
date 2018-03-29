@@ -27,11 +27,13 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import argparse
 import json
 import os
-import subprocess
 import shutil
+import subprocess
+import sys
 
 
 def parse_branch_ref(filename):
