@@ -117,6 +117,7 @@ class Network(base_layer.Layer):
     self._inbound_nodes = []
 
   def _init_graph_network(self, inputs, outputs, name=None):
+    self._uses_inputs_arg = True
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, (list, tuple)):
       self.inputs = list(inputs)  # Tensor or list of tensors.
@@ -274,11 +275,15 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    if 'training' in tf_inspect.getargspec(self.call).args:
+    call_args = tf_inspect.getargspec(self.call).args
+    if 'training' in call_args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
-
+    if 'inputs' in call_args:
+      self._uses_inputs_arg = True
+    else:
+      self._uses_inputs_arg = False
     self.outputs = None
     self.inputs = None
     self.built = False

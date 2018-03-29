@@ -1284,8 +1284,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
-  if (tensorflow::StringPiece(custom_call_request.call_target_name())
-          .starts_with("$")) {
+  if (tensorflow::str_util::StartsWith(custom_call_request.call_target_name(),
+                                       "$")) {
     return InvalidArgument(
         "Invalid custom_call_target \"%s\": Call targets that start with '$' "
         "are reserved for internal use.",

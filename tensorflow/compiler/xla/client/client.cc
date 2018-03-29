@@ -317,6 +317,12 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   return std::move(outputs);
 }
 
+StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
+    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+  return Unimplemented(
+      "ExecuteParallel is not yet implemented for XlaComputation.");
+}
+
 StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
     int64 device_count) {
   if (device_count < 1) {
@@ -393,6 +399,13 @@ StatusOr<ComputationStats> Client::GetComputationStats(
   return response.stats();
 }
 
+StatusOr<ComputationStats> Client::GetComputationStats(
+    const XlaComputation& computation,
+    const DebugOptions& debug_options) const {
+  return Unimplemented(
+      "GetComputationStats is not yet implemented for XlaComputation");
+}
+
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const Computation& computation) {
   GetComputationShapeRequest request;
@@ -408,6 +421,12 @@ StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
   }
 
   return WrapUnique(response.release_program_shape());
+}
+
+StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
+  return MakeUnique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
