@@ -241,6 +241,8 @@ class Client {
   // ExecutionProfile returned from an execution of the computation.
   StatusOr<string> ExecutionStatsAsString(const Computation& computation,
                                           const ExecutionProfile& profile);
+  StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
+                                          const ExecutionProfile& profile);
 
   ServiceInterface* stub_;  // Stub that this client is connected on.
 

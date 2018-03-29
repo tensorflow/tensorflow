@@ -1452,7 +1452,25 @@ tensorflow::Status Service::GetComputationStats(
 
 tensorflow::Status Service::GetComputationGraphStats(
     const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
-  return Unimplemented("get-computation-graph-stats is not yet implemented");
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(arg->computation(), config));
+
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
+
+  // Run HLO analysis to get the computation statistics.
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
+
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
+
+  ComputationStats stats;
+  stats.set_flop_count(analysis.flop_count());
+  stats.set_transcendental_count(analysis.transcendental_count());
+  *result->mutable_stats() = stats;
+  return tensorflow::Status::OK();
 }
 
 template <typename RequestT, typename ResponseT>
