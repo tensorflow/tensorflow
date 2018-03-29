@@ -104,6 +104,21 @@ class GroupByWindowTest(test.TestCase):
       self.assertAllEqual([0, 0, 0], sess.run(get_next))
       self.assertAllEqual([1], sess.run(get_next))
 
+  def testEmpty(self):
+    iterator = (
+        dataset_ops.Dataset.range(4).apply(
+            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Window size must be greater than zero, but got 0."):
+        print(sess.run(get_next))
+
   def testReduceFuncError(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
 

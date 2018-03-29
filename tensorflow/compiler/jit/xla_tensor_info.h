@@ -71,6 +71,12 @@ class XlaTensorInfoManager : public AllocatorWrapper {
   // Creates a new XlaTensorInfoManager, delegating all DeallocateRaw calls to
   // allocator.
   XlaTensorInfoManager(Allocator* allocator) : AllocatorWrapper(allocator) {}
+  ~XlaTensorInfoManager() {
+    // Destroy the tensor info hashtable under the lock, to ensure all accesses
+    // to the hashtable are properly sequenced.
+    mutex_lock lock(lock_);
+    tensor_infos_.clear();
+  }
 
   // Returns the XlaTensorInfo for the given device memory pointer or nullptr if
   // none exists.

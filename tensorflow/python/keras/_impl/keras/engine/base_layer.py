@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
+
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
@@ -30,6 +32,8 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.utils import generic_utils
 from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -143,6 +147,7 @@ class Layer(tf_base_layers.Layer):
     super(Layer, self).__init__(
         name=name, dtype=dtype, trainable=trainable,
         activity_regularizer=kwargs.get('activity_regularizer'))
+    self._uses_inputs_arg = True
 
     # Add properties that are Keras-only for now.
     self.supports_masking = False
@@ -213,7 +218,71 @@ class Layer(tf_base_layers.Layer):
     """
     return inputs
 
-  def __call__(self, inputs, **kwargs):
+  def _inputs_from_call_args(self, call_args, call_kwargs):
+    """Get Layer inputs from __call__ *args and **kwargs.
+
+    Args:
+      call_args: The positional arguments passed to __call__.
+      call_kwargs: The keyword argument dict passed to __call__.
+
+    Returns:
+      A tuple of (inputs, non_input_kwargs). These may be the same objects as
+      were passed in (call_args and call_kwargs).
+    """
+    if getattr(self, '_uses_inputs_arg', True):
+      assert len(call_args) == 1  # TypeError raised earlier in __call__.
+      return call_args[0], call_kwargs
+    else:
+      call_arg_spec = tf_inspect.getargspec(self.call)
+      # There is no explicit "inputs" argument expected or provided to
+      # call(). Arguments which have default values are considered non-inputs,
+      # and arguments without are considered inputs.
+      if call_arg_spec.defaults:
+        if call_arg_spec.varargs is not None:
+          raise TypeError(
+              'Layer.call() may not accept both *args and arguments with '
+              'default values (unable to determine which are inputs to the '
+              'Layer).')
+        keyword_arg_names = set(
+            call_arg_spec.args[-len(call_arg_spec.defaults):])
+      else:
+        keyword_arg_names = set()
+        # Training is never an input argument name, to allow signatures like
+        # call(x, training).
+      keyword_arg_names.add('training')
+      _, unwrapped_call = tf_decorator.unwrap(self.call)
+      bound_args = inspect.getcallargs(
+          unwrapped_call, *call_args, **call_kwargs)
+      if call_arg_spec.keywords is not None:
+        var_kwargs = bound_args.pop(call_arg_spec.keywords)
+        bound_args.update(var_kwargs)
+        keyword_arg_names = keyword_arg_names.union(var_kwargs.keys())
+      all_args = call_arg_spec.args
+      if all_args and bound_args[all_args[0]] is self:
+        # Ignore the 'self' argument of methods
+        bound_args.pop(call_arg_spec.args[0])
+        all_args = all_args[1:]
+      non_input_arg_values = {}
+      input_arg_values = []
+      remaining_args_are_keyword = False
+      for argument_name in all_args:
+        if argument_name in keyword_arg_names:
+          remaining_args_are_keyword = True
+        else:
+          if remaining_args_are_keyword:
+            raise TypeError(
+                'Found a positional argument to call() after a non-input '
+                'argument. All arguments after "training" must be keyword '
+                'arguments, and are not tracked as inputs to the Layer.')
+        if remaining_args_are_keyword:
+          non_input_arg_values[argument_name] = bound_args[argument_name]
+        else:
+          input_arg_values.append(bound_args[argument_name])
+      if call_arg_spec.varargs is not None:
+        input_arg_values.extend(bound_args[call_arg_spec.varargs])
+      return input_arg_values, non_input_arg_values
+
+  def __call__(self, inputs, *args, **kwargs):
     """Wrapper around self.call(), for handling internal references.
 
     If a Keras tensor is passed:
@@ -226,6 +295,10 @@ class Layer(tf_base_layers.Layer):
 
     Arguments:
         inputs: Can be a tensor or list/tuple of tensors.
+        *args: Additional positional arguments to be passed to `call()`. Only
+          allowed in subclassed Models with custom call() signatures. In other
+          cases, `Layer` inputs must be passed using the `inputs` argument and
+          non-inputs must be keyword arguments.
         **kwargs: Additional keyword arguments to be passed to `call()`.
 
     Returns:
@@ -234,11 +307,24 @@ class Layer(tf_base_layers.Layer):
     Raises:
         ValueError: in case the layer is missing shape information
             for its `build` call.
+        TypeError: If positional arguments are passed and this `Layer` is not a
+            subclassed `Model`.
     """
     # Actually call the layer (optionally building it).
-    output = super(Layer, self).__call__(inputs, **kwargs)
+    output = super(Layer, self).__call__(inputs, *args, **kwargs)
+
+    if args and getattr(self, '_uses_inputs_arg', True):
+      raise TypeError(
+          'This Layer takes an `inputs` argument to call(), and only the '
+          '`inputs` argument may be specified as a positional argument. Pass '
+          'everything else as a keyword argument (those arguments will not be '
+          'tracked as inputs to the Layer).')
+
     if context.executing_eagerly():
       return output
+
+    inputs, kwargs = self._inputs_from_call_args(
+        call_args=(inputs,) + args, call_kwargs=kwargs)
 
     if hasattr(self, '_symbolic_set_inputs') and not self.inputs:
       # Subclassed network: explicitly set metadata normally set by a call to

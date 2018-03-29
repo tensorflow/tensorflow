@@ -434,13 +434,19 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if name is None:
+      with ops.name_scope(type(self).__name__) as name:
+        pass
+    # If a name ends with a '/' it is a "name scope" and we use it as-is, after
+    # removing the trailing '/'.
+    name = name[:-1] if (name and name[-1] == "/") else name
     self._dtype = dtype
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._parameters = parameters or {}
     self._graph_parents = graph_parents
-    self._name = name or type(self).__name__
+    self._name = name
 
   @classmethod
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
@@ -1157,7 +1163,7 @@ class Distribution(_BaseDistribution):
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
     """Helper function to standardize op scope."""
-    with ops.name_scope(self.name):
+    with ops.name_scope(self.name + "/"):  # use absolute name scope
       with ops.name_scope(name, values=(
           ([] if values is None else values) + self._graph_parents)) as scope:
         yield scope

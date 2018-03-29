@@ -102,6 +102,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new FunctionOptimizer(cfg_.function_optimization())));
     }
+    if (cfg_.debug_stripper() == RewriterConfig::ON) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new DebugStripper()));
+    }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ConstantFolding(cfg_.constant_folding(), cpu_device_)));
@@ -137,10 +141,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (cfg_.auto_parallel().enable()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new AutoParallel(cfg_.auto_parallel().num_replicas())));
-    }
-    if (cfg_.debug_stripper() == RewriterConfig::ON) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new DebugStripper()));
     }
   } else {
     const std::set<string> available_optimizers = {

@@ -169,7 +169,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
         name,
         values=[
             loc, scale_diag, scale_identity_multiplier, skewness, tailweight
-        ]):
+        ]) as name:
       loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc
       tailweight = 1. if tailweight is None else tailweight
       has_default_skewness = skewness is None

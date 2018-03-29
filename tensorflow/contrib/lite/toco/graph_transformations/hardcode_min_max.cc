@@ -332,6 +332,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
+    case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
 

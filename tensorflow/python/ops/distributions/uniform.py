@@ -103,7 +103,7 @@ class Uniform(distribution.Distribution):
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[low, high]):
+    with ops.name_scope(name, values=[low, high]) as name:
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")

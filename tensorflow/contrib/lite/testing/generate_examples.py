@@ -909,12 +909,11 @@ def make_gather_tests(zip_path):
       # TODO(mgubin): add string tests when they are supported by Toco.
       # TODO(mgubin): add tests for Nd indices when they are supported by
       # TfLite.
-      # TODO(mgubin): add tests for axis != 0 when it is supported by TfLite.
       "params_dtype": [tf.float32, tf.int32],
       "params_shape": [[10], [1, 2, 20]],
       "indices_dtype": [tf.int32],
       "indices_shape": [[3], [5]],
-      "axis": [0],  # axis!=0 is GatherV2
+      "axis": [0, 1],
   }]
 
   def build_graph(parameters):

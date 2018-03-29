@@ -3144,6 +3144,8 @@ tf_proto_library(
     srcs = ["framework/cpp_shape_inference.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+    # TODO(b/74620627): remove when _USE_C_SHAPES is removed
+    visibility = ["//tensorflow:internal"],
 )
 
 py_test(
