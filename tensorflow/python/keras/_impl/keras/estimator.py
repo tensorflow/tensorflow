@@ -37,6 +37,7 @@ from tensorflow.python.keras._impl.keras.engine.network import Network
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import check_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
@@ -72,7 +73,8 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
   if isinstance(estimator_io, (list, tuple)):
     # Case currently not supported by most built-in input_fn,
     # but it's good to have for sanity
-    return [_cast_tensor_to_floatx(x) for x in estimator_io]
+    return [_cast_tensor_to_floatx(x)
+            if check_ops.is_numeric_tensor(x) else x for x in estimator_io]
   elif isinstance(estimator_io, dict):
     if is_input:
       if keras_model._is_graph_network:
@@ -95,11 +97,17 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
       tensors = [_cast_tensor_to_floatx(estimator_io[io_name])
+                 if check_ops.is_numeric_tensor(estimator_io[io_name])
+                 else estimator_io[io_name]
                  for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
-    return _cast_tensor_to_floatx(estimator_io)
+    if check_ops.is_numeric_tensor(estimator_io):
+        return _cast_tensor_to_floatx(estimator_io)
+    else:
+        # A non-numeric tensor can't be converted
+        return estimator_io
 
 
 def _in_place_subclassed_model_reset(model):

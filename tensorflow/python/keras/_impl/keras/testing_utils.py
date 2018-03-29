@@ -52,6 +52,26 @@ def get_test_data(train_samples,
           (x[train_samples:], y[train_samples:]))
 
 
+def get_test_random_mask(train_samples,
+                         test_samples,
+                         input_shape):
+  """Generates test mask to train a model on.
+
+  Arguments:
+    train_samples: Integer, how many training samples to generate.
+    test_samples: Integer, how many test samples to generate.
+    input_shape: Tuple of integers, shape of the inputs.
+
+  Returns:
+    A tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+  """
+  num_sample = train_samples + test_samples
+
+  x = np.random.choice([True, False], size=(num_sample,) + input_shape,
+                       p=[0.9, 0.1])
+  return x[:train_samples], x[train_samples:]
+
+
 def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
                expected_output_dtype=None):

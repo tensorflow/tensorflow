@@ -143,9 +143,14 @@ def multi_inputs_multi_outputs_model():
   # test multi-input layer
   a = keras.layers.Input(shape=(16,), name='input_a')
   b = keras.layers.Input(shape=(16,), name='input_b')
-  dense = keras.layers.Dense(8, name='dense_1')
-  a_2 = dense(a)
-  b_2 = dense(b)
+  mask = keras.layers.Input(shape=(8,), name='mask_a', dtype='bool')
+  dense_1 = keras.layers.Dense(8, name='dense_1')
+  masked_dense = keras.layers.Lambda(lambda k:
+                                     keras.backend.switch(k[0],
+                                                          k[1], 0))([mask,
+                                                                     dense_1])
+  a_2 = masked_dense(a)
+  b_2 = masked_dense(b)
   merged = keras.layers.concatenate([a_2, b_2], name='merge')
   c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
   d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
@@ -350,18 +355,26 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         test_samples=50,
         input_shape=(16,),
         num_classes=2)
+    np.random.seed(_RANDOM_SEED)
+    mask_train, mask_test = testing_utils.get_test_random_mask(
+        train_samples=_TRAIN_SIZE,
+        test_samples=50,
+        input_shape=(8,))
+
     c_train = keras.utils.to_categorical(c_train)
     c_test = keras.utils.to_categorical(c_test)
     d_train = keras.utils.to_categorical(d_train)
     d_test = keras.utils.to_categorical(d_test)
 
     def train_input_fn():
-      input_dict = {'input_a': a_train, 'input_b': b_train}
+      input_dict = {'input_a': a_train, 'input_b': b_train,
+                    'mask_a': mask_train}
       output_dict = {'dense_2': c_train, 'dense_3': d_train}
       return input_dict, output_dict
 
     def eval_input_fn():
-      input_dict = {'input_a': a_test, 'input_b': b_test}
+      input_dict = {'input_a': a_test, 'input_b': b_test,
+                    'mask_a': mask_test}
       output_dict = {'dense_2': c_test, 'dense_3': d_test}
       return input_dict, output_dict
 
