@@ -54,6 +54,25 @@ using TypesF16F32F64CF64 =
 #error "Situation not handled yet"
 #endif
 
+// Check that we can safely pass an input tuple's elements to a dot operation.
+TEST_F(DotOperationTest, DotOfInputTupleElem) {
+  ComputationBuilder builder(client_, TestName());
+
+  ComputationDataHandle param;
+  auto param_data = CreateParameterAndTransferLiteral(
+      0,
+      *Literal::MakeTuple({Literal::CreateR2<float>({{1, 2}, {3, 4}}).get(),
+                           Literal::CreateR2<float>({{5, 6}, {7, 8}}).get()}),
+      "arg0", &builder, &param);
+  auto lhs = builder.GetTupleElement(param, 0);
+  auto rhs = builder.GetTupleElement(param, 1);
+  builder.Dot(lhs, rhs);
+
+  ComputeAndCompareLiteral(&builder,
+                           *Literal::CreateR2<float>({{19, 22}, {43, 50}}),
+                           {param_data.get()});
+}
+
 template <typename T>
 class DotOperationTest_F16F32F64CF64 : public DotOperationTest {};
 TYPED_TEST_CASE(DotOperationTest_F16F32F64CF64, TypesF16F32F64CF64);
