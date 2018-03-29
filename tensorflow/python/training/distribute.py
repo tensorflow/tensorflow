@@ -99,6 +99,7 @@ _update_device = threading.local()
 
 
 def get_update_device():
+  """Get the current device if in a `DistributionStrategy.update()` call."""
   try:
     return _update_device.current
   except AttributeError:
@@ -406,19 +407,19 @@ class DistributionStrategy(object):
     different across devices, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
     multiple devices, like `call_for_each_tower(fn, w)` with an
-    argument `w that is a wrapped value. This means `w` will have a
+    argument `w` that is a wrapped value. This means `w` will have a
     map taking tower device `d0` to `w0`, tower device `d1` to `w1`,
     etc. `call_for_each_tower()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges
     the return values from `fn()`, which can possibly result in
     wrapped values. For example, let's say `fn()` returns a tuple with
-    three components: (x, a, v0) from tower 0, (x, b, v1) on tower 1,
+    three components: `(x, a, v0)` from tower 0, `(x, b, v1)` on tower 1,
     etc. If the first component is the same object `x` from every
     tower, then the first component of the merged result will also be
     `x`. If the second component is different (`a`, `b`, ...)  from
     each tower, then the merged value will have a wrapped map from
     tower device to the different values. If the third component is
-    the members of a mirrored variable (`v` maps `d0` to `v0, `d1` to
+    the members of a mirrored variable (`v` maps `d0` to `v0`, `d1` to
     `v1`, etc.), then the merged result will be that mirrored variable
     (`v`).
   * Tower context vs. Cross-tower context: _tower context_ is when we
