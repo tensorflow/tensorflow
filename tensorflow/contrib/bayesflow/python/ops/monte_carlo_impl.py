@@ -95,7 +95,7 @@ def expectation_importance_sampler(f,
       log_values = log_f_z + log_p_z - q_log_prob_z
       return _logspace_mean(log_values)
 
-    # With f_plus(z) = max(0, f(z)), f_minus(z) = max(0, -f(z)),
+    # With \\(f_{plus}(z) = max(0, f(z)), f_{minus}(z) = max(0, -f(z))\\),
     # \\(E_p[f(Z)] = E_p[f_{plus}(Z)] - E_p[f_{minus}(Z)]\\)
     # \\(          = E_p[f_{plus}(Z) + 1] - E_p[f_{minus}(Z) + 1]\\)
     # Without incurring bias, 1 is added to each to prevent zeros in logspace.
@@ -121,8 +121,8 @@ def expectation_importance_sampler_logspace(
     name='expectation_importance_sampler_logspace'):
   r"""Importance sampling with a positive function, in log-space.
 
-  With `\\(p(z) := exp^{log_p(z)}\\)`, and `\\(f(z) = exp{log_f(z)}\\)`, this `Op`
-  returns
+  With `\\(p(z) := exp^{log_p(z)}\\)`, and `\\(f(z) = exp{log_f(z)}\\)`,
+  this `Op` returns
 
   ```
   \\(Log[ n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ] ],  z_i ~ q,\\)
@@ -296,7 +296,8 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   Args:
     f: Python callable which can return `f(samples)`.
     samples: `Tensor` of samples used to form the Monte-Carlo approximation of
-      `\\(E_p[f(X)]\\)`.  A batch of samples should be indexed by `axis` dimensions.
+      `\\(E_p[f(X)]\\)`.  A batch of samples should be indexed by `axis`
+      dimensions.
     log_prob: Python callable which can return `log_prob(samples)`. Must
       correspond to the natural-logarithm of the pdf/pmf of each sample. Only
       required/used if `use_reparametrization=False`.
