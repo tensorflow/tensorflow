@@ -140,13 +140,13 @@ def rejection_resample_v2(class_func, target_dist, initial_dist=None,
     num_filtered_to_prefetch = 3
     filtered_ds = filtered_ds.prefetch(num_filtered_to_prefetch)
     filtered_iterator = filtered_ds.make_one_shot_iterator()
-    combined_ds = (dataset_ops.Dataset
-        .zip((class_values_ds, dataset, prob_of_original_ds))
-        .map(lambda original_class, original_data, prob_of_original:
-             control_flow_ops.cond(
-                 random_ops.random_uniform([], seed=seed) < prob_of_original,
-                 lambda: (original_class, original_data),
-                 filtered_iterator.get_next)))
+    combined_ds = dataset_ops.Dataset.zip(
+        (class_values_ds, dataset, prob_of_original_ds)).map(
+            lambda original_class, original_data, prob_of_original:
+            control_flow_ops.cond(
+                random_ops.random_uniform([], seed=seed) < prob_of_original,
+                lambda: (original_class, original_data),
+                filtered_iterator.get_next))
     return combined_ds
 
   return _apply_fn
@@ -189,37 +189,37 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
       (class_values_ds, acceptance_dist_ds, dataset)).map(_gather_and_copy)
   filtered_ds = (
       current_probabilities_and_class_and_data_ds
-          .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
+      .filter(lambda _1, p, _2: random_ops.random_uniform([], seed=seed) < p))
   return filtered_ds.map(lambda class_value, _, data: (class_value, data))
 
 
 def _estimate_initial_dist_ds(
-        target_dist_t, class_values_ds, dist_estimation_batch_size=32,
-        smoothing_constant=10):
-    num_classes = (target_dist_t.shape[0].value or
-                   array_ops.shape(target_dist_t)[0])
-    initial_examples_per_class_seen = array_ops.fill(
-        [num_classes], np.int64(smoothing_constant))
+    target_dist_t, class_values_ds, dist_estimation_batch_size=32,
+    smoothing_constant=10):
+  num_classes = (target_dist_t.shape[0].value or
+                 array_ops.shape(target_dist_t)[0])
+  initial_examples_per_class_seen = array_ops.fill(
+      [num_classes], np.int64(smoothing_constant))
 
-    def update_estimate_and_tile(num_examples_per_class_seen, c):
-        updated_examples_per_class_seen, dist = _estimate_data_distribution(
-            c, num_examples_per_class_seen)
-        tiled_dist = array_ops.tile(
-            array_ops.expand_dims(dist, 0), [dist_estimation_batch_size, 1])
-        return updated_examples_per_class_seen, tiled_dist
+  def update_estimate_and_tile(num_examples_per_class_seen, c):
+    updated_examples_per_class_seen, dist = _estimate_data_distribution(
+        c, num_examples_per_class_seen)
+    tiled_dist = array_ops.tile(
+        array_ops.expand_dims(dist, 0), [dist_estimation_batch_size, 1])
+    return updated_examples_per_class_seen, tiled_dist
 
-    initial_dist_ds = (class_values_ds.batch(dist_estimation_batch_size)
-                       .apply(scan_ops.scan(initial_examples_per_class_seen,
-                                            update_estimate_and_tile))
-                       .apply(batching.unbatch()))
+  initial_dist_ds = (class_values_ds.batch(dist_estimation_batch_size)
+                     .apply(scan_ops.scan(initial_examples_per_class_seen,
+                                          update_estimate_and_tile))
+                     .apply(batching.unbatch()))
 
-    return initial_dist_ds
+  return initial_dist_ds
 
 
 def _get_target_to_initial_ratio(initial_probs, target_probs):
-    # Add tiny to initial_probs to avoid divide by zero.
-    denom = (initial_probs + np.finfo(initial_probs.dtype.as_numpy_dtype).tiny)
-    return target_probs / denom
+  # Add tiny to initial_probs to avoid divide by zero.
+  denom = (initial_probs + np.finfo(initial_probs.dtype.as_numpy_dtype).tiny)
+  return target_probs / denom
 
 
 def _calculate_acceptance_probs(initial_probs, target_probs):
@@ -296,46 +296,46 @@ def _estimate_data_distribution(c, num_examples_per_class_seen):
 
 
 def _calculate_acceptance_probs_with_mixing(initial_probs, target_probs):
-    """Calculates the acceptance probabilities and mixing ratio.
+  """Calculates the acceptance probabilities and mixing ratio.
 
-    In this case, we assume that we can *either* sample from the original data
-    distribution with probability `m`, or sample from a reshaped distribution
-    that comes from rejection sampling on the original distribution. This
-    rejection sampling is done on a per-class basis, with `a_i` representing the
-    probability of accepting data from class `i`.
+  In this case, we assume that we can *either* sample from the original data
+  distribution with probability `m`, or sample from a reshaped distribution
+  that comes from rejection sampling on the original distribution. This
+  rejection sampling is done on a per-class basis, with `a_i` representing the
+  probability of accepting data from class `i`.
 
-    If we try to minimize the amount of data rejected, we get the following:
+  If we try to minimize the amount of data rejected, we get the following:
 
-    M_max = max_i [ t_i / p_i ]
-    M_min = min_i [ t_i / p_i ]
+  M_max = max_i [ t_i / p_i ]
+  M_min = min_i [ t_i / p_i ]
 
-    The desired probability of accepting data if it comes from class `i`:
+  The desired probability of accepting data if it comes from class `i`:
 
-    a_i = (t_i/p_i - m) / (M_max - m)
+  a_i = (t_i/p_i - m) / (M_max - m)
 
-    The desired probability of pulling a data element from the original dataset,
-    rather than the filtered one:
+  The desired probability of pulling a data element from the original dataset,
+  rather than the filtered one:
 
-    m = M_min
+  m = M_min
 
-    See the docstring for `_calculate_acceptance_probs` for more details.
+  See the docstring for `_calculate_acceptance_probs` for more details.
 
-    Args:
-      init_probs: A Tensor of the initial probability distribution, given or
-        estimated.
-      target_probs: A Tensor of the corresponding classes.
+  Args:
+    initial_probs: A Tensor of the initial probability distribution, given or
+      estimated.
+    target_probs: A Tensor of the corresponding classes.
 
-    Returns:
-      (A 1D Tensor with the per-class acceptance probabilities, the desired
-      probability of pull from the original distribution.)
-    """
-    ratio_l = _get_target_to_initial_ratio(initial_probs, target_probs)
-    max_ratio = math_ops.reduce_max(ratio_l)
-    min_ratio = math_ops.reduce_min(ratio_l)
+  Returns:
+    (A 1D Tensor with the per-class acceptance probabilities, the desired
+    probability of pull from the original distribution.)
+  """
+  ratio_l = _get_target_to_initial_ratio(initial_probs, target_probs)
+  max_ratio = math_ops.reduce_max(ratio_l)
+  min_ratio = math_ops.reduce_min(ratio_l)
 
-    # Target prob to sample from original distribution.
-    m = min_ratio
+  # Target prob to sample from original distribution.
+  m = min_ratio
 
-    # TODO(joelshor): Simplify fraction, if possible.
-    a_i = (ratio_l - m) / (max_ratio - m)
-    return a_i, m
+  # TODO(joelshor): Simplify fraction, if possible.
+  a_i = (ratio_l - m) / (max_ratio - m)
+  return a_i, m
